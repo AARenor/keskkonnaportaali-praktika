@@ -8,6 +8,8 @@ Keskkonnaportaali visuaalsel identiteedil põhinev praktikaprojekt, mis lisab ka
 
 Avalik praktikakeskkond: [praktika.arleserver.cfd](https://praktika.arleserver.cfd)
 
+Viimane avalik API-, Coolify- ja Playwright-kontroll: **16.08.2026**, rakenduskoodi commit `fa1b72d`. Kuupäevastatud tõendid ja täpne andmevoogude loend on failis [PROJEKT.md](./PROJEKT.md#avaliku-versiooni-kontroll--16082026).
+
 Täielik kirjeldus, arhitektuur, käivitamine ja piirangud on failis [PROJEKT.md](./PROJEKT.md).
 
 ## Kiirkäivitus
