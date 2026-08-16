@@ -73,8 +73,9 @@ app.get("/api/health", async (_request, response) => {
   response.json({
     status: "ok",
     service: "keskkonnaportaali-praktika",
-    searchDocuments: SEARCH_DOCUMENTS.length,
-    terrapointProxy: true,
+    fallbackSearchDocuments: SEARCH_DOCUMENTS.length,
+    terrapointEmbed: "direct-full-ui",
+    terrapointProxy: "legacy-fallback",
     retrieval: "keskkonnaportaal-live-search",
     llm: llmConfiguration(),
     vectorStore: qdrantConfiguration(),
