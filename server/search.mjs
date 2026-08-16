@@ -210,7 +210,7 @@ function topicRoot(word) {
   return word;
 }
 
-function scoreDocument(document, query) {
+export function scoreDocument(document, query) {
   const normalizedQuery = normalize(query);
   const words = normalizedQuery
     .split(/\s+/)
@@ -221,7 +221,7 @@ function scoreDocument(document, query) {
 
   const fields = {
     title: normalize(document.title),
-    tags: normalize(document.tags.join(" ")),
+    tags: normalize((document.tags || []).join(" ")),
     summary: normalize(document.summary),
     organization: normalize(document.organization),
   };
@@ -242,13 +242,62 @@ function scoreDocument(document, query) {
   return score;
 }
 
-function relatedQueries(query, sources) {
+export function relatedQueries(query, sources) {
   const normalizedQuery = normalize(query);
   const direct = Object.entries(RELATED).find(([key]) => normalizedQuery.includes(normalize(key)));
   if (direct) return direct[1];
 
-  const tags = sources.flatMap((source) => source.tags).filter((tag) => tag.length > 3);
+  const tags = sources.flatMap((source) => source.tags || []).filter((tag) => tag.length > 3);
   return [...new Set(tags)].slice(0, 3).map((tag) => `${tag} andmed Eestis`);
+}
+
+export function rankDocuments(query, documents = SEARCH_DOCUMENTS) {
+  return documents
+    .map((document) => ({ ...document, score: scoreDocument(document, query) }))
+    .filter((document) => document.score > 0)
+    .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title, "et"));
+}
+
+export function composeSearchResponse(query, rankedDocuments, options = {}) {
+  const cleanQuery = String(query ?? "").trim().slice(0, 180);
+  const limit = Math.max(1, Math.min(Number(options.limit) || 6, 10));
+  const ranked = Array.isArray(rankedDocuments) ? rankedDocuments : [];
+  const fallback = SEARCH_DOCUMENTS.filter((item) => ["publications", "open-data", "environment-register"].includes(item.id));
+  const chosen = (ranked.length ? ranked : fallback)
+    .slice(0, limit)
+    .map((document, index) => ({ ...document, citation: index + 1 }));
+
+  const strongMatches = ranked.filter((document) => Number(document.score || 0) >= 8).length;
+  const confidence = strongMatches >= 3 ? "kõrge" : strongMatches ? "keskmine" : "madal";
+  const answerParts = chosen.slice(0, 3).map((source) => ({
+    text: source.answer || source.summary,
+    citations: [source.citation],
+  }));
+
+  return {
+    query: cleanQuery,
+    total: Number.isFinite(options.total) ? options.total : ranked.length,
+    generatedAt: new Date().toISOString(),
+    mode: options.mode || "allikapõhine-koondvastus",
+    answer: {
+      eyebrow: "Allikapõhine vastus",
+      title: `Vastus: ${cleanQuery}`,
+      intro:
+        ranked.length > 0
+          ? `Leidsin ${options.total || ranked.length} teemaga sobivat tulemust. Vastuse järel on kasutatud algallikad.`
+          : "Täpset vastet ei leitud. Allpool on ametlikud lähtekohad, kust päringut täpsustada.",
+      parts: answerParts,
+      confidence,
+      disclaimer:
+        "Koondvastus on automaatselt koostatud valitud avalike allikate kokkuvõtetest. Õigusliku või kinnistupõhise otsuse puhul kontrolli algallikat.",
+    },
+    sources: chosen.map(({ score: _score, semanticScore: _semanticScore, combinedScore: _combinedScore, answer: _answer, tags, ...source }) => ({
+      ...source,
+      tags: (tags || []).slice(0, 5),
+    })),
+    related: options.related || relatedQueries(cleanQuery, chosen),
+    ...(options.meta ? { meta: options.meta } : {}),
+  };
 }
 
 export function searchEnvironment(query, limit = 6) {
@@ -263,47 +312,8 @@ export function searchEnvironment(query, limit = 6) {
     };
   }
 
-  const ranked = SEARCH_DOCUMENTS.map((document) => ({
-    ...document,
-    score: scoreDocument(document, cleanQuery),
-  }))
-    .filter((document) => document.score > 0)
-    .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title, "et"));
-
-  const chosen = (ranked.length ? ranked : SEARCH_DOCUMENTS.filter((item) => ["publications", "open-data", "environment-register"].includes(item.id)))
-    .slice(0, Math.max(1, Math.min(Number(limit) || 6, 8)))
-    .map((document, index) => ({ ...document, citation: index + 1 }));
-
-  const strongMatches = ranked.filter((document) => document.score >= 8).length;
-  const confidence = strongMatches >= 3 ? "kõrge" : strongMatches ? "keskmine" : "madal";
-  const answerParts = chosen.slice(0, 3).map((source) => ({
-    text: source.answer,
-    citations: [source.citation],
-  }));
-
-  return {
-    query: cleanQuery,
-    total: ranked.length,
-    generatedAt: new Date().toISOString(),
-    mode: "allikapõhine-koondvastus",
-    answer: {
-      eyebrow: "AI-laadne allikapõhine vastus",
-      title: `Lühivastus: ${cleanQuery}`,
-      intro:
-        ranked.length > 0
-          ? `Leidsin ${ranked.length} teemaga sobivat kontrollitavat allikat. Kõige olulisem kokkuvõte on allpool; viited avavad kasutatud algallikad.`
-          : `Täpset vastet ei leitud. Allpool on kolm ametlikku lähtekohta, kust päringut täpsustada.`,
-      parts: answerParts,
-      confidence,
-      disclaimer:
-        "Koondvastus on automaatselt koostatud valitud avalike allikate kokkuvõtetest. Õigusliku või kinnistupõhise otsuse puhul kontrolli algallikat.",
-    },
-    sources: chosen.map(({ score: _score, answer: _answer, tags, ...source }) => ({
-      ...source,
-      tags: tags.slice(0, 4),
-    })),
-    related: relatedQueries(cleanQuery, chosen),
-  };
+  const ranked = rankDocuments(cleanQuery, SEARCH_DOCUMENTS);
+  return composeSearchResponse(cleanQuery, ranked, { limit, total: ranked.length });
 }
 
 export { SEARCH_DOCUMENTS };

@@ -6,5 +6,6 @@ dist/
 .playwright-cli/
 prototype-*.png
 qa-*.png
+output/
 npm-debug.log*
 .DS_Store

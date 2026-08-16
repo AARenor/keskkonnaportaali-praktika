@@ -259,14 +259,41 @@ function ExternalAnchor({ children, className, href, ...props }) {
 function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoFocus = false }) {
   const [value, setValue] = useState(initialValue);
   const [focused, setFocused] = useState(false);
+  const [remoteSuggestions, setRemoteSuggestions] = useState([]);
 
   useEffect(() => setValue(initialValue), [initialValue]);
+
+  useEffect(() => {
+    const query = value.trim();
+    if (query.length < 2) {
+      setRemoteSuggestions([]);
+      return undefined;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/suggestions?q=${encodeURIComponent(query)}`, { signal: controller.signal });
+        const data = await response.json();
+        if (response.ok && Array.isArray(data.suggestions)) setRemoteSuggestions(data.suggestions);
+      } catch (error) {
+        if (error.name !== "AbortError") setRemoteSuggestions([]);
+      }
+    }, 180);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [value]);
 
   const suggestions = useMemo(() => {
     const query = value.trim().toLocaleLowerCase("et");
     if (query.length < 2) return [];
-    return searchSuggestions.filter((item) => item.toLocaleLowerCase("et").includes(query)).slice(0, 5);
-  }, [value]);
+    if (remoteSuggestions.length) return remoteSuggestions;
+    return searchSuggestions
+      .filter((item) => item.toLocaleLowerCase("et").includes(query))
+      .slice(0, 5)
+      .map((item) => ({ value: item, count: null }));
+  }, [remoteSuggestions, value]);
 
   const submit = (event) => {
     event.preventDefault();
@@ -301,17 +328,18 @@ function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoF
             <div className="search-suggestions__title">Soovitatud päringud</div>
             {suggestions.map((suggestion) => (
               <button
-                key={suggestion}
+                key={suggestion.value}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => {
-                  setValue(suggestion);
-                  onSearch(suggestion);
+                  setValue(suggestion.value);
+                  onSearch(suggestion.value);
                 }}
                 role="option"
                 type="button"
               >
                 <Search size={16} />
-                <span>{suggestion}</span>
+                <span>{suggestion.value}</span>
+                {suggestion.count ? <small>{suggestion.count} vastet</small> : null}
                 <ArrowRight size={15} />
               </button>
             ))}
@@ -546,30 +574,29 @@ function TerrapointSection() {
     <section className="terrapoint-section" aria-labelledby="terrapoint-title">
       <div className="shell terrapoint-layout">
         <div className="terrapoint-copy">
-          <span className="eyebrow">Kinnistupõhine vaade</span>
-          <h2 id="terrapoint-title">Terrapoint on nüüd portaali sees</h2>
+          <span className="eyebrow">Terrapointi täisrakendus</span>
+          <h2 id="terrapoint-title">Kogu Terrapoint, otse portaali sees</h2>
           <p>
-            Otsi aadressi või vali katastritunnus. Manustatud vaade toob kokku kinnistu põhiandmed,
-            metsaandmed ja ruumilised piirangud, ilma et peaksid portaali töövoost lahkuma.
+            Allpool töötab sama Terrapointi kasutajaliides, kaart ja avalik API nagu terrapoint.ee lehel.
+            Otsi aadressi või katastritunnust ning vaata kinnistu, metsa ja piirangute koondandmeid.
           </p>
-          <ul className="check-list">
-            <li><CheckCircle2 size={19} /> Päring läheb Terrapointi avalikku andmeteenusesse</li>
-            <li><CheckCircle2 size={19} /> Aeglane teenus ei peata ülejäänud lehte</li>
-            <li><CheckCircle2 size={19} /> Puuduvad andmed ei tähenda piirangu puudumist</li>
-          </ul>
-          <ExternalAnchor className="outline-button" href="https://terrapoint.ee/">
-            Ava Terrapoint täisvaates <ExternalLink size={16} />
-          </ExternalAnchor>
         </div>
-        <div className="terrapoint-frame-wrap">
-          <div className="frame-label"><span /> Turvaline manustatud vaade</div>
-          <iframe
-            className="terrapoint-frame"
-            loading="lazy"
-            src="/embed/terrapoint"
-            title="Terrapointi kinnistuotsing"
-          />
+        <div className="terrapoint-actions">
+          <span><CheckCircle2 size={18} /> Päris Terrapointi UI ja API</span>
+          <span><CheckCircle2 size={18} /> Kõik funktsioonid ühes suures vaates</span>
+          <ExternalAnchor className="outline-button" href="https://terrapoint.ee/">Ava uuel lehel <ExternalLink size={16} /></ExternalAnchor>
         </div>
+      </div>
+      <div className="terrapoint-frame-wrap">
+        <div className="frame-label"><span /> terrapoint.ee · manustatud täisvaade</div>
+        <iframe
+          className="terrapoint-frame"
+          data-testid="terrapoint-embed"
+          loading="lazy"
+          referrerPolicy="strict-origin-when-cross-origin"
+          src="https://terrapoint.ee/"
+          title="Terrapointi täisrakendus"
+        />
       </div>
     </section>
   );
@@ -647,19 +674,39 @@ function Citation({ number }) {
   return <a className="citation" href={`#source-${number}`} aria-label={`Allikas ${number}`}>{number}</a>;
 }
 
+function statusLabel(status) {
+  if (["ready", "live"].includes(status)) return "ühendatud";
+  if (status === "degraded") return "osaliselt saadaval";
+  if (status === "configured") return "seadistatud";
+  return "pole seadistatud";
+}
+
+function SearchProvenance({ meta }) {
+  if (!meta) return null;
+  const providerText = (meta.providers || []).map((provider) => provider.label).join(" + ") || "avalikud allikad";
+  return (
+    <aside className="provenance-strip" aria-label="Vastuse tehniline päritolu">
+      <div><Globe2 size={18} /><span>Andmed<strong>{providerText}</strong></span></div>
+      <div><Sparkles size={18} /><span>Vastus<strong>{meta.answerProvider || "reeglipõhine fallback"}</strong></span></div>
+      <div><Layers3 size={18} /><span>Otsinguindeks<strong>Qdrant · {statusLabel(meta.vectorStore?.status)}</strong></span></div>
+      <div><Database size={18} /><span>Vahemälu<strong>PostgreSQL · {statusLabel(meta.database?.status)}</strong></span></div>
+    </aside>
+  );
+}
+
 function SearchResults({ result, query, busy, error, onSearch, onHome }) {
   const hasResult = Boolean(result?.answer);
   return (
     <main className="search-page" id="main-content">
       <div className="search-page__header">
-        <div className="shell">
+        <div className="shell search-results-shell">
           <button className="back-link" onClick={onHome} type="button"><ArrowLeft size={17} /> Avalehele</button>
-          <span className="eyebrow">Keskkonnaportaali parem otsing</span>
-          <h1>Küsi, võrdle ja ava algallikas</h1>
+          <span className="eyebrow">Keskkonnaportaali otsing</span>
+          <h1>Vastus koos kontrollitavate allikatega</h1>
           <SearchForm busy={busy} initialValue={query} onSearch={onSearch} variant="results" />
         </div>
       </div>
-      <div className="shell search-page__content">
+      <div className="shell search-results-shell search-page__content">
         {busy ? (
           <div className="search-state"><LoaderCircle className="spin" size={30} /><h2>Koostan allikapõhist vastust …</h2><p>Järjestan ametlikud allikad ja seon väited viidetega.</p></div>
         ) : null}
@@ -670,7 +717,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
               <div className="answer-card__top">
                 <div className="answer-icon"><Sparkles size={24} /></div>
                 <div><span className="eyebrow">{result.answer.eyebrow}</span><h2>{result.answer.title}</h2></div>
-                <span className={`confidence confidence--${result.answer.confidence}`}>{result.answer.confidence} kindlus</span>
+                <span className={`confidence confidence--${result.answer.confidence}`}>{result.answer.confidence} allikakate</span>
               </div>
               <p className="answer-intro">{result.answer.intro}</p>
               <div className="answer-parts">
@@ -681,17 +728,19 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
               <div className="answer-note"><ShieldCheck size={19} /><p>{result.answer.disclaimer}</p></div>
             </article>
 
+            <SearchProvenance meta={result.meta} />
+
             <section className="sources-section" aria-labelledby="sources-title">
               <div className="sources-title-row">
-                <div><span className="eyebrow">Kontrollitavad viited</span><h2 id="sources-title">Allikad</h2></div>
-                <span>{result.sources.length} valitud allikat</span>
+                <div><span className="eyebrow">Vastuse järel</span><h2 id="sources-title">Kasutatud allikad</h2></div>
+                <span>{result.sources.length} kasutatud · {result.total} leitud</span>
               </div>
               <div className="sources-grid">
                 {result.sources.map((source) => (
                   <ExternalAnchor className="source-card" href={source.url} id={`source-${source.citation}`} key={source.id}>
                     <span className="source-number">{source.citation}</span>
                     <div className="source-card__body">
-                      <div className="source-meta"><span>{source.organization}</span><span>{source.type}</span><span>{source.published}</span></div>
+                      <div className="source-meta"><span>{source.sourceSystem || source.organization}</span><span>{source.organization}</span><span>{source.published}</span></div>
                       <h3>{source.title}<ExternalLink size={15} /></h3>
                       <p>{source.summary}</p>
                       <div className="tag-row">{source.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>

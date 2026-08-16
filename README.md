@@ -2,8 +2,9 @@
 
 Keskkonnaportaali visuaalsel identiteedil põhinev praktikaprojekt, mis lisab kaks prototüübitavat põhiideed:
 
-- vastus-enne-allikaid keskkonnaotsing;
-- portaali sees toimiv Terrapointi kinnistuotsing.
+- Keskkonnaportaali reaalajaotsingule, Qdrantile ja serveripoolsele LLM-ile toetuv vastus-enne-allikaid otsing;
+- portaali sees toimiv kogu `terrapoint.ee` rakendus;
+- eraldatud PostgreSQL-i vahemälu ning nähtav vastuse päritoluinfo.
 
 Avalik praktikakeskkond: [praktika.arleserver.cfd](https://praktika.arleserver.cfd)
 

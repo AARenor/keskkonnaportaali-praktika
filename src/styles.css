@@ -508,7 +508,7 @@ h3 {
 .search-suggestions button {
   display: grid;
   width: 100%;
-  grid-template-columns: 22px 1fr 20px;
+  grid-template-columns: 22px 1fr auto 20px;
   align-items: center;
   gap: 8px;
   border: 0;
@@ -518,6 +518,12 @@ h3 {
   color: var(--ink);
   text-align: left;
   cursor: pointer;
+}
+
+.search-suggestions button small {
+  color: #71808a;
+  font-size: 0.72rem;
+  white-space: nowrap;
 }
 
 .search-suggestions button:hover {
@@ -749,7 +755,7 @@ h3 {
 
 .terrapoint-section {
   overflow: hidden;
-  padding: 85px 0;
+  padding: 72px 0 0;
   background: linear-gradient(135deg, #e5f6fb 0%, #f6fbfd 58%, #eaf5f0 100%);
   border-top: 1px solid #cde4ec;
   border-bottom: 1px solid #cde4ec;
@@ -757,22 +763,44 @@ h3 {
 
 .terrapoint-layout {
   display: grid;
-  grid-template-columns: 0.82fr 1.38fr;
-  align-items: center;
-  gap: 64px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+  align-items: end;
+  gap: 58px;
 }
 
 .terrapoint-copy h2 {
-  margin: 13px 0 19px;
+  margin: 10px 0 15px;
   color: var(--brand-900);
-  font-size: 2.55rem;
+  font-size: clamp(2rem, 3.2vw, 2.75rem);
   line-height: 1.08;
 }
 
 .terrapoint-copy > p {
+  max-width: 760px;
+  margin-bottom: 0;
   color: #53646f;
   font-size: 1.05rem;
   line-height: 1.65;
+}
+
+.terrapoint-actions {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  padding-bottom: 3px;
+}
+
+.terrapoint-actions > span {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #334e5e;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.terrapoint-actions > span svg {
+  color: var(--green);
 }
 
 .check-list {
@@ -818,8 +846,11 @@ h3 {
 
 .terrapoint-frame-wrap {
   overflow: hidden;
+  width: min(calc(100% - 48px), 1540px);
+  margin: 44px auto 0;
   border: 1px solid #b9d1db;
-  border-radius: 12px;
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
   background: #fff;
   box-shadow: 0 24px 60px rgba(0, 62, 98, 0.17);
 }
@@ -847,7 +878,8 @@ h3 {
 .terrapoint-frame {
   display: block;
   width: 100%;
-  height: 600px;
+  height: min(1100px, 86vh);
+  min-height: 760px;
   border: 0;
   background: #f4f7f8;
 }
@@ -1129,14 +1161,19 @@ h3 {
 /* Search experience */
 .search-page {
   min-height: 800px;
-  padding-bottom: 100px;
-  background: #f6f9fa;
+  padding-bottom: 84px;
+  background: #fff;
 }
 
 .search-page__header {
-  padding: 48px 0 55px;
-  background: linear-gradient(135deg, var(--brand-900), #006cae);
-  color: #fff;
+  padding: 27px 0 31px;
+  border-bottom: 1px solid #cbe2ec;
+  background: #edf8fc;
+  color: var(--brand-900);
+}
+
+.search-results-shell {
+  width: min(100% - 48px, 920px);
 }
 
 .back-link {
@@ -1145,22 +1182,22 @@ h3 {
   gap: 6px;
   border: 0;
   padding: 0;
-  margin-bottom: 30px;
+  margin-bottom: 18px;
   background: transparent;
-  color: #d6f3ff;
+  color: var(--brand-700);
   font-weight: 700;
   cursor: pointer;
 }
 
 .search-page__header .eyebrow {
   display: block;
-  color: #bdeeff;
+  color: var(--brand-700);
 }
 
 .search-page__header h1 {
-  margin: 8px 0 28px;
-  font-size: clamp(2.05rem, 3.8vw, 3.25rem);
-  line-height: 1.08;
+  margin: 6px 0 21px;
+  font-size: clamp(1.55rem, 2.6vw, 2.15rem);
+  line-height: 1.15;
 }
 
 .search-form--results {
@@ -1168,7 +1205,7 @@ h3 {
 }
 
 .search-page__content {
-  padding-top: 42px;
+  padding-top: 30px;
 }
 
 .search-state {
@@ -1214,34 +1251,33 @@ h3 {
 .answer-card {
   position: relative;
   overflow: hidden;
-  border: 1px solid #bddce9;
-  border-radius: 12px;
-  padding: 34px 38px;
-  background: #fff;
-  box-shadow: 0 18px 45px rgba(0, 66, 107, 0.1);
+  border: 1px solid #c8dce5;
+  border-radius: 7px;
+  padding: 26px 29px;
+  background: #fbfdfe;
 }
 
 .answer-card::before {
   content: "";
   position: absolute;
   left: 0;
-  right: 0;
   top: 0;
-  height: 5px;
-  background: linear-gradient(90deg, var(--brand-700), var(--cyan), #52b788);
+  bottom: 0;
+  width: 4px;
+  background: var(--brand-700);
 }
 
 .answer-card__top {
   display: grid;
-  grid-template-columns: 48px 1fr auto;
+  grid-template-columns: 40px 1fr auto;
   align-items: center;
   gap: 15px;
 }
 
 .answer-icon {
   display: grid;
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
   place-items: center;
   border-radius: 50%;
   background: var(--brand-100);
@@ -1249,9 +1285,9 @@ h3 {
 }
 
 .answer-card h2 {
-  margin: 5px 0 0;
+  margin: 3px 0 0;
   color: var(--brand-900);
-  font-size: 1.65rem;
+  font-size: 1.35rem;
 }
 
 .confidence {
@@ -1269,7 +1305,7 @@ h3 {
 .confidence--madal { background: #f5e9e7; color: #8c433a; }
 
 .answer-intro {
-  margin: 27px 0 18px;
+  margin: 22px 0 15px;
   color: #50616c;
   font-size: 1.02rem;
   line-height: 1.55;
@@ -1281,10 +1317,10 @@ h3 {
 }
 
 .answer-parts p {
-  margin-bottom: 17px;
+  margin-bottom: 14px;
   color: #293f4d;
-  font-size: 1.04rem;
-  line-height: 1.7;
+  font-size: 0.98rem;
+  line-height: 1.62;
 }
 
 .citation {
@@ -1328,8 +1364,56 @@ h3 {
   line-height: 1.5;
 }
 
+.provenance-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  margin-top: 12px;
+  border: 1px solid #d8e2e7;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.provenance-strip > div {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  align-items: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 13px 14px;
+  color: var(--brand-700);
+}
+
+.provenance-strip > div + div {
+  border-left: 1px solid #e2e9ec;
+}
+
+.provenance-strip span,
+.provenance-strip strong {
+  display: block;
+}
+
+.provenance-strip span {
+  min-width: 0;
+  color: #6b7880;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}
+
+.provenance-strip strong {
+  overflow: hidden;
+  margin-top: 3px;
+  color: #334a58;
+  font-size: 0.73rem;
+  font-weight: 700;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
 .sources-section {
-  padding-top: 56px;
+  padding-top: 42px;
 }
 
 .sources-title-row {
@@ -1344,7 +1428,7 @@ h3 {
 .related-section h2 {
   margin: 6px 0 0;
   color: var(--brand-900);
-  font-size: 1.85rem;
+  font-size: 1.65rem;
 }
 
 .sources-title-row > span {
@@ -1354,16 +1438,16 @@ h3 {
 
 .sources-grid {
   display: grid;
-  gap: 13px;
+  gap: 9px;
 }
 
 .source-card {
   display: grid;
-  grid-template-columns: 48px 1fr;
-  gap: 17px;
+  grid-template-columns: 38px 1fr;
+  gap: 14px;
   border: 1px solid #d2dde2;
   border-radius: 8px;
-  padding: 24px 26px;
+  padding: 17px 19px;
   background: #fff;
   scroll-margin-top: 24px;
   transition: border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
@@ -1377,10 +1461,10 @@ h3 {
 
 .source-number {
   display: grid;
-  width: 38px;
-  height: 38px;
+  width: 31px;
+  height: 31px;
   place-items: center;
-  border-radius: 50%;
+  border-radius: 4px;
   background: var(--brand-900);
   color: #fff;
   font-family: "Rubik Local", sans-serif;
@@ -1408,18 +1492,18 @@ h3 {
   gap: 7px;
   margin: 8px 0 7px;
   color: var(--brand-700);
-  font-size: 1.13rem;
+  font-size: 1.02rem;
 }
 
 .source-card p {
-  margin: 0 0 13px;
+  margin: 0 0 10px;
   color: #53636d;
   font-size: 0.89rem;
   line-height: 1.52;
 }
 
 .related-section {
-  padding-top: 55px;
+  padding-top: 44px;
 }
 
 .related-section > div {
@@ -1847,11 +1931,29 @@ h3 {
   }
 
   .terrapoint-layout {
-    gap: 38px;
+    gap: 24px;
   }
 
   .terrapoint-copy {
     max-width: 680px;
+  }
+
+  .terrapoint-actions {
+    grid-template-columns: 1fr 1fr auto;
+    align-items: center;
+  }
+
+  .provenance-strip {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .provenance-strip > div:nth-child(3) {
+    border-top: 1px solid #e2e9ec;
+    border-left: 0;
+  }
+
+  .provenance-strip > div:nth-child(4) {
+    border-top: 1px solid #e2e9ec;
   }
 
   .footer-main {
@@ -2160,7 +2262,7 @@ h3 {
   }
 
   .terrapoint-section {
-    padding: 57px 0;
+    padding: 52px 0 0;
   }
 
   .terrapoint-layout {
@@ -2176,7 +2278,8 @@ h3 {
   }
 
   .terrapoint-frame {
-    height: 590px;
+    height: 820px;
+    min-height: 820px;
   }
 
   .events-layout {
@@ -2342,11 +2445,13 @@ h3 {
   }
 
   .terrapoint-frame-wrap {
-    margin-inline: -8px;
+    width: calc(100% - 16px);
+    margin-top: 30px;
   }
 
   .terrapoint-frame {
-    height: 620px;
+    height: 780px;
+    min-height: 780px;
   }
 
   .feature-link__content {
@@ -2372,12 +2477,35 @@ h3 {
   }
 
   .source-card {
-    grid-template-columns: 1fr;
+    grid-template-columns: 30px 1fr;
   }
 
   .source-number {
     width: 30px;
     height: 30px;
+  }
+
+  .terrapoint-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .provenance-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .provenance-strip > div + div,
+  .provenance-strip > div:nth-child(3),
+  .provenance-strip > div:nth-child(4) {
+    border-top: 1px solid #e2e9ec;
+    border-left: 0;
+  }
+
+  .provenance-strip strong {
+    white-space: normal;
+  }
+
+  .search-suggestions button small {
+    display: none;
   }
 
   .tp-content {

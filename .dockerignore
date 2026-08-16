@@ -6,7 +6,7 @@ dist
 .env.*
 !.env.example
 .playwright-cli
+output
 prototype-*.png
 design-qa.md
 npm-debug.log*
-

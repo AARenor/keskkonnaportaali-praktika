@@ -1,7 +1,12 @@
 import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { SEARCH_DOCUMENTS, searchEnvironment } from "./search.mjs";
+import { databaseHealth } from "./database.mjs";
+import { getKeskkonnaportaalSuggestions } from "./integrations.mjs";
+import { llmConfiguration } from "./llm.mjs";
+import { searchEnvironmentLive } from "./pipeline.mjs";
+import { qdrantConfiguration } from "./qdrant.mjs";
+import { SEARCH_DOCUMENTS } from "./search.mjs";
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -40,7 +45,7 @@ app.use((request, response, next) => {
   response.setHeader("X-Robots-Tag", "noindex, nofollow");
   response.setHeader(
     "Content-Security-Policy",
-    "default-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-src 'self' https://www.openstreetmap.org; frame-ancestors 'self'; base-uri 'self'; form-action 'self'",
+    "default-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-src 'self' https://www.openstreetmap.org https://terrapoint.ee; frame-ancestors 'self'; base-uri 'self'; form-action 'self'",
   );
   next();
 });
@@ -63,22 +68,48 @@ function rateLimit(request, response, next) {
 
 app.use("/api", rateLimit);
 
-app.get("/api/health", (_request, response) => {
+app.get("/api/health", async (_request, response) => {
+  const database = await databaseHealth();
   response.json({
     status: "ok",
     service: "keskkonnaportaali-praktika",
     searchDocuments: SEARCH_DOCUMENTS.length,
     terrapointProxy: true,
+    retrieval: "keskkonnaportaal-live-search",
+    llm: llmConfiguration(),
+    vectorStore: qdrantConfiguration(),
+    database,
     timestamp: new Date().toISOString(),
   });
 });
 
-app.get("/api/search", (request, response) => {
+app.get("/api/search", async (request, response) => {
   const query = String(request.query.q || "").trim();
   if (!query) return response.status(400).json({ error: "Sisesta otsingusõna." });
   if (query.length > 180) return response.status(400).json({ error: "Otsing on liiga pikk." });
-  response.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
-  return response.json(searchEnvironment(query));
+  try {
+    const result = await searchEnvironmentLive(query);
+    response.setHeader("Cache-Control", "private, max-age=30, stale-while-revalidate=120");
+    return response.json(result);
+  } catch {
+    return response.status(502).json({
+      error: "Otsingu andmeallikad ei vastanud. Proovi hetke pärast uuesti.",
+      retryable: true,
+    });
+  }
+});
+
+app.get("/api/suggestions", async (request, response) => {
+  const query = String(request.query.q || "").trim();
+  if (query.length < 2) return response.json({ suggestions: [] });
+  if (query.length > 80) return response.status(400).json({ error: "Otsing on liiga pikk." });
+  try {
+    const result = await getKeskkonnaportaalSuggestions(query);
+    response.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=900");
+    return response.json(result);
+  } catch {
+    return response.json({ suggestions: [], status: "degraded" });
+  }
 });
 
 function safePathSegment(value, maxLength = 180) {
