@@ -5,6 +5,8 @@ Keskkonnaportaali visuaalsel identiteedil põhinev praktikaprojekt, mis lisab ka
 - vastus-enne-allikaid keskkonnaotsing;
 - portaali sees toimiv Terrapointi kinnistuotsing.
 
+Avalik praktikakeskkond: [praktika.arleserver.cfd](https://praktika.arleserver.cfd)
+
 Täielik kirjeldus, arhitektuur, käivitamine ja piirangud on failis [PROJEKT.md](./PROJEKT.md).
 
 ## Kiirkäivitus
@@ -22,4 +24,3 @@ docker compose up --build
 ```
 
 Tervisekontroll: `GET /api/health`.
-

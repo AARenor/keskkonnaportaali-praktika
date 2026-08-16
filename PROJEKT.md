@@ -9,6 +9,8 @@ See projekt on Keskkonnaportaali praktikaversioon. Avaleht järgib `keskkonnapor
 
 Projekt on selgelt märgitud praktikaprojektiks ning avalik leht saadab `noindex` juhised, et seda ei aetaks segamini Keskkonnaportaali ametliku tootmiskeskkonnaga.
 
+Töötav praktikakeskkond asub aadressil [praktika.arleserver.cfd](https://praktika.arleserver.cfd). Lähtekood on privaatses GitHubi repos ning Coolify loeb seda ainult selle rakenduse jaoks loodud read-only deploy-võtmega.
+
 ## Tehniline ülesehitus
 
 | Kiht | Lahendus | Vastutus |
@@ -97,6 +99,8 @@ Soovitatud Coolify rakenduse seaded:
 - domeen: `https://praktika.arleserver.cfd`;
 - keskkonnamuutuja: `TERRAPOINT_API_URL=https://terrapoint.ee`.
 
+Praegune deploy kasutab mitmeastmelist Dockerfile'i, käitab Node.js protsessi mitte-root kasutajana ning on Coolifys tervisekontrolli järgi `running:healthy`. Domeeni liiklus läheb HTTPS-i kaudu rakenduse sisemisele pordile `3000`.
+
 Rakendusse ei tohi lisada vestluses või lähtekoodis jagatud Coolify API tokenit ega SSH privaatvõtit. Deploy-võtmed peavad olema projektipõhised ja minimaalse õigusega; API automatiseerimisel kasuta lühiajalist tokenit ning kustuta see pärast operatsiooni.
 
 ## Turve ja privaatsus
@@ -146,4 +150,3 @@ compose.yaml         kohalik Docker Compose keskkond
 - Terrapointi vastuse kiirus sõltub välistest andmeallikatest; vahemälu pehmendab, kuid ei kõrvalda upstream-tõrkeid.
 - Kinnistu kaart näitab keskpunkti. Täieliku geomeetria ja kihtide visualiseerimine on järgmise etapi töö.
 - Avalehe sisu on demonstratsiooniline hetktõmmis ja ei asenda Keskkonnaportaali CMS-i.
-
