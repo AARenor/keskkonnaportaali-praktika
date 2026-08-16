@@ -19,7 +19,15 @@ app.use((request, response, next) => {
     .split(",")[0]
     .trim()
     .toLowerCase();
-  if (publicOrigin && forwardedProto === "http") {
+  let cloudflareProto = "";
+  try {
+    cloudflareProto = String(JSON.parse(String(request.headers["cf-visitor"] || "{}"))?.scheme || "")
+      .trim()
+      .toLowerCase();
+  } catch {
+    cloudflareProto = "";
+  }
+  if (publicOrigin && (forwardedProto === "http" || cloudflareProto === "http")) {
     return response.redirect(308, `${publicOrigin}${request.originalUrl}`);
   }
   return next();
