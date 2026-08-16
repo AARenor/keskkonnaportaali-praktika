@@ -7,6 +7,7 @@ services:
       NODE_ENV: production
       PORT: 3000
       TERRAPOINT_API_URL: ${TERRAPOINT_API_URL:-https://terrapoint.ee}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://praktika.arleserver.cfd}
     expose:
       - "3000"
     healthcheck:
@@ -16,4 +17,3 @@ services:
       retries: 3
       start_period: 20s
     restart: unless-stopped
-

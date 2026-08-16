@@ -97,9 +97,10 @@ Soovitatud Coolify rakenduse seaded:
 - sisemine port: `3000`;
 - health check: `/api/health`;
 - domeen: `https://praktika.arleserver.cfd`;
-- keskkonnamuutuja: `TERRAPOINT_API_URL=https://terrapoint.ee`.
+- keskkonnamuutuja: `TERRAPOINT_API_URL=https://terrapoint.ee`;
+- keskkonnamuutuja: `PUBLIC_ORIGIN=https://praktika.arleserver.cfd`.
 
-Praegune deploy kasutab mitmeastmelist Dockerfile'i, käitab Node.js protsessi mitte-root kasutajana ning on Coolifys tervisekontrolli järgi `running:healthy`. Domeeni liiklus läheb HTTPS-i kaudu rakenduse sisemisele pordile `3000`.
+Praegune deploy kasutab mitmeastmelist Dockerfile'i, käitab Node.js protsessi mitte-root kasutajana ning on Coolifys tervisekontrolli järgi `running:healthy`. Domeeni liiklus läheb HTTPS-i kaudu rakenduse sisemisele pordile `3000`; proxyst saabuvad HTTP-päringud suunatakse püsivalt `PUBLIC_ORIGIN` HTTPS-aadressile.
 
 Rakendusse ei tohi lisada vestluses või lähtekoodis jagatud Coolify API tokenit ega SSH privaatvõtit. Deploy-võtmed peavad olema projektipõhised ja minimaalse õigusega; API automatiseerimisel kasuta lühiajalist tokenit ning kustuta see pärast operatsiooni.
 
