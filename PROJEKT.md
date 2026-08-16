@@ -1,68 +1,114 @@
 # Keskkonnaportaali praktikaprojekt
 
-## Projekti eesmärk
+## Eesmärk
 
-See projekt on Keskkonnaportaali praktikaversioon. Avaleht järgib `keskkonnaportaal.ee` struktuuri, värve, tüpograafiat ja sisutüüpe, kuid lisab kaks uut kasutusvoogu:
+See on Keskkonnaportaali eraldiseisev praktikaversioon aadressil [praktika.arleserver.cfd](https://praktika.arleserver.cfd). Avaleht kasutab Keskkonnaportaali tuttavat visuaalset keelt ja lisab kaks selgelt eraldatud kasutusvoogu:
 
-1. **Allikapõhine parem otsing.** Kasutaja saab kirjutada loomulikus keeles küsimuse. Leht kuvab kõigepealt lühikese koondvastuse koos nummerdatud viidetega ja seejärel kasutatud ametlikud allikad.
-2. **Manustatud Terrapoint.** Portaali sees töötab suur iframe, mis kuvab kogu `terrapoint.ee` rakenduse muutmata kasutajaliidese, kaardi ja API-töövoogudega.
+1. **Allikapõhine küsimus-vastus otsing.** Kasutaja saab vastuse esmalt, iga väite juures on nummerdatud viited ning vastuse järel ametlikud algallikad.
+2. **Terrapointi täisrakendus.** Avalehe eraldi jaotises töötab `terrapoint.ee` iframe. Terrapoint ei osale üldotsingu vastuste koostamises ega ilmu selle allikatesse.
 
-Projekt on selgelt märgitud praktikaprojektiks ning avalik leht saadab `noindex` juhised, et seda ei aetaks segamini Keskkonnaportaali ametliku tootmiskeskkonnaga.
+Projekt on märgitud praktikaprojektiks ja saadab `noindex` juhise. See ei ole Keskkonnaportaali ametlik tootmiskeskkond.
 
-Töötav praktikakeskkond asub aadressil [praktika.arleserver.cfd](https://praktika.arleserver.cfd). Lähtekood on privaatses GitHubi repos ning Coolify loeb seda ainult selle rakenduse jaoks loodud read-only deploy-võtmega.
+## Kasutajakogemus
 
-## Tehniline ülesehitus
+- Avalehe põhiotsing on nähtav kohe nii töölaual kui ka mobiili esimeses vaates.
+- Autocomplete pakub kuni viis sisulist küsimust ning toetab klaviatuuri, hiirt ja puutetundlikku ekraani.
+- Otsingutulemus on kompaktne: otsene koondvastus, allikaviited, kolm esmast allikat, nupp ülejäänute avamiseks ja seotud küsimused.
+- Avalikus kasutajaliideses ega API vastuses ei näidata mudeli, andmebaasi, vektorindeksi, fallback'i või ühenduste tehnilisi olekuid.
+- Terrapointi iframe ei tohi lehte esmakordsel laadimisel enda juurde kerida ega hostrakenduselt fookust võtta.
+
+## Arhitektuur
 
 | Kiht | Lahendus | Vastutus |
 |---|---|---|
-| Kasutajaliides | React 19 + Vite | Avaleht, menüüd, responsive vaated, otsingu- ja Terrapointi kasutusvood |
-| Ikoonid | Lucide React | Ühtlane ning ligipääsetav ikoonisüsteem |
-| Rakendusserver | Node.js + Express | Staatilise rakenduse serveerimine, otsingu API, turvapäised ning vana Terrapointi kiirvaate tagasiühilduvus |
-| Reaalajaotsing | Keskkonnaportaali avalik HTML-otsing ja autocomplete JSON | Toob iga päringu ajal ametliku portaali värsked vasted ja soovitused |
-| Hübriidjärjestus | Kohalik eesti teksti järjestus + Qdrant | Ühendab märksõna- ja vektorsarnasuse; kasutab ainult rakenduse eraldi kollektsiooni |
-| AI-vastus | OpenCode Zen / DeepSeek V4 Flash (serveris) | Koostab vastuse ainult valitud tõenditest ja säilitab viite-ID-d; tõrke korral deterministlik fallback |
-| Püsiandmed | Eraldatud PostgreSQL | Hoiab lühiajalist otsinguvahemälu ja tehnilist päritolulogi; ei kasuta Chatwooti andmebaasi |
-| Terrapoint | `https://terrapoint.ee/` täisrakendus iframe'is | Sama UI, kaart ja avalikud andmeallikad nagu Terrapointi enda lehel |
-| Pakendamine | Mitmeastmeline Dockerfile | Väike eraldi Node.js tootmiskonteiner |
-| Deploy | Coolify | Docker-build, tervisekontroll ja HTTPS-domeen |
+| Kasutajaliides | React 19 + Vite | Responsive avaleht, ligipääsetav otsing, vastus ja allikad, Terrapointi iframe |
+| Rakendusserver | Node.js + Express | Staatika, avalik API, turvapäised, rate limit ja päringu orkestreerimine |
+| Metsateadmised | Versioonitud JSON-korpus | 21 läbi vaadatud vastusedokumenti, 18 FAQ teemat, 12 väärarusaama ja 13 ametlikku algallikat |
+| Otsing | Kohalik eesti hübriidotsing | Terminilaiendus, BM25-laadne skoor, märgijadade sarnasus ja RRF-järjestus |
+| Värske sisu | Keskkonnaportaali avalik otsing | Uute portaaliartiklite avastamine; valitud ametlikud lehed loetakse täistekstina |
+| Ruumipäring | Avalik kataster + Metsaregistri WFS | Valideeritud katastritunnuse informatiivne pindala ja metsaeraldiste hetkeseis otse avalikust teenusest |
+| Vastuse koostamine | Kontrollitud baasvastus + valikuline LLM | Läbi vaadatud vastus töötab alati; mudel võib sõnastust parandada ainult tagastatud tõendite alusel |
+| Vahemälu | Eraldatud PostgreSQL | Versioonitud vastusepuhver ja privaatsust hoidev tehniline sündmuslogi |
+| Terrapoint | Eraldi iframe | Kogu Terrapointi UI, kaart ja sealsed avalikud integratsioonid; üldotsingust lahus |
+| Pakendamine | Dockerfile + Compose | Mitte-root, read-only veebikonteiner ja eraldatud PostgreSQL |
+| Deploy | Coolify | Docker-build, tervisekontroll, HTTPS ja `praktika.arleserver.cfd` |
 
-## Kasutatavad tasuta liidesed ja andmevood
+### Miks Redis ei ole praegu lisatud?
 
-| Liides või teenus | Tegelik kasutus selles projektis |
-|---|---|
-| Keskkonnaportaali `/et/search?search_api_fulltext=...` | Avalik tasuta reaalajaotsing, millest server loeb pealkirjad, väljavõtted, kuupäevad ja algallikate URL-id |
-| Keskkonnaportaali `/et/search_api_autocomplete/kem_kkp_search` | Avalik JSON-liides otsingusoovituste ja vastete arvude jaoks |
-| Terrapointi `/api/search/:katastritunnus` | Avalik kinnistu-API, mida praktikaportaali otsing küsib ainult siis, kui päring sisaldab korrektset katastritunnust |
-| `https://terrapoint.ee/` | Kogu live-rakendus otse iframe'is; praktikaprojekt ei kopeeri ega ehita Terrapointi UI-d või kaarti uuesti |
-| OpenCode Zen `/chat/completions`, mudel `deepseek-v4-flash-free` | Tasuta mudelitee serveripoolse, ainult leitud tõenditel põhineva vastuse koostamiseks |
-| Qdrant, kollektsioon `keskkonnaportaali_praktika_sources` | Rakenduse enda tasuta 256-mõõtmeliste tekstivektorite hoidla ja hübriidjärjestus; ei ole info algallikas |
-| PostgreSQL, andmebaas `keskkonnaportaal_practice` | Kümneminutiline otsinguvahemälu ja tehniline päringupäritolu; ei ole info algallikas ega Chatwooti andmebaas |
+Rakendusel on üks veebireplika ning PostgreSQL annab juba püsiva vastusepuhvri. Bounded in-memory puhvrid katavad lühikesed korduspäringud. Redis lisaks praegu hooldus- ja rikkepinda ilma mõõdetava kasutegurita. See muutub põhjendatuks mitme replika, hajutatud rate limit'i, tööjärjekorra või instantsideülese single-flight vajaduse korral.
 
-Terrapointi kuvatud kinnistuandmed pärinevad selle enda avalikest integratsioonidest, sealhulgas Maa- ja Ruumiametist, Metsaregistrist ning EELISe ruumikihtidest. Praktikaprojekt küsib neid Terrapointi kaudu ega teeskle, et registrivastus oleks projekti enda andmestik. Keskkonnaportaali HTML-otsing on avalik ja tasuta, kuid pole versioonitud lepinguline API; selle piirang on toodud ka allpool eraldi välja.
+### Qdranti roll
+
+Senine 256-mõõtmeline räsivektor ei olnud semantiline embedding ja Qdranti kirjutamine iga kasutajapäringu ajal ei parandanud otsingukvaliteeti. Qdrant on seetõttu eemaldatud päringu hot path'ist. Compose'is on see alles ainult valikulise `experimental-vector` profiilina, kuni olemas on päris mitmekeelne embedding, versioonitud eeltöötlus ja evalidega tõestatud kvaliteedivõit.
 
 ## Otsingu tööpõhimõte
 
-Otsingu endpoint on `GET /api/search?q=<küsimus>`.
+Avalik endpoint on `GET /api/search?q=<küsimus>`.
 
-Praegune versioon:
+1. Päring normaliseeritakse ning klassifitseeritakse. Kahtlase URL-i või prompt-injection'i korral vastatakse turvalise täpsustusküsimusega.
+2. Metsateema korral otsitakse versioonitud ja läbi vaadatud teadmusbaasist. Üldine `mets` koostab päris sünteesi metsamaa pindalast, näitajate piiridest ja ametlike arvude erinevuse põhjustest; see ei kopeeri otsingukaartide väljavõtteid.
+3. Valideeritud katastritunnuse korral küsitakse otse Maa- ja Ruumiameti avalikku `kataster:ky_kehtiv` ning Metsaregistri `metsaregister:eraldis` WFS-i. Katastriväljavõte märgitakse informatiivseks ja mitteametlikuks. Vastus eristab selgelt olekuid „leitud”, „eduka päringu tulemusel ei leitud” ja „allikas ei vastanud”.
+4. Muude teemade korral avastatakse tulemused Keskkonnaportaali avaliku otsingu kaudu ning valitud lubatud ametlikud lehed loetakse serveris täistekstina. HTML-otsingu väljavõtet ennast ei käsitleta lõpliku tõendina.
+5. Kontrollitud struktuurne vastus on töökindel baas. Kui valikuline keelemudel on saadaval, tohib see ainult tõendite piires vastust tihendada ja peab säilitama kehtivad viited. Läbi vaadatud metsavastust ega täpset WFS-väljavõtet mudel ümber ei sõnasta.
+6. 429, timeout või vigane mudelivastus ei lõhu otsingut. Lühike circuit breaker väldib korduvaid aeglaseid mudelikõnesid ja kasutajale tagastatakse kohe kontrollitud baasvastus.
+7. Avalikus vastuses on ainult küsimus, vastus, viited, allikad, täpsustus ja seotud küsimused. Tehniline diagnostika jääb serverisse.
+8. Kogu otsingul on 12 sekundi vastusepiir. Kui värskete allikate lugemine või mudel ei mahu sellesse, katkestatakse väliskutsed ja tagastatakse kontrollitud baasvastus, mitte proxy 504.
 
-- küsib kõigepealt Keskkonnaportaali avalikku `search_api_fulltext` otsingut ja kasutab portaali autocomplete JSON-endpointi;
-- lisab Terrapointi kasutatavate ametlike allikate registri ning katastritunnuse korral Terrapointi kinnistu-API vastuse;
-- normaliseerib eesti täpitähed, arvestab teemade sõnatüvesid ning järjestab vasteid nii leksikaalselt kui Qdranti vektorsarnasusega;
-- annab kuni seitse tõendit serveripoolsele keelemudelile, mis tohib kasutada ainult neid tõendeid;
-- lisab igale lõigule nummerdatud viite ning kuvab algallikad vastuse järel;
-- salvestab vastuse lühikeseks ajaks eraldatud PostgreSQL-i vahemällu ning kuvab UI-s, millised teenused vastuse koostamisel osalesid;
-- läheb iga välise teenuse tõrke korral astmeliselt üle kohalikule, viidetega deterministlikule vastusele.
+Vahemälu võti sisaldab teadmusbaasi ja vastuseskeemi revisjoni, seega ei saa vana Terrapointi või varasema skeemi vastus pärast deploy'd edasi elada.
 
-LLM-i võti ei jõua brauserisse. Kui `OPENCODE_ZEN_API_KEY` puudub või mudel ei vasta, jääb kogu otsing tööle ning kasutaja saab samad valitud allikad koos reeglipõhise kokkuvõttega. Qdrant ja PostgreSQL on indeks ning vahemälu, mitte info algallikas.
+## Teadmiste baas
+
+Failid asuvad kaustas `server/knowledge/forestry/`:
+
+- `sources.json` — 13 ametlikku algallikat koos väljaandja, URL-i, kuupäeva ja kasutuspiirangutega;
+- `documents.json` — 21 struktureeritud vastust koos aliaste, metoodika, piirangute, väitetüübi ja täpse allikakohaga.
+
+Korpus katab muu hulgas metsasuse, SMI metoodika, juurdekasvu, raiemahu, Metsaregistri, metsateatise, kaitse, elurikkuse ja kliimariskide küsimused. Iga numbriline vastus peab säilitama aasta, ühiku, definitsiooni ning asjakohase ebakindluse.
+
+Materjal on `prototype_research_reviewed_not_kaur_approved`: tehniliselt kontrollitud praktikakorpus, mitte Keskkonnaagentuuri sisuline kinnitus. Enne tootmiskasutust peab sisuekspert versiooni kinnitama.
+
+## Avalikult ligipääsetavad runtime-ühendused
+
+### Ametlikud avaandmeteenused
+
+| Liides | Kasutus |
+|---|---|
+| `gsavalik.envir.ee/geoserver/kataster/wfs` | Valideeritud katastritunnuse kehtiv üksus, pindala, aadress ja sihtotstarve |
+| `gsavalik.envir.ee/geoserver/metsaregister/wfs` | Sama tunnuse avalikud metsaeraldise kirjed, pindalad ja inventeerimiskuupäevad |
+
+Maa- ja Ruumiameti teenus on tasuta avalik teenus, kuid selle väljavõte on kasutustingimuste järgi informatiivne ja mitteametlik.
+
+### Portaali avalikud veebiliidesed ja algallikad
+
+| Ühendus | Kasutus |
+|---|---|
+| `keskkonnaportaal.ee/et/search?search_api_fulltext=...` | Portaali värske sisu avastamise fallback |
+| `keskkonnaportaal.ee/et/search_api_autocomplete/kem_kkp_search` | Täiendavad puhastatud soovitused pärast enda FAQ-sid |
+| Keskkonnaportaali ja teiste ametiasutuste HTTPS-lehed/PDF-id | Vastuse kontrollitavad algallikad |
+
+Keskkonnaportaali Drupali otsa ei käsitleta versioonitud lepingulise API-na. Päringud on ajapiiranguga, vastusemaht on piiratud, tulemused puhverdatakse ning tõrke korral kasutatakse stale-if-error väärtust.
+
+### Eraldatud veebirakendus
+
+`terrapoint.ee` töötab ainult täisrakenduse iframe'ina. See ei ole riigi avaandmeteenus ega üldotsingu andmeallikas.
+
+### Järgmiste otsinguvertikaalide ametlikud ühendused
+
+Uuringu käigus kontrollitud avalikult ligipääsetavad ametlikud algallikad, mida saab lisada intent-põhiselt ilma Terrapointi sõltuvuseta:
+
+- KAUR PostgREST `https://keskkonnaandmed.envir.ee/` kliima- ja seireandmetele;
+- EELIS avalikud JSON-jaotused ning KAUR GeoServeri WFS kaitse-, Natura-, vääriselupaiga ja Metsaregistri andmetele;
+- Maa- ja Ruumiameti AKS WFS aadressi- ja katastriotsingule;
+- Statistikaameti PXWeb tabelid `MM03` ja `MM04`; neid ei tohi kokku segada, sest esimene kirjeldab SMI raiemahu hinnangut ja teine metsateatiste statistikat;
+- Riigi Teataja kuupäevastatud API õiguslikele küsimustele.
+
+Ruumipäringu kolm kohustuslikku olekut on `leitud`, `eduka päringu tulemusel ei leitud` ja `allikas ei vastanud`. Timeout või 504 ei tohi kunagi muutuda väiteks, et piirangut või metsa ei ole.
 
 ## Terrapointi integratsioon
 
-Portaal manustab `https://terrapoint.ee/` tervikuna. Selleks lubab praktikaportaali CSP `frame-src` ainult Terrapointi domeeni ning Terrapoint lubab oma CSP `frame-ancestors` nimekirjas ainult praktikadomeeni. Vana `/embed/terrapoint` kiirvaade ja piiratud proxy-endpointid jäid ajutiselt tagasiühilduvuse jaoks alles, kuid avaleht neid enam ei kasuta.
+Avaleht manustab `https://terrapoint.ee/` tervikuna. Praktikaportaali CSP lubab frame'ida ainult Terrapointi ning Terrapoint lubab oma `frame-ancestors` loendis praktikadomeeni.
 
-Iframe on desktopis kuni 1100 px kõrge ja mobiilis 780–820 px kõrge. Rakendus jääb Terrapointi enda koodiks: aadressiotsing, kaardid, kinnistuandmed, AI-vaade ja kõik muud seal avalikult töötavad osad ei ole praktikaprojektis uuesti ehitatud.
-
-Oluline kasutajateade jääb alati nähtavale: puuduv vaste ei kinnita piirangu või metsa puudumist ning otsus tuleb kontrollida ametlikust registrist.
+Terrapointi desktop-autofookus on top-level aknaga piiratud: iseseisval lehel võib otsing saada fookuse, iframe'is mitte. Vana `/embed/terrapoint` ja piiratud proxy-route'id on alles ainult tagasiühilduvuseks ning üldotsing neid ei kutsu.
 
 ## Kohalik käivitamine
 
@@ -71,116 +117,89 @@ Nõuded: Node.js 24 ja npm.
 ```bash
 npm install
 npm run build
+PORT=4174 LLM_ENABLED=false SEARCH_CACHE_ENABLED=false npm start
+```
+
+Täiskeskkond Docker Compose'iga:
+
+```bash
 cp .env.example .env
-# muuda vähemalt POSTGRES_PASSWORD
+# määra .env failis POSTGRES_PASSWORD ja soovi korral serveripoolne LLM-võti
 docker compose up --build
 ```
 
-Compose käivitab kolm eraldatud konteinerit: veebirakendus, PostgreSQL ja Qdrant. Kui soovid käivitada ainult Node.js rakenduse ilma andmebaaside ja LLM-ita, kasuta `npm run build && PORT=4174 npm start`; fallback-otsing töötab ka siis.
-
-Arenduse UI-serveri saab käivitada käsuga `npm run dev`, kuid API-de täielikuks testimiseks kasuta tootmis-buildi ja `npm start` kombinatsiooni.
-
-## Docker
-
-```bash
-docker build -t keskkonnaportaali-praktika .
-docker run --rm -p 4174:3000 keskkonnaportaali-praktika
-```
-
-Või Compose'iga:
-
-```bash
-docker compose up --build
-```
-
-Konteiner töötab mitte-root kasutajana, eksponeerib pordi `3000` ning kontrollib endpointi `/api/health`.
+Vaikimisi käivituvad veebirakendus ja PostgreSQL. Eksperimentaalse Qdranti konteineri saab eraldi käivitada käsuga `docker compose --profile experimental-vector up`, kuid rakenduse praegune otsing seda ei kasuta.
 
 ## Coolify seadistus
 
-Soovitatud Coolify rakenduse seaded:
-
 - build pack: **Dockerfile**;
-- Dockerfile: `/Dockerfile`;
 - sisemine port: `3000`;
 - health check: `/api/health`;
 - domeen: `https://praktika.arleserver.cfd`;
-- keskkonnamuutuja: `TERRAPOINT_API_URL=https://terrapoint.ee`;
-- keskkonnamuutuja: `PUBLIC_ORIGIN=https://praktika.arleserver.cfd`;
-- `DATABASE_URL` peab viitama ainult sellele projektile loodud PostgreSQL-ile;
-- `QDRANT_URL`, `QDRANT_API_KEY` ja `QDRANT_COLLECTION=keskkonnaportaali_praktika_sources`;
-- serverisaladus `OPENCODE_ZEN_API_KEY` ning `LLM_MODEL=deepseek-v4-flash-free`.
+- `PUBLIC_ORIGIN=https://praktika.arleserver.cfd`;
+- projektile eraldatud `DATABASE_URL`;
+- valikuline serverisaladus `OPENCODE_ZEN_API_KEY`;
+- `LLM_ENABLED=true|false` ja `SEARCH_CACHE_ENABLED=true|false`.
 
-Praegune deploy kasutab mitmeastmelist Dockerfile'i, käitab Node.js protsessi mitte-root kasutajana ning on Coolifys tervisekontrolli järgi `running:healthy`. Domeeni liiklus läheb HTTPS-i kaudu rakenduse sisemisele pordile `3000`; proxyst saabuvad HTTP-päringud suunatakse püsivalt `PUBLIC_ORIGIN` HTTPS-aadressile.
-
-Rakendusse ei tohi lisada vestluses või lähtekoodis jagatud Coolify API tokenit ega SSH privaatvõtit. Deploy-võtmed peavad olema projektipõhised ja minimaalse õigusega; API automatiseerimisel kasuta lühiajalist tokenit ning kustuta see pärast operatsiooni.
+Coolify tokenit, SSH privaatvõtit ega mudelivõtit ei tohi panna reposse, brauserikoodi, dokumentatsiooni või logidesse. Deploy-võti peab olema projektipõhine ja minimaalse õigusega.
 
 ## Turve ja privaatsus
 
-- API päringute maht on piiratud IP-põhiselt 120 päringuni minutis.
-- Päringu pikkus ja katastritunnuse kuju valideeritakse serveris.
-- Rakendus saadab CSP, `nosniff`, piiratud Permissions Policy ja Referrer Policy päised.
-- Terrapointi upstream-URL on serveris fikseeritud keskkonnamuutujaga; kasutaja ei saa suvalist URL-i proxystada.
-- Rakendus ei kasuta analüütikat ega jälgimisküpsiseid. PostgreSQL-i otsinguvahemälu aegub kümne minutiga.
-- Kõik SQL-päringud on parameeterdatud ning Qdrantis kasutatakse eraldi projektikollektsiooni.
-- LLM saab ainult kasutaja küsimuse ja kuni seitsme avaliku allika pealkirja, kokkuvõtte ning URL-i; mudel ei saa infrastruktuurisaladusi.
-- Allikalingid avanevad otse nende ametlikus keskkonnas.
+- Otsingul on üldisest API-st rangem IP-põhine piirang.
+- Päringu pikkus, URL-id, allikate hostid, response size ja redirect'id valideeritakse serveris.
+- Avalik `/api/health` on minimaalne ega paljasta teenuseid või pakkujaid.
+- LLM-võti ei jõua brauserisse; mudel saab ainult avaliku küsimuse ja valitud avalikud tõendid.
+- Otsingulogi ei säilita kasutaja toorpäringut. Ka vahemällu salvestatavast JSON-ist eemaldatakse `query`, aegunud vahemäluread kustutatakse ning varasemad toorpäringud redigeeritakse skeemimigratsiooniga.
+- Degradeerunud portaali- või ruumivastust ei salvestata tunniajase kvaliteetvastusena, et järgmine päring saaks taastunud allikaid uuesti proovida.
+- PostgreSQL-i transaktsioon kasutab ühte reserveeritud klienti ning SQL on parameeterdatud.
+- Veebikonteiner töötab mitte-root kasutajana, read-only failisüsteemiga, `no-new-privileges` režiimis ja piiratud logirotatsiooniga.
+- Rakendus ei renderda mudeli või allikate toorest HTML-i.
 
-Tootmiskontrollis ei olnud PostgreSQL-il ühtegi hosti porti. Qdrant oli hostis seotud ainult `127.0.0.1` külge ning HTTPS-proxy tagastas ilma API-võtmeta `401`. Brauserikood ei kasuta `VITE_*` saladusi ega renderda vastuseid toore HTML-ina; Reacti tavapärane tekstiesitus escape'ib nii mudeli kui ka allikate teksti. Avalikud API-route'id on ainult lugemiseks ning server koostab välispäringud fikseeritud Keskkonnaportaali, Terrapointi ja mudeliteenuse alus-URL-idest, mitte kasutaja või mudeli antud URL-ist.
-
-## Testid ja kontrollid
+## Testid ja väljalaskekontroll
 
 ```bash
 npm test
 npm run build
 npm run test:sites
+docker compose config
 ```
 
-`npm test` kontrollib otsingu normaliseerimist, teemakohast järjestust, viiteid, tundmatu päringu fallback'i ning Sites-buildi käitumist. Lisaks tuleb enne väljalaset teha brauseri smoke-test desktop- ja mobiililaiusel:
+Automaattestid kontrollivad muu hulgas:
 
-- avalehe paigutus;
-- desktop mega-menüü ja mobiilimenüü;
-- mobiiliotsingu avamine;
-- otsinguküsimus → vastus → allikad;
-- Terrapointi täisrakendus laadib iframe'is ning aadressiotsing, kaart ja kinnistu vaade on kasutatavad;
-- UI päritoluriba näitab Keskkonnaportaali, Terrapointi, Qdranti, PostgreSQL-i ja LLM-i tegelikku olekut;
-- `/api/health`;
-- brauserikonsoolis esimese osapoole vead puuduvad.
+- 13 allikat, 21 dokumenti, 18 FAQ teemat ja 12 väärarusaama;
+- külmutatud v2 hindamiskomplekti 30/30 vastatava päringu õiget intent-vastust ja Recall@3 väärtust 100%;
+- `mets` päris sünteesi, täpset FAQ vastust ja turvalist abstention'it;
+- raiemahu/juurdekasvu vastuse aastaid, ühikuid ja piiranguid;
+- mudelivastuse viidete, arvude, ühikute, väitekatvuse ja polaarsuse kontrolli;
+- 12 sekundi globaalse vastusepiiri kontrollitud fallback'i ning vahemälu toorpäringu eemaldamist;
+- Terrapointi ning infrastruktuurijargooni puudumist üldotsingu payload'ist ja UI-st;
+- kuni viit sisulist autocomplete-soovitust;
+- Sites-buildi lepingut.
 
-## Avaliku versiooni kontroll — 16.08.2026
+Brauseri regression peab katma 1440 × 1100 ja 390 × 844 vaated, autocomplete'i kihistuse, klaviatuurikäitumise, mobiili esimest vaadet, kompaktset otsingulehte, allikate avamist, horisontaalse overflow puudumist ning avaliku iframe'i fookuse/scroll'i kontrolli.
 
-Avalik kontroll tehti pärast Coolify deploy'd aadressil [https://praktika.arleserver.cfd](https://praktika.arleserver.cfd). Kontrollitud rakenduskoodi viimane funktsionaalne commit oli `fa1b72d`; sellele järgnevad ainult kontrollitõendite dokumentatsioonitäpsustused ei muuda runtime'i.
-
-- Päring **„Milline on Eesti metsade seisund?”** tagastas seitse järjestatud tõendit; Keskkonnaportaali otsing oli `live` ja Terrapointi andmeallikaregister `ready`. Vastuse koostas `opencode-zen/deepseek-v4-flash-free`, olek oli `ready`, viited `[1]` ja `[6]` jäid seitsme kuvatud allika piiridesse, Qdrant oli `ready` ning PostgreSQL oli `ready`.
-- Autocomplete päring **„mets”** tagastas seitse ametlikku soovitust koos vastete arvudega; esimene oli `mets` (360 vastet).
-- Katastripäring **`78404:409:0113`** tagastas Terrapointi avalikust kinnistu-API-st ühe live-tulemuse ka siis, kui Keskkonnaportaali tekstotsingul vastet ei olnud.
-- PostgreSQL töötas andmebaasis `keskkonnaportaal_practice` kasutajana `practice_user`; kontrolli hetkel oli vahemälus kolm kirjet ja päritolulogis viis päringut. Qdranti eraldatud kollektsioonis `keskkonnaportaali_praktika_sources` oli 31 punkti.
-- Playwright kontrollis avalikku domeeni mõõtudel 1440 × 1100 ja 390 × 844. Terrapointi iframe oli vastavalt 1390 × 946 ja 372 × 780, selle sees klikiti näidiskatastrit, laaditi päris ortofotokaart ja kinnistu tulemused. Mobiilivaate lehe laius oli täpselt 390 px ning brauserikonsoolis oli 0 viga ja 0 hoiatust.
-- Avalik veebikonteiner, eraldatud PostgreSQL ja Qdrant olid `healthy`; `/api/health` kinnitas reaalajaotsingu, täis-iframe'i, LLM-i, Qdranti ning PostgreSQL-i oleku. Praktikaportaali CSP lubas frame'ida ainult Terrapointi ning Terrapointi CSP lubas `frame-ancestors` loendis praktikadomeeni.
-
-Need arvud on kuupäevastatud väljalasketõend, mitte püsiv andmelubadus: vahemälu, päringute arv ja upstream-otsingutulemused muutuvad kasutuse ning algallikate uuendustega.
-
-## Olulisemad kaustad
+## Olulisemad failid
 
 ```text
-public/assets/       kohalikud lähteportaali pildid, logo ja fondid
-server/index.mjs     Express-server, proxy ja tervisekontroll
-server/integrations.mjs Keskkonnaportaali ja Terrapointi avalikud andmeallikad
-server/pipeline.mjs  reaalajaotsingu, rerank'i, LLM-i ja fallback'i orkestreerimine
-server/qdrant.mjs    projekti eraldi vektorikollektsioon
-server/database.mjs  PostgreSQL-i vahemälu ja päritolulogi
-server/llm.mjs       viidetega, tõendipõhine serveripoolne vastus
-server/search.mjs    kohalik korpus, eesti teksti järjestus ja fallback
-src/App.jsx          Reacti vaated ja kasutusvood
-src/styles.css       responsive visuaalne süsteem
-tests/               automaattestid
-Dockerfile           tootmiskonteiner
-compose.yaml         kohalik Docker Compose keskkond
+server/forestry.mjs                     teadmiste laadimine, valideerimine ja hübriidotsing
+server/knowledge/forestry/sources.json ametlik allikaregister
+server/knowledge/forestry/documents.json struktureeritud vastused
+server/integrations.mjs                 portaali discovery ja ametliku täislehe lugemine
+server/cadastre.mjs                     ametliku katastri ja Metsaregistri WFS-vastus
+server/pipeline.mjs                     intent, retrieval, vastus ja cache
+server/llm.mjs                          valikuline, viiteid säilitav sõnastuskiht
+server/database.mjs                     PostgreSQL-i cache ja sisemine logi
+server/index.mjs                        API, turvapäised ja tervisekontroll
+src/App.jsx                             vaated ja ligipääsetavad otsinguvood
+src/styles.css                          responsive visuaalne süsteem
+tests/                                  automaattestid
+compose.yaml                            Docker Compose keskkond
+design-qa.md                            enne/pärast brauseritõendid
 ```
 
-## Piirangud ja järgmised sammud
+## Piirangud ja järgmine etapp
 
-- Keskkonnaportaali HTML-otsing on avalik tasuta liides, kuid mitte versioonitud lepinguline API; parser vajab portaali HTML-i muutumisel uuendamist.
-- Kohalik 256-mõõtmeline Qdranti vektor on tasuta morfoloogiline/tekstilähedane embedding. Tootmises saab sama liidese taha panna kvaliteetsema eestikeelse embedding-mudeli.
-- LLM-i vastus sõltub mudeliteenuse saadavusest, kuid tõrge ei eemalda otsingutulemusi ega allikaviiteid.
-- Terrapointi iframe sõltub mõlema domeeni CSP-poliitikast ja Terrapointi välistest andmeallikatest.
-- Avalehe sisu on demonstratsiooniline hetktõmmis ja ei asenda Keskkonnaportaali CMS-i.
+- Keskkonnaportaali HTML-otsing on dokumenteerimata fallback ning parser vajab portaali markup'i muutumisel uuendamist. Järgmine tugev samm on portaali sitemapist versioonitud tekstiindeksi ehitamine.
+- Väljaspool metsateemat on vastuse kvaliteet praegu sõltuvam portaali värskest sisust. Uued vertikaalid tuleb lisada struktureeritud claim'ide, ametliku API-adapteri ja eval-komplektiga.
+- Väline LLM võib olla rate limit'i taga; see ei mõjuta kontrollitud metsavastuste saadavust ning portaalipäring langeb kontrollitud baasvastusele tagasi.
+- Terrapointi iframe sõltub mõlema domeeni CSP-st ja selle väliste ametlike teenuste saadavusest.

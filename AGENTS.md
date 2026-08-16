@@ -7,3 +7,13 @@ Before making substantial visual changes, use the Product Design plugin's `get-c
 When implementing from a selected generated mock, treat that image as the source of truth for layout, component anatomy, density, spacing, color, typography, visible content, and hierarchy.
 
 Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts/prepare-sites-build.mjs`, and `tests/sites-worker.test.mjs` intact so the same local prototype can be handed to Sites. Before a Sites handoff, run `npm run build` and `npm run test:sites`; the build must leave `dist/client/index.html`, `dist/server/index.js`, and `dist/.openai/hosting.json`.
+
+## Durable product decisions
+
+- Keep the primary natural-language search visible in the first mobile viewport, before the gateway tiles.
+- Search results should feel compact and Google-like: direct answer first, inline numbered citations, three compact sources by default, then related questions.
+- Never expose provider names, model names, vector stores, databases, fallback labels, connection states, or other infrastructure jargon in the public UI or public API response.
+- Terrapoint belongs only in its dedicated full-app iframe section. Do not use Terrapoint branding, provider metadata, redirects, or results in the general Keskkonnaportaal search.
+- An embedded application must never autofocus or move the host page on initial load. Verify a fresh desktop load remains at `scrollY === 0` and the iframe is not the active element.
+- Autocomplete must stay above adjacent content, show at most five useful questions, remain viewport-bounded, and support Arrow Up/Down, Enter, Escape, mouse, and touch.
+- A generic query such as `mets` must return a genuine source-grounded synthesis, not a list of copied search-result excerpts.

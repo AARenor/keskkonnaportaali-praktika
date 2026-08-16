@@ -1,12 +1,9 @@
 import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { databaseHealth } from "./database.mjs";
+import { getForestrySuggestions } from "./forestry.mjs";
 import { getKeskkonnaportaalSuggestions } from "./integrations.mjs";
-import { llmConfiguration } from "./llm.mjs";
 import { searchEnvironmentLive } from "./pipeline.mjs";
-import { qdrantConfiguration } from "./qdrant.mjs";
-import { SEARCH_DOCUMENTS } from "./search.mjs";
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -16,6 +13,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const clientRoot = path.join(root, "dist", "client");
 const cache = new Map();
 const requestWindows = new Map();
+const MAX_RATE_LIMIT_KEYS = 2_000;
+const MAX_PROXY_CACHE_ENTRIES = 250;
 
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
@@ -50,36 +49,36 @@ app.use((request, response, next) => {
   next();
 });
 
-function rateLimit(request, response, next) {
+function rateLimit(maxRequests) {
+  return (request, response, next) => {
   const now = Date.now();
-  const key = request.ip || "unknown";
+  const key = `${request.ip || "unknown"}:${request.path}`;
   const current = requestWindows.get(key);
   if (!current || now - current.startedAt > 60_000) {
     requestWindows.set(key, { startedAt: now, count: 1 });
+    if (requestWindows.size > MAX_RATE_LIMIT_KEYS) {
+      for (const [entryKey, entry] of requestWindows) {
+        if (now - entry.startedAt > 60_000 || requestWindows.size > MAX_RATE_LIMIT_KEYS) requestWindows.delete(entryKey);
+      }
+    }
     return next();
   }
   current.count += 1;
-  if (current.count > 120) {
+  if (current.count > maxRequests) {
     response.setHeader("Retry-After", "60");
     return response.status(429).json({ error: "Liiga palju päringuid. Proovi minuti pärast uuesti." });
   }
   return next();
+  };
 }
 
-app.use("/api", rateLimit);
+app.use("/api", rateLimit(120));
+app.use("/api/search", rateLimit(20));
 
-app.get("/api/health", async (_request, response) => {
-  const database = await databaseHealth();
+app.get("/api/health", (_request, response) => {
   response.json({
     status: "ok",
     service: "keskkonnaportaali-praktika",
-    fallbackSearchDocuments: SEARCH_DOCUMENTS.length,
-    terrapointEmbed: "direct-full-ui",
-    terrapointProxy: "legacy-fallback",
-    retrieval: "keskkonnaportaal-live-search",
-    llm: llmConfiguration(),
-    vectorStore: qdrantConfiguration(),
-    database,
     timestamp: new Date().toISOString(),
   });
 });
@@ -104,12 +103,22 @@ app.get("/api/suggestions", async (request, response) => {
   const query = String(request.query.q || "").trim();
   if (query.length < 2) return response.json({ suggestions: [] });
   if (query.length > 80) return response.status(400).json({ error: "Otsing on liiga pikk." });
+  const curated = getForestrySuggestions(query, 5).map((value) => ({ value, count: null }));
   try {
-    const result = await getKeskkonnaportaalSuggestions(query);
+    const result = await getKeskkonnaportaalSuggestions(query, 5);
+    const seen = new Set();
+    const suggestions = [...curated, ...result.suggestions]
+      .filter((item) => {
+        const key = String(item.value || "").toLocaleLowerCase("et");
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 5);
     response.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=900");
-    return response.json(result);
+    return response.json({ suggestions });
   } catch {
-    return response.json({ suggestions: [], status: "degraded" });
+    return response.json({ suggestions: curated.slice(0, 5) });
   }
 });
 
@@ -127,7 +136,7 @@ async function cachedJson(url, ttlMs) {
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 22_000);
+  const timeout = setTimeout(() => controller.abort(), 9_000);
   try {
     const upstream = await fetch(url, {
       headers: { Accept: "application/json", "User-Agent": "Keskkonnaportaali-praktika/1.0" },
@@ -139,7 +148,9 @@ async function cachedJson(url, ttlMs) {
       throw error;
     }
     const data = await upstream.json();
+    if (cache.has(url)) cache.delete(url);
     cache.set(url, { savedAt: now, data });
+    while (cache.size > MAX_PROXY_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
     return { data, cache: "miss", stale: false };
   } catch (error) {
     if (cached && now - cached.savedAt < 24 * 60 * 60 * 1000) {

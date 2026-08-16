@@ -23,7 +23,7 @@ const SEARCH_DOCUMENTS = [
     summary:
       "Metsa teemakataloog koondab Keskkonnaportaali metsaga seotud väljaanded, uudised, kaardid ja andmeallikad ühte vaatesse.",
     answer:
-      "Keskkonnaportaali metsa teemakataloogist leiab samas vaates metsaga seotud publikatsioonid, uudised ja andmeallikad; täpsema kinnistupõhise kontrolli saab teha allpool Terrapointi vaates.",
+      "Keskkonnaportaali metsa teemakataloogist leiab samas vaates metsaga seotud publikatsioonid, uudised ja andmeallikad; kinnistupõhiseid andmeid tuleb kontrollida riiklikust Metsaportaalist.",
   },
   {
     id: "forest-inventory-publication",
@@ -267,9 +267,9 @@ export function composeSearchResponse(query, rankedDocuments, options = {}) {
     .slice(0, limit)
     .map((document, index) => ({ ...document, citation: index + 1 }));
 
-  const strongMatches = ranked.filter((document) => Number(document.score || 0) >= 8).length;
-  const confidence = strongMatches >= 3 ? "kõrge" : strongMatches ? "keskmine" : "madal";
-  const answerParts = chosen.slice(0, 3).map((source) => ({
+  const primary = chosen[0];
+  const answerParts = chosen.slice(1, 3).map((source) => ({
+    title: source.title,
     text: source.answer || source.summary,
     citations: [source.citation],
   }));
@@ -278,25 +278,21 @@ export function composeSearchResponse(query, rankedDocuments, options = {}) {
     query: cleanQuery,
     total: Number.isFinite(options.total) ? options.total : ranked.length,
     generatedAt: new Date().toISOString(),
-    mode: options.mode || "allikapõhine-koondvastus",
     answer: {
-      eyebrow: "Allikapõhine vastus",
-      title: `Vastus: ${cleanQuery}`,
-      intro:
-        ranked.length > 0
-          ? `Leidsin ${options.total || ranked.length} teemaga sobivat tulemust. Vastuse järel on kasutatud algallikad.`
-          : "Täpset vastet ei leitud. Allpool on ametlikud lähtekohad, kust päringut täpsustada.",
+      eyebrow: "Koondvastus",
+      title: primary?.title || `Täpsusta küsimust: ${cleanQuery}`,
+      intro: primary?.answer || primary?.summary || "Täpset vastet ei leitud. Täpsusta näitajat, piirkonda või ajavahemikku.",
+      introCitations: primary ? [primary.citation] : [],
       parts: answerParts,
-      confidence,
-      disclaimer:
-        "Koondvastus on automaatselt koostatud valitud avalike allikate kokkuvõtetest. Õigusliku või kinnistupõhise otsuse puhul kontrolli algallikat.",
+      note: "Koondvastus põhineb kuvatud ametlikel allikatel. Õigusliku või asukohapõhise otsuse puhul kontrolli algallikat.",
     },
     sources: chosen.map(({ score: _score, semanticScore: _semanticScore, combinedScore: _combinedScore, answer: _answer, tags, ...source }) => ({
       ...source,
       tags: (tags || []).slice(0, 5),
     })),
     related: options.related || relatedQueries(cleanQuery, chosen),
-    ...(options.meta ? { meta: options.meta } : {}),
+    clarification: ranked.length ? null : "Kas saad lisada soovitud näitaja, piirkonna või ajavahemiku?",
+    evidence: { kind: "portal-discovery", documentIds: chosen.map((source) => source.id) },
   };
 }
 

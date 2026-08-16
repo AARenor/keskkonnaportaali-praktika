@@ -1,101 +1,96 @@
 # Design QA
 
-## Comparison target
+## Kontrolli ulatus
 
-- Source visual truth: live `https://keskkonnaportaal.ee/` captures in `/tmp/keskkonnaportaal-source.jvr4Xd/`.
-- Rendered implementation: Chrome-rendered local production build at the project preview server.
-- Browser: Google Chrome through Playwright CLI, as authorized by the user.
-- Theme/auth: public, light theme, unauthenticated.
-- Density normalization: screenshots use Playwright `scale: css` and device scale factor 1. Source and implementation pairs have identical pixel and CSS dimensions, so no resampling was required.
+Kontroll tehti Google Chrome'i päris brauserirenderdusega mõõtudel 1440 × 1100 ja 390 × 844. Lähteportaali identiteet, kohalikud päris pildid, logo, Rubik/Roboto tüpograafia ja kolmerealine desktop-header jäid varasemast kloonist alles. Selle iteratsiooni fookus oli otsingu kasutusvoo parandamine.
 
-## Evidence
+Kõik pildid kasutavad Playwrighti `scale: css` seadistust. Enne ja pärast sama oleku kuvatõmmised pandi üheks võrdluspildiks ning hinnati koos; üksik screenshot ei olnud heakskiidu alus.
 
-### Full-view comparison
+## Paarisvõrdlused
 
-- Desktop source overview: `/tmp/keskkonnaportaal-source.jvr4Xd/source-desktop-full.png`.
-- Desktop implementation full page: `/home/arle/Keskkonnaportaali praktika/qa-desktop-full-final.png`.
-- The source full-page capture contains its cookie-consent overlay. The practice app does not set cookies or analytics, so reproducing that overlay would be misleading; precise above-the-fold comparison therefore uses the clean source state below.
-
-### Focused comparisons
-
-| State | Source | Implementation | Viewport / pixels |
+| Olek | Enne | Pärast | Paarisvõrdlus |
 |---|---|---|---|
-| Desktop clean homepage top | `/tmp/keskkonnaportaal-source.jvr4Xd/source-desktop-clean-top.png` | `/home/arle/Keskkonnaportaali praktika/qa-desktop-final-2.png` | 1440 × 1000 CSS px / 1440 × 1000 image px |
-| Desktop Teemad mega-menu | `/tmp/keskkonnaportaal-source.jvr4Xd/source-desktop-menu-teemad.png` | `/home/arle/Keskkonnaportaali praktika/qa-desktop-menu-final-2.png` | 1440 × 1000 CSS px / 1440 × 1000 image px |
-| Mobile homepage top | `/tmp/keskkonnaportaal-source.jvr4Xd/source-mobile-top.png` | `/home/arle/Keskkonnaportaali praktika/qa-mobile-final-2.png` | 390 × 844 CSS px / 390 × 844 image px |
-| Mobile navigation drawer | `/tmp/keskkonnaportaal-source.jvr4Xd/source-mobile-menu-open.png` | `/home/arle/Keskkonnaportaali praktika/qa-mobile-menu-final.png` | 390 × 844 CSS px / 390 × 844 image px |
-| Mobile answer-first search | `/tmp/keskkonnaportaal-source.jvr4Xd/source-mobile-search-results.png` | `/home/arle/Keskkonnaportaali praktika/qa-mobile-search-final-2.png` | 390 × 844 CSS px / 390 × 844 image px |
-| Functional Terrapoint result | Live Terrapoint visual/API behavior | `/home/arle/Keskkonnaportaali praktika/prototype-terrapoint-result.png` | iframe element 357 × 621 image px in 390 × 844 host viewport |
+| Desktop autocomplete | `output/playwright/23-v2-audit-autocomplete-desktop.png` | `output/playwright/32-v3-local-autocomplete-desktop.png` | `output/playwright/compare-autocomplete-desktop.png` |
+| Desktop `mets` tulemus | `output/playwright/24-v2-audit-search-desktop.png` | `output/playwright/44-v4-local-search-desktop-final.png` | `output/playwright/compare-v4-search-desktop-final.png` |
+| Mobiili esimene vaade | `output/playwright/25-v2-audit-entry-scroll-mobile.png` | `output/playwright/34-v3-local-home-mobile.png` | `output/playwright/compare-home-mobile.png` |
+| Mobiili autocomplete | `output/playwright/26-v2-audit-autocomplete-mobile.png` | `output/playwright/41-v4-local-autocomplete-mobile.png` | `output/playwright/compare-v4-autocomplete-mobile.png` |
+| Mobiili `mets` tulemus | `output/playwright/27-v2-audit-search-mobile.png` | `output/playwright/45-v4-local-search-mobile-final.png` | `output/playwright/compare-v4-search-mobile-final.png` |
 
-Focused evidence was required because header alignment, menu depth, search-state wrapping and iframe content were too small to judge reliably from the full-page captures.
+Tulemuse täislehe kõrgus on desktopil 1760 px ja mobiilis 2160 px; mõlemas vaates võrdub dokumendi laius täpselt viewport'i laiusega.
 
-## Required fidelity surfaces
+## Leitud probleemid ja parandused
 
-- **Fonts and typography:** the implementation self-hosts the same Rubik and Roboto families observed in the source. Heading weight, body density, uppercase tile labels and small metadata maintain the source hierarchy. No broken truncation or unresolved fallback was visible at the tested viewports.
-- **Spacing and layout rhythm:** the three header bands, 515 px hero, overlapping four-tile row, two-column current-content region, events grid and three-image footer feature band follow the source composition. Desktop header content now uses the source's full-width padding. Mobile retains the source's clipped quick-link bar, compact brand bar and two-by-two tiles. The added AI-search banner and Terrapoint section are intentional product additions.
-- **Colors and visual tokens:** dark navy brand header, cyan navigation, pale-blue utility surfaces, blue links, purple public-notice cards and green date cards map closely to the source palette. New answer confidence and Terrapoint status colors are semantic and meet readable contrast.
-- **Image quality and asset fidelity:** the logo, hero, four portal tiles, feature stories, news cards and three lower promo panels are local copies of the real source assets. Object-fit crops preserve the source subjects and aspect ratios. No visible source artwork was replaced with hand-drawn SVG, emoji, placeholder art or CSS illustration.
-- **Copy and content:** source navigation labels, section names and current content are retained. New copy clearly labels the practice environment, describes source-grounded answers, and warns that missing map data does not prove a restriction is absent.
-- **Icons:** functional icons use one consistent Lucide stroke family; the official Keskkonnaportaal logo remains the source vector. Icon buttons have accessible names and visible focus rings.
-- **Responsiveness/accessibility:** checked at 1440 × 1000 and 390 × 844. No horizontal page overflow, hidden persistent controls or text collisions remain. Menus, forms and iframe controls use semantic buttons/labels; reduced motion and keyboard focus styles are included.
+### P1 — iframe viis desktopi lehe avamisel Terrapointi juurde
 
-## Comparison history
+Põhjus oli iframe'is töötava Terrapointi desktop-autofookus, mitte hostlehe lazy-load. Terrapointi `landInput.focus()` aktiveeris cross-origin iframe'i ja brauser keris selle nähtavale.
 
-### Iteration 1 — blocked
+Parandus: autofookus töötab ainult siis, kui Terrapoint on top-level aken. Embedded vaates ei kutsuta `focus()` välja. Lõplik vastuvõtukriteerium avalikul domeenil: vähemalt kahe sekundi järel `scrollY === 0` ja hostdokumendi aktiivne element ei ole iframe.
 
-- **[P2] Desktop header alignment and hero rhythm drifted from the source.**
-  - Evidence: initial implementation `/home/arle/Keskkonnaportaali praktika/qa-desktop-final.png` centered all header content at the 1110 px page shell, while the source placed quick links, logo and main navigation about 28 px from the viewport edge. The practice badge also pushed the hero title visibly lower.
-  - Fix: gave quick/brand/main navigation bars full-width 28 px gutters; positioned the practice badge independently; moved hero copy to the source vertical rhythm.
-  - Post-fix evidence: `/home/arle/Keskkonnaportaali praktika/qa-desktop-final-2.png` alongside the clean source capture.
+### P1 — autocomplete jäi pildikaartide taha
 
-- **[P2] Mobile header search remained expanded after submitting.**
-  - Evidence: `/home/arle/Keskkonnaportaali praktika/prototype-mobile-search-results.png` showed a duplicate open header form and autocomplete panel above the dedicated results form.
-  - Fix: mobile search now closes before routing to the results page.
-  - Post-fix evidence: `/home/arle/Keskkonnaportaali praktika/qa-mobile-search-final.png`.
+Põhjus oli `.hero__content` eraldi stacking context `z-index: 1`, samal ajal kui `.portal-tiles` oli `z-index: 3`. Dropdowni enda kõrgem z-index ei saanud vanema stacking context'ist väljuda.
 
-### Iteration 2 — blocked
+Parandus: tarbetu vanema stacking context eemaldati. Dropdown on nüüd kõigi nelja pildikaardi kohal, kuid hero läbipaistev ala ei blokeeri kaartide klikke. Loend on viie soovitusega ning viewport-bounded.
 
-- **[P2] Mobile results breadcrumb and eyebrow collided.**
-  - Evidence: `/home/arle/Keskkonnaportaali praktika/qa-mobile-search-final.png` rendered “Avalehele” and “Keskkonnaportaali parem otsing” on the same line without separation.
-  - Fix: made the results-page eyebrow a block element, restoring the intended vertical hierarchy.
-  - Post-fix evidence: `/home/arle/Keskkonnaportaali praktika/qa-mobile-search-final-2.png`.
+### P1 — mobiili esimeses vaates polnud põhiotsingut
 
-- **[P2] Desktop Teemad menu was materially too shallow.**
-  - Evidence: `/home/arle/Keskkonnaportaali praktika/qa-desktop-menu-final.png` exposed the hero after roughly 250 px, while the source menu covered most of the viewport and contained a denser theme index.
-  - Fix: expanded the topic inventory to three dense columns plus the section-introduction column and increased the topic menu depth to 690 px.
-  - Post-fix evidence: `/home/arle/Keskkonnaportaali praktika/qa-desktop-menu-final-2.png` alongside `/tmp/keskkonnaportaal-source.jvr4Xd/source-desktop-menu-teemad.png`.
+Põhjus oli media query, mis peitis kogu hero. Kasutaja nägi esmalt nelja väravakaarti ja alles nende all väikest otsingu CTA-d.
 
-### Iteration 3 — passed
+Parandus: mobiilis kuvatakse enne kaarte lihtsustatud hero koos pealkirja, küsimusevälja, submit-nupu ja allikate lubadusega. Eraldi korduv promo eemaldati.
 
-The final paired comparisons show no remaining actionable P0, P1 or P2 mismatch. The source identity and responsive hierarchy remain recognizable while the requested answer-first search and Terrapoint section are clearly intentional extensions.
+### P1 — otsingutulemus oli pikk tehniline raport
 
-## Primary interactions tested
+Varasem vaade näitas koondvastuse asemel portaali väljavõtteid, seitset suurt allikakaarti ning kasutajale mõttetuid teenuse-, andmebaasi- ja fallback-olekuid. Mobiilileht oli ligikaudu 4942 px kõrge.
 
-- Desktop Teemad menu opens and closes.
-- Mobile navigation drawer opens and closes.
-- Mobile search opens, accepts a natural-language query, submits and closes the header panel.
-- Search results render an answer first, numbered citations second and source cards afterward.
-- Terrapoint address search returns ten matches for the test address.
-- Selecting cadastral unit `10701:002:0003` renders the map, area, land use, forest area, ownership and spatial-status notice.
-- `/api/health` and `/api/search` return successful JSON.
-- Browser console checked after the final homepage/menu/search runs: 0 first-party errors. The earlier OpenStreetMap embed emitted only Chrome GPU performance warnings, not application errors.
+Parandus: tulemuste lehel on kompaktne brand/search header, sisuline H1, otsene vastus, kaks kuni kolm jaotist, inline-viited, tagasihoidlik metoodikamärkus, kolm kompaktset allikat ja seotud küsimused. Sama mobiilileht on nüüd ligikaudu 2160 px kõrge, ilma tõendeid kaotamata.
 
-## Findings
+### P1 — `mets` ei olnud päris vastus
 
-No actionable P0/P1/P2 findings remain.
+Varasem fallback kopeeris kolm esimest Keskkonnaportaali otsingukaardi teksti. Parandus kasutab läbi vaadatud metsateadmiste baasi ja sünteesib eraldi metsamaa pindala, selle näitaja piirid ja ametlike arvude erinevuse põhjused. Igal sisulisel osal on viide kuvatud ametlikule allikale.
 
-## Follow-up polish
+### P1 — peidetud allika viide ei töötanud
 
-- **[P3]** The source mega-menu uses more nested headings and indentation than the condensed practice index. The current version preserves scale and coverage but could gain full CMS-driven hierarchy later.
-- **[P3]** The source quick bar has richer weather artwork; the practice build intentionally uses a consistent icon-library rendering.
-- **[P3]** The OpenStreetMap embed inherits a few English control labels from the external map service.
+Vastus viitas allikatele 4 ja 5, kuid DOM-is olid algselt ainult esimesed kolm kirjet. Viitel klõpsamine avab nüüd vajadusel kogu loendi, ootab renderduse ära, viib fookuse õigele allikalingile ja kerib selle nähtavale. Brauserikontroll kinnitas ülemineku `source-1..3` olekust `source-1..5` olekusse ning aktiivseks elemendiks `source-5`.
 
-## Implementation checklist
+### P1 — kattuvad päringud, fookus ja mobiili juhtnupud
 
-- [x] Desktop and mobile homepage comparison complete.
-- [x] Fonts, spacing, colors, images and copy reviewed explicitly.
-- [x] Navigation, search and Terrapoint states exercised.
-- [x] All P0/P1/P2 findings fixed and recaptured.
-- [x] Console errors checked.
+Igal uuel päringul katkestatakse eelmine fetch ja vastus võetakse vastu ainult viimase request-ID jaoks. Mockitud aeglane esimene ja kiire teine päring kinnitasid, et vana vastus ei saa uut üle kirjutada. Valmis vastuse H1 saab programmilise fookuse ja dokumendi pealkiri uueneb; mobiili ikoonnupul on dünaamiline `aria-label`.
 
-final result: passed
+### P1 — teksti ja fookuse kontrast
+
+Väikese allikameta, kompaktse jaluse ja soovituste loenduri toonid muudeti tumedamaks. Üldine helekollane 1,51 : 1 fookusring asendati tumeda sinise ning valge eraldusringiga; otsinguvälja `focus-within` kasutab sama kõrge kontrastiga mustrit.
+
+## Ligipääsetavus ja interaktsioonid
+
+- Combobox seob välja ja listbox'i `aria-controls`, `aria-expanded` ja `aria-activedescendant` atribuutidega.
+- Listbox sisaldab ainult `role="option"` lapsi ning aktiivse järglase mustris pole valikud eraldi tab-järjestuses.
+- Arrow Down/Up liiguvad viie soovituse vahel; Enter valib aktiivse soovituse või käivitab päringu; Escape sulgeb loendi.
+- Mouse/touch valik ning otsingu puhastamine jätavad fookuse väljale.
+- Tulemuste H1 kirjeldab vastust, mitte kasutaja päringut või tehnilist olekut.
+- Viitenumbrid on lingid vastava allikani, ka siis kui allikas on esialgu kokku volditud; allikakaartidel on kirjeldav nimi, väljaandja, aasta ja täpne locator.
+- „Kõik allikad” avaldab oleku `aria-expanded` ja seose `aria-controls`; JS-kerimine austab reduced-motion eelistust.
+- 390 px vaates puudub horisontaalne lehe overflow ning kõik põhikontrollid on püsivalt nähtavad.
+
+## Visuaalne hinnang
+
+Paarisvõrdluste ja interaktsioonitestide järgi ei jäänud lokaalsesse buildi ühtegi teadaolevat P0/P1 probleemi:
+
+- desktop autocomplete ei ole enam kaartide all;
+- mobiili esimeses vaates on põhiotsing;
+- tulemuse visuaalne hierarhia algab vastusest, mitte süsteemi olekust;
+- allikad on loetavad, kuid ei varjuta vastust;
+- Terrapoint ei ilmu üldotsingu tulemustesse;
+- kasutajaliideses puuduvad Qdranti, PostgreSQL-i, mudelipakkuja ja fallback'i nimed.
+
+## Avaliku deploy vastuvõtukontroll
+
+Pärast Coolify deploy'd tuleb sama brauseriseansiga uuesti kinnitada:
+
+- värske desktop-load püsib üleval ja iframe ei saa fookust;
+- Terrapointi täisrakendus laeb praktikadomeeni iframe'is;
+- autocomplete, `mets`, täpne FAQ ja allikate avamine töötavad;
+- 390 px root-laius võrdub viewport'iga;
+- first-party console error'eid ei ole;
+- `/api/health` on minimaalne ja `/api/search` ei sisalda infrastruktuurijargooni.
+
+final local result: passed

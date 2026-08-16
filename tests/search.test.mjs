@@ -11,14 +11,15 @@ test("forest search ranks forest sources and emits citations", () => {
   assert.ok(result.total >= 2);
   assert.equal(result.sources[0].id, "forest-overview");
   assert.ok(result.sources.slice(0, 3).every((source) => source.tags.includes("mets") || source.tags.includes("SMI") || source.tags.includes("looduskaitse")));
-  assert.deepEqual(result.answer.parts[0].citations, [1]);
+  assert.deepEqual(result.answer.introCitations, [1]);
+  assert.ok(result.answer.parts.every((part) => part.citations.length));
 });
 
 test("unknown query returns transparent fallback sources", () => {
   const result = searchEnvironment("xyzzy täpsustamata päring");
   assert.equal(result.total, 0);
-  assert.equal(result.answer.confidence, "madal");
   assert.equal(result.sources.length, 3);
+  assert.match(result.clarification, /näitaja|piirkonna|ajavahemiku/i);
 });
 
 test("search input is capped", () => {

@@ -1,29 +1,36 @@
 # Keskkonnaportaali praktika
 
-Keskkonnaportaali visuaalsel identiteedil põhinev praktikaprojekt, mis lisab kaks prototüübitavat põhiideed:
+Keskkonnaportaali visuaalsel keelel põhinev praktikaprojekt, mille kaks põhiosa on:
 
-- Keskkonnaportaali reaalajaotsingule, Qdrantile ja serveripoolsele LLM-ile toetuv vastus-enne-allikaid otsing;
-- portaali sees toimiv kogu `terrapoint.ee` rakendus;
-- eraldatud PostgreSQL-i vahemälu ning nähtav vastuse päritoluinfo.
+- kompaktne vastus-enne-allikaid otsing koos 21 struktureeritud metsateadmise, viidete ja ametlike algallikatega;
+- portaali sees töötav kogu `terrapoint.ee` rakendus, mis on üldotsingust täielikult eraldatud.
 
-Avalik praktikakeskkond: [praktika.arleserver.cfd](https://praktika.arleserver.cfd)
+Avalik keskkond: [praktika.arleserver.cfd](https://praktika.arleserver.cfd)
 
-Viimane avalik API-, Coolify- ja Playwright-kontroll: **16.08.2026**, rakenduskoodi commit `fa1b72d`. Kuupäevastatud tõendid ja täpne andmevoogude loend on failis [PROJEKT.md](./PROJEKT.md#avaliku-versiooni-kontroll--16082026).
-
-Täielik kirjeldus, arhitektuur, käivitamine ja piirangud on failis [PROJEKT.md](./PROJEKT.md).
+Arhitektuur, avalikud ametlikud liidesed, turve, piirangud ja kontrollnimekiri on kirjeldatud failis [PROJEKT.md](./PROJEKT.md). Visuaalse regressiooni tõendid on failis [design-qa.md](./design-qa.md).
 
 ## Kiirkäivitus
 
 ```bash
 npm install
 npm run build
-PORT=4174 npm start
+PORT=4174 LLM_ENABLED=false SEARCH_CACHE_ENABLED=false npm start
 ```
 
 Dockeriga:
 
 ```bash
+cp .env.example .env
 docker compose up --build
 ```
 
 Tervisekontroll: `GET /api/health`.
+
+## Kontroll
+
+```bash
+npm test
+npm run build
+npm run test:sites
+docker compose config
+```

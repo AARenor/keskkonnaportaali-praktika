@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -9,7 +9,6 @@ import {
   ChevronRight,
   CircleHelp,
   CloudSun,
-  Database,
   ExternalLink,
   Facebook,
   FileText,
@@ -257,9 +256,12 @@ function ExternalAnchor({ children, className, href, ...props }) {
 }
 
 function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoFocus = false }) {
+  const listboxId = useId();
+  const inputRef = useRef(null);
   const [value, setValue] = useState(initialValue);
   const [focused, setFocused] = useState(false);
   const [remoteSuggestions, setRemoteSuggestions] = useState([]);
+  const [activeIndex, setActiveIndex] = useState(-1);
 
   useEffect(() => setValue(initialValue), [initialValue]);
 
@@ -288,16 +290,46 @@ function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoF
   const suggestions = useMemo(() => {
     const query = value.trim().toLocaleLowerCase("et");
     if (query.length < 2) return [];
-    if (remoteSuggestions.length) return remoteSuggestions;
+    if (remoteSuggestions.length) return remoteSuggestions.slice(0, 5);
     return searchSuggestions
       .filter((item) => item.toLocaleLowerCase("et").includes(query))
       .slice(0, 5)
       .map((item) => ({ value: item, count: null }));
   }, [remoteSuggestions, value]);
 
+  useEffect(() => setActiveIndex(-1), [value, suggestions.length]);
+
+  const chooseSuggestion = (suggestion) => {
+    setValue(suggestion.value);
+    setFocused(false);
+    setActiveIndex(-1);
+    onSearch(suggestion.value);
+  };
+
   const submit = (event) => {
     event.preventDefault();
+    if (activeIndex >= 0 && suggestions[activeIndex]) {
+      chooseSuggestion(suggestions[activeIndex]);
+      return;
+    }
     if (value.trim()) onSearch(value.trim());
+  };
+
+  const handleKeyDown = (event) => {
+    if (!suggestions.length) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setFocused(true);
+      setActiveIndex((current) => (current + 1) % suggestions.length);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setFocused(true);
+      setActiveIndex((current) => (current <= 0 ? suggestions.length - 1 : current - 1));
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      setFocused(false);
+      setActiveIndex(-1);
+    }
   };
 
   return (
@@ -305,44 +337,66 @@ function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoF
       <div className="search-control">
         <Search aria-hidden="true" className="search-control__leading" size={21} />
         <input
+          ref={inputRef}
+          aria-activedescendant={activeIndex >= 0 ? `${listboxId}-option-${activeIndex}` : undefined}
+          aria-autocomplete="list"
+          aria-controls={focused && suggestions.length ? listboxId : undefined}
+          aria-expanded={Boolean(focused && suggestions.length)}
           aria-label="Otsi keskkonnaandmeid"
           autoComplete="off"
           autoFocus={autoFocus}
           onBlur={() => window.setTimeout(() => setFocused(false), 140)}
-          onChange={(event) => setValue(event.target.value)}
+          onChange={(event) => {
+            setValue(event.target.value);
+            setFocused(true);
+          }}
           onFocus={() => setFocused(true)}
+          onKeyDown={handleKeyDown}
           placeholder="Küsi keskkonnaandmete kohta …"
+          role="combobox"
           value={value}
         />
         {value ? (
-          <button className="icon-button search-control__clear" onClick={() => setValue("")} type="button" aria-label="Tühjenda otsing">
+          <button className="icon-button search-control__clear" onClick={() => {
+            setValue("");
+            setRemoteSuggestions([]);
+            inputRef.current?.focus();
+          }} type="button" aria-label="Tühjenda otsing">
             <X size={19} />
           </button>
         ) : null}
-        <button className="search-submit" disabled={busy || !value.trim()} type="submit">
+        <button
+          aria-label={busy ? "Otsin" : "Küsi"}
+          className="search-submit"
+          disabled={busy || !value.trim()}
+          type="submit"
+        >
           {busy ? <LoaderCircle className="spin" size={19} /> : <Sparkles size={18} />}
           <span>{busy ? "Otsin" : "Küsi"}</span>
         </button>
         {focused && suggestions.length ? (
-          <div className="search-suggestions" role="listbox" aria-label="Otsingusoovitused">
-            <div className="search-suggestions__title">Soovitatud päringud</div>
-            {suggestions.map((suggestion) => (
-              <button
-                key={suggestion.value}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => {
-                  setValue(suggestion.value);
-                  onSearch(suggestion.value);
-                }}
-                role="option"
-                type="button"
-              >
-                <Search size={16} />
-                <span>{suggestion.value}</span>
-                {suggestion.count ? <small>{suggestion.count} vastet</small> : null}
-                <ArrowRight size={15} />
-              </button>
-            ))}
+          <div className="search-suggestions">
+            <div className="search-suggestions__title" id={`${listboxId}-label`}>Soovitatud päringud</div>
+            <div aria-labelledby={`${listboxId}-label`} id={listboxId} role="listbox">
+              {suggestions.map((suggestion, index) => (
+                <button
+                  aria-selected={index === activeIndex}
+                  className={index === activeIndex ? "active" : ""}
+                  id={`${listboxId}-option-${index}`}
+                  key={suggestion.value}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => chooseSuggestion(suggestion)}
+                  role="option"
+                  tabIndex={-1}
+                  type="button"
+                >
+                  <Search size={16} />
+                  <span>{suggestion.value}</span>
+                  {suggestion.count ? <small>{suggestion.count} vastet</small> : null}
+                  <ArrowRight size={15} />
+                </button>
+              ))}
+            </div>
           </div>
         ) : null}
       </div>
@@ -353,7 +407,7 @@ function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoF
   );
 }
 
-function Header({ onSearch, busy, searchValue = "" }) {
+function Header({ onSearch, busy, searchValue = "", compact = false }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [megaMenu, setMegaMenu] = useState(null);
@@ -364,6 +418,22 @@ function Header({ onSearch, busy, searchValue = "" }) {
   }, [menuOpen]);
 
   const toggleMega = (menu) => setMegaMenu((current) => (current === menu ? null : menu));
+
+  if (compact) {
+    return (
+      <header className="site-header site-header--compact">
+        <a className="skip-link" href="#main-content">Liigu edasi põhisisu juurde</a>
+        <div className="brand-bar">
+          <div className="shell brand-bar__inner">
+            <a className="brand" href="/" aria-label="Keskkonnaportaali praktika avaleht">
+              <img src="/assets/logo-desktop.svg" alt="Keskkonnaportaal" />
+            </a>
+            <span className="practice-pill">Praktikaprojekt</span>
+          </div>
+        </div>
+      </header>
+    );
+  }
 
   return (
     <header className="site-header">
@@ -658,10 +728,6 @@ function Home({ onSearch, busy }) {
     <main id="main-content">
       <Hero busy={busy} onSearch={onSearch} />
       <PortalTiles />
-      <div className="mobile-ai-intro shell">
-        <span><Sparkles size={17} /> Uus allikapõhine otsing</span>
-        <button onClick={() => document.querySelector('[aria-label="Ava otsing"]')?.click()} type="button">Küsi portaalilt <ChevronRight size={17} /></button>
-      </div>
       <CurrentContent />
       <TerrapointSection />
       <EventsSection />
@@ -670,91 +736,118 @@ function Home({ onSearch, busy }) {
   );
 }
 
-function Citation({ number }) {
-  return <a className="citation" href={`#source-${number}`} aria-label={`Allikas ${number}`}>{number}</a>;
-}
-
-function statusLabel(status) {
-  if (["ready", "live"].includes(status)) return "ühendatud";
-  if (status === "degraded") return "osaliselt saadaval";
-  if (status === "configured") return "seadistatud";
-  return "pole seadistatud";
-}
-
-function SearchProvenance({ meta }) {
-  if (!meta) return null;
-  const providerText = (meta.providers || []).map((provider) => provider.label).join(" + ") || "avalikud allikad";
-  return (
-    <aside className="provenance-strip" aria-label="Vastuse tehniline päritolu">
-      <div><Globe2 size={18} /><span>Andmed<strong>{providerText}</strong></span></div>
-      <div><Sparkles size={18} /><span>Vastus<strong>{meta.answerProvider || "reeglipõhine fallback"}</strong></span></div>
-      <div><Layers3 size={18} /><span>Otsinguindeks<strong>Qdrant · {statusLabel(meta.vectorStore?.status)}</strong></span></div>
-      <div><Database size={18} /><span>Vahemälu<strong>PostgreSQL · {statusLabel(meta.database?.status)}</strong></span></div>
-    </aside>
-  );
+function Citation({ number, onNavigate }) {
+  return <a className="citation" href={`#source-${number}`} onClick={(event) => onNavigate(event, number)} aria-label={`Allikas ${number}`}>{number}</a>;
 }
 
 function SearchResults({ result, query, busy, error, onSearch, onHome }) {
   const hasResult = Boolean(result?.answer);
+  const [showAllSources, setShowAllSources] = useState(false);
+  const headingRef = useRef(null);
+  const sourcesListId = useId();
+  useEffect(() => setShowAllSources(false), [result?.query]);
+  useEffect(() => {
+    if (!busy && hasResult) {
+      document.title = `${result.answer.title} | Keskkonnaportaali praktika`;
+      headingRef.current?.focus({ preventScroll: true });
+    }
+  }, [busy, hasResult, result?.answer?.title, result?.query]);
+  const visibleSources = showAllSources ? result?.sources || [] : (result?.sources || []).slice(0, 3);
+  const revealCitation = (event, number) => {
+    event.preventDefault();
+    const reveal = () => {
+      const target = document.getElementById(`source-${number}`);
+      if (!target) return false;
+      target.focus({ preventScroll: true });
+      target.scrollIntoView({
+        block: "start",
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      });
+      return true;
+    };
+    if (reveal()) return;
+    setShowAllSources(true);
+    window.requestAnimationFrame(() => window.requestAnimationFrame(reveal));
+  };
   return (
     <main className="search-page" id="main-content">
+      <div aria-atomic="true" aria-live="polite" className="sr-only">
+        {busy ? "Koostan vastust." : error ? "Otsing ebaõnnestus." : hasResult ? `Vastus valmis: ${result.answer.title}` : ""}
+      </div>
       <div className="search-page__header">
         <div className="shell search-results-shell">
           <button className="back-link" onClick={onHome} type="button"><ArrowLeft size={17} /> Avalehele</button>
-          <span className="eyebrow">Keskkonnaportaali otsing</span>
-          <h1>Vastus koos kontrollitavate allikatega</h1>
           <SearchForm busy={busy} initialValue={query} onSearch={onSearch} variant="results" />
         </div>
       </div>
       <div className="shell search-results-shell search-page__content">
         {busy ? (
-          <div className="search-state"><LoaderCircle className="spin" size={30} /><h2>Koostan allikapõhist vastust …</h2><p>Järjestan ametlikud allikad ja seon väited viidetega.</p></div>
+          <div className="search-state" role="status"><LoaderCircle className="spin" size={28} /><h1>Koostan vastust …</h1><p>Loen ametlikke allikaid ja kontrollin viiteid.</p></div>
         ) : null}
         {error ? <div className="search-error" role="alert"><CircleHelp size={22} /><div><strong>Otsingut ei saanud lõpetada</strong><p>{error}</p></div></div> : null}
         {!busy && hasResult ? (
           <>
             <article className="answer-card">
-              <div className="answer-card__top">
-                <div className="answer-icon"><Sparkles size={24} /></div>
-                <div><span className="eyebrow">{result.answer.eyebrow}</span><h2>{result.answer.title}</h2></div>
-                <span className={`confidence confidence--${result.answer.confidence}`}>{result.answer.confidence} allikakate</span>
-              </div>
-              <p className="answer-intro">{result.answer.intro}</p>
+              <div className="answer-label"><Sparkles size={17} /><span>{result.answer.eyebrow || "AI koondvastus"}</span></div>
+              <h1 ref={headingRef} tabIndex={-1}>{result.answer.title}</h1>
+              <p className="answer-intro">
+                {result.answer.intro}{" "}
+                {(result.answer.introCitations || []).map((citation) => <Citation key={citation} number={citation} onNavigate={revealCitation} />)}
+              </p>
               <div className="answer-parts">
                 {result.answer.parts.map((part, index) => (
-                  <p key={index}>{part.text} {part.citations.map((citation) => <Citation key={citation} number={citation} />)}</p>
+                  <section key={index}>
+                    {part.title ? <h2>{part.title}</h2> : null}
+                    <p>{part.text} {(part.citations || []).map((citation) => <Citation key={citation} number={citation} onNavigate={revealCitation} />)}</p>
+                  </section>
                 ))}
               </div>
-              <div className="answer-note"><ShieldCheck size={19} /><p>{result.answer.disclaimer}</p></div>
+              {result.answer.note ? <div className="answer-note"><ShieldCheck size={18} /><p>{result.answer.note}</p></div> : null}
+              {result.clarification ? (
+                <div className="answer-clarification">
+                  <strong>Täpsusta soovi korral</strong>
+                  <p>{result.clarification}</p>
+                </div>
+              ) : null}
             </article>
-
-            <SearchProvenance meta={result.meta} />
 
             <section className="sources-section" aria-labelledby="sources-title">
               <div className="sources-title-row">
-                <div><span className="eyebrow">Vastuse järel</span><h2 id="sources-title">Kasutatud allikad</h2></div>
-                <span>{result.sources.length} kasutatud · {result.total} leitud</span>
+                <h2 id="sources-title">Allikad</h2>
+                <span>{result.sources.length}</span>
               </div>
-              <div className="sources-grid">
-                {result.sources.map((source) => (
-                  <ExternalAnchor className="source-card" href={source.url} id={`source-${source.citation}`} key={source.id}>
+              <div className="sources-list" id={sourcesListId}>
+                {visibleSources.map((source) => (
+                  <ExternalAnchor className="source-row" href={source.url} id={`source-${source.citation}`} key={source.id}>
                     <span className="source-number">{source.citation}</span>
                     <div className="source-card__body">
-                      <div className="source-meta"><span>{source.sourceSystem || source.organization}</span><span>{source.organization}</span><span>{source.published}</span></div>
+                      <div className="source-meta"><span>{source.organization}</span><span>{source.published}</span></div>
                       <h3>{source.title}<ExternalLink size={15} /></h3>
                       <p>{source.summary}</p>
-                      <div className="tag-row">{source.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
                     </div>
                   </ExternalAnchor>
                 ))}
               </div>
+              {result.sources.length > 3 ? (
+                <button
+                  aria-controls={sourcesListId}
+                  aria-expanded={showAllSources}
+                  className="sources-toggle"
+                  onClick={() => setShowAllSources((current) => !current)}
+                  type="button"
+                >
+                  {showAllSources ? "Näita vähem" : `Kõik allikad (${result.sources.length})`}
+                  <ChevronDown className={showAllSources ? "rotated" : ""} size={17} />
+                </button>
+              ) : null}
             </section>
 
-            <section className="related-section">
-              <span className="eyebrow">Uuri edasi</span>
-              <h2>Seotud küsimused</h2>
-              <div>{result.related.map((item) => <button key={item} onClick={() => onSearch(item)} type="button">{item}<ArrowRight size={16} /></button>)}</div>
-            </section>
+            {result.related?.length ? (
+              <section className="related-section">
+                <h2>Seotud küsimused</h2>
+                <div>{result.related.map((item) => <button key={item} onClick={() => onSearch(item)} type="button">{item}<ArrowRight size={16} /></button>)}</div>
+              </section>
+            ) : null}
           </>
         ) : null}
       </div>
@@ -762,7 +855,14 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
   );
 }
 
-function Footer() {
+function Footer({ compact = false }) {
+  if (compact) {
+    return (
+      <footer className="site-footer site-footer--compact">
+        <div className="shell"><span>Keskkonnaportaali praktikaprojekt</span><span>Kontrolli olulist infot algallikast</span></div>
+      </footer>
+    );
+  }
   return (
     <footer className="site-footer">
       <div className="shell footer-main">
@@ -877,10 +977,15 @@ export function App() {
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const searchRequestRef = useRef({ id: 0, controller: null });
 
   const performSearch = async (nextQuery, pushState = true) => {
     const clean = String(nextQuery || "").trim();
     if (!clean) return;
+    searchRequestRef.current.controller?.abort();
+    const requestId = searchRequestRef.current.id + 1;
+    const controller = new AbortController();
+    searchRequestRef.current = { id: requestId, controller };
     setQuery(clean);
     setView("search");
     setBusy(true);
@@ -888,15 +993,20 @@ export function App() {
     if (pushState) window.history.pushState({}, "", `/otsi?q=${encodeURIComponent(clean)}`);
     window.scrollTo({ top: 0, behavior: pushState ? "smooth" : "auto" });
     try {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(clean)}`);
+      const response = await fetch(`/api/search?q=${encodeURIComponent(clean)}`, { signal: controller.signal });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Otsing ei vastanud.");
+      if (searchRequestRef.current.id !== requestId) return;
       setResult(data);
     } catch (searchError) {
+      if (searchError.name === "AbortError" || searchRequestRef.current.id !== requestId) return;
       setResult(null);
       setError(searchError.message || "Serveriga ei saanud ühendust.");
     } finally {
-      setBusy(false);
+      if (searchRequestRef.current.id === requestId) {
+        searchRequestRef.current = { id: requestId, controller: null };
+        setBusy(false);
+      }
     }
   };
 
@@ -911,9 +1021,18 @@ export function App() {
       const next = new URLSearchParams(window.location.search).get("q") || "";
       setQuery(next);
       if (searchView && next) performSearch(next, false);
+      else {
+        searchRequestRef.current.controller?.abort();
+        searchRequestRef.current = { id: searchRequestRef.current.id + 1, controller: null };
+        setBusy(false);
+        document.title = "Keskkonnaportaali praktika";
+      }
     };
     window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
+    return () => {
+      searchRequestRef.current.controller?.abort();
+      window.removeEventListener("popstate", onPopState);
+    };
     // Initial routing intentionally runs once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -921,23 +1040,27 @@ export function App() {
   if (isEmbed) return <TerrapointEmbed />;
 
   const goHome = () => {
+    searchRequestRef.current.controller?.abort();
+    searchRequestRef.current = { id: searchRequestRef.current.id + 1, controller: null };
     window.history.pushState({}, "", "/");
     setView("home");
     setQuery("");
     setResult(null);
     setError("");
+    setBusy(false);
+    document.title = "Keskkonnaportaali praktika";
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   return (
     <>
-      <Header busy={busy} onSearch={performSearch} searchValue={query} />
+      <Header busy={busy} compact={view === "search"} onSearch={performSearch} searchValue={query} />
       {view === "search" ? (
         <SearchResults busy={busy} error={error} onHome={goHome} onSearch={performSearch} query={query} result={result} />
       ) : (
         <Home busy={busy} onSearch={performSearch} />
       )}
-      <Footer />
+      <Footer compact={view === "search"} />
     </>
   );
 }

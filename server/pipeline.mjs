@@ -1,18 +1,23 @@
-import { databaseConfiguration, readSearchCache, recordSearch } from "./database.mjs";
+import { readSearchCache, recordSearch } from "./database.mjs";
+import { answerCadastreQuestion } from "./cadastre.mjs";
 import {
-  INTEGRATION_ENDPOINTS,
+  answerForestryQuestion,
+  FORESTRY_KB_REVISION,
+} from "./forestry.mjs";
+import {
+  hydrateKeskkonnaportaalDocuments,
   searchKeskkonnaportaal,
-  searchTerrapointProperty,
-  terrapointSourceDocuments,
 } from "./integrations.mjs";
-import { generateGroundedAnswer, llmConfiguration } from "./llm.mjs";
-import { qdrantConfiguration, rerankWithQdrant } from "./qdrant.mjs";
+import { generateGroundedAnswer } from "./llm.mjs";
 import {
   SEARCH_DOCUMENTS,
   composeSearchResponse,
   rankDocuments,
   scoreDocument,
 } from "./search.mjs";
+
+export const SEARCH_RESPONSE_REVISION = `answer-v3-${FORESTRY_KB_REVISION}`;
+const DEFAULT_SEARCH_DEADLINE_MS = 12_000;
 
 function deduplicate(documents) {
   const seen = new Map();
@@ -23,106 +28,138 @@ function deduplicate(documents) {
   return [...seen.values()];
 }
 
-function providerStatus(result, readyStatus = "live") {
-  if (result.status === "fulfilled") return readyStatus;
-  return "degraded";
-}
-
-export async function searchEnvironmentLive(query, limit = 7) {
-  const startedAt = Date.now();
-  const cleanQuery = String(query ?? "").trim().slice(0, 180);
-  if (!cleanQuery) return composeSearchResponse("", [], { limit: 3, total: 0 });
-
-  if (String(process.env.SEARCH_CACHE_ENABLED || "true").toLowerCase() !== "false") {
-    const cached = await readSearchCache(cleanQuery);
-    if (cached) {
-      return {
-        ...cached,
-        meta: {
-          ...cached.meta,
-          cache: "postgres-hit",
-          durationMs: Date.now() - startedAt,
-        },
-      };
-    }
-  }
-
-  const [portalResult, propertyResult] = await Promise.allSettled([
-    searchKeskkonnaportaal(cleanQuery, 14),
-    searchTerrapointProperty(cleanQuery),
-  ]);
-
-  const portal = portalResult.status === "fulfilled" ? portalResult.value : { documents: [], total: 0, cache: null };
-  const property = propertyResult.status === "fulfilled" ? propertyResult.value : { documents: [], status: "degraded" };
-  const candidates = deduplicate([
-    ...property.documents,
-    ...portal.documents,
-    ...terrapointSourceDocuments(),
-    ...(portal.documents.length ? [] : SEARCH_DOCUMENTS),
-  ]);
-
-  const ranked = rankDocuments(cleanQuery, candidates)
+function rankPortalDocuments(query, documents) {
+  return rankDocuments(query, documents)
     .map((document) => ({
       ...document,
-      score:
-        scoreDocument(document, cleanQuery)
-        + (document.retrieval === "live-property-api" ? 30 : 0)
-        + (document.retrieval === "live-search" ? 5 : 0)
-        + (document.retrieval === "source-register" ? 2 : 0),
+      score: scoreDocument(document, query)
+        + (document.retrieval === "curated-guide" ? 8 : 0)
+        + (document.retrieval === "live-discovery" ? 2 : 0),
     }))
-    .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title, "et"));
+    .sort((left, right) => right.score - left.score || left.title.localeCompare(right.title, "et"));
+}
 
-  const vectorResult = await rerankWithQdrant(cleanQuery, ranked.slice(0, 30), limit);
-  const response = composeSearchResponse(cleanQuery, vectorResult.documents, {
-    limit,
-    total: portal.total || ranked.length,
-    mode: "live-retrieval-grounded-answer",
-    meta: {
-      answerProvider: llmConfiguration().provider,
-      cache: "miss",
-      providers: [
-        {
-          id: "keskkonnaportaal",
-          label: "Keskkonnaportaal",
-          kind: "ametlik reaalaja otsing",
-          status: providerStatus(portalResult),
-          endpoint: INTEGRATION_ENDPOINTS.portalSearch,
-          resultCount: portal.documents.length,
-        },
-        {
-          id: "terrapoint",
-          label: "Terrapoint",
-          kind: property.status === "live" ? "kinnistu avalik API" : "andmeallikaregister",
-          status: propertyResult.status === "rejected" ? "degraded" : property.status === "live" ? "live" : "ready",
-          endpoint: INTEGRATION_ENDPOINTS.terrapoint,
-          resultCount: property.documents.length,
-        },
-      ],
-      vectorStore: {
-        provider: "Qdrant",
-        status: vectorResult.status,
-        collection: vectorResult.collection || qdrantConfiguration().collection,
-      },
-      database: {
-        provider: "PostgreSQL",
-        status: databaseConfiguration().enabled ? "configured" : "disabled",
-      },
-      durationMs: 0,
-    },
+export function publicResponse(draft) {
+  const { evidence: _evidence, ...response } = draft;
+  return {
+    ...response,
+    sources: (response.sources || []).map((source) => Object.fromEntries([
+      "id", "citation", "title", "organization", "type", "published", "url", "summary", "locator", "tags",
+    ].filter((key) => source[key] !== undefined).map((key) => [key, source[key]]))),
+  };
+}
+
+function remainingBudget(deadlineAt, reserveMs = 0) {
+  return Math.max(0, deadlineAt - Date.now() - reserveMs);
+}
+
+export function isSearchCacheEnabled(value = process.env.SEARCH_CACHE_ENABLED) {
+  return String(value ?? "true").toLocaleLowerCase("et") !== "false";
+}
+
+async function createPortalDraft(query, { deadlineAt, signal }) {
+  let portal;
+  try {
+    portal = await searchKeskkonnaportaal(query, 12, {
+      timeoutMs: Math.max(250, Math.min(5_000, remainingBudget(deadlineAt, 5_500))),
+      signal,
+    });
+  } catch {
+    portal = { documents: [], total: 0 };
+  }
+
+  const candidates = deduplicate([
+    ...portal.documents,
+    ...SEARCH_DOCUMENTS.map((document) => ({ ...document, retrieval: "curated-guide" })),
+  ]);
+  const ranked = rankPortalDocuments(query, candidates);
+  const hydrationBudget = remainingBudget(deadlineAt, 2_500);
+  const hydrated = hydrationBudget >= 500
+    ? await hydrateKeskkonnaportaalDocuments(ranked.slice(0, 5), 5, {
+      timeoutMs: Math.min(3_500, hydrationBudget),
+      signal,
+    })
+    : ranked.slice(0, 5);
+  const reranked = rankPortalDocuments(query, hydrated);
+  return composeSearchResponse(query, reranked, {
+    limit: 6,
+    total: portal.total || reranked.length,
   });
+}
 
-  const llmResult = await generateGroundedAnswer(cleanQuery, response.sources);
-  if (llmResult.answer) response.answer = llmResult.answer;
-  if (llmResult.related?.length) response.related = llmResult.related;
-  response.meta.answerProvider = llmResult.provider;
-  response.meta.llmStatus = llmResult.status;
-  response.meta.durationMs = Date.now() - startedAt;
+async function searchWithinBudget(cleanQuery, { startedAt, deadlineAt, signal }) {
+  const cacheEnabled = isSearchCacheEnabled();
+  if (cacheEnabled) {
+    const cached = await readSearchCache(cleanQuery, SEARCH_RESPONSE_REVISION);
+    if (cached) return cached;
+  }
 
-  const databaseResult = await recordSearch({
+  const cadastreDraft = await answerCadastreQuestion(cleanQuery);
+  const forestryDraft = cadastreDraft ? null : answerForestryQuestion(cleanQuery);
+  const draft = cadastreDraft || forestryDraft || await createPortalDraft(cleanQuery, { deadlineAt, signal });
+  const canGenerate = draft.sources?.length && draft.evidence?.kind === "portal-discovery";
+  const llmBudget = remainingBudget(deadlineAt, 300);
+  const llmResult = canGenerate && llmBudget >= 500
+    ? await generateGroundedAnswer(cleanQuery, draft, { timeoutMs: llmBudget, signal })
+    : { answer: null, status: "not-applicable", provider: "reviewed-knowledge" };
+
+  if (llmResult.answer) draft.answer = llmResult.answer;
+  draft.generatedAt = new Date().toISOString();
+  const response = publicResponse(draft);
+  const durationMs = Date.now() - startedAt;
+  const evidenceKind = draft.evidence?.kind;
+  const spatialDegraded = evidenceKind === "official-spatial-snapshot"
+    && Object.values(draft.evidence?.states || {}).some((state) => state === "unavailable");
+  const cacheResponse = llmResult.status === "ready"
+    || evidenceKind === "reviewed-forestry-knowledge"
+    || evidenceKind === "safe-abstention"
+    || (evidenceKind === "official-spatial-snapshot" && !spatialDegraded);
+
+  void recordSearch({
     query: cleanQuery,
     response,
-    durationMs: response.meta.durationMs,
-  });
-  response.meta.database.status = databaseResult.status;
+    revision: SEARCH_RESPONSE_REVISION,
+    answerProvider: llmResult.provider,
+    answerStatus: llmResult.status,
+    documentIds: draft.evidence?.documentIds || [],
+    durationMs,
+    cacheResponse: cacheEnabled && cacheResponse,
+  }).catch(() => undefined);
   return response;
+}
+
+function timeoutFallback(cleanQuery) {
+  const draft = composeSearchResponse(cleanQuery, rankDocuments(cleanQuery, SEARCH_DOCUMENTS), { limit: 6 });
+  draft.answer.note = "Värskete allikate laadimine ei jõudnud vastuse ajapiiri sisse. Kuvatud koond põhineb kontrollitud põhiallikatel; täpsema tulemuse saamiseks proovi otsingut uuesti.";
+  return publicResponse(draft);
+}
+
+export async function settleWithinDeadline(operation, timeoutMs, fallback, controller = new AbortController()) {
+  let timer;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      resolve(typeof fallback === "function" ? fallback() : fallback);
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([Promise.resolve(operation), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function searchEnvironmentLive(query) {
+  const startedAt = Date.now();
+  const cleanQuery = String(query ?? "").replace(/\s+/g, " ").trim().slice(0, 180);
+  if (!cleanQuery) return composeSearchResponse("", [], { limit: 3, total: 0 });
+
+  const deadlineMs = Math.max(1_000, Math.min(Number(process.env.SEARCH_DEADLINE_MS) || DEFAULT_SEARCH_DEADLINE_MS, 15_000));
+  const controller = new AbortController();
+  const operation = searchWithinBudget(cleanQuery, {
+    startedAt,
+    deadlineAt: startedAt + deadlineMs,
+    signal: controller.signal,
+  }).catch(() => timeoutFallback(cleanQuery));
+  return settleWithinDeadline(operation, deadlineMs, () => timeoutFallback(cleanQuery), controller);
 }
