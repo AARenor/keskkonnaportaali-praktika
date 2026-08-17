@@ -637,13 +637,19 @@ export function assessSearchQuery(query) {
       clarification: "Lisa katastritunnus kujul 12345:678:9012. Aadressi järgi kinnistu leidmiseks kasuta allpool Terrapointi otsingut.",
     };
   }
+  const weatherLocationPattern = /\b(?:tallinn|tartu|parnu|narva|viljandi|rakvere|voru|kuressaare|haapsalu|johvi)\w*/u;
+  const explicitlyCurrentWeather = /\b(?:tana|homme|ulehomme|praegu|hetkel|prognoos|hoiatus)\b/u.test(normalized);
+  const historicalWeatherContext = /\b(?:(?:19|20)\d{2}|ajalool\w*|kliima\w*|keskm\w*|möödunud|moodunud)\b/u.test(normalized);
+  const locationDefaultsToCurrentWeather = domainRoots.includes("ilm")
+    && weatherLocationPattern.test(normalized)
+    && !historicalWeatherContext;
   if ((domainRoots.includes("ilm") || domainRoots.includes("prognoos") || domainRoots.includes("hoiatus"))
-    && /\b(?:tana|homme|ulehomme|praegu|prognoos|hoiatus)\b/u.test(normalized)) {
+    && (explicitlyCurrentWeather || locationDefaultsToCurrentWeather)) {
     return {
       kind: "live-weather",
       topic: "ilm",
       reason: "time-sensitive-weather",
-      clarification: /\b(?:tallinn|tartu|parnu|narva|viljandi|rakvere|voru|kuressaare|haapsalu|johvi)\w*/u.test(normalized)
+      clarification: weatherLocationPattern.test(normalized)
         ? null
         : "Lisa asukoht, et avada õige piirkonna prognoos.",
     };

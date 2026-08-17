@@ -39,6 +39,7 @@
     { "id": "W02", "query": "ilm täna Tallinnas", "expected": "live-weather" },
     { "id": "W03", "query": "ilmaprognoos ülehomme Pärnus", "expected": "live-weather" },
     { "id": "W04", "query": "kas praegu on ilmahoiatus", "expected": "live-weather" },
+    { "id": "W05", "query": "Milline on ilm Tallinnas?", "expected": "live-weather" },
     { "id": "O01", "query": "miks kassid nurruvad", "expected": "out-of-scope" },
     { "id": "O02", "query": "palun kirjuta mulle pannkoogiretsept", "expected": "out-of-scope" },
     { "id": "O03", "query": "asdfghjkl", "expected": "out-of-scope" },

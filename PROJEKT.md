@@ -171,7 +171,7 @@ docker compose config
 Automaattestid kontrollivad muu hulgas:
 
 - 13 allikat, 21 dokumenti, 18 FAQ teemat ja 12 väärarusaama;
-- 30 allikaga üldkataloog ning 50 päringuga külmutatud keskkonnaotsingu routing-komplekt;
+- 30 allikaga üldkataloog ning 51 päringuga külmutatud keskkonnaotsingu routing-komplekt;
 - külmutatud v2 hindamiskomplekti 30/30 vastatava päringu õiget intent-vastust ja Recall@3 väärtust 100%;
 - `mets` päris sünteesi, täpset FAQ vastust ja turvalist abstention'it;
 - raiemahu/juurdekasvu vastuse aastaid, ühikuid ja piiranguid;
