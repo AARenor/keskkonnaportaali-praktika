@@ -366,6 +366,11 @@ test("public page uses the complete Terrapoint application and permits only its 
   assert.match(server, /frame-src 'self' https:\/\/www\.openstreetmap\.org https:\/\/terrapoint\.ee/);
 });
 
+test("unknown API paths never fall through to the SPA HTML shell", async () => {
+  const server = await readFile(new URL("../server/index.mjs", import.meta.url), "utf8");
+  assert.match(server, /request\.path === "\/api" \|\| request\.path\.startsWith\("\/api\/"\)/u);
+});
+
 test("mobile header reuses the home search instead of rendering a second form", async () => {
   const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
   const header = app.match(/function Header[\s\S]*?function Hero/)?.[0] || "";

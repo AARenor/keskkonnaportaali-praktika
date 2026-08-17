@@ -243,6 +243,7 @@ app.use(
 );
 
 app.use((request, response, next) => {
+  if (request.path === "/api" || request.path.startsWith("/api/")) return next();
   if (!["GET", "HEAD"].includes(request.method) || !request.accepts("html")) return next();
   response.setHeader("Cache-Control", "no-cache");
   return response.sendFile(path.join(clientRoot, "index.html"));
