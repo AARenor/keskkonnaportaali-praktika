@@ -57,6 +57,29 @@ Avalik endpoint on `GET /api/search?q=<küsimus>`.
 
 Vahemälu võti sisaldab teadmusbaasi ja vastuseskeemi revisjoni, seega ei saa vana Terrapointi või varasema skeemi vastus pärast deploy'd edasi elada.
 
+### AI tõendileping ja tagasilükkamise semantika
+
+Mudeli kasutamine ei anna päringule vastamisõigust. Mudel kutsutakse ainult siis, kui serveri deterministlik tõendivärav on märkinud vähemalt ühe ametliku dokumendi sama päringu jaoks piisavalt tugevaks. Mudelile saadetakse üksnes selle päringu piiratud tõendipakk (`summary`, kontrollitud väide ja/või puhastatud ametliku lehe sisu); mudelil ei ole selles voos veebi-, andmebaasi- ega tööriistajuurdepääsu. Tõenditekst on sisendandmed, mitte juhis, ning selles leiduvat käsku ei täideta.
+
+Mudeli väljund ei lähe otse kasutajale. Server kontrollib enne avaldamist, et:
+
+- iga muudetud väide viitaks kuvatud allikanumbrile;
+- väites olev arv, aasta ja ühik esineksid just viidatud allika tõendis, mitte mõnes teises allikas;
+- väite sisulistel sõnadel oleks piisav kattuvus viidatud tõendiga;
+- eitus, lubamine/keelamine ning kasvu või languse suund ei pöörduks vastupidiseks;
+- pealkiri ja usaldusmärkus jääksid deterministlikust algvastusest, mitte mudelist.
+
+Kontrolli ebaõnnestumine ei lisa vastusele hoiatust ega lase vigast teksti läbi. Vigane lõik eemaldatakse; vigase sissejuhatuse asemel säilib deterministlik algtekst. Kui ükski mudeli väide kontrolli ei läbi, käsitletakse kogu mudelikatset ebaõnnestununa (`answer: null`) ning pipeline tagastab algvastuse. Sama juhtub vigase JSON-i, 429, timeout'i või mõlema mudeli tõrke korral.
+
+Deterministlik algvastus tähendab üht neljast selgelt piiritletud liigist:
+
+1. 21 eelkirjutatud ja tehniliselt läbi vaadatud metsadokumendist koostatud vastus;
+2. 30-kirjelise ametliku allikakataloogi konkreetse kirje eelkirjutatud vastus koos sama allika viitega;
+3. eelkirjutatud reaalaja-suunamine, täpsustusküsimus või ulatusest loobumine;
+4. globaalse ajapiiri korral eelkirjutatud teade ja asjakohased allikakaardid, mitte uus genereeritud faktivastus.
+
+Sõna „kontrollitud” tähendab siin praktikaprojekti tehnilist kontrolli, mitte Keskkonnaagentuuri sisueksperdi kinnitust. Dünaamilise allika viite lubamiseks peab URL jääma `server/integrations.mjs` ametlike HTTPS-hostide lubatud nimekirja ka pärast ümbersuunamist. Lause ja viite temaatilist seost kontrollitakse viidatud tõendi, mitte kogu vastuse vastu. Autoriteetne allikate ja API-de register on `docs/ALLIKAD.md`; runtime'i kataloog on `server/search.mjs` ning metsakorpuse register `server/knowledge/forestry/sources.json`.
+
 ## Teadmiste baas
 
 Failid asuvad kaustas `server/knowledge/forestry/`:
@@ -182,6 +205,8 @@ Automaattestid kontrollivad muu hulgas:
 - Sites-buildi lepingut.
 
 Brauseri regression peab katma 1440 × 1100 ja 390 × 844 vaated, autocomplete'i kihistuse, klaviatuurikäitumise, mobiili esimest vaadet, kompaktset otsingulehte, allikate avamist, horisontaalse overflow puudumist ning avaliku iframe'i fookuse/scroll'i kontrolli.
+
+17.08.2026 avalik vastuvõtutest tehti puhta Playwrighti sessiooniga otse aadressil `https://praktika.arleserver.cfd`, mitte localhostis. Vaadetes 390 × 844 ja 1440 × 1100 fokusseeris päise nupp ainsa portaaliotsingu. Päring „Kas Eestis tohib vanu rehve põletada?” sisestati ja esitati UI kaudu; leht renderdas viidatud „AI koondvastuse”, tulemuse pealkiri sai fookuse ning viide avas õige Keskkonnaameti allikakaardi. Päring „Kuidas valida kassile toitu?” renderdas ilma allikateta ulatuse selgituse ega koostanud juhuslikku vastust. Terrapointi iframe'is olid nähtavad selle otsing, kaart ja juhtnupud. Mõlemas vaates puudusid horisontaalne overflow ja brauserikonsooli vead; viite 4 avamine laiendas viiest allikast koosneva loendi ja fokusseeris `source-4` elemendi.
 
 ## Olulisemad failid
 
