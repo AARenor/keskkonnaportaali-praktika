@@ -4,6 +4,7 @@ import test from "node:test";
 import { assertSafeDatabaseUrl, sanitizeCachedResponse } from "../server/database.mjs";
 import {
   parseLlmJson,
+  resolveLlmFallback,
   resolveLlmTarget,
   resolveLlmTimeout,
   resolveMaxTokens,
@@ -58,6 +59,10 @@ test("legacy exhausted free-model configuration migrates to the bounded Go targe
   assert.equal(resolveMaxTokens("operator-choice", 700), 700);
   assert.equal(resolveLlmTimeout("deepseek-v4-flash", 9_500), 12_000);
   assert.equal(resolveLlmTimeout("operator-choice", 9_500), 9_500);
+  assert.equal(resolveLlmFallback("https://opencode.ai/zen/go/v1", "deepseek-v4-flash"), "mimo-v2.5");
+  assert.equal(resolveLlmFallback("https://opencode.ai/zen/go/v1", "deepseek-v4-flash", "none"), "");
+  assert.equal(resolveLlmFallback("https://example.invalid/v1", "operator-choice"), "");
+  assert.equal(resolveLlmFallback("https://opencode.ai/zen/go/v1", "deepseek-v4-flash", "glm-5.2"), "glm-5.2");
 });
 
 test("LLM validation rejects invented and cross-cited measurements", () => {

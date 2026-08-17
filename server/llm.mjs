@@ -14,6 +14,15 @@ export function resolveLlmTarget(base, selectedModel) {
     : { baseUrl: base, model: selectedModel };
 }
 const { baseUrl, model } = resolveLlmTarget(configuredBaseUrl, configuredModel);
+export function resolveLlmFallback(base, primaryModel, value) {
+  const configured = String(value ?? "").trim().toLocaleLowerCase("en");
+  if (["false", "none", "off"].includes(configured)) return "";
+  if (configured && /^[a-z0-9._-]{1,80}$/u.test(configured)) return configured;
+  return base === "https://opencode.ai/zen/go/v1" && primaryModel === "deepseek-v4-flash"
+    ? "mimo-v2.5"
+    : "";
+}
+const fallbackModel = resolveLlmFallback(baseUrl, model, process.env.LLM_FALLBACK_MODEL);
 export function resolveLlmTimeout(selectedModel, value) {
   const minimum = selectedModel === "deepseek-v4-flash" ? 12_000 : 3_000;
   const fallback = selectedModel === "deepseek-v4-flash" ? 14_500 : 9_500;
@@ -268,22 +277,32 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
   }
 
   const evidence = boundedEvidence(draft);
-  const controller = new AbortController();
+  const singleSource = evidence.length === 1;
   const requestTimeoutMs = Math.max(250, Math.min(Number(options.timeoutMs) || timeoutMs, timeoutMs));
-  const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
-  const signal = options.signal && typeof AbortSignal.any === "function"
-    ? AbortSignal.any([controller.signal, options.signal])
-    : controller.signal;
-  try {
-    const singleSource = evidence.length === 1;
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model,
+  const canFallback = Boolean(fallbackModel && fallbackModel !== model);
+  const attemptModels = canFallback
+    ? (requestTimeoutMs < 13_000 ? [fallbackModel] : [model, fallbackModel])
+    : [model];
+  const startedAt = Date.now();
+  const errors = [];
+
+  for (const [index, selectedModel] of attemptModels.entries()) {
+    const remaining = requestTimeoutMs - (Date.now() - startedAt);
+    if (remaining < 500 || options.signal?.aborted) break;
+    const hasNextAttempt = index < attemptModels.length - 1;
+    const attemptTimeout = hasNextAttempt
+      ? Math.min(7_000, Math.max(2_500, remaining - 6_000))
+      : remaining;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), attemptTimeout);
+    const signal = options.signal && typeof AbortSignal.any === "function"
+      ? AbortSignal.any([controller.signal, options.signal])
+      : controller.signal;
+    try {
+      const requestBody = {
+        model: selectedModel,
         temperature: 0,
         max_tokens: singleSource ? Math.min(maxTokens, 800) : maxTokens,
-        reasoning_effort: reasoningEffort,
         response_format: { type: "json_object" },
         messages: [
           {
@@ -305,44 +324,54 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
             }),
           },
         ],
-      }),
-      signal,
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      if (response.status === 429) circuitOpenUntil = Date.now() + circuitBreakMs;
-      throw new Error(`LLM returned ${response.status}`);
-    }
-    const parsed = parseLlmJson(payload?.choices?.[0]?.message?.content);
-    consecutiveTimeouts = 0;
-    return {
-      answer: validateGroundedAnswer(parsed, draft, query),
-      status: "ready",
-      provider: `opencode-go/${model}`,
-    };
-  } catch (error) {
-    const locallyTimedOut = error.name === "AbortError"
-      && controller.signal.aborted
-      && !options.signal?.aborted;
-    if (locallyTimedOut) {
-      consecutiveTimeouts += 1;
-      if (consecutiveTimeouts >= 3) {
-        circuitOpenUntil = Date.now() + 60_000;
-        consecutiveTimeouts = 0;
+      };
+      if (selectedModel.startsWith("deepseek-")) requestBody.reasoning_effort = reasoningEffort;
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+        signal,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const responseError = new Error(`LLM returned ${response.status}`);
+        responseError.status = response.status;
+        throw responseError;
       }
-    } else if (error.name !== "AbortError") {
+      const parsed = parseLlmJson(payload?.choices?.[0]?.message?.content);
+      const answer = validateGroundedAnswer(parsed, draft, query);
+      consecutiveTimeouts = 0;
+      return { answer, status: "ready", provider: `opencode-go/${selectedModel}` };
+    } catch (error) {
+      error.locallyTimedOut = error.name === "AbortError"
+        && controller.signal.aborted
+        && !options.signal?.aborted;
+      errors.push(error);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  const finalError = errors.at(-1) || new Error("LLM request budget was exhausted");
+  if (errors.some((error) => error.status === 429)) {
+    circuitOpenUntil = Date.now() + circuitBreakMs;
+  } else if (errors.some((error) => error.locallyTimedOut) && !options.signal?.aborted) {
+    consecutiveTimeouts += 1;
+    if (consecutiveTimeouts >= 3) {
+      circuitOpenUntil = Date.now() + 60_000;
       consecutiveTimeouts = 0;
     }
-    return { answer: null, status: "degraded", provider: "reviewed-knowledge", error: error.message };
-  } finally {
-    clearTimeout(timeout);
+  } else if (finalError.name !== "AbortError") {
+    consecutiveTimeouts = 0;
   }
+  return { answer: null, status: "degraded", provider: "reviewed-knowledge", error: finalError.message };
 }
 
 export function llmConfiguration() {
   return {
     enabled: Boolean(apiKey),
     provider: apiKey ? `opencode-go/${model}` : "reviewed-knowledge",
+    fallback: apiKey && fallbackModel ? `opencode-go/${fallbackModel}` : null,
     circuitOpen: Date.now() < circuitOpenUntil,
   };
 }

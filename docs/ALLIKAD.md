@@ -16,6 +16,8 @@ See register kirjeldab, millised allikad on otsingu päringuteel aktiivsed, mill
 
 Kõigil võrguallikatel on HTTPS-hostide allowlist, päringu ajapiir, vastusemahu piir ja kontrollitud redirect. Väliskutsed tehakse paralleelselt ning kogu kasutajapäring peab lõppema hiljemalt 15 sekundiga.
 
+Üldotsingu sünteesis proovitakse esmalt OpenCode Go `deepseek-v4-flash` mudelit. Kui see ei mahu seitsmesekundilisse katseaknasse, jääb ülejäänud päringueelarve `mimo-v2.5` varumudelile; alla 13 sekundi jäägi korral kasutatakse kohe varumudelit. Mõlemad saavad täpselt sama piiratud tõendipaki ja läbivad sama viite-, arvu-, ühiku-, väitekatvuse ning polaarsuse kontrolli. OpenCode Go dokumentatsioon märgib mõlema mudeli treeningkasutuseks „Not used” ja andmesäilituseks „0 days”.
+
 ## Kontrollitud kataloogi- ja suunamisallikad
 
 Need 30 kohalikus kataloogis olevat kirjet aitavad valida õige ametliku teenuse ja on nõrga võrguolukorra korral kasutajale suunavad allikad. Need ei muutu automaatselt konkreetse arvu või õigusliku järelduse tõendiks.
