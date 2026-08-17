@@ -84,13 +84,17 @@ Paarisvõrdluste ja interaktsioonitestide järgi ei jäänud lokaalsesse buildi 
 
 ## Avaliku deploy vastuvõtukontroll
 
-Pärast Coolify deploy'd tuleb sama brauseriseansiga uuesti kinnitada:
+Coolify kaudu juurutatud commit `fe91d68` kontrolliti aadressil `https://praktika.arleserver.cfd` sama Chrome'i brauseriseansiga. Avaliku deploy tulemused:
 
-- värske desktop-load püsib üleval ja iframe ei saa fookust;
-- Terrapointi täisrakendus laeb praktikadomeeni iframe'is;
-- autocomplete, `mets`, täpne FAQ ja allikate avamine töötavad;
-- 390 px root-laius võrdub viewport'iga;
-- first-party console error'eid ei ole;
-- `/api/health` on minimaalne ja `/api/search` ei sisalda infrastruktuurijargooni.
+- värske 1440 px desktop-load oli kolme sekundi järel `scrollY === 0`, aktiivne element oli hostdokumendi `BODY` ja iframe ei saanud fookust;
+- `https://terrapoint.ee/` laadis cross-origin iframe'is päris pealkirja, sisu ja otsinguväljad;
+- first-party konsoolivigu oli 0;
+- `mets` vastuse viide 5 avas loendi kolmelt allikalt viiele ning viis fookuse elemendile `source-5`;
+- 390 px vaates olid põhiotsing ja nimega submit-nupp nähtavad, autocomplete näitas viit sisulist küsimust ning dokumendi laius oli täpselt 390 px;
+- `/api/health`, metsa-, katastri- ja üldotsing vastasid HTTP 200-ga; päris AI-koondvastus valmis 9,47 sekundiga ning 504 ei tekkinud;
+- avalik API ei tagastanud sisemisi cache'i, mudelipakkuja, andmebaasi ega vektorindeksi välju.
+
+Avaliku deploy kuvatõmmised: `output/playwright/46-public-autocomplete-desktop.png`, `47-public-search-desktop.png`, `48-public-autocomplete-mobile.png` ja `49-public-search-mobile.png`.
 
 final local result: passed
+final public result: passed
