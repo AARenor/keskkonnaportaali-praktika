@@ -22,7 +22,7 @@ function assertCitationIntegrity(result) {
 test("reviewed forestry corpus covers the full vision manifest", () => {
   assert.deepEqual(forestryKnowledgeStats(), {
     revision: forestryKnowledgeStats().revision,
-    sources: 13,
+    sources: 16,
     documents: 21,
     faqTopics: 18,
     misconceptions: 12,
@@ -46,6 +46,19 @@ test("exact forestry FAQ returns the direct reviewed answer", () => {
   assert.equal(result.answer.title, "Kui suur osa Eestist on mets?");
   assert.match(result.answer.intro, /2,3506 miljonit hektarit/);
   assert.match(result.answer.parts[0].text, /SMI on valikuuring/);
+  assertCitationIntegrity(result);
+});
+
+test("forest age question answers the question directly and explains SMI", () => {
+  const result = answerForestryQuestion("Kas meie metsad muutuvad nooremaks?");
+  assert.equal(result.evidence.documentIds[0], "forest-age-trend");
+  assert.match(result.answer.intro, /ei muutu tervikuna lihtsalt nooremaks/iu);
+  assert.match(result.answer.intro, /nii noorte kui ka vanade metsade pindala/iu);
+  assert.match(result.answer.intro, /keskealiste metsade osakaal/iu);
+  assert.match(result.answer.parts[0].text, /SMI tähendab statistilist metsainventuuri/iu);
+  assert.match(result.answer.parts[0].text, /proovitükkidel põhinev valikuuring/iu);
+  assert.equal(result.sources.length, 5);
+  assert.equal(result.related.length, 6);
   assertCitationIntegrity(result);
 });
 

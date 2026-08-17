@@ -725,12 +725,90 @@ function Citation({ number, onNavigate }) {
   return <a className="citation" href={`#source-${number}`} onClick={(event) => onNavigate(event, number)} aria-label={`Allikas ${number}`}>{number}</a>;
 }
 
+function sourceTierLabel(value) {
+  if (value === "reviewed") return "Kontrollitud";
+  if (value === "official") return "Ametlik";
+  if (value === "supplementary") return "Taustallikas";
+  return "Veebiallikas";
+}
+
+function BroadSearchResults({ listing, busy, error, onPage, headingRef }) {
+  if (!listing && !busy) return null;
+  const total = Number(listing?.total || 0);
+  const distinctTotal = Number(listing?.distinctTotal || total);
+  const current = Number(listing?.page || 1);
+  const pageCount = Number(listing?.pageCount || 0);
+  const pages = [...new Set([1, current - 1, current, current + 1, pageCount])]
+    .filter((page) => page >= 1 && page <= pageCount)
+    .sort((left, right) => left - right);
+  return (
+    <section className="broad-results" aria-labelledby="broad-results-title" aria-busy={busy}>
+      <div className="broad-results__heading">
+        <div>
+          <span className="broad-results__eyebrow">Lai portaaliotsing</span>
+          <h2 id="broad-results-title" ref={headingRef} tabIndex={-1}>Otsingutulemused</h2>
+          <p>{distinctTotal < total
+            ? `Portaal loendas ${total.toLocaleString("et-EE")} vastet; korduvad URL-id on ühendatud ${distinctTotal.toLocaleString("et-EE")} eri leheks. AI vastuse kontrollitud viited on eraldi ülal.`
+            : "Need on kogu otsingu vasted. AI vastuse kontrollitud viited on eraldi ülal."}</p>
+        </div>
+        <strong>{total.toLocaleString("et-EE")}</strong>
+      </div>
+      {error ? <div className="broad-results__error" role="alert">{error}</div> : null}
+      {busy ? <div className="broad-results__loading" role="status"><LoaderCircle className="spin" size={20} /> Laadin tulemusi …</div> : null}
+      {!busy && !error && listing?.items?.length ? (
+        <div className="broad-results__list">
+          {listing.items.map((item) => (
+            <ExternalAnchor className="broad-result" href={item.url} key={item.id}>
+              <div className="broad-result__meta">
+                <span className={`source-tier source-tier--${item.sourceTier || "other"}`}>{sourceTierLabel(item.sourceTier)}</span>
+                <span>{item.organization}</span>
+                {item.published ? <span>{item.published}</span> : null}
+              </div>
+              <h3>{item.title}<ExternalLink size={15} /></h3>
+              {item.summary ? <p>{item.summary}</p> : null}
+              {item.topics?.length ? <div className="broad-result__topics">{item.topics.slice(0, 3).map((topic) => <span key={topic}>{topic}</span>)}</div> : null}
+            </ExternalAnchor>
+          ))}
+        </div>
+      ) : null}
+      {!busy && !error && total === 0 ? <p className="broad-results__empty">Laiast indeksist vasteid ei leitud.</p> : null}
+      {pageCount > 1 ? (
+        <nav className="results-pagination" aria-label="Otsingutulemuste lehed">
+          <button disabled={busy || current <= 1} onClick={() => onPage(current - 1)} type="button"><ArrowLeft size={15} /> Eelmine</button>
+          <div>
+            {pages.map((page, index) => (
+              <span key={page}>
+                {index > 0 && page - pages[index - 1] > 1 ? <i aria-hidden="true">…</i> : null}
+                <button aria-current={page === current ? "page" : undefined} disabled={busy || page === current} onClick={() => onPage(page)} type="button">{page}</button>
+              </span>
+            ))}
+          </div>
+          <button disabled={busy || current >= pageCount} onClick={() => onPage(current + 1)} type="button">Järgmine <ArrowRight size={15} /></button>
+        </nav>
+      ) : null}
+    </section>
+  );
+}
+
 function SearchResults({ result, query, busy, error, onSearch, onHome }) {
   const hasResult = Boolean(result?.answer);
   const [showAllSources, setShowAllSources] = useState(false);
+  const [listing, setListing] = useState(result?.searchResults || null);
+  const [listingBusy, setListingBusy] = useState(false);
+  const [listingError, setListingError] = useState("");
   const headingRef = useRef(null);
+  const listingHeadingRef = useRef(null);
+  const listingRequestRef = useRef({ id: 0, controller: null });
   const sourcesListId = useId();
   useEffect(() => setShowAllSources(false), [result?.query]);
+  useEffect(() => {
+    listingRequestRef.current.controller?.abort();
+    listingRequestRef.current = { id: listingRequestRef.current.id + 1, controller: null };
+    setListing(result?.searchResults || null);
+    setListingBusy(false);
+    setListingError("");
+    return () => listingRequestRef.current.controller?.abort();
+  }, [result?.query, result?.searchResults]);
   useEffect(() => {
     if (!busy && hasResult) {
       document.title = `${result.answer.title} | Keskkonnaportaali praktika`;
@@ -738,6 +816,33 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
     }
   }, [busy, hasResult, result?.answer?.title, result?.query]);
   const visibleSources = showAllSources ? result?.sources || [] : (result?.sources || []).slice(0, 3);
+  const loadListingPage = async (page) => {
+    listingRequestRef.current.controller?.abort();
+    const id = listingRequestRef.current.id + 1;
+    const controller = new AbortController();
+    listingRequestRef.current = { id, controller };
+    setListingBusy(true);
+    setListingError("");
+    try {
+      const response = await fetch(`/api/search/results?q=${encodeURIComponent(query)}&page=${page}&page_size=${listing?.pageSize || 12}`, { signal: controller.signal });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Tulemusi ei saanud laadida.");
+      if (listingRequestRef.current.id !== id) return;
+      setListing(data);
+      window.requestAnimationFrame(() => {
+        listingHeadingRef.current?.focus({ preventScroll: true });
+        listingHeadingRef.current?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+      });
+    } catch (listingLoadError) {
+      if (listingLoadError.name === "AbortError" || listingRequestRef.current.id !== id) return;
+      setListingError(listingLoadError.message || "Tulemusi ei saanud laadida.");
+    } finally {
+      if (listingRequestRef.current.id === id) {
+        listingRequestRef.current = { id, controller: null };
+        setListingBusy(false);
+      }
+    }
+  };
   const revealCitation = (event, number) => {
     event.preventDefault();
     const reveal = () => {
@@ -780,7 +885,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
                 {(result.answer.introCitations || []).map((citation) => <Citation key={citation} number={citation} onNavigate={revealCitation} />)}
               </p>
               <div className="answer-parts">
-                {result.answer.parts.map((part, index) => (
+                {(result.answer.parts || []).map((part, index) => (
                   <section key={index}>
                     {part.title ? <h2>{part.title}</h2> : null}
                     <p>{part.text} {(part.citations || []).map((citation) => <Citation key={citation} number={citation} onNavigate={revealCitation} />)}</p>
@@ -798,7 +903,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
 
             {result.sources.length ? <section className="sources-section" aria-labelledby="sources-title">
               <div className="sources-title-row">
-                <h2 id="sources-title">Allikad</h2>
+                <h2 id="sources-title">Vastuse allikad</h2>
                 <span>{result.sources.length}</span>
               </div>
               <div className="sources-list" id={sourcesListId}>
@@ -806,7 +911,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
                   <ExternalAnchor className="source-row" href={source.url} id={`source-${source.citation}`} key={source.id}>
                     <span className="source-number">{source.citation}</span>
                     <div className="source-card__body">
-                      <div className="source-meta"><span>{source.organization}</span><span>{source.published}</span></div>
+                      <div className="source-meta"><span className={`source-tier source-tier--${source.sourceTier || "official"}`}>{sourceTierLabel(source.sourceTier || "official")}</span><span>{source.organization}</span><span>{source.published}</span></div>
                       <h3>{source.title}<ExternalLink size={15} /></h3>
                       <p>{source.summary}</p>
                     </div>
@@ -826,6 +931,14 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
                 </button>
               ) : null}
             </section> : null}
+
+            <BroadSearchResults
+              busy={listingBusy}
+              error={listingError}
+              headingRef={listingHeadingRef}
+              listing={listing}
+              onPage={loadListingPage}
+            />
 
             {result.related?.length ? (
               <section className="related-section">

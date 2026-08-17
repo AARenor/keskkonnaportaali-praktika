@@ -418,16 +418,26 @@
       "keywords": ["metsa vanus", "nooremaks", "vanad metsad", "keskmine vanus", "vanuseklass", "puistu"],
       "topics": ["vanus", "SMI", "aegrida"],
       "answer": {
-        "summary": "SMI 2024 hindas puistute keskmiseks vanuseks 55 aastat (suhteline viga ±0,9%), kuid keskmine üksi ei näita, kas noorte ja vanade puistute osakaal samal ajal muutub. „Metsad muutuvad nooremaks” vajab vanuseklasside aegrida puuliigi ja majanduskategooria lõikes.",
-        "methodology": "Võrdle korduvate SMI aastate vanuseklasside pindala, mitte ainult üht keskmist. Hoia eraldi kõik metsad ja majandatavad metsad.",
-        "limitations": ["Prototüüp ei järelda trendi ühest SMI aastast."],
+        "summary": "Lühidalt: Eesti metsad ei muutu tervikuna lihtsalt nooremaks. SMI 2024 tulemuste ametlikus tõlgenduses suurenes nii noorte kui ka vanade metsade pindala, samal ajal vähenes keskealiste metsade osakaal. See tähendab, et vanusjaotus muutub mõlemas suunas; üksnes 55-aastane keskmine vanus (suhteline viga ±0,9%) seda mustrit ei näita.",
+        "methodology": "SMI tähendab statistilist metsainventuuri: see on üle Eesti paiknevatel proovitükkidel põhinev valikuuring, millega hinnatakse kogu riigi metsi koos statistilise veaga. Vanusetrendi hindamiseks võrreldakse eri aastate vanuseklasside pindala, puuliike ja majanduskategooriaid, mitte ainult üht keskmist.",
+        "limitations": ["Tulemus kirjeldab riigi tasandi jaotust, mitte iga konkreetset metsa. Eri aastate võrdluses tuleb arvestada valikuuringu vea ja metoodikaga."],
         "claim_type": "statistical_estimate_and_trend_caveat"
       },
       "sources": [
         {"source_id": "smi-2024-tables", "locator": "lk 16 ja 28-33, keskmine vanus ja vanuseklassid"},
-        {"source_id": "kkp-smi-overview", "locator": "SMI tulemuste arhiiv"}
+        {"source_id": "kkp-smi-overview", "locator": "SMI tulemuste arhiiv"},
+        {"source_id": "kaur-smi-2025-summary", "locator": "SMI 2024 ametlik tõlgendus, metsade vanuseline jaotus"},
+        {"source_id": "kaur-smi-2024-summary", "locator": "SMI 2023 ametlik kokkuvõte, vanade metsade pindala"},
+        {"source_id": "kaur-smi-methodology", "locator": "SMI proovitükkide võrk ja kordusmõõtmine"}
       ],
-      "related_questions": ["Kas Eestis saab mets otsa?", "Kas vana mets on automaatselt kaitse all?"]
+      "related_questions": [
+        "Mida tähendab statistiline metsainventuur ehk SMI?",
+        "Kui suur on noorte, keskealiste ja vanade metsade osakaal?",
+        "Miks ei piisa metsade vanuse hindamiseks keskmisest vanusest?",
+        "Kuidas mõjutavad raied Eesti metsade vanusjaotust?",
+        "Kas Eestis saab mets otsa?",
+        "Kas vana mets on automaatselt kaitse all?"
+      ]
     },
     {
       "id": "clearcut-over-time",

@@ -51,6 +51,10 @@ function getPool() {
   return pool;
 }
 
+export function databaseEnabled() {
+  return Boolean(databaseUrl);
+}
+
 async function ensureSchema() {
   const poolInstance = getPool();
   if (!poolInstance) return false;
@@ -89,6 +93,25 @@ async function ensureSchema() {
     });
   }
   return schemaPromise;
+}
+
+export async function withDatabaseClient(operation) {
+  const poolInstance = getPool();
+  if (!poolInstance) return null;
+  await ensureSchema();
+  const client = await poolInstance.connect();
+  try {
+    return await operation(client);
+  } finally {
+    client.release();
+  }
+}
+
+export async function databaseQuery(text, parameters = []) {
+  const poolInstance = getPool();
+  if (!poolInstance) return null;
+  await ensureSchema();
+  return poolInstance.query(text, parameters);
 }
 
 export async function readSearchCache(query, revision) {

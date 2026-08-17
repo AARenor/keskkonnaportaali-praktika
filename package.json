@@ -8,6 +8,7 @@
     "dev:server": "NODE_ENV=development node --watch server/index.mjs",
     "build": "vite build && node scripts/prepare-sites-build.mjs",
     "start": "NODE_ENV=production node server/index.mjs",
+    "sync:corpus": "node server/sync-corpus.mjs",
     "test": "node --test tests/*.test.mjs",
     "preview": "vite preview",
     "test:sites": "node --test tests/sites-worker.test.mjs"

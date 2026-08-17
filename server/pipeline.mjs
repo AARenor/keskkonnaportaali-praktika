@@ -1,5 +1,6 @@
 import { readSearchCache, recordSearch } from "./database.mjs";
 import { answerCadastreQuestion } from "./cadastre.mjs";
+import { searchCorpusEvidence } from "./corpus.mjs";
 import {
   answerForestryQuestion,
   FORESTRY_KB_REVISION,
@@ -21,7 +22,7 @@ import {
   scoreDocument,
 } from "./search.mjs";
 
-export const SEARCH_RESPONSE_REVISION = `answer-v4-${FORESTRY_KB_REVISION}`;
+export const SEARCH_RESPONSE_REVISION = `answer-v5-luna-${FORESTRY_KB_REVISION}`;
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 
 function deduplicate(documents) {
@@ -39,6 +40,7 @@ function rankPortalDocuments(query, documents) {
       ...document,
       score: scoreDocument(document, query)
         + (document.retrieval === "curated-guide" ? 2 : 0)
+        + (document.retrieval === "local-corpus" ? 5 : 0)
         + (document.retrieval === "live-discovery" ? 3 : 0)
         + (document.retrieval === "official-federated-search" ? 4 : 0),
     }))
@@ -50,7 +52,7 @@ export function publicResponse(draft) {
   return {
     ...response,
     sources: (response.sources || []).map((source) => Object.fromEntries([
-      "id", "citation", "title", "organization", "type", "published", "url", "summary", "locator", "tags",
+      "id", "citation", "title", "organization", "type", "published", "url", "summary", "locator", "tags", "sourceTier",
     ].filter((key) => source[key] !== undefined).map((key) => [key, source[key]]))),
   };
 }
@@ -87,9 +89,22 @@ export function isSearchCacheEnabled(value = process.env.SEARCH_CACHE_ENABLED) {
 export function shouldGenerateGroundedAnswer(draft) {
   return Boolean(
     draft?.sources?.length
-    && ["portal-discovery", "reviewed-official-source"].includes(draft?.evidence?.kind)
+    && ["portal-discovery", "reviewed-official-source", "reviewed-forestry-knowledge"].includes(draft?.evidence?.kind)
     && draft?.evidence?.answerable === true,
   );
+}
+
+export function mergeRelatedQuestions(generated = [], reviewed = [], limit = 6) {
+  const seen = new Set();
+  return [...generated, ...reviewed]
+    .map((value) => String(value || "").replace(/\s+/gu, " ").trim())
+    .filter((value) => {
+      const key = value.toLocaleLowerCase("et").replace(/[^0-9a-zõäöüšž]+/giu, " ").trim();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, Math.max(1, Math.min(Number(limit) || 6, 6)));
 }
 
 export async function createPortalDraft(query, { deadlineAt, signal }) {
@@ -106,10 +121,14 @@ export async function createPortalDraft(query, { deadlineAt, signal }) {
 
   const discoveryQuery = buildDiscoveryQuery(query) || query;
   const discoveryTimeout = Math.max(250, Math.min(3_000, remainingBudget(deadlineAt, 8_000)));
-  const [portalResult, officialResult] = await Promise.allSettled([
+  const [corpusResult, portalResult, officialResult] = await Promise.allSettled([
+    searchCorpusEvidence(query, 16),
     searchKeskkonnaportaal(discoveryQuery, 10, { timeoutMs: discoveryTimeout, signal }),
     searchOfficialSites(discoveryQuery, 5, { timeoutMs: discoveryTimeout, signal }),
   ]);
+  const corpus = corpusResult.status === "fulfilled"
+    ? corpusResult.value
+    : { documents: [], total: 0 };
   const portal = portalResult.status === "fulfilled"
     ? portalResult.value
     : { documents: [], total: 0 };
@@ -118,6 +137,7 @@ export async function createPortalDraft(query, { deadlineAt, signal }) {
     : { documents: [], total: 0, services: [] };
 
   const candidates = deduplicate([
+    ...corpus.documents,
     ...portal.documents,
     ...official.documents,
     ...SEARCH_DOCUMENTS.map((document) => ({ ...document, retrieval: "curated-guide" })),
@@ -144,9 +164,9 @@ export async function createPortalDraft(query, { deadlineAt, signal }) {
       ? null
       : "Leitud allikad ei kata küsimust piisavalt täpselt. Lisa konkreetne objekt, näitaja, piirkond või aasta.",
     evidenceKind: quality.strong ? "portal-discovery" : "insufficient-evidence",
-    limit: 6,
+    limit: 8,
     quality,
-    total: portal.total + official.total || reranked.length,
+    total: corpus.total || portal.total + official.total || reranked.length,
   });
 }
 
@@ -173,6 +193,7 @@ async function searchWithinBudget(cleanQuery, { startedAt, deadlineAt, signal })
     : { answer: null, status: "not-applicable", provider: "reviewed-knowledge" };
 
   if (llmResult.answer) draft.answer = llmResult.answer;
+  if (llmResult.related?.length) draft.related = mergeRelatedQuestions(llmResult.related, draft.related, 6);
   draft.generatedAt = new Date().toISOString();
   const response = publicResponse(draft);
   const durationMs = Date.now() - startedAt;

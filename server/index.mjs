@@ -1,6 +1,11 @@
 import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  broadSearchResults,
+  corpusStats,
+  startCorpusSyncIfStale,
+} from "./corpus.mjs";
 import { getForestrySuggestions } from "./forestry.mjs";
 import { getKeskkonnaportaalSuggestions } from "./integrations.mjs";
 import { searchEnvironmentLive } from "./pipeline.mjs";
@@ -88,15 +93,37 @@ app.get("/api/search", async (request, response) => {
   if (!query) return response.status(400).json({ error: "Sisesta otsingusõna." });
   if (query.length > 180) return response.status(400).json({ error: "Otsing on liiga pikk." });
   try {
-    const result = await searchEnvironmentLive(query);
+    const page = Math.max(1, Math.min(Number(request.query.page) || 1, 500));
+    const pageSize = Math.max(1, Math.min(Number(request.query.page_size) || 12, 50));
+    const [result, searchResults] = await Promise.all([
+      searchEnvironmentLive(query),
+      broadSearchResults(query, { page, pageSize }),
+    ]);
     response.setHeader("Cache-Control", "private, max-age=30, stale-while-revalidate=120");
-    return response.json(result);
+    return response.json({ ...result, searchResults });
   } catch {
     return response.status(502).json({
       error: "Otsingu andmeallikad ei vastanud. Proovi hetke pärast uuesti.",
       retryable: true,
     });
   }
+});
+
+app.get("/api/search/results", async (request, response) => {
+  const query = String(request.query.q || "").trim();
+  if (!query) return response.status(400).json({ error: "Sisesta otsingusõna." });
+  if (query.length > 180) return response.status(400).json({ error: "Otsing on liiga pikk." });
+  const page = Math.max(1, Math.min(Number(request.query.page) || 1, 500));
+  const pageSize = Math.max(1, Math.min(Number(request.query.page_size) || 12, 50));
+  const results = await broadSearchResults(query, { page, pageSize });
+  response.setHeader("Cache-Control", "private, max-age=60, stale-while-revalidate=300");
+  return response.json(results);
+});
+
+app.get("/api/corpus", async (_request, response) => {
+  const stats = await corpusStats();
+  response.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+  return response.json(stats);
 });
 
 app.get("/api/suggestions", async (request, response) => {
@@ -225,4 +252,9 @@ app.use((_request, response) => response.status(404).json({ error: "Lehte ei lei
 
 app.listen(port, "0.0.0.0", () => {
   process.stdout.write(`Keskkonnaportaali praktika listening on ${port}\n`);
+  const refreshCorpus = () => {
+    void startCorpusSyncIfStale().catch(() => undefined);
+  };
+  setTimeout(refreshCorpus, 1_000).unref();
+  setInterval(refreshCorpus, 60 * 60 * 1_000).unref();
 });

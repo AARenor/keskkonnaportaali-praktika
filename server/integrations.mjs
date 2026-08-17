@@ -351,7 +351,7 @@ function articleText(body) {
 }
 
 export async function hydrateOfficialDocuments(documents, limit = 5, options = {}) {
-  const selected = (documents || []).slice(0, Math.max(1, Math.min(Number(limit) || 5, 5)));
+  const selected = (documents || []).slice(0, Math.max(1, Math.min(Number(limit) || 5, 10)));
   return Promise.all(selected.map(async (document) => {
     if (String(document.content || "").length >= 120) return document;
     try {

@@ -7,6 +7,8 @@ const documentPayload = JSON.parse(readFileSync(new URL("./knowledge/forestry/do
 const ALLOWED_SOURCE_HOSTS = new Set([
   "keskkonnaportaal.ee",
   "www.keskkonnaportaal.ee",
+  "keskkonnaagentuur.ee",
+  "www.keskkonnaagentuur.ee",
   "keskkonnaamet.ee",
   "www.keskkonnaamet.ee",
   "riigiteataja.ee",
@@ -383,8 +385,10 @@ function sourceFor(reference) {
     published: source.data_year ? String(source.data_year) : source.updated_at || source.published_at || "jooksev",
     url: source.url,
     summary: reference.locator ? `Asukoht allikas: ${reference.locator}` : source.notes || "Ametlik algallikas.",
+    content: source.notes || "",
     locator: reference.locator,
     tags: [source.source_type, source.data_year ? String(source.data_year) : null].filter(Boolean),
+    sourceTier: "reviewed",
   };
 }
 
@@ -461,9 +465,10 @@ function knowledgeResponse(query, selectedDocuments, { broad = false, topScore =
     },
     sources,
     clarification: broad ? "Kas soovid edasi vaadata metsasust, raiet ja juurdekasvu, kaitset või konkreetset piirkonda?" : clarificationFor(primary),
-    related: (broad ? BROAD_SUGGESTIONS : primary.related_questions || BROAD_SUGGESTIONS).slice(0, 4),
+    related: (broad ? BROAD_SUGGESTIONS : primary.related_questions || BROAD_SUGGESTIONS).slice(0, 6),
     evidence: {
       kind: "reviewed-forestry-knowledge",
+      answerable: true,
       revision: FORESTRY_KB_REVISION,
       documentIds: selectedDocuments.map((document) => document.id),
       topScore,

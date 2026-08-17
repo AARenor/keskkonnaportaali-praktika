@@ -45,6 +45,48 @@
       "notes": "61-leheküljeline tabel-PDF. Prototüübis kasutatud read kontrolliti ka visuaalse renderdusega."
     },
     {
+      "id": "kaur-smi-2025-summary",
+      "title": "Statistilise metsainventuuri (SMI) andmetel on metsa tagavara stabiilne",
+      "publisher": "Keskkonnaagentuur",
+      "url": "https://keskkonnaagentuur.ee/uudised/statistilise-metsainventuuri-smi-andmetel-metsa-tagavara-stabiilne",
+      "source_type": "official_statistical_summary",
+      "published_at": "2025-06-10",
+      "updated_at": "2025-06-10",
+      "data_year": 2024,
+      "license": null,
+      "access": "public",
+      "review_status": "prototype_research_reviewed",
+      "notes": "Ametlik SMI 2024 tulemuste tõlgendus: suurenesid nii noorte kui ka vanade metsade pindalad, keskealiste metsade osakaal vähenes."
+    },
+    {
+      "id": "kaur-smi-2024-summary",
+      "title": "SMI: segametsade osakaal kasvab",
+      "publisher": "Keskkonnaagentuur",
+      "url": "https://keskkonnaagentuur.ee/uudised/smi-segametsade-osakaal-kasvab",
+      "source_type": "official_statistical_summary",
+      "published_at": "2024-06-10",
+      "updated_at": "2024-06-10",
+      "data_year": 2023,
+      "license": null,
+      "access": "public",
+      "review_status": "prototype_research_reviewed",
+      "notes": "Ametlik SMI 2023 tulemuste kokkuvõte märgib vanade metsade pindala jätkuvat suurenemist, sealhulgas erametsades."
+    },
+    {
+      "id": "kaur-smi-methodology",
+      "title": "Metsade inventeerimise alused",
+      "publisher": "Keskkonnaagentuur",
+      "url": "https://keskkonnaagentuur.ee/uudised/metsade-inventeerimise-alused",
+      "source_type": "official_methodology_web",
+      "published_at": "2018-02-14",
+      "updated_at": "2018-02-14",
+      "data_year": null,
+      "license": null,
+      "access": "public",
+      "review_status": "prototype_research_reviewed",
+      "notes": "Selgitab, et SMI on üle-eestilisel proovitükkide võrgul põhinev valikuuring ning alalisi proovitükke mõõdetakse uuesti."
+    },
+    {
       "id": "kkp-current-forest",
       "title": "Metsainfo hetkeseis",
       "publisher": "Keskkonnaagentuur / Keskkonnaportaal",
