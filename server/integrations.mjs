@@ -1,8 +1,61 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { request as httpsRequest } from "node:https";
+import { rootCertificates } from "node:tls";
 import { load } from "cheerio";
 
 const PORTAL_BASE = "https://keskkonnaportaal.ee";
-const PORTAL_HOSTS = new Set(["keskkonnaportaal.ee", "www.keskkonnaportaal.ee", "keskkonnaagentuur.ee", "www.keskkonnaagentuur.ee"]);
+const VPORTAL_SEARCH_BASE = "https://search.service.eu-live.vportal.ee/v1/search";
+const OFFICIAL_HOSTS = new Set([
+  "keskkonnaportaal.ee",
+  "www.keskkonnaportaal.ee",
+  "keskkonnaagentuur.ee",
+  "www.keskkonnaagentuur.ee",
+  "keskkonnaamet.ee",
+  "www.keskkonnaamet.ee",
+  "kliimaministeerium.ee",
+  "www.kliimaministeerium.ee",
+  "keskkonnaandmed.envir.ee",
+  "avaandmed.keskkonnaportaal.ee",
+  "gsavalik.envir.ee",
+  "andmed.stat.ee",
+  "ohuseire.ee",
+  "www.ohuseire.ee",
+  "airviro.klab.ee",
+  "ilmateenistus.ee",
+  "www.ilmateenistus.ee",
+  "register.keskkonnaportaal.ee",
+  "tallinn.ee",
+  "www.tallinn.ee",
+  "eea.europa.eu",
+  "www.eea.europa.eu",
+]);
+const VPORTAL_SITES = [
+  {
+    index: "keskkonnaamet",
+    origin: "https://keskkonnaamet.ee",
+    baseUrl: "https://keskkonnaamet.ee",
+    organization: "Keskkonnaamet",
+  },
+  {
+    index: "keskkonnaagentuur",
+    origin: "https://keskkonnaagentuur.ee",
+    baseUrl: "https://keskkonnaagentuur.ee",
+    organization: "Keskkonnaagentuur",
+  },
+  {
+    index: "kliimamin",
+    origin: "https://kliimaministeerium.ee",
+    baseUrl: "https://kliimaministeerium.ee",
+    organization: "Kliimaministeerium",
+  },
+];
+// The upstream currently omits its Let's Encrypt intermediate certificate.
+// This official public chain completes verification without disabling TLS.
+const VPORTAL_CA = [
+  ...rootCertificates,
+  readFileSync(new URL("./certs/vportal-chain.pem", import.meta.url), "utf8"),
+];
 const responseCache = new Map();
 const MAX_CACHE_ENTRIES = 250;
 const MAX_UPSTREAM_BYTES = 2_000_000;
@@ -51,7 +104,7 @@ async function fetchCached(url, {
     });
     if (!response.ok) throw new Error(`Upstream returned ${response.status}`);
     const finalUrl = new URL(response.url);
-    if (!PORTAL_HOSTS.has(finalUrl.hostname)) throw new Error("Upstream redirected outside the official allowlist");
+    if (!OFFICIAL_HOSTS.has(finalUrl.hostname)) throw new Error("Upstream redirected outside the official allowlist");
     const contentLength = Number(response.headers.get("content-length") || 0);
     if (contentLength > MAX_UPSTREAM_BYTES) throw new Error("Upstream response is too large");
     const body = (await response.text()).slice(0, MAX_UPSTREAM_BYTES);
@@ -68,12 +121,172 @@ async function fetchCached(url, {
 function officialPortalUrl(value) {
   try {
     const url = new URL(value, PORTAL_BASE);
-    if (url.protocol !== "https:" || !PORTAL_HOSTS.has(url.hostname)) return null;
+    if (url.protocol !== "https:" || !OFFICIAL_HOSTS.has(url.hostname)) return null;
     url.hash = "";
     return url.toString();
   } catch {
     return null;
   }
+}
+
+function stripMarkup(value = "") {
+  if (!value) return "";
+  const $ = load(`<main>${String(value)}</main>`);
+  $("script, style, noscript").remove();
+  return cleanText($("main").text());
+}
+
+function officialDate(value) {
+  const date = new Date(value || "");
+  if (!Number.isFinite(date.getTime())) return "jooksev";
+  return new Intl.DateTimeFormat("et-EE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+}
+
+async function fetchVportalJson(url, origin, {
+  ttlMs = 5 * 60_000,
+  staleMs = 24 * 60 * 60_000,
+  timeoutMs = 4_500,
+  signal: externalSignal,
+} = {}) {
+  const cacheKey = `vportal:${url}`;
+  const now = Date.now();
+  const cached = responseCache.get(cacheKey);
+  if (cached && now - cached.savedAt < ttlMs) {
+    return { payload: JSON.parse(cached.body), cache: "hit", stale: false };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(250, Math.min(Number(timeoutMs) || 4_500, 10_000)));
+  const signal = externalSignal && typeof AbortSignal.any === "function"
+    ? AbortSignal.any([controller.signal, externalSignal])
+    : controller.signal;
+  try {
+    const body = await new Promise((resolve, reject) => {
+      const request = httpsRequest(url, {
+        ca: VPORTAL_CA,
+        // The official search host advertises IPv6, but Coolify's bridge
+        // network is IPv4-only. Node does not reliably fall back here, so an
+        // otherwise healthy upstream would consume the entire search budget.
+        family: 4,
+        headers: {
+          Accept: "application/json",
+          Origin: origin,
+          "User-Agent": "Keskkonnaportaali-praktika/4.0 (+https://praktika.arleserver.cfd)",
+        },
+        method: "GET",
+        signal,
+      }, (response) => {
+        if (response.statusCode !== 200) {
+          response.resume();
+          reject(new Error(`Official search returned ${response.statusCode}`));
+          return;
+        }
+        const declaredSize = Number(response.headers["content-length"] || 0);
+        if (declaredSize > MAX_UPSTREAM_BYTES) {
+          response.destroy(new Error("Official search response is too large"));
+          return;
+        }
+        let size = 0;
+        const chunks = [];
+        response.on("data", (chunk) => {
+          size += chunk.length;
+          if (size > MAX_UPSTREAM_BYTES) {
+            response.destroy(new Error("Official search response is too large"));
+            return;
+          }
+          chunks.push(chunk);
+        });
+        response.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+        response.on("error", reject);
+      });
+      request.on("error", reject);
+      request.end();
+    });
+    const payload = JSON.parse(body);
+    if (!payload?.response || !Array.isArray(payload.response.docs)) {
+      throw new Error("Official search returned an invalid payload");
+    }
+    cacheResponse(cacheKey, body);
+    return { payload, cache: "miss", stale: false };
+  } catch (error) {
+    if (cached && now - cached.savedAt < staleMs) {
+      return { payload: JSON.parse(cached.body), cache: "stale", stale: true };
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function searchVportalSite(site, query, limit, options) {
+  const url = new URL(`${VPORTAL_SEARCH_BASE}/${site.index}`);
+  url.searchParams.set("query", query);
+  url.searchParams.set("sort_by", "score");
+  url.searchParams.set("page", "1");
+  url.searchParams.set("langcode", "et");
+  url.searchParams.set("limit", String(limit));
+  const { payload, cache, stale } = await fetchVportalJson(url, site.origin, options);
+  const documents = payload.response.docs.flatMap((item) => {
+    let sourceUrl;
+    try {
+      sourceUrl = new URL(item.uri, site.baseUrl);
+    } catch {
+      return [];
+    }
+    if (sourceUrl.protocol !== "https:" || !OFFICIAL_HOSTS.has(sourceUrl.hostname)) return [];
+    sourceUrl.hash = "";
+    const highlighted = stripMarkup(item.highlighted).slice(0, 900);
+    const lead = stripMarkup(item.lead_text).slice(0, 900);
+    const fullContent = Array.isArray(item.content)
+      ? item.content.map(stripMarkup).filter(Boolean).join("\n").slice(0, 7_500)
+      : "";
+    const firstContent = fullContent.slice(0, 900);
+    const summary = cleanText([lead, highlighted].filter(Boolean).join(" ")).slice(0, 1_200)
+      || firstContent
+      || `${item.title} – ${site.organization} ametlik otsingutulemus.`;
+    const title = cleanText(item.title);
+    if (!title || !summary) return [];
+    return [{
+      id: sourceId(`vp-${site.index}`, sourceUrl.toString()),
+      title,
+      organization: site.organization,
+      type: cleanText(item.content_type) || "Ametlik veebileht",
+      published: officialDate(item.created),
+      url: sourceUrl.toString(),
+      tags: [cleanText(item.content_type), site.organization, "ametlik allikas"].filter(Boolean),
+      summary,
+      content: fullContent || undefined,
+      excerpt: highlighted || lead,
+      sourceSystem: `${site.organization} otsing`,
+      retrieval: "official-federated-search",
+      stale,
+    }];
+  });
+  return {
+    documents,
+    total: Number(payload.response.numFound || documents.length),
+    cache,
+    stale,
+    service: site.index,
+  };
+}
+
+export async function searchOfficialSites(query, limit = 5, options = {}) {
+  const boundedLimit = Math.max(1, Math.min(Number(limit) || 5, 6));
+  const results = await Promise.allSettled(
+    VPORTAL_SITES.map((site) => searchVportalSite(site, query, boundedLimit, options)),
+  );
+  const available = results.filter((result) => result.status === "fulfilled").map((result) => result.value);
+  return {
+    documents: available.flatMap((result) => result.documents),
+    total: available.reduce((sum, result) => sum + result.total, 0),
+    services: available.map((result) => ({ service: result.service, cache: result.cache, stale: result.stale })),
+  };
 }
 
 export async function searchKeskkonnaportaal(query, limit = 10, options = {}) {
@@ -137,9 +350,10 @@ function articleText(body) {
   return [...new Set(paragraphs)].join("\n").slice(0, 7_500);
 }
 
-export async function hydrateKeskkonnaportaalDocuments(documents, limit = 5, options = {}) {
+export async function hydrateOfficialDocuments(documents, limit = 5, options = {}) {
   const selected = (documents || []).slice(0, Math.max(1, Math.min(Number(limit) || 5, 5)));
   return Promise.all(selected.map(async (document) => {
+    if (String(document.content || "").length >= 120) return document;
     try {
       const { body, stale } = await fetchCached(document.url, {
         ttlMs: 30 * 60_000,
@@ -153,6 +367,8 @@ export async function hydrateKeskkonnaportaalDocuments(documents, limit = 5, opt
     }
   }));
 }
+
+export const hydrateKeskkonnaportaalDocuments = hydrateOfficialDocuments;
 
 export async function getKeskkonnaportaalSuggestions(query, limit = 5) {
   const url = new URL("/et/search_api_autocomplete/kem_kkp_search", PORTAL_BASE);
@@ -179,4 +395,8 @@ export const INTEGRATION_ENDPOINTS = {
   portalSitemap: `${PORTAL_BASE}/sitemap.xml`,
   officialGeoServer: "https://gsavalik.envir.ee/geoserver",
   officialDataApi: "https://keskkonnaandmed.envir.ee/",
+  officialSiteSearch: VPORTAL_SITES.map((site) => `${VPORTAL_SEARCH_BASE}/${site.index}`),
+  statisticsApi: "https://andmed.stat.ee/api/v1/et/stat",
 };
+
+export { VPORTAL_SITES };

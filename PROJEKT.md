@@ -11,7 +11,7 @@ Projekt on märgitud praktikaprojektiks ja saadab `noindex` juhise. See ei ole K
 
 ## Kasutajakogemus
 
-- Avalehe põhiotsing on nähtav kohe nii töölaual kui ka mobiili esimeses vaates.
+- Avalehe põhiotsing on nähtav kohe nii töölaual kui ka mobiili esimeses vaates. Mobiilipäise otsinguikoon viib fookuse samasse vormi ega loo DOM-i teist otsingukasti.
 - Autocomplete pakub kuni viis sisulist küsimust ning toetab klaviatuuri, hiirt ja puutetundlikku ekraani.
 - Otsingutulemus on kompaktne: otsene koondvastus, allikaviited, kolm esmast allikat, nupp ülejäänute avamiseks ja seotud küsimused.
 - Avalikus kasutajaliideses ega API vastuses ei näidata mudeli, andmebaasi, vektorindeksi, fallback'i või ühenduste tehnilisi olekuid.
@@ -25,9 +25,9 @@ Projekt on märgitud praktikaprojektiks ja saadab `noindex` juhise. See ei ole K
 | Rakendusserver | Node.js + Express | Staatika, avalik API, turvapäised, rate limit ja päringu orkestreerimine |
 | Metsateadmised | Versioonitud JSON-korpus | 21 läbi vaadatud vastusedokumenti, 18 FAQ teemat, 12 väärarusaama ja 13 ametlikku algallikat |
 | Otsing | Kohalik eesti hübriidotsing | Terminilaiendus, BM25-laadne skoor, märgijadade sarnasus ja RRF-järjestus |
-| Värske sisu | Keskkonnaportaali avalik otsing | Uute portaaliartiklite avastamine; valitud ametlikud lehed loetakse täistekstina |
+| Värske sisu | Nelja ametliku veebikogu liitotsing | Keskkonnaportaali, Keskkonnaameti, Keskkonnaagentuuri ja Kliimaministeeriumi sisu paralleelne avastamine ning puhastatud täistekst |
 | Ruumipäring | Avalik kataster + Metsaregistri WFS | Valideeritud katastritunnuse informatiivne pindala ja metsaeraldiste hetkeseis otse avalikust teenusest |
-| Vastuse koostamine | Kontrollitud baasvastus + valikuline LLM | Läbi vaadatud vastus töötab alati; mudel võib sõnastust parandada ainult tagastatud tõendite alusel |
+| Vastuse koostamine | Kontrollitud vastus/abstention + valikuline LLM | Läbi vaadatud vertikaal vastab deterministlikult; üldotsingu mudel töötab ainult tugeva tõendikatte korral ja tõrke puhul kuvatakse aus allikaotsingu olek |
 | Vahemälu | Eraldatud PostgreSQL | Versioonitud vastusepuhver ja privaatsust hoidev tehniline sündmuslogi |
 | Terrapoint | Eraldi iframe | Kogu Terrapointi UI, kaart ja sealsed avalikud integratsioonid; üldotsingust lahus |
 | Pakendamine | Dockerfile + Compose | Mitte-root, read-only veebikonteiner ja eraldatud PostgreSQL |
@@ -45,14 +45,15 @@ Senine 256-mõõtmeline räsivektor ei olnud semantiline embedding ja Qdranti ki
 
 Avalik endpoint on `GET /api/search?q=<küsimus>`.
 
-1. Päring normaliseeritakse ning klassifitseeritakse. Kahtlase URL-i või prompt-injection'i korral vastatakse turvalise täpsustusküsimusega.
+1. Päring normaliseeritakse ning klassifitseeritakse deterministlikult olekusse `answerable`, `needs-clarification`, `live-weather` või `out-of-scope`. Prompt-injection'i korral vastatakse turvalise ulatuse selgitusega; mudelit ei kutsuta.
 2. Metsateema korral otsitakse versioonitud ja läbi vaadatud teadmusbaasist. Üldine `mets` koostab päris sünteesi metsamaa pindalast, näitajate piiridest ja ametlike arvude erinevuse põhjustest; see ei kopeeri otsingukaartide väljavõtteid.
 3. Valideeritud katastritunnuse korral küsitakse otse Maa- ja Ruumiameti avalikku `kataster:ky_kehtiv` ning Metsaregistri `metsaregister:eraldis` WFS-i. Katastriväljavõte märgitakse informatiivseks ja mitteametlikuks. Vastus eristab selgelt olekuid „leitud”, „eduka päringu tulemusel ei leitud” ja „allikas ei vastanud”.
-4. Muude teemade korral avastatakse tulemused Keskkonnaportaali avaliku otsingu kaudu ning valitud lubatud ametlikud lehed loetakse serveris täistekstina. HTML-otsingu väljavõtet ennast ei käsitleta lõpliku tõendina.
-5. Kontrollitud struktuurne vastus on töökindel baas. Kui valikuline keelemudel on saadaval, tohib see ainult tõendite piires vastust tihendada ja peab säilitama kehtivad viited. Läbi vaadatud metsavastust ega täpset WFS-väljavõtet mudel ümber ei sõnasta.
-6. 429, timeout või vigane mudelivastus ei lõhu otsingut. Lühike circuit breaker väldib korduvaid aeglaseid mudelikõnesid ja kasutajale tagastatakse kohe kontrollitud baasvastus.
-7. Avalikus vastuses on ainult küsimus, vastus, viited, allikad, täpsustus ja seotud küsimused. Tehniline diagnostika jääb serverisse.
-8. Kogu otsingul on 12 sekundi vastusepiir. Kui värskete allikate lugemine või mudel ei mahu sellesse, katkestatakse väliskutsed ja tagastatakse kontrollitud baasvastus, mitte proxy 504.
+4. Muude teemade korral otsitakse paralleelselt Keskkonnaportaalist ning Keskkonnaameti, Keskkonnaagentuuri ja Kliimaministeeriumi Valitsusportaali indeksitest. API täistekst või lubatud ametlik leht puhastatakse serveris; toorest HTML-i ei renderdata.
+5. Tõendivärav nõuab, et vähemalt üks ametlik dokument kataks küsimuse põhitingimused ja küsitud aasta. Eri artiklitest juhuslikult kokku saadud märksõnad ei anna AI-le vastamisõigust.
+6. Valikuline OpenCode Go `deepseek-v4-flash` võib koostada üldotsingu sünteesi ainult tugeva tõendipaki põhjal. Iga sisuline väide vajab lubatud viidet; arvud, ühikud, aastad, väitekatvus ja polaarsus valideeritakse. Metsavastust ega WFS-väljavõtet mudel ümber ei sõnasta.
+7. 429, timeout, vigane mudelivastus või nõrk tõend ei muutu artikliväljavõtteks. Kasutaja saab kas kontrollitud vertikaalvastuse, täpsustusküsimuse, turvalise abstention'i või teate, et koondvastust ei saanud usaldusväärselt koostada.
+8. Avalikus vastuses on ainult küsimus, vastus, viited, allikad, täpsustus ja seotud küsimused. Tehniline diagnostika jääb serverisse.
+9. Kogu otsingul on 15 sekundi vastusepiir. Kui värskete allikate lugemine või mudel ei mahu sellesse, katkestatakse väliskutsed ja tagastatakse kontrollitud ajapiiri vastus, mitte proxy 504.
 
 Vahemälu võti sisaldab teadmusbaasi ja vastuseskeemi revisjoni, seega ei saa vana Terrapointi või varasema skeemi vastus pärast deploy'd edasi elada.
 
@@ -84,6 +85,9 @@ Maa- ja Ruumiameti teenus on tasuta avalik teenus, kuid selle väljavõte on kas
 |---|---|
 | `keskkonnaportaal.ee/et/search?search_api_fulltext=...` | Portaali värske sisu avastamise fallback |
 | `keskkonnaportaal.ee/et/search_api_autocomplete/kem_kkp_search` | Täiendavad puhastatud soovitused pärast enda FAQ-sid |
+| `search.service.eu-live.vportal.ee/v1/search/keskkonnaamet` | Keskkonnaameti ametliku veebisisu relevantsusjärjestusega täistekstiotsing |
+| `search.service.eu-live.vportal.ee/v1/search/keskkonnaagentuur` | Keskkonnaagentuuri ametliku veebisisu täistekstiotsing |
+| `search.service.eu-live.vportal.ee/v1/search/kliimamin` | Kliimaministeeriumi ametliku veebisisu täistekstiotsing |
 | Keskkonnaportaali ja teiste ametiasutuste HTTPS-lehed/PDF-id | Vastuse kontrollitavad algallikad |
 
 Keskkonnaportaali Drupali otsa ei käsitleta versioonitud lepingulise API-na. Päringud on ajapiiranguga, vastusemaht on piiratud, tulemused puhverdatakse ning tõrke korral kasutatakse stale-if-error väärtust.
@@ -92,9 +96,9 @@ Keskkonnaportaali Drupali otsa ei käsitleta versioonitud lepingulise API-na. P�
 
 `terrapoint.ee` töötab ainult täisrakenduse iframe'ina. See ei ole riigi avaandmeteenus ega üldotsingu andmeallikas.
 
-### Järgmiste otsinguvertikaalide ametlikud ühendused
+### Kontrollitud andmeteenused ja järgmised tüübikindlad adapterid
 
-Uuringu käigus kontrollitud avalikult ligipääsetavad ametlikud algallikad, mida saab lisada intent-põhiselt ilma Terrapointi sõltuvuseta:
+Uuringu käigus kontrollitud ametlikud algallikad on lisatud 30 kirjega suunamiskataloogi. Toorarvude automaatne vastamine ootab iga teenuse kohta tüübikindlat adapterit:
 
 - KAUR PostgREST `https://keskkonnaandmed.envir.ee/` kliima- ja seireandmetele;
 - EELIS avalikud JSON-jaotused ning KAUR GeoServeri WFS kaitse-, Natura-, vääriselupaiga ja Metsaregistri andmetele;
@@ -138,7 +142,7 @@ Vaikimisi käivituvad veebirakendus ja PostgreSQL. Eksperimentaalse Qdranti kont
 - domeen: `https://praktika.arleserver.cfd`;
 - `PUBLIC_ORIGIN=https://praktika.arleserver.cfd`;
 - projektile eraldatud `DATABASE_URL`;
-- valikuline serverisaladus `OPENCODE_ZEN_API_KEY`;
+- valikuline serverisaladus `OPENCODE_GO_API_KEY`;
 - `LLM_ENABLED=true|false` ja `SEARCH_CACHE_ENABLED=true|false`.
 
 Coolify tokenit, SSH privaatvõtit ega mudelivõtit ei tohi panna reposse, brauserikoodi, dokumentatsiooni või logidesse. Deploy-võti peab olema projektipõhine ja minimaalse õigusega.
@@ -167,11 +171,12 @@ docker compose config
 Automaattestid kontrollivad muu hulgas:
 
 - 13 allikat, 21 dokumenti, 18 FAQ teemat ja 12 väärarusaama;
+- 30 allikaga üldkataloog ning 50 päringuga külmutatud keskkonnaotsingu routing-komplekt;
 - külmutatud v2 hindamiskomplekti 30/30 vastatava päringu õiget intent-vastust ja Recall@3 väärtust 100%;
 - `mets` päris sünteesi, täpset FAQ vastust ja turvalist abstention'it;
 - raiemahu/juurdekasvu vastuse aastaid, ühikuid ja piiranguid;
 - mudelivastuse viidete, arvude, ühikute, väitekatvuse ja polaarsuse kontrolli;
-- 12 sekundi globaalse vastusepiiri kontrollitud fallback'i ning vahemälu toorpäringu eemaldamist;
+- 15 sekundi globaalse vastusepiiri kontrollitud fallback'i ning vahemälu toorpäringu eemaldamist;
 - Terrapointi ning infrastruktuurijargooni puudumist üldotsingu payload'ist ja UI-st;
 - kuni viit sisulist autocomplete-soovitust;
 - Sites-buildi lepingut.
@@ -185,6 +190,7 @@ server/forestry.mjs                     teadmiste laadimine, valideerimine ja h�
 server/knowledge/forestry/sources.json ametlik allikaregister
 server/knowledge/forestry/documents.json struktureeritud vastused
 server/integrations.mjs                 portaali discovery ja ametliku täislehe lugemine
+docs/ALLIKAD.md                         kontrollitud allikate, API-de ja piirangute register
 server/cadastre.mjs                     ametliku katastri ja Metsaregistri WFS-vastus
 server/pipeline.mjs                     intent, retrieval, vastus ja cache
 server/llm.mjs                          valikuline, viiteid säilitav sõnastuskiht
@@ -199,7 +205,7 @@ design-qa.md                            enne/pärast brauseritõendid
 
 ## Piirangud ja järgmine etapp
 
-- Keskkonnaportaali HTML-otsing on dokumenteerimata fallback ning parser vajab portaali markup'i muutumisel uuendamist. Järgmine tugev samm on portaali sitemapist versioonitud tekstiindeksi ehitamine.
-- Väljaspool metsateemat on vastuse kvaliteet praegu sõltuvam portaali värskest sisust. Uued vertikaalid tuleb lisada struktureeritud claim'ide, ametliku API-adapteri ja eval-komplektiga.
+- Keskkonnaportaali HTML-otsing on dokumenteerimata fallback ning parser vajab portaali markup'i muutumisel uuendamist. Kolm Valitsusportaali JSON-indeksit vähendavad sellest sõltuvust, kuid ei ole versioonitud avalik leping.
+- Väljaspool metsateemat sõltub sisuline koondvastus ametliku liitotsingu tõendikattest. Nõrk vaste annab täpsustuse või abstention'i; uued arvulised vertikaalid tuleb lisada struktureeritud väidete, ametliku API-adapteri ja eval-komplektiga.
 - Väline LLM võib olla rate limit'i taga; see ei mõjuta kontrollitud metsavastuste saadavust ning portaalipäring langeb kontrollitud baasvastusele tagasi.
 - Terrapointi iframe sõltub mõlema domeeni CSP-st ja selle väliste ametlike teenuste saadavusest.

@@ -7,7 +7,7 @@ Keskkonnaportaali visuaalsel keelel põhinev praktikaprojekt, mille kaks põhios
 
 Avalik keskkond: [praktika.arleserver.cfd](https://praktika.arleserver.cfd)
 
-Arhitektuur, avalikud ametlikud liidesed, turve, piirangud ja kontrollnimekiri on kirjeldatud failis [PROJEKT.md](./PROJEKT.md). Visuaalse regressiooni tõendid on failis [design-qa.md](./design-qa.md).
+Arhitektuur, turve, piirangud ja kontrollnimekiri on kirjeldatud failis [PROJEKT.md](./PROJEKT.md). Kontrollitud ametlike API-de register asub failis [docs/ALLIKAD.md](./docs/ALLIKAD.md) ning visuaalse regressiooni tõendid failis [design-qa.md](./design-qa.md).
 
 ## Kiirkäivitus
 

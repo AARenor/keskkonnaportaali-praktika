@@ -255,9 +255,10 @@ function ExternalAnchor({ children, className, href, ...props }) {
   );
 }
 
-function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoFocus = false }) {
+function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoFocus = false, inputRef: providedInputRef }) {
   const listboxId = useId();
-  const inputRef = useRef(null);
+  const internalInputRef = useRef(null);
+  const inputRef = providedInputRef || internalInputRef;
   const [value, setValue] = useState(initialValue);
   const [focused, setFocused] = useState(false);
   const [remoteSuggestions, setRemoteSuggestions] = useState([]);
@@ -407,9 +408,8 @@ function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoF
   );
 }
 
-function Header({ onSearch, busy, searchValue = "", compact = false }) {
+function Header({ compact = false, onRevealSearch }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [megaMenu, setMegaMenu] = useState(null);
 
   useEffect(() => {
@@ -469,8 +469,8 @@ function Header({ onSearch, busy, searchValue = "", compact = false }) {
             <a href={`${SOURCE}/et/abi`}><CircleHelp size={16} /> Abi</a>
           </nav>
           <div className="mobile-actions">
-            <button className="header-icon" onClick={() => setSearchOpen((open) => !open)} type="button" aria-expanded={searchOpen} aria-label="Ava otsing">
-              {searchOpen ? <X size={23} /> : <Search size={22} />}
+            <button className="header-icon" onClick={onRevealSearch} type="button" aria-label="Mine otsingusse">
+              <Search size={22} />
             </button>
             <button className="header-icon header-icon--menu" onClick={() => setMenuOpen((open) => !open)} type="button" aria-expanded={menuOpen} aria-label="Ava menüü">
               {menuOpen ? <X size={24} /> : <Menu size={25} />}
@@ -478,21 +478,6 @@ function Header({ onSearch, busy, searchValue = "", compact = false }) {
           </div>
         </div>
       </div>
-
-      {searchOpen ? (
-        <div className="mobile-search-panel">
-          <SearchForm
-            autoFocus
-            busy={busy}
-            initialValue={searchValue}
-            onSearch={(nextQuery) => {
-              setSearchOpen(false);
-              onSearch(nextQuery);
-            }}
-            variant="mobile"
-          />
-        </div>
-      ) : null}
 
       <nav className="main-nav" aria-label="Põhinavigatsioon">
         <div className="shell main-nav__inner">
@@ -566,7 +551,7 @@ function Header({ onSearch, busy, searchValue = "", compact = false }) {
   );
 }
 
-function Hero({ onSearch, busy }) {
+function Hero({ onSearch, busy, searchInputRef }) {
   return (
     <section className="hero" aria-labelledby="hero-title">
       <div className="hero__shade" />
@@ -574,7 +559,7 @@ function Hero({ onSearch, busy }) {
         <p className="hero__practice"><Sparkles size={16} /> Uus praktikaversioon</p>
         <h1 id="hero-title">Eesti keskkonna andmete portaal</h1>
         <p className="hero__subtitle">Üks värav kõikidele keskkonnaandmetele</p>
-        <SearchForm busy={busy} onSearch={onSearch} />
+        <SearchForm busy={busy} inputRef={searchInputRef} onSearch={onSearch} />
       </div>
     </section>
   );
@@ -723,10 +708,10 @@ function FeatureLinks() {
   );
 }
 
-function Home({ onSearch, busy }) {
+function Home({ onSearch, busy, searchInputRef }) {
   return (
     <main id="main-content">
-      <Hero busy={busy} onSearch={onSearch} />
+      <Hero busy={busy} onSearch={onSearch} searchInputRef={searchInputRef} />
       <PortalTiles />
       <CurrentContent />
       <TerrapointSection />
@@ -811,7 +796,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
               ) : null}
             </article>
 
-            <section className="sources-section" aria-labelledby="sources-title">
+            {result.sources.length ? <section className="sources-section" aria-labelledby="sources-title">
               <div className="sources-title-row">
                 <h2 id="sources-title">Allikad</h2>
                 <span>{result.sources.length}</span>
@@ -840,7 +825,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
                   <ChevronDown className={showAllSources ? "rotated" : ""} size={17} />
                 </button>
               ) : null}
-            </section>
+            </section> : null}
 
             {result.related?.length ? (
               <section className="related-section">
@@ -978,6 +963,7 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const searchRequestRef = useRef({ id: 0, controller: null });
+  const homeSearchInputRef = useRef(null);
 
   const performSearch = async (nextQuery, pushState = true) => {
     const clean = String(nextQuery || "").trim();
@@ -1052,13 +1038,23 @@ export function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const revealHomeSearch = () => {
+    const input = homeSearchInputRef.current;
+    if (!input) return;
+    input.scrollIntoView({
+      block: "center",
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    });
+    input.focus({ preventScroll: true });
+  };
+
   return (
     <>
-      <Header busy={busy} compact={view === "search"} onSearch={performSearch} searchValue={query} />
+      <Header compact={view === "search"} onRevealSearch={revealHomeSearch} />
       {view === "search" ? (
         <SearchResults busy={busy} error={error} onHome={goHome} onSearch={performSearch} query={query} result={result} />
       ) : (
-        <Home busy={busy} onSearch={performSearch} />
+        <Home busy={busy} onSearch={performSearch} searchInputRef={homeSearchInputRef} />
       )}
       <Footer compact={view === "search"} />
     </>

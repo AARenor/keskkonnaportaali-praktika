@@ -253,7 +253,6 @@ h3 {
 }
 
 .mobile-actions,
-.mobile-search-panel,
 .mobile-drawer,
 .drawer-backdrop {
   display: none;
@@ -2424,34 +2423,6 @@ h3 {
 
   .header-icon--menu {
     width: 58px;
-  }
-
-  .mobile-search-panel {
-    position: relative;
-    z-index: 56;
-    display: block;
-    padding: 12px 16px 16px;
-    background: #fff;
-    border-bottom: 1px solid #d6e0e5;
-    box-shadow: 0 8px 20px rgba(0, 45, 78, 0.12);
-  }
-
-  .search-form--mobile {
-    width: 100%;
-  }
-
-  .search-form--mobile .search-control {
-    min-height: 50px;
-    box-shadow: none;
-  }
-
-  .search-form--mobile .search-submit {
-    min-width: 52px;
-    padding: 0;
-  }
-
-  .search-form--mobile .search-submit span {
-    display: none;
   }
 
   .mobile-drawer {
