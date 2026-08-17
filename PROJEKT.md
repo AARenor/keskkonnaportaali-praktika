@@ -170,6 +170,10 @@ Vaikimisi käivituvad veebirakendus ja PostgreSQL. Eksperimentaalse Qdranti kont
 
 Coolify tokenit, SSH privaatvõtit ega mudelivõtit ei tohi panna reposse, brauserikoodi, dokumentatsiooni või logidesse. Deploy-võti peab olema projektipõhine ja minimaalse õigusega.
 
+Coolify API-token ja GitHubi SSH deploy-võti on ainult haldus- ja juurutusvahendid. Veebikonteiner ei loe kumbagi runtime'is; otsing kasutab eraldi serverisaladust `OPENCODE_GO_API_KEY`. Seetõttu ei muuda haldusvõtmete rotatsioon sama image'i otsingu-, allika- ega AI-käitumist, kuid pärast rotatsiooni tuleb kinnitada, et Coolify saab endiselt repot lugeda ja juurutada.
+
+Avaliku timeout-ahela kontroll 17.08.2026: rakendus piirab kogu otsingu 15 sekundiga ja fault-injection'i automaattest tõendab, et lõppematu operatsioon katkestatakse ning asendatakse deterministliku vastusega. Jooksva Coolify proxy Traefik 3.6.9 konfiguratsioon ei määra `responseHeaderTimeout` ega response `writeTimeout` väärtust üle; binaari tegelikud vaikeväärtused olid mõlemal `0`, mille Traefik ise kirjeldab kui timeout'i puudumist. Domeeni ees oleva Cloudflare'i [ametlik 524 dokumentatsioon](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-524/) määrab vaikimisi Proxy Read Timeout'iks 125 sekundit. Seega on rakenduse halvim vastusepiir 15 s väiksem kui avaliku edge'i 125 s piir ning Traefik ei katkesta vastuse ootamist enne rakenduse fallback'i.
+
 ## Turve ja privaatsus
 
 - Otsingul on üldisest API-st rangem IP-põhine piirang.
