@@ -43,6 +43,29 @@ Tootmise andmebaasi lõpp-risttabel:
 | PostgreSQL privaatsus | toorpäringuga otsingukirjeid 0, toorpäringuga vahemäluridu 0, vahemälu JSON-i `query` välju 0, aegunud vahemäluridu 0; `log_statement=none`, `log_min_duration_statement=-1` |
 | Unikaalne nonce | URL, title, history, cookie, local/session storage, app-logi, proxy-logi, run/cache/corpus kõik 0; same-origin request oli JSON POST ja referrer ainult `/otsi` |
 
+## Relevantsus- ja kaitsekiht 18.08.2026
+
+Commit `373324dc657986b693aa1df138f5a9c1866d5754` juurutati Coolifys deployment'ina `i6uwu6e3rq71g77pnn8sx97s`. Uus konteiner oli `healthy`, restartide arv 0 ning image'i `SOURCE_COMMIT` ühtis täispika commit'iga.
+
+Eraldi enne esimest käivitust külmutatud `environment_search_holdout_v1.json` sisaldab 40 uut päringut ja selle SHA-256 on `4cf69a01005817a135f69890a70070fb9f4bb21e45675abec3b9b39c3b7898c7`. Esimene jooks leidis kümme esikoha viga (P@1 0,75; MRR 0,8021; nDCG@5 0,8206). Qrel-faili muutmata parandati üldist eesti tüvede ja teenuseintendi järjestust; lõpptulemus oli nii deterministlikult kui tootmise URL-põhises ühendotsingus P@1 = MRR = nDCG@5 = 1,0 ehk 40/40. Tootmise p50 oli 6234 ms, p95 14 052 ms ja maksimum 14 809 ms.
+
+| Kontroll | Uue väljalaske tulemus |
+|---|---|
+| Unit/integratsioon | 119/119; build edukas; Sites 4/4; mõlemad Compose'i profiilid kehtivad; `npm audit` 0 |
+| Põhikomplekti live-eval | 24/24 qrel'i ja 1268/1268 avaliku lepingu kontrolli; p50 10 488 ms, p95 14 529 ms, max 14 739 ms; 0 viga ja 0 HTTP 504 |
+| Filtrimaatriks | 53 päringut; 5 allika-, 5 kategooria-, 5 aasta-, 5 järjestus- ja 5 kombineeritud juhtumit; 210/210 kontrolli; p50 1128 ms, p95 8146 ms, max 10 191 ms |
+| Grounding | 10/10 esinduslikku ja 10/10 adversariaalset juhtumit; 20 väidet, 30 viiteavamist, 18 eri URL-i; 0 viga |
+| Luna paralleelkontroll | 2/2 HTTP 200 ja 2/2 `AI koondvastus`; p50 1344 ms, p95 2274 ms; 0 fallback'i, timeout'i, 5xx-i või 504 |
+| Koormus ja päris AI | IPv4-first kontrollis 20/20 HTTP 200; 9 valideeritud `AI koondvastus`, 8 selgelt märgitud capacity-fallback'i; p50 10 418 ms, p95 14 880 ms, max 15 146 ms; 0 timeout'i, 5xx-i või 504; 21. päring 429 + `Retry-After: 60` ka 21 pöörleva XFF-väärtusega |
+| Cache'i rikketaaste | vigase mudelivõtmega 2025 ms kontrollitud fallback ja 0 cache-rida; taastunud Lunaga 3897 ms `ready` vastus ja 1 puhastatud cache-rida; järgmine sama päring 797 ms |
+| Tootmise providerid | revisjonil `answer-v11-ranked-live-sources`: 31 Luna `ready`, 20 kontrollitud degradeerunud drafti ja 33 deterministlikku marsruutvastust |
+| Andmebaas | 12 473 aktiivset dokumenti = 11 605 `official` + 8 `supplementary` + 860 `other`; 1723 täistekstiga; aktiivse URL-i duplikaate 0 |
+| Privaatsusristtabel | toorpäringuga run/cache ridu 0, cache JSON-i `query` välju 0, aegunud cache'i 0 ja üle 30 päeva vanu run-ridu 0 |
+
+Värske Playwrighti desktop- ja 390 × 844 mobiilisessioon algasid `scrollY=0`, aktiivse `BODY`, nähtava ühe otsingukasti ja ilma horisontaalse overflow'ta. Mobiili submit-nupu nimi oli „Küsi”. Jätkuküsimuse voog andis ühe uue fokusseeritud vastuse, kaheksa jätkuallikat ja viis pakutud küsimust; juur- ja jätkupäring läksid ainult same-origin POST-kehadesse ning Terrapoint ei saanud kumbagi. Terrapointi päris iframe'is avanes „Kaardi vaade”, „Piirangud” vahekaart ja töötav Leafleti zoom. Kõigi värskete first-party sessioonide konsoolis oli 0 viga ja 0 hoiatust.
+
+Uus kasutajale nähtav privaatsusplokk kirjeldab täpselt Luna payloadi ja linki teenusepakkuja säilitustingimustele. Server eemaldab tõenditest prompt-injection'i lõigud, lubab väljaminevaks tulemuse-URL-iks ainult HTTPS-i ja ignoreerib rate-limit'i identiteedis kliendi suvalist `X-Forwarded-For` väärtust. Neid piire katavad viis pahatahtlikku tõendifixtuuri, URL-protokolli kontroll ja 21 pöörleva XFF-aadressi regressioon.
+
 ## Runtime'i andmevoog
 
 ```mermaid
