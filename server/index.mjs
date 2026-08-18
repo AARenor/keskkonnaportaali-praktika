@@ -110,14 +110,22 @@ function rateLimit(maxRequests) {
 app.use("/api", rateLimit(120));
 app.use("/api/search", rateLimit(20));
 
-app.get("/api/health", (request, response) => {
-  if (request.query.readiness === "container" && containerReadiness !== "ready") {
+app.get("/api/health/container-readiness", (_request, response) => {
+  if (containerReadiness !== "ready") {
     return response.status(503).json({
       status: "draining",
       service: "keskkonnaportaali-praktika",
       revision: publicDeploymentRevision(),
     });
   }
+  return response.json({
+    status: "ok",
+    service: "keskkonnaportaali-praktika",
+    revision: publicDeploymentRevision(),
+  });
+});
+
+app.get("/api/health", (_request, response) => {
   response.json({
     status: "ok",
     service: "keskkonnaportaali-praktika",

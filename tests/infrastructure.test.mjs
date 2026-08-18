@@ -88,8 +88,10 @@ test("container readiness is withdrawn before the old listener drains", async ()
     readFile(new URL("../server/index.mjs", import.meta.url), "utf8"),
   ]);
   assert.match(dockerfile, /HEALTHCHECK --interval=1s --timeout=2s --start-period=20s --retries=1/u);
-  assert.match(dockerfile, /api\/health\?readiness=container/u);
-  assert.match(index, /request\.query\.readiness === "container" && containerReadiness !== "ready"/u);
+  assert.match(dockerfile, /api\/health\/container-readiness/u);
+  assert.match(index, /app\.get\("\/api\/health\/container-readiness"/u);
+  assert.match(index, /if \(containerReadiness !== "ready"\)/u);
+  assert.doesNotMatch(index, /request\.query\.readiness/u);
   assert.match(index, /onDrainStart: \(\) => \{\s*containerReadiness = "draining";/u);
 });
 
