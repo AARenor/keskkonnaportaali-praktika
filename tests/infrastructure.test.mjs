@@ -82,6 +82,17 @@ test("the public deployment marker accepts only an exact Git revision", () => {
   assert.equal(publicDeploymentRevision("<script>alert(1)</script>"), "development");
 });
 
+test("container readiness is withdrawn before the old listener drains", async () => {
+  const [dockerfile, index] = await Promise.all([
+    readFile(new URL("../Dockerfile", import.meta.url), "utf8"),
+    readFile(new URL("../server/index.mjs", import.meta.url), "utf8"),
+  ]);
+  assert.match(dockerfile, /HEALTHCHECK --interval=1s --timeout=2s --start-period=20s --retries=1/u);
+  assert.match(dockerfile, /api\/health\?readiness=container/u);
+  assert.match(index, /request\.query\.readiness === "container" && containerReadiness !== "ready"/u);
+  assert.match(index, /onDrainStart: \(\) => \{\s*containerReadiness = "draining";/u);
+});
+
 test("the all-at-once search keeps transport margin under load", () => {
   assert.equal(configuredSearchConcurrency(undefined), 8);
   assert.equal(configuredSearchConcurrency("12"), 12);

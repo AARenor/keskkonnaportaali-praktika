@@ -41,6 +41,7 @@ const MAX_RATE_LIMIT_KEYS = 2_000;
 const MAX_PROXY_CACHE_ENTRIES = 250;
 const MAX_ACTIVE_SEARCHES = configuredSearchConcurrency();
 let activeSearches = 0;
+let containerReadiness = "ready";
 
 void purgeExpiredSearchData();
 const searchDataMaintenance = setInterval(() => void purgeExpiredSearchData(), 60_000);
@@ -109,7 +110,14 @@ function rateLimit(maxRequests) {
 app.use("/api", rateLimit(120));
 app.use("/api/search", rateLimit(20));
 
-app.get("/api/health", (_request, response) => {
+app.get("/api/health", (request, response) => {
+  if (request.query.readiness === "container" && containerReadiness !== "ready") {
+    return response.status(503).json({
+      status: "draining",
+      service: "keskkonnaportaali-praktika",
+      revision: publicDeploymentRevision(),
+    });
+  }
   response.json({
     status: "ok",
     service: "keskkonnaportaali-praktika",
@@ -579,6 +587,10 @@ const server = app.listen(port, "0.0.0.0", () => {
   setInterval(refreshCorpus, 60 * 60 * 1_000).unref();
 });
 
-const gracefulShutdown = createGracefulShutdown(server);
+const gracefulShutdown = createGracefulShutdown(server, {
+  onDrainStart: () => {
+    containerReadiness = "draining";
+  },
+});
 process.once("SIGTERM", () => gracefulShutdown.shutdown("SIGTERM"));
 process.once("SIGINT", () => gracefulShutdown.shutdown("SIGINT"));

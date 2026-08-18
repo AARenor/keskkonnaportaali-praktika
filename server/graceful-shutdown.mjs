@@ -10,11 +10,13 @@ export function createGracefulShutdown(server, options = {}) {
   const idleSweepMs = boundedMilliseconds(options.idleSweepMs, 100, 5, 1_000);
   const exit = options.exit || ((code) => process.exit(code));
   const log = options.log || ((entry) => process.stdout.write(`${JSON.stringify(entry)}\n`));
+  const onDrainStart = options.onDrainStart || (() => undefined);
   let state = "running";
 
   function shutdown(signal = "SIGTERM") {
     if (state !== "running") return false;
     state = "draining";
+    onDrainStart(signal);
     log({ event: "graceful-shutdown-started", signal, drainDelayMs, forceExitMs });
 
     const forceTimer = setTimeout(() => {

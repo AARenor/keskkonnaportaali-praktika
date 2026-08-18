@@ -17,12 +17,14 @@ test("graceful shutdown lets an in-flight response finish before exiting", async
   await wait(5);
   const exitCodes = [];
   const events = [];
+  const drainSignals = [];
   const handler = createGracefulShutdown(server, {
     drainDelayMs: 10,
     forceExitMs: 250,
     idleSweepMs: 5,
     exit: (code) => exitCodes.push(code),
     log: (event) => events.push(event),
+    onDrainStart: (signal) => drainSignals.push(signal),
   });
 
   assert.equal(handler.shutdown("SIGTERM"), true);
@@ -32,6 +34,7 @@ test("graceful shutdown lets an in-flight response finish before exiting", async
   await wait(20);
 
   assert.deepEqual(exitCodes, [0]);
+  assert.deepEqual(drainSignals, ["SIGTERM"]);
   assert.deepEqual(events.map((event) => event.event), [
     "graceful-shutdown-started",
     "graceful-shutdown-finished",
