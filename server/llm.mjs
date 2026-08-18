@@ -1,5 +1,11 @@
 import { jsonrepair } from "jsonrepair";
-import { normalize, queryTerms, splitTextPassages, textHasQueryRoot } from "./search.mjs";
+import {
+  hasCompleteSentenceEnding,
+  normalize,
+  queryTerms,
+  splitTextPassages,
+  textHasQueryRoot,
+} from "./search.mjs";
 
 const apiKey = String(process.env.OPENCODE_GO_API_KEY || process.env.OPENCODE_ZEN_API_KEY || process.env.LLM_API_KEY || "");
 const configuredBaseUrl = String(process.env.LLM_BASE_URL || "https://opencode.ai/zen/go/v1").replace(/\/+$/, "");
@@ -156,7 +162,7 @@ function protectedDirectIntro(draft, query, sourceCount) {
       && !units.has("year")
   ));
   const citations = validCitations(draft.answer?.introCitations, sourceCount);
-  return containsRequestedYear && containsMeasuredValue && citations.length
+  return containsRequestedYear && containsMeasuredValue && citations.length && hasCompleteSentenceEnding(intro)
     ? { intro, citations }
     : null;
 }
@@ -223,6 +229,7 @@ function assertPolarityParity(claimSentence, evidenceSentence, label) {
 
 function assertClaimGrounding(text, citations, draft, label) {
   if (!citations.length) throw new Error(`LLM ${label} has no citations`);
+  if (!hasCompleteSentenceEnding(text)) throw new Error(`LLM ${label} ends with an incomplete sentence`);
   const trustedEvidence = sourceEvidence(draft, citations);
   const claims = numberOccurrences(text);
   const evidence = numberOccurrences(trustedEvidence);

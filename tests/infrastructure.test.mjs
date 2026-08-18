@@ -104,6 +104,14 @@ test("direct fallback prefers a numeric rate over a regulation reference", () =>
   assert.doesNotMatch(excerpt, /1013/u);
 });
 
+test("direct fallback rejects a search-card sentence cut off by an ellipsis", () => {
+  const excerpt = directEvidenceExtract("jäätmete ringlussevõtu määr Eestis 2023", {
+    summary: "Olmejäätmete ringlussevõtt 2023. aastal oli 38%, mis jääb Euroopa Liidu riikide … järgmine otsingukatke",
+    content: "Olmejäätmete ringlussevõtu määr oli Eestis 2023. aastal 38%.",
+  });
+  assert.equal(excerpt, "Olmejäätmete ringlussevõtu määr oli Eestis 2023. aastal 38%.");
+});
+
 test("LLM JSON parser repairs common truncated punctuation without executing content", () => {
   const parsed = parseLlmJson('```json\n{"parts":[{"text":"Tõend", "citations":[1]}], "confidence":"kõrge",}\n```');
   assert.equal(parsed.parts[0].text, "Tõend");
@@ -297,6 +305,34 @@ test("a requested year's direct measurement stays ahead of grounded side statist
   assert.equal(answer.intro, directIntro);
   assert.deepEqual(answer.introCitations, [1]);
   assert.match(answer.parts.map((part) => part.text).join(" "), /63,9%/u);
+});
+
+test("an incomplete protected measurement cannot replace a complete grounded introduction", () => {
+  const query = "jäätmete ringlussevõtu määr Eestis 2023";
+  const completeIntro = "Olmejäätmete ringlussevõtu määr oli Eestis 2023. aastal 38%.";
+  const draft = {
+    evidence: { kind: "ranked-search-results", answerable: true },
+    answer: {
+      title: "Jäätmete ringlussevõtu määr Eestis 2023",
+      intro: "Olmejäätmete ringlussevõtt 2023. aastal oli 38%, mis jääb Euroopa Liidu riikide",
+      introCitations: [1],
+      parts: [],
+      note: "",
+    },
+    sources: [{
+      citation: 1,
+      title: "Olmejäätmete ringlussevõtt",
+      content: completeIntro,
+    }],
+  };
+
+  const answer = validateGroundedAnswer({
+    intro: completeIntro,
+    intro_citations: [1],
+    parts: [],
+  }, draft, query);
+
+  assert.equal(answer.intro, completeIntro);
 });
 
 test("single-source model output can recover an omitted citation only after grounding", () => {

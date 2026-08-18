@@ -570,6 +570,10 @@ export function splitTextPassages(value = "") {
     .filter(Boolean);
 }
 
+export function hasCompleteSentenceEnding(value = "") {
+  return /[.!?](?:[”"'’)\]]*)$/u.test(String(value || "").trim());
+}
+
 const STOP_WORDS = new Set([
   "aga",
   "andmed",

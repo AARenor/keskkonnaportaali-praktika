@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { canonicalResultUrl } from "../server/retrieval.mjs";
+import { hasCompleteSentenceEnding } from "../server/search.mjs";
 
 const argumentsMap = Object.fromEntries(process.argv.slice(2).map((argument) => {
   const [key, ...rest] = argument.replace(/^--/u, "").split("=");
@@ -74,6 +75,15 @@ function assertPublicContract(item, result) {
     id: item.id,
     durationMs: result.durationMs,
   });
+  check(hasCompleteSentenceEnding(body.answer?.intro), "answer introduction ends with an incomplete sentence", {
+    id: item.id,
+  });
+  for (const [partIndex, part] of (body.answer?.parts || []).entries()) {
+    check(hasCompleteSentenceEnding(part?.text), "answer part ends with an incomplete sentence", {
+      id: item.id,
+      partIndex,
+    });
+  }
   const visibleUrls = new Set((body.searchResults?.items || []).map((source) => canonicalResultUrl(source.url)));
   for (const source of body.sources || []) {
     check(visibleUrls.has(canonicalResultUrl(source.url)), "answer source is outside the visible result snapshot", {

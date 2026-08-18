@@ -15,13 +15,14 @@ import {
   assessSearchQuery,
   composeScopeResponse,
   composeSearchResponse,
+  hasCompleteSentenceEnding,
   normalize,
   queryTerms,
   splitTextPassages,
   textHasQueryRoot,
 } from "./search.mjs";
 
-export const SEARCH_RESPONSE_REVISION = "answer-v9-ranked-evidence";
+export const SEARCH_RESPONSE_REVISION = "answer-v10-complete-sentences";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 
 function rankPortalDocuments(query, documents) {
@@ -68,7 +69,7 @@ export function directEvidenceExtract(query, document) {
     .filter(Boolean)
     .flatMap(splitTextPassages)
     .map((value) => value.replace(/\s+/gu, " ").trim())
-    .filter((value) => value.length >= 35 && value.length <= 520);
+    .filter((value) => value.length >= 35 && value.length <= 520 && hasCompleteSentenceEnding(value));
   return passages
     .map((passage, index) => ({
       passage: passage.replace(/^[„“”"']+|[„“”"']+$/gu, "").trim(),
