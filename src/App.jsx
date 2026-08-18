@@ -28,7 +28,7 @@ import {
   Youtube,
 } from "lucide-react";
 import { safeExternalHref } from "./url-safety.js";
-import { suggestionsForValue } from "./search-suggestions.js";
+import { shouldFetchRemoteSuggestions, suggestionsForValue } from "./search-suggestions.js";
 import { readSearchStream } from "./search-stream.js";
 
 const SOURCE = "https://keskkonnaportaal.ee";
@@ -325,7 +325,7 @@ function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoF
     const query = value.trim();
     suggestionRequestRef.current.controller?.abort();
     const requestId = suggestionRequestRef.current.id + 1;
-    if (query.length < 2) {
+    if (!shouldFetchRemoteSuggestions(query)) {
       suggestionRequestRef.current = { id: requestId, controller: null };
       setRemoteSuggestions({ query: "", items: [] });
       return undefined;

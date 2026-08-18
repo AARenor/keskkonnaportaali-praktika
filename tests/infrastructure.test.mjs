@@ -61,7 +61,7 @@ import {
 } from "../server/request-budget.mjs";
 import { publicDeploymentRevision } from "../server/version.mjs";
 import { safeExternalHref } from "../src/url-safety.js";
-import { suggestionsForValue } from "../src/search-suggestions.js";
+import { shouldFetchRemoteSuggestions, suggestionsForValue } from "../src/search-suggestions.js";
 import { forestHarvestBalanceDocumentsFromJson } from "../server/indicators.mjs";
 
 test("PostgreSQL guard accepts a dedicated database and rejects Chatwoot", () => {
@@ -134,6 +134,13 @@ test("autocomplete never renders a late response under a newer query", () => {
   };
   assert.deepEqual(suggestionsForValue("vesi", lateFirstResponse, ["põhjavee seisund"]), []);
   assert.deepEqual(suggestionsForValue("mets", lateFirstResponse, []), lateFirstResponse.items);
+});
+
+test("autocomplete skips requests outside the server suggestion length contract", () => {
+  assert.equal(shouldFetchRemoteSuggestions("m"), false);
+  assert.equal(shouldFetchRemoteSuggestions("mets"), true);
+  assert.equal(shouldFetchRemoteSuggestions("x".repeat(80)), true);
+  assert.equal(shouldFetchRemoteSuggestions("x".repeat(81)), false);
 });
 
 test("malicious source directives are removed before evidence reaches Luna", () => {
