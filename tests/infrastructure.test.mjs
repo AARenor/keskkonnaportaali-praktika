@@ -336,6 +336,240 @@ test("a grounded SMI comparison may state the supported non-synonym conclusion",
   assert.match(answer.intro, /ei ole metsaandmed SMI sünonüüm/u);
 });
 
+test("degraded SMI comparison fallback gives visible-source roles instead of a chronology fragment", async () => {
+  const query = "Mis vahe on SMI ja metsaandmed?";
+  const sourceIds = new Set(["smi-metsaregister", "smi", "metsainfo-hetkeseis", "metsaregister"]);
+  const visibleSources = officialServiceCatalogueDocuments().filter((source) => sourceIds.has(source.id));
+  const draft = await createPortalDraft(query, {
+    // Skip optional hydration so this is exactly the deterministic degraded
+    // path with only the visible official service-directory documents.
+    deadlineAt: Date.now(),
+    searchResults: { total: visibleSources.length, items: visibleSources },
+  });
+
+  assert.equal(draft.evidence.answerable, true);
+  assert.match(draft.answer.intro, /metsaandmed.*katusmõiste/iu);
+  assert.match(draft.answer.intro, /SMI.*üleriigiline.*proovitükk.*statistiline/iu);
+  assert.match(draft.answer.intro, /Metsaregister.*kinnistu.*metsaeraldis.*inventeerimisandm.*metsateatis/iu);
+  assert.doesNotMatch(draft.answer.intro, /\b1999\b/u);
+  assert.equal(draft.answer.parts.length, 3);
+  assert.equal(assertAnswerAddressesQuery(draft.answer.intro, query), true);
+  assert.equal(draftMatchesListingAndFilters(draft, { items: visibleSources }), true);
+
+  const visibleByCitation = new Map(draft.sources.map((source) => [source.citation, source]));
+  const usedCitations = new Set([
+    ...draft.answer.introCitations,
+    ...draft.answer.parts.flatMap((part) => part.citations),
+  ]);
+  assert.ok(usedCitations.size >= 3);
+  assert.ok([...usedCitations].every((citation) => visibleByCitation.has(citation)));
+  const sourceText = (citation) => {
+    const source = visibleByCitation.get(citation);
+    return [source?.summary, source?.content].filter(Boolean).join(" ");
+  };
+  const partFor = (title) => draft.answer.parts.find((part) => part.title === title);
+  assert.ok(partFor("Metsaandmed").citations.some((citation) => /mitmel viisil|katusmõiste/iu.test(sourceText(citation))));
+  assert.ok(partFor("SMI roll").citations.some((citation) => /proovitükk|valikuuring|statistilis/iu.test(sourceText(citation))));
+  assert.ok(partFor("Metsaregistri roll").citations.some((citation) => /kinnistu|metsaeraldis|inventeerimis|metsateatis/iu.test(sourceText(citation))));
+
+  // The deterministic rendering is not recursively promoted to Luna evidence.
+  const rawEvidence = buildBoundedEvidence(draft, query).map((source) => source.content).join(" ");
+  assert.doesNotMatch(rawEvidence, /SMI ei ole metsaandmete sünonüüm/iu);
+  const validLunaReplacement = "Metsaandmed on mitmel viisil kogutavate andmete katusmõiste. Statistiline metsainventuur ehk SMI on üleriigiliste proovitükkidega valikuuring. Metsaregister sisaldab kinnistute metsainventeerimise andmeid ning metsateatisi.";
+  const validatedReplacement = validateGroundedAnswer({
+    intro: validLunaReplacement,
+    intro_citations: draft.answer.introCitations,
+    parts: [],
+    related_questions: [],
+  }, draft, query);
+  assert.equal(validatedReplacement.intro, validLunaReplacement);
+});
+
+test("coarse forestry role words cannot unlock the detailed deterministic comparison fallback", async () => {
+  const query = "Mis vahe on SMI ja metsaandmed?";
+  const weakSources = [{
+    id: "weak-comparison",
+    title: "SMI ja Metsaregister",
+    url: "https://example.gov/compare",
+    organization: "Amet",
+    type: "Selgitus",
+    published: "01.01.2026",
+    sourceTier: "official",
+    topics: ["mets", "SMI", "metsaandmed", "Metsaregister"],
+    summary: "Metsaandmeid kogutakse mitmel viisil. SMI on statistiline ülevaade ning Metsaregister sisaldab kinnistute inventeerimisandmeid.",
+    content: "Metsaandmeid kogutakse mitmel viisil. SMI on statistiline ülevaade ning Metsaregister sisaldab kinnistute inventeerimisandmeid.",
+  }, {
+    id: "weak-smi",
+    title: "SMI ülevaade",
+    url: "https://example.gov/smi",
+    organization: "Amet",
+    type: "Selgitus",
+    published: "01.01.2026",
+    sourceTier: "official",
+    topics: ["mets", "SMI"],
+    summary: "SMI on statistiliselt koostatud Eesti metsade ülevaade, mitte üksiku kinnistu kirjeldus.",
+    content: "SMI on statistiliselt koostatud Eesti metsade ülevaade, mitte üksiku kinnistu kirjeldus.",
+  }, {
+    id: "weak-register",
+    title: "Metsaregister",
+    url: "https://example.gov/register",
+    organization: "Amet",
+    type: "Selgitus",
+    published: "01.01.2026",
+    sourceTier: "official",
+    topics: ["mets", "Metsaregister", "metsaandmed"],
+    summary: "Metsaregister sisaldab kinnistu inventeerimisandmeid.",
+    content: "Metsaregister sisaldab kinnistu inventeerimisandmeid.",
+  }];
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    searchResults: { total: weakSources.length, items: weakSources },
+  });
+
+  assert.equal(draft.evidence.quality?.strong, true, "the direct broad comparison remains eligible");
+  assert.equal(draft.evidence.syntheticFallback, undefined);
+  assert.deepEqual(draft.answer.parts, []);
+  assert.doesNotMatch(draft.answer.intro, /proovitükk|valikuuring|metsaeraldis|metsateatis/iu);
+});
+
+test("a contradictory comparison source cannot claim SMI and Metsaregister belong to the umbrella", async () => {
+  const query = "Mis vahe on SMI ja metsaandmed?";
+  const roleSources = officialServiceCatalogueDocuments()
+    .filter((source) => ["smi", "metsaregister"].includes(source.id));
+  const contradictoryComparison = {
+    id: "contradictory-comparison",
+    title: "Metsaandmete selgitus",
+    url: "https://example.gov/contradictory",
+    organization: "Amet",
+    type: "Selgitus",
+    published: "01.01.2026",
+    sourceTier: "official",
+    topics: ["mets", "SMI", "metsaandmed", "Metsaregister"],
+    summary: "Metsaandmed on mitmel viisil kogutavate andmete katusmõiste. SMI ei kuulu metsaandmete hulka. Metsaregister ei kuulu metsaandmete hulka.",
+    content: "Metsaandmed on mitmel viisil kogutavate andmete katusmõiste. SMI ei kuulu metsaandmete hulka. Metsaregister ei kuulu metsaandmete hulka.",
+  };
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    searchResults: { total: roleSources.length + 1, items: [contradictoryComparison, ...roleSources] },
+  });
+
+  assert.equal(draft.evidence.quality?.strong, true);
+  assert.equal(draft.evidence.syntheticFallback, undefined);
+  assert.deepEqual(draft.answer.parts, []);
+  assert.match(draft.answer.intro, /ei kuulu metsaandmete hulka/iu);
+  assert.doesNotMatch(draft.answer.intro, /SMI on neist üks|proovitükkidel põhinev|metsaeraldisepõhised/iu);
+});
+
+test("keyword-only co-occurrence cannot establish positive SMI membership in metsaandmed", async () => {
+  const query = "Mis vahe on SMI ja metsaandmed?";
+  const roleSources = officialServiceCatalogueDocuments()
+    .filter((source) => ["smi", "metsaregister"].includes(source.id));
+  const keywordOnlyComparison = {
+    id: "keyword-only-comparison",
+    title: "Metsaandmete selgitus",
+    url: "https://example.gov/keywords",
+    organization: "Amet",
+    type: "Selgitus",
+    published: "01.01.2026",
+    sourceTier: "official",
+    topics: ["mets", "SMI", "metsaandmed", "Metsaregister"],
+    summary: "Metsaandmed on mitmel viisil kogutavate andmete katusmõiste, mille lehemärksõnad on SMI ja Metsaregister.",
+    content: "Leht üksnes loetleb lehe märksõnad ega ütle, et SMI kuulub metsaandmete hulka.",
+  };
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    searchResults: { total: roleSources.length + 1, items: [keywordOnlyComparison, ...roleSources] },
+  });
+
+  assert.equal(draft.evidence.quality?.strong, true);
+  assert.equal(draft.evidence.syntheticFallback, undefined);
+  assert.deepEqual(draft.answer.parts, []);
+  assert.doesNotMatch(draft.answer.intro, /SMI on neist üks|proovitükkidel põhinev|metsaeraldisepõhised/iu);
+});
+
+test("membership alone cannot establish the umbrella and multiple-collection claims", async () => {
+  const query = "Mis vahe on SMI ja metsaandmed?";
+  const roleSources = officialServiceCatalogueDocuments()
+    .filter((source) => ["smi", "metsaregister"].includes(source.id));
+  const membershipOnlyComparison = {
+    id: "membership-only-comparison",
+    title: "Metsaandmete selgitus",
+    url: "https://example.gov/membership-only",
+    organization: "Amet",
+    type: "Selgitus",
+    published: "01.01.2026",
+    sourceTier: "official",
+    topics: ["mets", "SMI", "metsaandmed", "Metsaregister"],
+    summary: "SMI kuulub metsaandmete hulka. SMI on statistiline ülevaade ning Metsaregister sisaldab kinnistute inventeerimisandmeid.",
+    content: "SMI kuulub metsaandmete hulka. SMI on statistiline ülevaade ning Metsaregister sisaldab kinnistute inventeerimisandmeid.",
+  };
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    searchResults: { total: roleSources.length + 1, items: [membershipOnlyComparison, ...roleSources] },
+  });
+
+  assert.equal(draft.evidence.quality?.strong, true);
+  assert.equal(draft.evidence.syntheticFallback, undefined);
+  assert.deepEqual(draft.answer.parts, []);
+  assert.doesNotMatch(draft.answer.intro, /mitmel viisil kogutavate metsandusandmete katusmõiste/iu);
+});
+
+test("negated SMI method statement cannot unlock the detailed comparison fallback", async () => {
+  const query = "Mis vahe on SMI ja metsaandmed?";
+  const services = officialServiceCatalogueDocuments();
+  const comparison = services.find((source) => source.id === "smi-metsaregister");
+  const registry = services.find((source) => source.id === "metsaregister");
+  const negatedSmi = {
+    id: "negated-smi-method",
+    title: "SMI metoodika",
+    url: "https://example.gov/negated-smi",
+    organization: "Amet",
+    type: "Selgitus",
+    published: "01.01.2026",
+    sourceTier: "official",
+    topics: ["mets", "SMI"],
+    summary: "SMI ei ole üleriigiline proovitükkidega statistiline valikuuring. SMI sobib riigi metsade seisundi ja muutuste hindamiseks, mitte üksiku kinnistu inventeerimisandmete esitamiseks.",
+    content: "SMI ei ole üleriigiline proovitükkidega statistiline valikuuring. SMI sobib riigi metsade seisundi ja muutuste hindamiseks, mitte üksiku kinnistu inventeerimisandmete esitamiseks.",
+  };
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    searchResults: { total: 3, items: [comparison, negatedSmi, registry] },
+  });
+
+  assert.equal(draft.evidence.quality?.strong, true);
+  assert.equal(draft.evidence.syntheticFallback, undefined);
+  assert.deepEqual(draft.answer.parts, []);
+  assert.doesNotMatch(draft.answer.intro, /SMI on üleriigiline proovitükkidel põhinev statistiline valikuuring/iu);
+});
+
+test("negated Metsaregister contents cannot unlock the detailed comparison fallback", async () => {
+  const query = "Mis vahe on SMI ja metsaandmed?";
+  const services = officialServiceCatalogueDocuments();
+  const comparison = services.find((source) => source.id === "smi-metsaregister");
+  const smi = services.find((source) => source.id === "smi");
+  const negatedRegistry = {
+    id: "negated-metsaregister-contents",
+    title: "Metsaregistri andmed",
+    url: "https://example.gov/negated-register",
+    organization: "Amet",
+    type: "Selgitus",
+    published: "01.01.2026",
+    sourceTier: "official",
+    topics: ["mets", "Metsaregister", "metsaandmed"],
+    summary: "Metsaregister ei sisalda inventeerimis- ega metsateatise andmeid. Registri andmestik sobib kinnistu- ja metsaeraldisepõhiste andmete vaatamiseks.",
+    content: "Metsaregister ei sisalda inventeerimis- ega metsateatise andmeid. Registri andmestik sobib kinnistu- ja metsaeraldisepõhiste andmete vaatamiseks.",
+  };
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    searchResults: { total: 3, items: [comparison, smi, negatedRegistry] },
+  });
+
+  assert.equal(draft.evidence.quality?.strong, true);
+  assert.equal(draft.evidence.syntheticFallback, undefined);
+  assert.deepEqual(draft.answer.parts, []);
+  assert.doesNotMatch(draft.answer.intro, /Metsaregister koondab kinnistu- ja metsaeraldisepõhiseid inventeerimisandmeid/iu);
+});
+
 test("direct fallback prefers a numeric rate over a regulation reference", () => {
   const excerpt = directEvidenceExtract("jäätmete ringlussevõtu määr 2023", {
     summary: "Jäätmete vedu toimus 2023. aastal määruse 1013/2006 alusel.",

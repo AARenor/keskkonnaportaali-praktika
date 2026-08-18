@@ -28,7 +28,7 @@ import {
   textHasQueryRoot,
 } from "./search.mjs";
 
-export const SEARCH_RESPONSE_REVISION = "answer-v17-luna-budgeted-forestry";
+export const SEARCH_RESPONSE_REVISION = "answer-v18-luna-budgeted-forestry";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 
 function rankPortalDocuments(query, documents) {
@@ -135,6 +135,129 @@ export function directEvidenceExtract(query, document, plannedEvidence = null) {
     .sort((left, right) => right.score - left.score)[0]?.passage?.slice(0, 520) || "";
 }
 
+function forestrySourcePassages(source = {}) {
+  return [source.summary, source.answer, source.content]
+    .filter(Boolean)
+    .flatMap((value) => splitTextPassages(sanitizeLlmEvidenceText(value)))
+    .map(normalize)
+    .filter(Boolean);
+}
+
+function hasForestryComparisonRole(source) {
+  const passages = forestrySourcePassages(source);
+  const explicitlyExcludesDataSource = (passage) => {
+    const hasData = /\b(?:metsa|metsandus|metsainventeerimis)andm\w*/u.test(passage);
+    const hasNamedSource = /\b(?:smi|statistilise\s+metsainvent|metsaregis\w*)/u.test(passage);
+    const excludesMembership = /\b(?:ei\s+kuulu|pole\s+osa|ei\s+ole\s+(?:osa|allik\w*)|pole\s+(?:osa|allik\w*))/u.test(passage);
+    return hasData && hasNamedSource && excludesMembership;
+  };
+  const deniesPositiveMembership = (passage) => /\b(?:ei\s+(?:utle|kinnita|naita)|ei\s+tahenda)\b[\s\S]{0,180}\b(?:smi|statistilise\s+metsainvent|metsaregis\w*)\b[\s\S]{0,180}\b(?:kuulub|on\s+neist|on\s+(?:uks|üks))/u.test(passage)
+    || /\b(?:uksnes|ainult)\s+loetleb\b[\s\S]{0,180}\bmarks[oõ]n\w*/u.test(passage);
+  if (passages.some(explicitlyExcludesDataSource) || passages.some(deniesPositiveMembership)) return false;
+  return passages.some((passage) => {
+    const hasData = /\b(?:metsa|metsandus|metsainventeerimis)andm\w*/u.test(passage);
+    const hasSmi = /\b(?:smi|statistilise\s+metsainvent)/u.test(passage);
+    const hasRegistry = /\bmetsaregis\w*/u.test(passage);
+    const hasUmbrellaOrMultipleSources = /\b(?:katusmoist\w*|mitmel\s+viisil|eri(?:nevate)?\s+andmeallik\w*)/u.test(passage);
+    const saysSmiIsOneOfThem = /\b(?:smi|statistilise\s+metsainvent)\w*\s+on\s+neist\s+(?:uks|üks)/u.test(passage)
+      || /\b(?:smi|statistilise\s+metsainvent)\w*\s+on\s+(?:uks\s+)?(?:metsa|metsandus|metsainventeerimis)andm\w*\s+(?:allik\w*|osa\w*)/u.test(passage)
+      || /\b(?:smi|statistilise\s+metsainvent)\w*\s+kuulub\s+(?:metsa|metsandus|metsainventeerimis)andm\w*(?:\s+hulka)?/u.test(passage)
+      || /\b(?:metsa|metsandus|metsainventeerimis)andm\w*\s+hulka\s+kuulub\s+(?:smi|statistilise\s+metsainvent)/u.test(passage);
+    const saysSmiAndRegistryAreDistinctSources = hasRegistry && (
+      /\b(?:smi|statistilise\s+metsainvent)\w*[\s\S]{0,180}\bmetsaregis\w*[\s\S]{0,100}\b(?:eri|erinevad|erinevate)\s+(?:ametlik(?:ud|e)?\s+)?(?:andme)?allik\w*/u.test(passage)
+      || /\bmetsaregis\w*[\s\S]{0,180}\b(?:smi|statistilise\s+metsainvent)\w*[\s\S]{0,100}\b(?:eri|erinevad|erinevate)\s+(?:ametlik(?:ud|e)?\s+)?(?:andme)?allik\w*/u.test(passage)
+    );
+    return hasData && hasSmi && hasUmbrellaOrMultipleSources && !explicitlyExcludesDataSource(passage)
+      && (saysSmiIsOneOfThem || saysSmiAndRegistryAreDistinctSources);
+  });
+}
+
+function hasSmiNationalRole(source) {
+  const passages = forestrySourcePassages(source);
+  const smiName = "(?:smi|statistilise\\s+metsainvent)";
+  const hasMethod = passages.some((passage) => new RegExp(`\\b${smiName}\\w*\\s+on\\b[\\s\\S]{0,140}\\bvalikuuring\\w*`, "u").test(passage)
+    && /\bproovitukk\w*/u.test(passage)
+    && /\buleriigil\w*/u.test(passage)
+    && /\bstatistilis\w*/u.test(passage)
+    && !new RegExp(`\\b${smiName}\\w*\\s+(?:ei\\s+ole|pole)\\b[\\s\\S]{0,140}\\b(?:valikuuring|proovitukk|uleriigil|statistilis)`, "u").test(passage));
+  const hasNationalStateChangeAndParcelLimit = passages.some((passage) => new RegExp(`\\b${smiName}\\w*\\s+(?:sobib|annab|kirjeldab|hindab)\\b`, "u").test(passage)
+    && /\b(?:eesti\w*|riigi\s+mets\w*|kogu\s+eesti)/u.test(passage)
+    && /\bseisundi\w*/u.test(passage)
+    && /\bmuutus\w*/u.test(passage)
+    && /\bmitte\s+(?:uksiku\s+)?kinnistu\w*/u.test(passage)
+    && /\binventeerimis\w*/u.test(passage)
+    && !new RegExp(`\\b${smiName}\\w*\\s+(?:ei\\s+sobi|pole\\s+sobiv|ei\\s+anna|ei\\s+kirjelda|ei\\s+hinda)\\b`, "u").test(passage));
+  return hasMethod && hasNationalStateChangeAndParcelLimit;
+}
+
+function hasForestRegisterRole(source) {
+  const passages = forestrySourcePassages(source);
+  const registrySubject = "(?:metsaregis\\w*|registri\\s+andmestik)";
+  const affirmativeRegistryPredicate = (passage) => new RegExp(`\\b${registrySubject}\\b[\\s\\S]{0,160}\\b(?:sisaldab|koondab|kuuluvad|sobib)\\b`, "u").test(passage)
+    && !new RegExp(`\\b${registrySubject}\\b[\\s\\S]{0,160}\\b(?:ei\\s+sisalda|pole\\s+(?:osa|allik))\\b`, "u").test(passage);
+  return passages.some((passage) => affirmativeRegistryPredicate(passage)
+    && /\binventeerimis\w*/u.test(passage)
+    && /\bmetsateatis\w*/u.test(passage))
+    && passages.some((passage) => affirmativeRegistryPredicate(passage)
+      && /\bkinnistu\w*/u.test(passage)
+      && /\b(?:metsaeraldis\w*|eraldis\w*)/u.test(passage));
+}
+
+function sourceCitation(source) {
+  const citation = Number(source?.citation);
+  return Number.isInteger(citation) && citation > 0 ? citation : 0;
+}
+
+function uniqueCitations(sources = []) {
+  return [...new Set(sources.map(sourceCitation).filter(Boolean))];
+}
+
+// This is a constrained degraded-mode answer, not a hidden knowledge-base
+// answer. It is composed only when the visible official result set contains a
+// strong direct comparison plus independent SMI-method and registry-role
+// evidence. Luna can still replace it after its normal grounding checks.
+function composeForestDataSourcesFallback(query, plannedEvidence, sources = [], previousAnswer = {}) {
+  if (plannedEvidence?.kind !== "forest-data-sources" || !plannedEvidence?.strong) return null;
+  const visibleOfficial = sources.filter((source) => source?.sourceTier === "official" && sourceCitation(source));
+  const comparison = visibleOfficial.find((source) => source.id === plannedEvidence.directDocumentId
+    && hasForestryComparisonRole(source));
+  if (!comparison) return null;
+  const smiMethod = visibleOfficial.find((source) => source.id !== comparison.id && hasSmiNationalRole(source));
+  const registry = visibleOfficial.find((source) => source.id !== comparison.id
+    && source.id !== smiMethod?.id
+    && hasForestRegisterRole(source));
+  if (!smiMethod || !registry) return null;
+
+  const comparisonCitations = uniqueCitations([comparison]);
+  const smiCitations = uniqueCitations([smiMethod]);
+  const registryCitations = uniqueCitations([registry]);
+  const introCitations = uniqueCitations([comparison, smiMethod, registry]);
+  return {
+    eyebrow: "Allikapõhine kokkuvõte",
+    title: String(previousAnswer.title || query).trim().slice(0, 180),
+    intro: "Metsaandmed on mitmel viisil kogutavate metsandusandmete katusmõiste; SMI ei ole metsaandmete sünonüüm. SMI on üleriigiline proovitükkidel põhinev statistiline valikuuring Eesti metsade seisundi ja muutuste hindamiseks, mitte üksiku kinnistu inventeerimisandmete esitamiseks. Metsaregister koondab kinnistu- ja metsaeraldisepõhiseid inventeerimisandmeid ning metsateatisi.",
+    introCitations,
+    parts: [
+      {
+        title: "Metsaandmed",
+        text: "Metsaandmed hõlmavad eri kogumisviise ja andmeallikaid; SMI on neist üks, mitte kogu mõiste.",
+        citations: comparisonCitations,
+      },
+      {
+        title: "SMI roll",
+        text: "SMI annab proovitükkidel põhineva statistilise hinnangu Eesti metsade seisundile ja muutustele ning ei ole üksiku kinnistu inventeerimisvaade.",
+        citations: smiCitations,
+      },
+      {
+        title: "Metsaregistri roll",
+        text: "Metsaregistri andmed on kinnistu- ja metsaeraldisepõhised inventeerimisandmed koos metsateatistega.",
+        citations: registryCitations,
+      },
+    ],
+    note: String(previousAnswer.note || "").trim().slice(0, 700),
+  };
+}
+
 export function publicResponse(draft) {
   const { evidence: _evidence, ...response } = draft;
   return {
@@ -238,10 +361,19 @@ export async function createPortalDraft(query, {
     draft.related = forestBalance.related;
     draft.evidence.answerable = true;
   }
+  const forestDataSourcesFallback = !forestBalance
+    ? composeForestDataSourcesFallback(query, plannedEvidence, draft.sources, draft.answer)
+    : null;
   const directExtract = !forestBalance && direct
     ? directEvidenceExtract(retrievalQuery, direct, plannedEvidence)
     : "";
-  if (directExtract) {
+  if (forestDataSourcesFallback) {
+    draft.answer = forestDataSourcesFallback;
+    // The fallback is a terse rendering of raw visible evidence, not a new
+    // source. Do not feed it back to Luna as if it were independently
+    // reviewed evidence; Luna must ground any replacement in the sources.
+    draft.evidence.syntheticFallback = "forest-data-sources";
+  } else if (directExtract) {
     draft.answer.eyebrow = "Allikapõhine kokkuvõte";
     draft.answer.intro = directExtract;
     draft.answer.introCitations = [directCitation];

@@ -673,15 +673,18 @@ export function buildBoundedEvidence(draft, query = "") {
     : sources.length === 1
       ? 2_000
       : Math.min(2_200, Math.max(750, Math.floor(maxChars / Math.max(1, sources.length))));
+  const includeDraftClaims = !draft.evidence?.syntheticFallback;
   return sources.map((source) => {
     const citation = Number(source.citation);
     const reviewedClaims = [];
-    if ((draft.answer?.introCitations || []).map(Number).includes(citation)) {
+    if (includeDraftClaims && (draft.answer?.introCitations || []).map(Number).includes(citation)) {
       reviewedClaims.push(draft.answer.title, draft.answer.intro);
     }
-    for (const part of draft.answer?.parts || []) {
-      if ((part.citations || []).map(Number).includes(citation)) {
-        reviewedClaims.push(part.title, part.text);
+    if (includeDraftClaims) {
+      for (const part of draft.answer?.parts || []) {
+        if ((part.citations || []).map(Number).includes(citation)) {
+          reviewedClaims.push(part.title, part.text);
+        }
       }
     }
     const reviewedText = reviewedClaims.length
