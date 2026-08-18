@@ -31,12 +31,12 @@ Projekt on märgitud praktikaprojektiks ja saadab `noindex` juhise. See ei ole K
 | Metsa regressioonikorpus | Versioonitud JSON-korpus | 21 läbi vaadatud vastusedokumenti, 18 FAQ teemat, 12 väärarusaama ja 16 ametlikku algallikat; eval- ja võrdlusmaterjal, mitte primaarvastuse otsetee |
 | Otsing | Eesti relevantsusjärjestaja | Tüve- ja intent-laiendus, pealkirja/kokkuvõtte/lõigu kate, fraasilähedus, autoriteet ja ajakohasus |
 | Lai sisukorpus | PostgreSQL FTS + `pg_trgm` | 8407 sitemapilehte, 6057 portaali otsingukaarti, valitud puhastatud täistekstid, täpsed päringusnapshot'id ja kureeritud taustallikad |
-| Värske sisu | Nelja ametliku veebikogu liitotsing | Keskkonnaportaali, Keskkonnaameti, Keskkonnaagentuuri ja Kliimaministeeriumi sisu paralleelne avastamine ning puhastatud täistekst |
+| Värske sisu | Ametlik liitotsing + tüübikindlad andmeadapterid | Keskkonnaportaali, Keskkonnaameti, Keskkonnaagentuuri ja Kliimaministeeriumi sisu paralleelne avastamine, puhastatud täistekst ning konkreetsete näitajate ametlik masinloetav väärtus |
 | Ruumipäring | Avalik kataster + Metsaregistri WFS | Valideeritud katastritunnuse informatiivne pindala ja metsaeraldiste hetkeseis otse avalikust teenusest |
 | Vastuse koostamine | Sama järjestatud tulemusehulk + `gpt-5.6-luna` | Luna sõnastab nähtavate ametlike tulemuste põhjal otsese vastuse; server kontrollib viited, väited ja küsimusele vastamise ning tõrke korral kuvab sama värske allika viidatud väljavõtte või ausa abstention'i |
 | Andmebaas | Eraldatud PostgreSQL | Korpus ja hübriidotsing, versioonitud vastusepuhver ning privaatsust hoidev tehniline sündmuslogi |
 | Terrapoint | Eraldi iframe | Kogu Terrapointi UI, kaart ja sealsed avalikud integratsioonid; üldotsingust lahus |
-| Pakendamine | Dockerfile + Compose | Mitte-root, read-only veebikonteiner ja eraldatud PostgreSQL |
+| Pakendamine | Dockerfile + Compose | Mitte-root image; Compose'is read-only veebikonteiner ja eraldatud PostgreSQL |
 | Deploy | Coolify | Docker-build, tervisekontroll, HTTPS ja `praktika.arleserver.cfd` |
 
 ### Miks Redis ei ole praegu lisatud?
@@ -52,7 +52,7 @@ Senine 256-mõõtmeline räsivektor ei olnud semantiline embedding ja Qdranti ki
 Vastuse ja esimese laia tulemuselehe UI-endpoint on `POST /api/search`, kus küsimus on JSON-kehas. Ainult tulemuste järgmised lehed tulevad `POST /api/search/results` kaudu, mis ei genereeri AI vastust uuesti. GET jääb dokumenteeritud programmiliidese ühilduvuseks, kuid brauseri UI seda ei kasuta.
 
 1. Päring normaliseeritakse ning klassifitseeritakse deterministlikult olekusse `answerable`, `needs-clarification`, `live-weather`, `live-air` või `out-of-scope`. Jooksva ilma ja õhukvaliteedi päring suunatakse ametlikku reaalaja teenusesse, mitte vana artikli sünteesi. Prompt-injection'i korral mudelit ei kutsuta.
-2. PostgreSQL-i kandidaadid ja tasuta ametlikud Valitsusportaali otsinguliidesed käivitatakse paralleelselt. Eesti intent-laiendus teeb vajadusel kuni kolm kitsast alamotsingut, näiteks `raiuda tulevikus` või `mets vanus`.
+2. PostgreSQL-i kandidaadid, tasuta ametlikud Valitsusportaali otsinguliidesed ja päringule sobivad tüübikindlad andmeadapterid käivitatakse paralleelselt. Eesti intent-laiendus teeb vajadusel kuni kolm kitsast alamotsingut, näiteks `raiuda tulevikus` või `mets vanus`. Olmejäätmete ringlussevõtu määra adapter loeb küsitud aasta väärtuse otse portaali ametliku Tableau vaate CSV-väljundist.
 3. URL-id kanoniseeritakse ja duplikaadid ühendatakse. Mitme mõiste korral peab PostgreSQL-i kandidaat katma kõik mõisterühmad (`AND`), kuid sama mõiste käänded ja sünonüümid on rühma sees alternatiivid (`OR`). Server rakendab allika-, sisutüübi- ja aastafiltrid ning järjestab tulemused kõigepealt päringu tegeliku katvuse, seejärel autoriteedi, täielikkuse ja värskuse järgi.
    Lehitsemisel arvutatakse sama 50 tugevaima kohaliku ja live-kandidaadi järjestatud prefiks igal lehel uuesti; sügavam saba küsitakse PostgreSQL-ist sama prefiksi URL-e välistades. Nii ei kordu üks tulemus eri lehtedel isegi siis, kui live-allikad liituvad kohaliku korpusega.
 4. AI tõendid valitakse ainult selle sama nähtava ja filtreeritud tulemuselehe ametlikest kirjetest. Vana metsakorpus ei saa värskest otsingust mööda minna; seetõttu kasutab vastus uusimat päriselt avaldatud allikat, mitte lihtsalt kunagist eelkirjutatud SMI vastust.
@@ -121,6 +121,7 @@ Maa- ja Ruumiameti teenus on tasuta avalik teenus, kuid selle väljavõte on kas
 | `search.service.eu-live.vportal.ee/v1/search/keskkonnaamet` | Keskkonnaameti ametliku veebisisu relevantsusjärjestusega täistekstiotsing |
 | `search.service.eu-live.vportal.ee/v1/search/keskkonnaagentuur` | Keskkonnaagentuuri ametliku veebisisu täistekstiotsing |
 | `search.service.eu-live.vportal.ee/v1/search/kliimamin` | Kliimaministeeriumi ametliku veebisisu täistekstiotsing |
+| `tableau.envir.ee/.../OlmejtmeteringlussevttEestijaEuroopaLiit.csv` | Olmejäätmete ringlussevõtu määra küsitud aasta tüübikindel Eesti/EL väärtus; viide näitab inimesele portaali näitajalehte ja `locator` täpset CSV-vaadet |
 | Keskkonnaportaali ja teiste ametiasutuste HTTPS-lehed/PDF-id | Vastuse kontrollitavad algallikad |
 
 Keskkonnaportaali Drupali otsa ei käsitleta versioonitud lepingulise API-na. Päringud on ajapiiranguga, vastusemaht on piiratud, tulemused puhverdatakse ning tõrke korral kasutatakse stale-if-error väärtust.
@@ -131,7 +132,7 @@ Keskkonnaportaali Drupali otsa ei käsitleta versioonitud lepingulise API-na. P�
 
 ### Kontrollitud andmeteenused ja järgmised tüübikindlad adapterid
 
-Uuringu käigus kontrollitud ametlikud algallikad on lisatud 43 kirjega suunamiskataloogi. Toorarvude automaatne vastamine ootab iga teenuse kohta tüübikindlat adapterit:
+Uuringu käigus kontrollitud ametlikud algallikad on lisatud 43 kirjega suunamiskataloogi. Esimene toorarvu adapter (`server/indicators.mjs`) katab olmejäätmete ringlussevõtu määra. Järgmised teenused vajavad enne automaatset arvvastust samasugust skeemi-, ühiku-, aasta- ja eval-kontrolliga adapterit:
 
 - KAUR PostgREST `https://keskkonnaandmed.envir.ee/` kliima- ja seireandmetele;
 - EELIS avalikud JSON-jaotused ning KAUR GeoServeri WFS kaitse-, Natura-, vääriselupaiga ja Metsaregistri andmetele;
@@ -203,7 +204,7 @@ Avaliku timeout-ahela kontroll 18.08.2026: rakendus piirab kogu otsingu 15 sekun
 - PostgreSQL-i transaktsioon kasutab ühte reserveeritud klienti ning SQL on parameeterdatud.
 - Coolify runtime kasutab eraldi kasutajat `practice_user` ja andmebaasi `keskkonnaportaal_practice`; kontrollhetkel olid PostgreSQL-i `log_statement=none` ja `log_min_duration_statement=-1`, seega päringutekste serveri SQL-logisse ei kirjutatud.
 - Päringusnapshot'i saab kirjutada ainult `configured-seed` päritoluga; avalik kasutajapäring ei kutsu snapshot'i kirjutusrada.
-- Veebikonteiner töötab mitte-root kasutajana, read-only failisüsteemiga, `no-new-privileges` režiimis ja piiratud logirotatsiooniga.
+- Veebiimage töötab mitte-root `node` kasutajana. Compose lisab read-only failisüsteemi, `no-new-privileges` režiimi, piiratud `/tmp` tmpfs-i ja logirotatsiooni. Coolify Dockerfile-runtime kasutab `--cap-drop=ALL --init`; Coolify ei rakenda selles build pack'is `--read-only` valikut, kuid `/app` on root-omandis ja `node` kasutajale kirjutuskaitstud. Ajutised kirjutused jäävad `/tmp` alla.
 - Rakendus ei renderda mudeli või allikate toorest HTML-i.
 
 ## Testid ja väljalaskekontroll
@@ -246,7 +247,7 @@ Brauseri regression peab katma 1440 × 1100 ja 390 × 844 vaated, autocomplete'i
 
 Vaadetes 1440 × 1100 ja 390 × 844 jäi värske avaleht `scrollY === 0` juurde, aktiivne element oli hostdokumendi `BODY`, põhiotsing oli nähtav ja horisontaalset overflow'd polnud. Terrapointi cross-origin iframe laadis päris `terrapoint.ee` rakenduse, selle sisu ja neli sisendit ega võtnud hostilt fookust. UI-päring „jäätmete ringlussevõtu määr Eestis 2023” pani õigeks esimeseks tulemuseks olmejäätmete ringlussevõtu näitaja; peidetud viide 4 laiendas kaheksa allika loendi ja fokusseeris `source-4`. Mobiilil oli submit-nupp nimega, filtrid üheveerulised ja esimene loatulem KOTKAS. Mõlema sessiooni first-party konsoolis oli 0 viga ja 0 hoiatust.
 
-Sama brauserikontroll avastas enne lõppversiooni ühe katkestatud Valitsusportaali snippet'ist pärinenud avalause. Parandus nõuab nüüd nii deterministlikult väljavõttelt kui ka mudeli intro/osa tekstilt lõpetatud lauset ja kontrollib sama omadust live-evalis. Lõplik cache'i revisjon `answer-v12-content-bound-cache` seob vastuse jooksva järjestatud allikahulga ja sisuversiooniga, et varasema järjestuse või muudetud allika vastus ei jääks pärast deploy'd kehtima.
+Sama brauserikontroll avastas enne lõppversiooni ühe katkestatud Valitsusportaali snippet'ist pärinenud avalause. Parandus nõuab nüüd nii deterministlikult väljavõttelt kui ka mudeli intro/osa tekstilt lõpetatud lauset ja kontrollib sama omadust live-evalis. Cache'i revisjon `answer-v13-structured-indicators` seob vastuse jooksva järjestatud allikahulga, täpse andmelokaatori ja sisuversiooniga, et varasema järjestuse või muudetud allika vastus ei jääks pärast deploy'd kehtima.
 
 ## Olulisemad failid
 
@@ -255,6 +256,7 @@ server/forestry.mjs                     ajaloolise võrdluskorpuse eval- ja soov
 server/knowledge/forestry/sources.json regressiooni allikaregister
 server/knowledge/forestry/documents.json regressiooni struktureeritud vastused
 server/integrations.mjs                 portaali discovery ja ametliku täislehe lugemine
+server/indicators.mjs                   ametlike masinloetavate näitajate tüübikindlad adapterid
 server/corpus.mjs                       PostgreSQL-i korpus, sitemap, MediaWiki ja lai otsing
 server/sync-corpus.mjs                  käsitsi käivitatav korpuse sünkroniseerimine
 docs/ALLIKAD.md                         kontrollitud allikate, API-de ja piirangute register

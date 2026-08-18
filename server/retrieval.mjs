@@ -4,6 +4,7 @@ import {
   searchCorpus,
 } from "./corpus.mjs";
 import { searchOfficialSites } from "./integrations.mjs";
+import { loadStructuredIndicatorDocuments } from "./indicators.mjs";
 import {
   assessSearchQuery,
   buildDiscoveryQueries,
@@ -122,6 +123,7 @@ function mergeDuplicate(current, candidate) {
     ...fallback,
     ...preferred,
     summary: preferred.summary || fallback.summary,
+    locator: preferred.locator || fallback.locator,
     content: richerContent.content || preferred.content || fallback.content,
     _contentHash: richerContent._contentHash || preferred._contentHash || fallback._contentHash,
     _answerEvidenceEligible: preferred._answerEvidenceEligible !== false
@@ -592,19 +594,27 @@ export async function prepareRankedSearchResults(query, {
   const prefixLocalLimit = 50;
   const discoveryQueries = buildDiscoveryQueries(query, 3);
   const discoveryTimeout = Math.max(250, Math.min(2_200, remaining(deadlineAt, 12_000)));
+  // Structured official datasets are compact and high-value evidence. Give them
+  // a separate bounded slice: the live-site discovery reserve can intentionally
+  // collapse to 250 ms under the normal 12 s end-to-end production deadline.
+  const structuredTimeout = Math.max(250, Math.min(2_000, remaining(deadlineAt, 9_000)));
   const liveDiscovery = shouldUseLiveDiscovery(safePage)
     ? discoveryQueries.map((discoveryQuery) => searchOfficialSites(discoveryQuery, 6, {
       timeoutMs: discoveryTimeout,
       signal,
     }))
     : [];
-  const [localResult, ...officialResults] = await Promise.allSettled([
+  const [localResult, structuredResult, ...officialResults] = await Promise.allSettled([
     searchCorpus(query, {
       page: 1,
       pageSize: prefixLocalLimit,
       includeContent: true,
       preferSnapshot: false,
       filters: appliedFilters,
+    }),
+    loadStructuredIndicatorDocuments(query, {
+      timeoutMs: structuredTimeout,
+      signal,
     }),
     ...liveDiscovery,
   ]);
@@ -615,16 +625,18 @@ export async function prepareRankedSearchResults(query, {
     .filter((result) => result.status === "fulfilled")
     .flatMap((result) => result.value.documents || [])
     .map(officialDocument);
+  const structured = structuredResult.status === "fulfilled" ? structuredResult.value : [];
   const filteredLive = live.filter((document) => resultMatchesFilters(document, appliedFilters));
+  const filteredStructured = structured.filter((document) => resultMatchesFilters(document, appliedFilters));
   const directory = shouldUseLiveDiscovery(safePage)
     ? officialServiceCatalogueDocuments().filter((document) => resultMatchesFilters(document, appliedFilters))
     : [];
   queueLiveDocumentsForIndex(filteredLive);
-  const rankedPrefix = rankAndDeduplicate(query, [...(local.items || []), ...filteredLive, ...directory], {
+  const rankedPrefix = rankAndDeduplicate(query, [...(local.items || []), ...filteredStructured, ...filteredLive, ...directory], {
     sort: appliedFilters.sort,
   });
   const localUrls = new Set((local.items || []).map((document) => canonicalResultUrl(document.url)));
-  const facetExtras = rankAndDeduplicate(query, [...filteredLive, ...directory])
+  const facetExtras = rankAndDeduplicate(query, [...filteredStructured, ...filteredLive, ...directory])
     .filter((document) => !localUrls.has(canonicalResultUrl(document.url)));
   let selected = rankedPrefix.slice(offset, offset + safePageSize);
   const missing = safePageSize - selected.length;

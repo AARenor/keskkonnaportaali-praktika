@@ -162,6 +162,7 @@ const SEARCH_DOCUMENTS = [
     type: "Infosüsteem",
     published: "jooksev",
     url: "https://kotkas.envir.ee/",
+    locator: "https://keskkonnaamet.ee/kasiraamat-kohaliku-omavalitsuse-keskkonnaspetsialistile/kaevandamisloa-taotluse-menetlus-tahtsamate-etappide-kaupa",
     tags: ["luba", "keskkonnaluba", "taotlemine", "ettevõte", "KMH", "menetlus", "aruandlus", "KOTKAS"],
     summary:
       "KOTKAS on keskkonnalubade ametlik infosüsteem: seal saab esitada taotluse ning kontrollida konkreetse keskkonnaloa menetluse staatust ja avalikke dokumente.",

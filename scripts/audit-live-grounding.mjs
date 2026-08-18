@@ -130,16 +130,22 @@ for (const item of dataset.representative) {
       continue;
     }
     const evidence = [];
+    const fetchedEvidence = [];
     for (const number of claim.citations) {
       const source = body.sources?.[number - 1];
-      if (!source?.url) {
+      const evidenceUrl = source?.locator || source?.url;
+      if (!evidenceUrl) {
         fail(item.id, "citation does not resolve inside the response");
         continue;
       }
       try {
-        const fetched = await sourceText(source.url);
+        const fetched = await sourceText(evidenceUrl);
         citedUrlsChecked += 1;
-        evidence.push(fetched.text);
+        // Machine-readable tables often keep the indicator name in the view
+        // title and only dimensions/values in the CSV body. Use both for the
+        // lexical check, while measurements must still occur in fetched bytes.
+        evidence.push(normalize(`${source.title || ""} ${source.url || ""} ${fetched.text}`));
+        fetchedEvidence.push(fetched.text);
       } catch (error) {
         fail(item.id, error.message);
       }
@@ -151,7 +157,7 @@ for (const item of dataset.representative) {
     const supportRatio = claimRoots.length ? supported.length / claimRoots.length : 1;
     if (supportRatio < 0.4) fail(item.id, `claim lexical support ${supportRatio.toFixed(2)} < 0.40`);
     for (const measurement of measurements(claim.text)) {
-      if (!evidenceText.includes(measurement)) fail(item.id, "claim measurement is absent from cited source");
+      if (!fetchedEvidence.join(" ").includes(measurement)) fail(item.id, "claim measurement is absent from cited source");
     }
   }
 }

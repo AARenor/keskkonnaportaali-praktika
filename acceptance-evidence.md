@@ -71,7 +71,7 @@ Uus kasutajale nähtav privaatsusplokk kirjeldab täpselt Luna payloadi ja linki
 
 ```mermaid
 flowchart LR
-  A[Ametlik sitemap, portaaliotsing, Valitsusportaal, WFS ja teenusekataloog]
+  A[Ametlik sitemap, portaaliotsing, Valitsusportaal, WFS, CSV-näitajad ja teenusekataloog]
   B[URL-i valideerimine, robots/noindex, mahu- ja ajapiir]
   C[(PostgreSQL)]
   D[FTS + pg_trgm + intent + fraas + passage + aasta + autoriteet + värskus]
@@ -87,7 +87,9 @@ flowchart LR
   E -. praeguses runtime'is importimata .-> Q
 ```
 
-PostgreSQL on püsiv tööandmebaas. `practice_corpus_documents` hoiab normaliseeritud dokumente, täisteksti, metaandmeid ja `tsvector` indeksit. `practice_search_cache` hoiab versioonitud vastusepuhvrit ilma `query` väljata. `practice_search_runs` hoiab ainult serverisaladusega HMAC-SHA-256 päringusõrmejälge, redigeeritud tekstivälja, kestust ja dokumentide ID-sid. Cache'i revisjon sisaldab jooksva järjestatud loendi URL-e, järjekorda, metaandmeid ja sisuversiooni; hit lükatakse tagasi ka siis, kui mõni viidatud URL pole enam loendis. Aegunud vahemäluread ja üle 30 päeva vanad otsingukirjed eemaldatakse käivitumisel ning iga 60 sekundi järel; vana liht-räsi võtmeversiooni read eemaldatakse migratsiooniga.
+PostgreSQL on püsiv tööandmebaas. `practice_corpus_documents` hoiab normaliseeritud dokumente, täisteksti, metaandmeid ja `tsvector` indeksit. `practice_search_cache` hoiab versioonitud vastusepuhvrit ilma `query` väljata. `practice_search_runs` hoiab ainult serverisaladusega HMAC-SHA-256 päringusõrmejälge, redigeeritud tekstivälja, kestust ja dokumentide ID-sid. Cache'i revisjon sisaldab jooksva järjestatud loendi URL-e, järjekorda, metaandmeid, täpset andmelokaatorit ja sisuversiooni; hit lükatakse tagasi ka siis, kui mõni viidatud URL pole enam loendis. Aegunud vahemäluread ja üle 30 päeva vanad otsingukirjed eemaldatakse käivitumisel ning iga 60 sekundi järel; vana liht-räsi võtmeversiooni read eemaldatakse migratsiooniga.
+
+Kõik arvulised allikad ei ole HTML-lehel tekstina olemas. `server/indicators.mjs` on tüübikindel adapter, mis tuvastab olmejäätmete ringlussevõtu määra päringu, loeb portaali ametliku Tableau CSV-vaate, valideerib veerud ning valib küsitud aasta Eesti ja EL-i rea. Avalik viide avab inimesele näitajalehe; eraldi `locator` osutab kontrollitavale masinloetavale tabelile. CSV sisu hash osaleb cache'i revisjonis ja grounding-audit nõuab iga kuvatud arvu olemasolu just selles tabelis.
 
 Korpuse loendurite täpsed definitsioonid:
 
@@ -121,6 +123,7 @@ Mudeli sisend sisaldab küsimust, ranget JSON skeemi ja kuni kaheksa juba järje
 | PostgreSQL-i skeem, FTS ja tombstone | `server/corpus.mjs` | `npm test`, `/api/corpus`, SQL risttabel |
 | Päringu HMAC-redaktsioon ja sisuga seotud cache | `server/database.mjs`, `server/pipeline.mjs` | võtmeversiooni SQL-risttabel, cache'i invalidatsiooni unit-testid |
 | Ühine järjestatud hetktõmmis | `server/retrieval.mjs`, `server/pipeline.mjs` | 24 qrel'i, filtri- ja viitetestid |
+| Tüübikindel ametlik arvunäitaja | `server/indicators.mjs`, `server/integrations.mjs` | CSV-fixtuuri unit-testid ja live grounding-audit |
 | Luna range JSON ja maandatus | `server/llm.mjs` | adversariaalsed LLM unit-testid, live grounding audit |
 | 15 s globaalne vastusepiir | `server/index.mjs`, `server/pipeline.mjs` | fault-injection ja live load audit |
 | Terrapointi täisrakendus | `src/App.jsx`, CSP `frame-src` | desktopi/mobiili Playwrighti teekond |

@@ -23,7 +23,7 @@ import {
   textHasQueryRoot,
 } from "./search.mjs";
 
-export const SEARCH_RESPONSE_REVISION = "answer-v12-content-bound-cache";
+export const SEARCH_RESPONSE_REVISION = "answer-v13-structured-indicators";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 
 function rankPortalDocuments(query, documents) {
@@ -172,6 +172,7 @@ export function searchListingRevision(listing = {}) {
     canonicalResultUrl(item.url),
     String(item.title || ""),
     String(item.summary || ""),
+    String(item.locator || ""),
     String(item.published || ""),
     String(item.sourceTier || ""),
     String(item._contentHash || item.content || ""),

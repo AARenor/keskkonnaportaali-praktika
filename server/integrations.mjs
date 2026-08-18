@@ -27,6 +27,7 @@ const OFFICIAL_HOSTS = new Set([
   "register.keskkonnaportaal.ee",
   "tallinn.ee",
   "www.tallinn.ee",
+  "tableau.envir.ee",
   "eea.europa.eu",
   "www.eea.europa.eu",
 ]);
@@ -161,6 +162,15 @@ async function fetchCached(url, {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export async function fetchOfficialDataset(url, options = {}) {
+  return fetchCached(url, {
+    ...options,
+    accept: "text/csv,text/plain;q=0.9",
+    ttlMs: options.ttlMs ?? 15 * 60_000,
+    staleMs: options.staleMs ?? 24 * 60 * 60_000,
+  });
 }
 
 function officialPortalUrl(value) {

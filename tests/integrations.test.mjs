@@ -11,6 +11,10 @@ test("official fetch targets reject non-HTTPS and off-list redirect destinations
     validatedOfficialUrl("/et/mets", "https://keskkonnaportaal.ee/").toString(),
     "https://keskkonnaportaal.ee/et/mets",
   );
+  assert.equal(
+    validatedOfficialUrl("https://tableau.envir.ee/views/indicator.csv?:showVizHome=no").hostname,
+    "tableau.envir.ee",
+  );
   assert.throws(() => validatedOfficialUrl("http://keskkonnaportaal.ee/et/mets"), /allowlist/u);
   assert.throws(() => validatedOfficialUrl("https://example.com/collect"), /allowlist/u);
 });
