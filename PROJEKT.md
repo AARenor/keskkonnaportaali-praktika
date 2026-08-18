@@ -210,6 +210,8 @@ npm run build
 npm run test:sites
 docker compose config
 npm run eval:live -- --base-url=https://praktika.arleserver.cfd
+npm run audit:grounding -- --base-url=https://praktika.arleserver.cfd
+npm run audit:load -- --base-url=https://praktika.arleserver.cfd
 ```
 
 Automaattestid kontrollivad muu hulgas:
@@ -217,8 +219,8 @@ Automaattestid kontrollivad muu hulgas:
 - 16 allikaga regressioonikorpuse, 21 dokumendi, 18 FAQ teema ja 12 väärarusaama sisemise tervikluse;
 - eraldiseisva tulemuste lehitsemise, korpuse parserid ja ametlike URL-aliaste deduplikatsiooni;
 - fraasi- ja lõigukattega relevantsusjärjestuse, tegeliku avaldamisaja, tulevikukuupäeva karistuse ning allika-, tüübi- ja aastafiltrite jõustamise;
-- 43 allikaga üldkataloog ning 54 päringuga külmutatud keskkonnaotsingu routing-komplekt;
-- 19/19 teenusepäringu õige esimese allika nii deterministlikus järjestajas kui ka külma PostgreSQL-i vahemäluga päris HTTP-voos;
+- 43 allikaga üldkataloog ning 59 päringuga külmutatud keskkonnaotsingu routing-komplekt;
+- 24/24 teenusepäringu õige esimese allika nii deterministlikus järjestajas kui ka külma PostgreSQL-i vahemäluga päris HTTP-voos;
 - külmutatud v2 hindamiskomplekti 30/30 vastatava päringu õiget intent-vastust ja Recall@3 väärtust 100%;
 - `mets` päris sünteesi, täpset FAQ vastust ja turvalist abstention'it;
 - raiemahu/juurdekasvu vastuse aastaid, ühikuid ja piiranguid;
@@ -230,7 +232,7 @@ Automaattestid kontrollivad muu hulgas:
 
 Brauseri regression peab katma 1440 × 1100 ja 390 × 844 vaated, autocomplete'i kihistuse, klaviatuurikäitumise, mobiili esimest vaadet, kompaktset otsingulehte, allikate avamist, horisontaalse overflow puudumist ning avaliku iframe'i fookuse/scroll'i kontrolli.
 
-18.08.2026 avalik vastuvõtutest tehti funktsionaalse commit'i `b68fdce` vastu puhaste Playwrighti sessioonidega otse aadressil `https://praktika.arleserver.cfd`, mitte localhostis. HTTPS tagastas 200, HTTP suunati 308-ga HTTPS-i, sertifikaat kattis `*.arleserver.cfd` ning healthcheck oli roheline. Live-eval sai 19/19 päringul oodatud esimese allika ja 1045/1045 avaliku lepingu, viite, filtratsiooni ning lause-tervikluse kontrolli; p50 oli 1,884 s ja p95/maksimum 11,677 s, 504 vastuseid oli 0.
+18.08.2026 lõplik avalik vastuvõtutest tehti commit'i `46695ec` vastu puhaste Playwrighti sessioonidega otse aadressil `https://praktika.arleserver.cfd`, mitte localhostis. HTTPS tagastas 200, HTTP suunati 308-ga HTTPS-i, healthcheck oli roheline ning konteineri image ja `SOURCE_COMMIT` ühtisid. Live-eval sai 24/24 päringul oodatud esimese allika ja 1254/1254 avaliku lepingu, viite, filtratsiooni ning lause-tervikluse kontrolli; p50 oli 1,521 s, p95 12,687 s ja maksimum 13,166 s, 504 vastuseid oli 0. Grounding-audit läbis 10/10 esinduslikku vastust ja 10/10 adversariaalset loobumist. 20 samaaegset päringut andsid 20 HTTP 200 vastust, 0 timeout'i/5xx-i/504 ning 21. päring 429 + `Retry-After`; koormuse ajal kasutati kaheksal päringul selgelt märgitud capacity-fallback'i.
 
 Vaadetes 1440 × 1100 ja 390 × 844 jäi värske avaleht `scrollY === 0` juurde, aktiivne element oli hostdokumendi `BODY`, põhiotsing oli nähtav ja horisontaalset overflow'd polnud. Terrapointi cross-origin iframe laadis päris `terrapoint.ee` rakenduse, selle sisu ja neli sisendit ega võtnud hostilt fookust. UI-päring „jäätmete ringlussevõtu määr Eestis 2023” pani õigeks esimeseks tulemuseks olmejäätmete ringlussevõtu näitaja; peidetud viide 4 laiendas kaheksa allika loendi ja fokusseeris `source-4`. Mobiilil oli submit-nupp nimega, filtrid üheveerulised ja esimene loatulem KOTKAS. Mõlema sessiooni first-party konsoolis oli 0 viga ja 0 hoiatust.
 

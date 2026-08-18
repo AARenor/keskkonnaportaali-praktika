@@ -1,6 +1,6 @@
 # Vastuvõtutõendite register
 
-See fail seob projekti tootmisvalmiduse väited korduvkäivitatavate testide, runtime'i konfiguratsiooni ja koodiga. Avalikud testpäringud on fikseeritud näited ega sisalda kasutajaandmeid. Tootmise täpsed loendurid ja ajatemplid lisatakse pärast sama funktsionaalse commit'i Coolify deploy'd.
+See fail seob projekti tootmisvalmiduse väited korduvkäivitatavate testide, runtime'i konfiguratsiooni ja koodiga. Avalikud testpäringud on fikseeritud näited ega sisalda kasutajaandmeid. Allolevad tootmistulemused mõõdeti Coolifys samal commit'il, mida vastuvõtu ajal teenindas `praktika.arleserver.cfd`.
 
 ## Otsingu hindamisspetsifikatsioon
 
@@ -14,6 +14,32 @@ Kontrollid:
 - `npm run eval:live -- --base-url=https://praktika.arleserver.cfd` kontrollib samu 24 esikohta tootmises ning lisaks vastuse, viidete, filtrite, lehitsemise, privaatsusväljade ja terviklausete avalikku lepingut;
 - `npm run audit:grounding -- --base-url=https://praktika.arleserver.cfd` kontrollib kümmet esinduslikku maandatud vastust ja kümmet adversariaalset loobumist, viidatud URL-ide HTTP 200 olekut ning väidete sõna- ja arvutuge;
 - `npm run audit:load -- --base-url=https://praktika.arleserver.cfd` kontrollib 20 samaaegset kasutajat ja 21. päringu 429 backpressure'i.
+
+## Mõõdetud tootmistulemus 18.08.2026
+
+Funktsionaalne ja tootmises kontrollitud commit oli `46695ec3b9ede63a65ec696b91e939ee557f9933`. Coolify konteiner oli `healthy`, `SOURCE_COMMIT` ja image'i tag ühtisid ning restartide arv oli 0.
+
+| Kontroll | Tulemus |
+|---|---|
+| Unit/integratsioon | 114/114; build edukas; Sites 4/4; mõlemad Compose'i profiilid kehtivad; `npm audit` 0 |
+| Külmutatud live-relevantsus | 24/24 top-1 qrel'i ja 1254/1254 avaliku lepingu kontrolli; p50 1521 ms, p95 12 687 ms, max 13 166 ms; 0 viga |
+| Grounding | 10/10 esinduslikku vastust ja 10/10 adversariaalset loobumist; 21 väidet, 29 viiteavamist, 19 eri HTTPS URL-i; 0 viga |
+| Koormus/backpressure | 20/20 HTTP 200; p50 6584 ms, p95 15 821 ms, max 16 200 ms; 8 läbipaistvat capacity-fallback'i; 0 timeout'i, 5xx-i või 504; 21. päring 429 + `Retry-After: 60` |
+| Täielik fault-injection | DB ja portaali upstream kättesaamatud, LLM väljas, 1 s eelarve: 5/5 HTTP 200 fallback'i; p50 1378 ms, max 1693 ms; 0 timeout'i, 5xx-i või 504 |
+| Brauser, desktop | värske laadimine `scrollY=0`, aktiivne element `BODY`, otsing 551 px, Terrapointi iframe 946 px; iframe'is nähtav „Sinu mets”; 0 console error'it ja 0 horisontaalset overflow'd |
+| Brauser, 390×844 | otsing nähtav, Terrapointi iframe 372×780, 0 console error'it ja 0 horisontaalset overflow'd |
+| Turve | HSTS/CSP/frame-ancestors/referrer/nosniff/permissions/noindex olemas; tundmatud GET/POST/DELETE API-teed JSON 404; HTTP→HTTPS 308; vaenuliku Origini ACAO puudub; pärast selle tõendifaili commit'i 29 commit'i gitleaks 0; runtime-image'i build-env saladusi 0 |
+
+Tootmise andmebaasi lõpp-risttabel:
+
+| Kiht | Mõõdetud tulemus |
+|---|---|
+| Aktiivne korpus | 12 385 dokumenti = 11 517 `official` + 8 `supplementary` + 860 `other`; `reviewed` 0; kättesaamatuid ridu 0 |
+| Hüdratsioon | 1600 täistekstiga + 10 785 metadata-only = 12 385; 1600 erinevat mittetühja sisu |
+| `official` ristlõige | 1592 täistekstiga + 9925 metadata-only = 11 517 |
+| Runtime providerid pärast deploy'd | 10 `opencode-go/gpt-5.6-luna` vastust ja 29 kontrollitud `deterministic-current-evidence` vastust; DeepSeek 0 |
+| PostgreSQL privaatsus | toorpäringuga otsingukirjeid 0, toorpäringuga vahemäluridu 0, vahemälu JSON-i `query` välju 0, aegunud vahemäluridu 0; `log_statement=none`, `log_min_duration_statement=-1` |
+| Unikaalne nonce | URL, title, history, cookie, local/session storage, app-logi, proxy-logi, run/cache/corpus kõik 0; same-origin request oli JSON POST ja referrer ainult `/otsi` |
 
 ## Runtime'i andmevoog
 
@@ -35,7 +61,7 @@ flowchart LR
   E -. praeguses runtime'is importimata .-> Q
 ```
 
-PostgreSQL on püsiv tööandmebaas. `practice_corpus_documents` hoiab normaliseeritud dokumente, täisteksti, metaandmeid ja `tsvector` indeksit. `practice_search_cache` hoiab versioonitud vastusepuhvrit ilma `query` väljata. `practice_search_runs` hoiab ainult päringu SHA-256 räsi, redigeeritud tekstivälja, kestust ja dokumentide ID-sid.
+PostgreSQL on püsiv tööandmebaas. `practice_corpus_documents` hoiab normaliseeritud dokumente, täisteksti, metaandmeid ja `tsvector` indeksit. `practice_search_cache` hoiab versioonitud vastusepuhvrit ilma `query` väljata. `practice_search_runs` hoiab ainult päringu SHA-256 räsi, redigeeritud tekstivälja, kestust ja dokumentide ID-sid. Aegunud vahemäluread ja üle 30 päeva vanad otsingukirjed eemaldatakse käivitumisel ning iga 60 sekundi järel.
 
 Korpuse loendurite täpsed definitsioonid:
 
@@ -54,7 +80,7 @@ Qdrant on ainult Compose'i `experimental-vector` profiil. `server/qdrant.mjs` ka
 
 Tootmise vastusetee on `server/pipeline.mjs` → `server/llm.mjs` → OpenCode Go Responses API. Deploy määrab `LLM_MODEL=gpt-5.6-luna`, `LLM_API_STYLE=responses` ja tühja fallback-mudeli. Avalik marsruut ei saa neid keskkonnamuutujaid muuta. DeepSeek V4 Flash töötab ainult Codexi arendus-Swarmi planeerimis- ja auditikihis; see ei kraabi ega vasta tootmisrakenduse päringutele.
 
-Mudeli sisend sisaldab küsimust, ranget JSON skeemi ja kuni kaheksa juba järjestatud avaliku allika piiratud tõendit. Mudelil pole PostgreSQL-i, Qdranti, Terrapointi, shelli ega veebitööriistu. Väljund avaldatakse ainult deterministlike kontrollide läbimisel; muidu jääb kasutusele kontrollitud allikapõhine draft.
+Mudeli sisend sisaldab küsimust, ranget JSON skeemi ja kuni kaheksa juba järjestatud avaliku allika piiratud tõendit. Mudelil pole PostgreSQL-i, Qdranti, Terrapointi, shelli ega veebitööriistu. Väljund avaldatakse ainult deterministlike kontrollide läbimisel; muidu jääb kasutusele kontrollitud allikapõhine draft. Korraga tehakse kuni neli Luna kutset; ülejäänud vastused ei oota mudelijärjekorras, vaid kasutavad sama tõendi põhjal deterministlikku drafti.
 
 ## Dokumentatsiooni ja koodi kaart
 
@@ -74,7 +100,7 @@ Mudeli sisend sisaldab küsimust, ranget JSON skeemi ja kuni kaheksa juba järje
 | Meetod | Tee | Mõju ja piir |
 |---|---|---|
 | GET | `/api/health` | ainult tervis, ei muuda olekut |
-| GET/POST | `/api/search` | ainult otsing; UI kasutab POST-i; 180 märki, 15 s, 20 päringut minutis |
+| GET/POST | `/api/search` | ainult otsing; UI kasutab POST-i; 180 märki, 15 s, 20 päringut minutis; kuni 12 täismahus paralleelotsingut, üle selle kontrollitud capacity-fallback |
 | GET/POST | `/api/search/results` | ainult lehitsemine/filtrid; UI kasutab POST-i |
 | POST | `/api/search/follow-up` | ainult vastus; kuni neli varasemat küsimust ja 520 märki konteksti |
 | GET | `/api/corpus` | ainult agregeeritud avalikud loendurid |

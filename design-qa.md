@@ -88,14 +88,15 @@ Paarisvõrdluste ja interaktsioonitestide järgi ei jäänud lokaalsesse buildi 
 
 ## Avaliku deploy vastuvõtukontroll
 
-Coolify kaudu juurutatud funktsionaalset commit'i `b68fdce` kontrolliti 18.08.2026 aadressil `https://praktika.arleserver.cfd` puhaste Chrome'i brauseriseanssidega. Avaliku deploy tulemused:
+Coolify kaudu juurutatud commit'i `46695ec` kontrolliti 18.08.2026 aadressil `https://praktika.arleserver.cfd` puhaste Chrome'i brauseriseanssidega. Avaliku deploy tulemused:
 
 - värske 1440 × 1100 desktop-load ja 390 × 844 mobiililaadimine jäid `scrollY === 0` juurde, aktiivne element oli hostdokumendi `BODY`, nähtav oli üks põhiotsing ja horisontaalset overflow'd ei tekkinud;
 - `https://terrapoint.ee/` laadis cross-origin iframe'is päris Terrapointi pealkirja, sisu ja neli sisendit; iframe ei saanud hostdokumendi fookust;
 - „jäätmete ringlussevõtu määr Eestis 2023” asetas näitaja lehe esimeseks, vastas tervikliku 38% lausega ning peidetud viide 4 laiendas kaheksa allika loendi ja fokusseeris `source-4`;
 - „keskkonnaloa taotlemine ettevõttele” asetas mobiilis esimeseks KOTKASe; neli filtrit muutusid ühel veerul loetavaks ning ükski ikoonnupp ei jäänud nimeta;
 - first-party konsoolivigu ja hoiatusi oli mõlemas sessioonis 0;
-- avalik live-eval sai 19/19 oodatud esikohta ja 1045/1045 API-lepingu, viite, filtri, paginationi, privaatsusvälja ning lõpetatud lause kontrolli. p50 oli 1,884 s, p95/maksimum 11,677 s ja 504 vastuseid oli 0;
+- avalik live-eval sai 24/24 oodatud esikohta ja 1254/1254 API-lepingu, viite, filtri, paginationi, privaatsusvälja ning lõpetatud lause kontrolli. p50 oli 1,521 s, p95 12,687 s, maksimum 13,166 s ja 504 vastuseid oli 0;
+- grounding-audit läbis 10/10 esinduslikku vastust ja 10/10 adversariaalset loobumist; 20 samaaegse päringu testis oli 20/20 HTTP 200, 0 timeout'i/5xx-i/504 ning 21. päring sai 429 + `Retry-After`;
 - brauserikontrollis leitud katkine otsingusnippet põhjustas enne lõppdeploy'd pooliku avalause. Cache'i revisioon `answer-v10-complete-sentences`, kaks uut regressioonitesti ja live-evali lauselõpukontroll välistavad sama vea kordumise.
 
 final local result: passed
