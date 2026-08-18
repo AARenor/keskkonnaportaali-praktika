@@ -169,6 +169,31 @@ test("precise environmental tasks start with their maintained official service p
   }
 });
 
+test("maintained task pages stay above incidental live articles with overlapping words", () => {
+  const services = officialServiceCatalogueDocuments();
+  const liveDistractors = [
+    official({ id: "forest-growth-news", title: "Eesti metsa juurdekasv on stabiilne", summary: "Uudis metsa juurdekasvust ja mõõtmistest." }),
+    official({ id: "water-status-news", title: "Eesti pinnaveekogumite seisund on visa paranema", summary: "Uudis veekogumite seisundist ja seirest." }),
+    official({ id: "station-renovation-news", title: "Seirejaamad läbisid uuenduskuuri", summary: "Uudis automaatjaamade uuendamisest ja gammakiirguse seirest." }),
+    official({ id: "parnu-flood-news", title: "Pärnus räägitakse üleujutusohu riskidest", summary: "Pärnu hetkeseis ja riskid." }),
+    official({ id: "other-permits", title: "Muud luba vajavad tegevused", summary: "Kaitsealal vajavad mitmed tegevused nõusolekut." }),
+    official({ id: "protected-map-news", title: "Looduskaitsealuse maa teemakaart", summary: "Kaart kuvab kaitstavaid alasid ja liike." }),
+    official({ id: "assessment-handbook", title: "KMH/KSH programmi ja aruande menetlus", summary: "Käsiraamat kirjeldab KMH ja KSH menetlust." }),
+  ];
+  const cases = [
+    ["Kui palju metsa Eestis on ja kuidas seda mõõdetakse?", "forest-overview"],
+    ["Veekogumi seisund ja seireproovide tulemused ei ole sama asi", "water-monitoring"],
+    ["Eesti gammakiirguse automaatjaamade seiretulemused", "radiation-monitoring"],
+    ["Kust näeb Pärnu õhu PM2.5 hetkeseisu?", "air-quality-live"],
+    ["Kas kaitsealale võib maja ehitada ja kelle nõusolekut on vaja?", "protected-area-construction"],
+    ["Kaitstavad liigid, püsielupaigad ja tegevuspiirangud", "protected-nature-guidance"],
+    ["Mis vahe on KMH-l ja KSH-l otsustusmenetluses?", "environmental-assessment"],
+  ];
+  for (const [query, expected] of cases) {
+    assert.equal(rankSearchCandidates(query, [...liveDistractors, ...services], { now: NOW })[0].id, expected, query);
+  }
+});
+
 test("frozen service-intent relevance set keeps every expected source at rank one", async () => {
   const dataset = JSON.parse(await readFile(
     new URL("../evaluation/environment_search_queries_v1.json", import.meta.url),
@@ -180,6 +205,28 @@ test("frozen service-intent relevance set keeps every expected source at rank on
     return actual === item.topSource ? [] : [{ id: item.id, expected: item.topSource, actual }];
   });
   assert.deepEqual(failures, []);
+});
+
+test("separately frozen relevance holdout clears its P@1, MRR and nDCG@5 gates", async () => {
+  const dataset = JSON.parse(await readFile(
+    new URL("../evaluation/environment_search_holdout_v1.json", import.meta.url),
+    "utf8",
+  ));
+  const services = officialServiceCatalogueDocuments();
+  const ranks = dataset.cases.map((item) => {
+    const ranked = rankSearchCandidates(item.query, services, { now: NOW });
+    const index = ranked.findIndex((document) => document.id === item.topSource);
+    return index < 0 ? null : index + 1;
+  });
+  const precisionAt1 = ranks.filter((rank) => rank === 1).length / ranks.length;
+  const mrr = ranks.reduce((sum, rank) => sum + (rank ? 1 / rank : 0), 0) / ranks.length;
+  const ndcgAt5 = ranks.reduce((sum, rank) => (
+    sum + (rank && rank <= 5 ? 1 / Math.log2(rank + 1) : 0)
+  ), 0) / ranks.length;
+
+  assert.ok(precisionAt1 >= dataset.gates.precisionAt1, `P@1 ${precisionAt1}`);
+  assert.ok(mrr >= dataset.gates.mrr, `MRR ${mrr}`);
+  assert.ok(ndcgAt5 >= dataset.gates.ndcgAt5, `nDCG@5 ${ndcgAt5}`);
 });
 
 test("permission intent selects the prohibition guidance, not an industrial permit", () => {

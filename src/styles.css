@@ -1163,6 +1163,46 @@ h3 {
   width: 18px;
 }
 
+.footer-privacy {
+  margin: 0 0 28px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 5px;
+  padding: 11px 14px;
+  color: #e9f7fc;
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.footer-privacy summary {
+  color: #fff;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.footer-privacy p {
+  max-width: 980px;
+  margin: 10px 0 0;
+  color: #d0e4ef;
+}
+
+.footer-privacy a {
+  color: #fff;
+  text-decoration: underline;
+}
+
+.site-footer--compact .footer-privacy {
+  width: 100%;
+  margin: 0 0 12px;
+  border-color: #c9dde5;
+  color: var(--brand-900);
+}
+
+.site-footer--compact .footer-privacy summary,
+.site-footer--compact .footer-privacy a,
+.site-footer--compact .footer-privacy p {
+  color: var(--brand-900);
+}
+
 .footer-bottom {
   background: #e6f6fc;
   color: var(--brand-900);

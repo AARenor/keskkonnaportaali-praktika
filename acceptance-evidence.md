@@ -13,6 +13,8 @@ Kontrollid:
 - `npm test` kontrollib kõigi 59 juhtumi intenti ja 24 qrel'i deterministlikku esikohta;
 - `npm run eval:live -- --base-url=https://praktika.arleserver.cfd` kontrollib samu 24 esikohta tootmises ning lisaks vastuse, viidete, filtrite, lehitsemise, privaatsusväljade ja terviklausete avalikku lepingut;
 - `npm run audit:grounding -- --base-url=https://praktika.arleserver.cfd` kontrollib kümmet esinduslikku maandatud vastust ja kümmet adversariaalset loobumist, viidatud URL-ide HTTP 200 olekut ning väidete sõna- ja arvutuge;
+- `npm run eval:holdout -- --base-url=https://praktika.arleserver.cfd` kontrollib eraldi enne esimest jooksu külmutatud 40 päringu relevantsust nii kataloogi kui ka päris ühendotsingu vastu;
+- `npm run audit:filters -- --base-url=https://praktika.arleserver.cfd` kontrollib allika-, kategooria-, aasta-, järjestuse- ja kombineeritud filtrimaatriksit;
 - `npm run audit:load -- --base-url=https://praktika.arleserver.cfd` kontrollib 20 samaaegset kasutajat ja 21. päringu 429 backpressure'i.
 
 ## Mõõdetud tootmistulemus 18.08.2026
@@ -80,7 +82,7 @@ Qdrant on ainult Compose'i `experimental-vector` profiil. `server/qdrant.mjs` ka
 
 Tootmise vastusetee on `server/pipeline.mjs` → `server/llm.mjs` → OpenCode Go Responses API. Deploy määrab `LLM_MODEL=gpt-5.6-luna`, `LLM_API_STYLE=responses` ja tühja fallback-mudeli. Avalik marsruut ei saa neid keskkonnamuutujaid muuta. DeepSeek V4 Flash töötab ainult Codexi arendus-Swarmi planeerimis- ja auditikihis; see ei kraabi ega vasta tootmisrakenduse päringutele.
 
-Mudeli sisend sisaldab küsimust, ranget JSON skeemi ja kuni kaheksa juba järjestatud avaliku allika piiratud tõendit. Mudelil pole PostgreSQL-i, Qdranti, Terrapointi, shelli ega veebitööriistu. Väljund avaldatakse ainult deterministlike kontrollide läbimisel; muidu jääb kasutusele kontrollitud allikapõhine draft. Korraga tehakse kuni neli Luna kutset; ülejäänud vastused ei oota mudelijärjekorras, vaid kasutavad sama tõendi põhjal deterministlikku drafti.
+Mudeli sisend sisaldab küsimust, ranget JSON skeemi ja kuni kaheksa juba järjestatud avaliku allika piiratud tõendit. Mudelil pole PostgreSQL-i, Qdranti, Terrapointi, shelli ega veebitööriistu. Väljund avaldatakse ainult deterministlike kontrollide läbimisel; muidu jääb kasutusele kontrollitud allikapõhine draft. Korraga tehakse kuni kaks Luna kutset; ülejäänud vastused ei oota mudelijärjekorras, vaid kasutavad sama tõendi põhjal deterministlikku drafti. Piir põhineb live-koormusmõõtmisel: kaks paralleelset kutset vastasid 2/2, nelja samaaegse kutse puhul venisid kõik mudelivastused ühise tähtajani.
 
 ## Dokumentatsiooni ja koodi kaart
 
@@ -94,6 +96,7 @@ Mudeli sisend sisaldab küsimust, ranget JSON skeemi ja kuni kaheksa juba järje
 | Terrapointi täisrakendus | `src/App.jsx`, CSP `frame-src` | desktopi/mobiili Playwrighti teekond |
 | POST-põhine privaatne UI-otsing | `src/App.jsx`, `server/index.mjs` | brauseri request-list, nonce test |
 | Qdrant pole tootmise otsinguteel | `server/qdrant.mjs`, `compose.yaml` | impordigraafi kontroll, profiilide Compose validation |
+| Välise Luna andmetöötluse piir | `PRIVAATSUS.md`, `src/App.jsx` | kasutajale nähtav selgitus, payloadi ja säilituse koodikontroll |
 
 ## Avalike marsruutide inventar
 

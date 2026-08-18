@@ -214,7 +214,10 @@ const SEARCH_DOCUMENTS = [
     type: "Ruumiandmete API",
     published: "27.05.2026",
     url: "https://keskkonnaportaal.ee/et/avaandmed/geoserver",
-    tags: ["GeoServer", "WMS", "WFS", "GeoJSON", "EELIS", "Metsaregister", "kaart", "ruumiandmed"],
+    tags: [
+      "GeoServer", "WMS", "WFS", "GeoJSON", "EELIS", "Metsaregister", "kaart", "ruumiandmed",
+      "ruumikiht", "looduskaitse",
+    ],
     summary:
       "Avalik GeoServer jagab EELISe ja Metsaregistri ruumikihte WMS- ja WFS-teenustena ning võimaldab valitud kihte GeoJSONi või muude GIS-vormingutena pärida.",
     answer:
@@ -635,6 +638,25 @@ const STOP_WORDS = new Set([
   "on",
   "aasta",
   "aastal",
+  "kust",
+  "saab",
+  "saada",
+  "leia",
+  "leian",
+  "alla",
+  "kaudu",
+  "kontrollida",
+  "esitada",
+  "kaasnevad",
+  "halvas",
+  "teenus",
+  "teenuse",
+  "ole",
+  "sama",
+  "asi",
+  "kelle",
+  "vaja",
+  "naeb",
 ]);
 
 const DISCOVERY_STOP_WORDS = new Set([
@@ -707,6 +729,7 @@ export function buildDiscoveryQueries(query, limit = 3) {
 }
 
 function topicRoot(word) {
+  if (word.startsWith("avaandm")) return "avaandmed";
   if (word.startsWith("keskkonnaandm")) return "andmed";
   if (word.startsWith("kasvuhoonegaas") || word === "khg") return "kasvuhoonegaas";
   if (word.startsWith("mets")) return "mets";
@@ -719,6 +742,11 @@ function topicRoot(word) {
   if (word.startsWith("tulemus")) return "tulemus";
   if (word.startsWith("tulevik")) return "tulevik";
   if (word.startsWith("kliim")) return "kliima";
+  if (word.startsWith("stsenaarium")) return "stsenaarium";
+  if (word.startsWith("kaard")) return "kaart";
+  if (word.startsWith("ruumikiht")) return "ruumikiht";
+  if (word.startsWith("laadida") || word.startsWith("allalaadi") || word.startsWith("alalaadi")) return "allalaadimine";
+  if (word.startsWith("kasutusjuh")) return "kasutusjuhend";
   if (word.startsWith("jaatmekaitluskoh")) return "jaatmekaitluskoht";
   if (word.startsWith("jaat")) return "jaat";
   if (word.startsWith("ringlussevot")) return "ringlussevott";
@@ -728,14 +756,16 @@ function topicRoot(word) {
   if (word.startsWith("rehv") || word.startsWith("autorehv")) return "rehv";
   if (word.startsWith("polet")) return "polet";
   if (["tohib", "voib", "lubatud", "keelatud"].includes(word)) return "lubatavus";
-  if (word.startsWith("ohukval")) return "ohukvaliteet";
+  if (word.startsWith("ohukval") || word === "ohu") return "ohukvaliteet";
   if (word === "ohk" || word.startsWith("valisoh")) return "ohk";
   if (word.startsWith("saast")) return "saaste";
   if (word.startsWith("heit")) return "heide";
   if (word.startsWith("looduskait")) return "looduskaitse";
   if (word.startsWith("elurikk")) return "elurikkus";
   if (word.startsWith("elupaik") || word.startsWith("elupaig")) return "elupaik";
+  if (word.startsWith("pusielupaig")) return "pusielupaik";
   if (word.startsWith("kaitseal")) return "kaitseala";
+  if (word.startsWith("kaitstav")) return "kaitstav";
   if (word.startsWith("liig")) return "liik";
   if (word.startsWith("pohjave")) return "pohjavesi";
   if (word.startsWith("laanemer")) return "laanemeri";
@@ -749,29 +779,35 @@ function topicRoot(word) {
   if (word.startsWith("sadem") || word.startsWith("saju")) return "sademed";
   if (word.startsWith("prognoos")) return "prognoos";
   if (word.startsWith("ilmaprognoos")) return "prognoos";
-  if (word.startsWith("hoiatus")) return "hoiatus";
-  if (word.startsWith("ilmahoiatus")) return "hoiatus";
+  if (word.startsWith("hoiatus") || word.includes("hoiatus")) return "hoiatus";
   if (word.startsWith("katastr")) return "kataster";
   if (word.startsWith("kinnist")) return "kinnistu";
   if (word.startsWith("keskkonnalub") || word.startsWith("keskkonnalo")) return "keskkonnaluba";
+  if (word.startsWith("kotkas")) return "kotkas";
   if (word.startsWith("taotl") || word.startsWith("taotle")) return "taotlemine";
+  if (word.startsWith("nousole")) return "nousolek";
   if (word.startsWith("ettevot")) return "ettevote";
   if (word.startsWith("ehita") || word.startsWith("ehitus")) return "ehitamine";
   if (word.startsWith("seisund") || word.startsWith("hinnang")) return "seisund";
   if (word.startsWith("keskkonnamoj")) return "keskkonnamoju";
+  if (word.startsWith("keskkonnarisk")) return "keskkonnamoju";
   if (word.startsWith("tuulepar")) return "tuulepark";
   if (word.startsWith("seir")) return "seire";
   if (word.startsWith("keskkonnaseir")) return "seire";
-  if (word.startsWith("moot")) return "mootmine";
+  if (word.startsWith("moot") || word.startsWith("mood")) return "mootmine";
+  if (word.startsWith("automaatjaam")) return "automaatjaam";
   if (word.startsWith("elektriaut")) return "elektriauto";
   if (word.startsWith("elutsuk")) return "elutsukkel";
   if (word.startsWith("energi")) return "energia";
   if (word.startsWith("transpor")) return "transport";
   if (word.startsWith("maavar")) return "maavara";
-  if (word.startsWith("kaevand")) return "kaevandus";
+  if (word.startsWith("kaevand") || word.startsWith("karjaar")) return "kaevandus";
+  if (word.startsWith("korrasta")) return "korrastamine";
+  if (word.startsWith("polevkiv")) return "polevkivi";
   if (word.startsWith("mull")) return "muld";
   if (word.startsWith("mura")) return "mura";
-  if (word.startsWith("kiirg")) return "kiirgus";
+  if (word.includes("kiirg")) return "kiirgus";
+  if (word.startsWith("tegevuspiirang")) return "tegevuspiirang";
   if (word.startsWith("piirang")) return "piirang";
   if (word.startsWith("harju")) return "harjumaa";
   if (word.startsWith("tallinn")) return "tallinn";
@@ -784,9 +820,14 @@ export function queryTerms(query) {
   return [...new Set(normalize(query)
     .split(/\s+/u)
     .filter((word) => word.length >= 3 && !STOP_WORDS.has(word) && !/^\d+$/u.test(word))
-    .flatMap((word) => word.startsWith("metsastat")
-      ? [topicRoot(word), "statistika"]
-      : [topicRoot(word)]))];
+    .flatMap((word) => {
+      if (word.startsWith("metsastat")) return [topicRoot(word), "statistika"];
+      if (word.startsWith("kliimastsenaarium")) return ["kliima", "stsenaarium"];
+      if (word.includes("tormihoiatus")) return ["ilm", "hoiatus"];
+      if (word === "kmh" || word === "ksh") return [word, "keskkonnamoju"];
+      if (word.startsWith("pm2")) return ["pm25", "ohukvaliteet"];
+      return [topicRoot(word)];
+    }))];
 }
 
 export function queryRootVariants(root) {
@@ -823,6 +864,13 @@ export function queryRootVariants(root) {
   if (root === "tulemus") return ["tulemus"];
   if (root === "tulevik") return ["tulevik", "prognoos", "lahiaast"];
   if (root === "andmed") return ["andme", "avaand"];
+  if (root === "avaandmed") return ["avaand"];
+  if (root === "allalaadimine") return ["allalaad", "alalaad", "alla laad"];
+  if (root === "kasutusjuhend") return ["kasutusjuh", "juhend"];
+  if (root === "kaart") return ["kaart", "kaard"];
+  if (root === "ruumikiht") return ["ruumikiht", "ruumiandm"];
+  if (root === "stsenaarium") return ["stsenaarium"];
+  if (root === "polevkivi") return ["polevkivi", "polevkivibassein"];
   if (root === "ohukvaliteet") return ["ohukvaliteet", "ohu kvaliteet", "valisoh"];
   if (root === "jaat") return ["jaat", "prugi"];
   return [root];
@@ -939,7 +987,7 @@ export function assessSearchQuery(query) {
     };
   }
   const weatherLocationPattern = /\b(?:tallinn|tartu|parnu|narva|viljandi|rakvere|voru|kuressaare|haapsalu|johvi)\w*/u;
-  const explicitlyCurrentWeather = /\b(?:tana|homme|ulehomme|praegu|hetkel|prognoos|hoiatus)\b/u.test(normalized);
+  const explicitlyCurrentWeather = /\b(?:tana|homn\w*|homm\w*|homs\w*|ulehomme|praegu|hetkel|prognoos\w*|\w*hoiatus\w*)\b/u.test(normalized);
   const historicalWeatherContext = /\b(?:(?:19|20)\d{2}|ajalool\w*|kliima\w*|keskm\w*|möödunud|moodunud)\b/u.test(normalized);
   const locationDefaultsToCurrentWeather = domainRoots.includes("ilm")
     && weatherLocationPattern.test(normalized)

@@ -9,7 +9,9 @@ if (!["http:", "https:"].includes(baseUrl.protocol) || baseUrl.username || baseU
 const concurrency = Math.max(1, Math.min(Number(options.concurrency) || 20, 20));
 const timeoutMs = Math.max(1_000, Math.min(Number(options["timeout-ms"]) || 20_000, 30_000));
 const expectFallback = String(options["expect-fallback"] || "false").toLowerCase() === "true";
+const expectAi = String(options["expect-ai"] || "false").toLowerCase() === "true";
 const testOverLimit = String(options["test-over-limit"] || "true").toLowerCase() !== "false";
+const spoofForwarded = String(options["spoof-forwarded"] || "false").toLowerCase() === "true";
 const fixtures = [
   "Kas Eestis tohib vanu rehve põletada?",
   "Natura 2000 piirangud ehitamisel",
@@ -33,16 +35,18 @@ const fixtures = [
   "Kas elektriauto on kogu elutsükli jooksul sisepõlemisautost keskkonnasõbralikum?"
 ];
 
-async function request(query) {
+async function request(query, index = 0) {
   const startedAt = Date.now();
   try {
+    const headers = {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "User-Agent": "Keskkonnaportaali-praktika-load-audit/1.0",
+    };
+    if (spoofForwarded) headers["X-Forwarded-For"] = `198.51.100.${(index % 200) + 1}`;
     const response = await fetch(new URL("/api/search", baseUrl), {
       method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        "User-Agent": "Keskkonnaportaali-praktika-load-audit/1.0",
-      },
+      headers,
       body: JSON.stringify({ q: query }),
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -61,6 +65,7 @@ async function request(query) {
         "Otsing on praegu koormatud",
       ].includes(body?.answer?.eyebrow),
       fallbackKind: body?.answer?.eyebrow || null,
+      aiReady: body?.answer?.eyebrow === "AI koondvastus",
       retryAfter: response.headers.get("retry-after"),
     };
   } catch (error) {
@@ -74,9 +79,9 @@ function percentile(values, fraction) {
 }
 
 const wallStartedAt = Date.now();
-const results = await Promise.all(Array.from({ length: concurrency }, (_, index) => request(fixtures[index % fixtures.length])));
+const results = await Promise.all(Array.from({ length: concurrency }, (_, index) => request(fixtures[index % fixtures.length], index)));
 const wallDurationMs = Date.now() - wallStartedAt;
-const overLimit = testOverLimit ? await request(fixtures[0]) : null;
+const overLimit = testOverLimit ? await request(fixtures[0], concurrency) : null;
 const durations = results.map((result) => result.durationMs).sort((left, right) => left - right);
 const statusCounts = Object.fromEntries([...new Set(results.map((result) => String(result.status || result.error || "unknown")))]
   .sort()
@@ -95,6 +100,7 @@ const report = {
   },
   statusCounts,
   fallbackCount: results.filter((result) => result.fallback).length,
+  aiReadyCount: results.filter((result) => result.aiReady).length,
   fallbackKinds: Object.fromEntries([...new Set(results.filter((result) => result.fallback).map((result) => result.fallbackKind))]
     .sort()
     .map((kind) => [kind, results.filter((result) => result.fallbackKind === kind).length])),
@@ -104,11 +110,13 @@ const report = {
   overLimit: overLimit ? { status: overLimit.status, retryAfter: overLimit.retryAfter } : null,
   configuredClientTimeoutMs: timeoutMs,
   configuredRequestRetries: 0,
+  spoofedForwardedAddresses: spoofForwarded ? concurrency + Number(testOverLimit) : 0,
 };
 process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 
 const baselineOk = results.every((result) => result.status === 200)
   && results.every((result) => expectFallback ? result.fallback : true)
+  && (!expectAi || results.some((result) => result.aiReady))
   && report.fiveHundredCount === 0
   && report.status504Count === 0
   && report.timeoutCount === 0;

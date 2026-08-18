@@ -1400,7 +1400,11 @@ export async function searchCorpus(query, {
           AND ($6::INTEGER IS NULL OR EXTRACT(YEAR FROM document.published_at)::INTEGER = $6::INTEGER)
           AND (
             cardinality($10::TEXT[]) = 0
-            OR regexp_replace(document.canonical_url, '^https://www[.]', 'https://') <> ALL($10::TEXT[])
+            OR regexp_replace(
+              regexp_replace(document.canonical_url, '^https://www[.]', 'https://'),
+              '^https://keskkonnaportaal[.]ee/et(/|$)',
+              'https://keskkonnaportaal.ee/'
+            ) <> ALL($10::TEXT[])
           )
           AND (
             document.search_vector @@ parameters.prefix_query

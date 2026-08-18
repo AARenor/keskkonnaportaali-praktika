@@ -27,6 +27,7 @@ import {
   X,
   Youtube,
 } from "lucide-react";
+import { safeExternalHref } from "./url-safety.js";
 
 const SOURCE = "https://keskkonnaportaal.ee";
 const DEFAULT_SEARCH_FILTERS = { source: "all", category: "", year: null, sort: "relevance" };
@@ -298,8 +299,9 @@ function formatDate() {
 }
 
 function ExternalAnchor({ children, className, href, ...props }) {
+  const safeHref = safeExternalHref(href);
   return (
-    <a className={className} href={href} target="_blank" rel="noreferrer" {...props}>
+    <a {...props} aria-disabled={safeHref ? undefined : true} className={className} href={safeHref || undefined} target={safeHref ? "_blank" : undefined} rel={safeHref ? "noreferrer" : undefined}>
       {children}
     </a>
   );
@@ -1164,11 +1166,26 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
   );
 }
 
+function PrivacyDisclosure() {
+  return (
+    <details className="footer-privacy" id="otsingu-privaatsus">
+      <summary>Otsingu ja AI-vastuse privaatsus</summary>
+      <p>
+        Vastuse koostamiseks saadetakse OpenCode Go Luna teenusele otsingu tekst, kuni kaheksa järjestatud avaliku allika piiratud väljavõtted ja jätkuküsimuse korral kuni 520 märki varasemate küsimuste konteksti. IP-aadressi, küpsiseid ega kogu andmekogu mudelile ei saadeta. Praktikaportaal ei säilita toorpäringut oma otsingu- või vahemälutabelis. Ära sisesta otsingusse tundlikke isikuandmeid.
+      </p>
+      <p>
+        OpenCode'i mudelipõhise privaatsustabeli järgi ei kasutata Luna sisendit mudeli treenimiseks; väärkasutuse jälgimise logid võivad säilida kuni 30 päeva. <ExternalAnchor href="https://opencode.ai/docs/go/#privacy">Vaata teenusepakkuja tingimusi</ExternalAnchor>.
+      </p>
+    </details>
+  );
+}
+
 function Footer({ compact = false }) {
   if (compact) {
     return (
       <footer className="site-footer site-footer--compact">
         <div className="shell"><span>Keskkonnaportaali praktikaprojekt</span><span>Kontrolli olulist infot algallikast</span></div>
+        <div className="shell"><PrivacyDisclosure /></div>
       </footer>
     );
   }
@@ -1180,6 +1197,7 @@ function Footer({ compact = false }) {
         <div><h2>Andmed</h2><a href="https://register.keskkonnaportaal.ee/register">Andmed ja kaart</a><a href={`${SOURCE}/et/avaandmed`}>Avaandmed</a><a href="https://terrapoint.ee/">Terrapoint</a></div>
         <div><h2>Jälgi</h2><div className="socials"><a aria-label="Facebook" href="https://www.facebook.com/Keskkonnaagentuur"><Facebook /></a><a aria-label="Instagram" href="https://www.instagram.com/keskkonnaagentuur/"><Instagram /></a><a aria-label="YouTube" href="https://www.youtube.com/channel/UCyAMWZVg2a7GNIX2m__pvhA"><Youtube /></a></div></div>
       </div>
+      <div className="shell"><PrivacyDisclosure /></div>
       <div className="footer-bottom"><div className="shell"><span>© 2026 Keskkonnaportaali praktikaprojekt</span><span>Ei ole Keskkonnaportaali ametlik tootmiskeskkond</span></div></div>
     </footer>
   );

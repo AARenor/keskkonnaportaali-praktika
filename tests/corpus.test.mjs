@@ -196,4 +196,5 @@ test("answer endpoint and broad result pagination remain separate contracts", as
   assert.doesNotMatch(app, /document\.title = `\$\{result\.answer\.title\}/u);
   assert.match(corpus, /distinctTotal/u);
   assert.match(corpus, /CHECK \(query_source = 'configured-seed'\)/u);
+  assert.match(corpus, /keskkonnaportaal\[\.\]ee\/et\(\/\|\$\)[\s\S]*?<> ALL\(\$10::TEXT\[\]\)/u);
 });

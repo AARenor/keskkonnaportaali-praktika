@@ -225,7 +225,7 @@ function ageIntentScore(document, roots, now) {
 }
 
 function liveServiceIntentScore(query, roots, document) {
-  const current = /\b(?:praeg\w*|hetke\w*|tana|homme|homne|ulehomme|reaalajas|prognoos\w*|hoiatus\w*)\b/iu
+  const current = /\b(?:praeg\w*|hetke\w*|tana|homn\w*|homm\w*|homs\w*|ulehomme|reaalajas|prognoos\w*|\w*hoiatus\w*)\b/iu
     .test(normalize(query));
   if (!current) return 0;
   if (document.id === "weather-forecast" && roots.some((root) => ["ilm", "prognoos", "hoiatus"].includes(root))) {
@@ -247,13 +247,40 @@ function serviceIntentPriority(query, roots, document) {
   if (liveScore >= 60) return 3;
   if (liveScore > 0) return 2;
   if (roots.includes("jaatmekaitluskoht") && document.id === "waste-facilities-map") return 3;
+  if (roots.includes("mets") && roots.includes("mootmine") && document.id === "forest-overview") return 4;
+  if (roots.includes("vesi") && roots.includes("seisund") && roots.includes("seire")
+    && document.id === "water-monitoring") return 4;
+  if (roots.includes("kiirgus") && roots.includes("automaatjaam")
+    && document.id === "radiation-monitoring") return 4;
+  if (roots.includes("pm25") && roots.includes("ohukvaliteet")
+    && document.id === "air-quality-live") return 4;
+  if (roots.includes("kaitseala") && roots.includes("ehitamine")
+    && document.id === "protected-area-construction") return 4;
+  if (roots.includes("liik") && roots.some((root) => ["pusielupaik", "tegevuspiirang", "kaitstav"].includes(root))
+    && document.id === "protected-nature-guidance") return 4;
+  if (roots.includes("kmh") && roots.includes("ksh") && document.id === "environmental-assessment") return 4;
+  if (roots.includes("kaevandus") && roots.includes("korrastamine")
+    && document.id === "mined-land-restoration") return 4;
+  if (roots.includes("pxweb") && document.id === "statistics-pxweb") return 4;
+  if (roots.some((root) => ["wfs", "wms", "geojson", "ruumikiht"].includes(root))
+    && document.id === "official-geoserver") return 4;
+  if (roots.includes("avaandmed") && roots.includes("kasutusjuhend")
+    && document.id === "open-data-downloader") return 4;
+  if (roots.includes("avaandmed") && document.id === "open-data") return 3;
+  if (roots.includes("avaandmed") && roots.includes("allalaadimine")
+    && document.id === "open-data-downloader") return 2;
   if (roots.includes("api") && roots.includes("andmed")) {
-    if (document.id === "official-data-services") return 3;
+    if (document.id === "official-data-services" && !roots.includes("pxweb")) return 3;
     if (["open-data", "open-data-downloader"].includes(document.id)) return 2;
   }
   if (roots.includes("keskkonnaluba") && roots.includes("taotlemine") && document.id === "environmental-permits") return 3;
   if (roots.includes("rehv") && roots.includes("polet") && document.id === "waste-burning-guidance") return 3;
-  if (roots.includes("kliima") && roots.includes("sademed") && document.id === "precipitation-change") return 3;
+  const requestsClimateMap = roots.includes("kliima")
+    && roots.some((root) => ["kaart", "stsenaarium"].includes(root));
+  if (requestsClimateMap && document.id === "climate-atlas") return 4;
+  if (roots.includes("kliima") && roots.includes("sademed") && document.id === "precipitation-change") {
+    return requestsClimateMap ? 2 : 3;
+  }
   if (roots.includes("kliima") && roots.includes("sademed") && document.id === "climate-atlas") return 2;
   if (roots.includes("elektriauto") && roots.includes("keskkonnamoju") && document.id === "electric-vehicle-lifecycle") return 3;
   if (roots.includes("kotkas")
@@ -275,7 +302,14 @@ function serviceIntentPriority(query, roots, document) {
     && !requestsHistoricalYear) return 3;
   if (roots.includes("ringlussevott") && document.id === "municipal-waste-recycling") return 3;
   if (roots.includes("natura") && roots.includes("ehitamine") && document.id === "protected-area-construction") return 3;
-  if (roots.includes("pohjavesi") && roots.includes("seisund") && document.id === "groundwater-status") return 3;
+  const requestsIdaViruOilShaleGroundwater = roots.includes("pohjavesi")
+    && roots.includes("ida")
+    && (roots.includes("viru") || roots.includes("virumaa"))
+    && roots.includes("polevkivi");
+  if (requestsIdaViruOilShaleGroundwater && document.id === "ida-viru-groundwater") return 4;
+  if (roots.includes("pohjavesi") && roots.includes("seisund") && document.id === "groundwater-status") {
+    return requestsIdaViruOilShaleGroundwater ? 2 : 3;
+  }
   if ((roots.includes("meri") || roots.includes("laanemeri"))
     && roots.includes("seisund")
     && document.id === "marine-strategy-status") return 3;
@@ -589,7 +623,7 @@ export async function prepareRankedSearchResults(query, {
   const localUrls = new Set((local.items || []).map((document) => canonicalResultUrl(document.url)));
   const facetExtras = rankAndDeduplicate(query, [...filteredLive, ...directory])
     .filter((document) => !localUrls.has(canonicalResultUrl(document.url)));
-  const selected = rankedPrefix.slice(offset, offset + safePageSize);
+  let selected = rankedPrefix.slice(offset, offset + safePageSize);
   const missing = safePageSize - selected.length;
   if (missing > 0) {
     const tailOffset = Math.max(0, offset - rankedPrefix.length);
@@ -602,7 +636,7 @@ export async function prepareRankedSearchResults(query, {
       resultOffset: tailOffset,
       excludeUrls: rankedPrefix.map((document) => canonicalResultUrl(document.url)),
     });
-    selected.push(...(tail.items || []).slice(0, missing));
+    selected = deduplicateResults([...selected, ...(tail.items || [])]).slice(0, safePageSize);
   }
   const total = Math.max(Number(local.total || 0), rankedPrefix.length);
   return {

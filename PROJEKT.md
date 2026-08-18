@@ -1,6 +1,6 @@
 # Keskkonnaportaali praktikaprojekt
 
-Tootmise vastuvõtukriteeriumide, andmevoo, marsruutide ja koodikaardi detailne register on failis [`acceptance-evidence.md`](./acceptance-evidence.md).
+Tootmise vastuvõtukriteeriumide, andmevoo, marsruutide ja koodikaardi detailne register on failis [`acceptance-evidence.md`](./acceptance-evidence.md). Otsingu andmetöötluse kasutajale suunatud piir on failis [`PRIVAATSUS.md`](./PRIVAATSUS.md).
 
 ## Eesmärk
 
@@ -48,7 +48,7 @@ Senine 256-mõõtmeline räsivektor ei olnud semantiline embedding ja Qdranti ki
 
 ## Otsingu tööpõhimõte
 
-Vastuse ja esimese laia tulemuselehe endpoint on `GET /api/search?q=<küsimus>`. Ainult tulemuste järgmised lehed tulevad endpoint'ist `GET /api/search/results?q=<küsimus>&page=<n>`, mis ei genereeri AI vastust uuesti.
+Vastuse ja esimese laia tulemuselehe UI-endpoint on `POST /api/search`, kus küsimus on JSON-kehas. Ainult tulemuste järgmised lehed tulevad `POST /api/search/results` kaudu, mis ei genereeri AI vastust uuesti. GET jääb dokumenteeritud programmiliidese ühilduvuseks, kuid brauseri UI seda ei kasuta.
 
 1. Päring normaliseeritakse ning klassifitseeritakse deterministlikult olekusse `answerable`, `needs-clarification`, `live-weather`, `live-air` või `out-of-scope`. Jooksva ilma ja õhukvaliteedi päring suunatakse ametlikku reaalaja teenusesse, mitte vana artikli sünteesi. Prompt-injection'i korral mudelit ei kutsuta.
 2. PostgreSQL-i kandidaadid ja tasuta ametlikud Valitsusportaali otsinguliidesed käivitatakse paralleelselt. Eesti intent-laiendus teeb vajadusel kuni kolm kitsast alamotsingut, näiteks `raiuda tulevikus` või `mets vanus`.
@@ -60,7 +60,7 @@ Vastuse ja esimese laia tulemuselehe endpoint on `GET /api/search?q=<küsimus>`.
 7. OpenCode Go `gpt-5.6-luna` töötab Responses API range JSON Schema kaudu. Mudel alustab järeldusest ja pakub tõenditega seotud järgmisi küsimusi. Iga sisuline väide vajab lubatud viidet; arvud, ühikud, aastad, väitekatvus, polaarsus ja esimese lause vastavus küsitud intentile valideeritakse mudelist sõltumatult. Valideerimisvea korral mahub ühisesse eelarvesse üks kontrollitud korduskatse.
 8. Valideeritud katastritunnuse korral kasutatakse eraldi Maa- ja Ruumiameti ning Metsaregistri WFS-voogu, mis eristab olekuid „leitud”, „ei leitud” ja „allikas ei vastanud”.
 9. Jätkuküsimus teeb uue ühendotsingu ja uue viidatud vastuse. Iseseisev sisuline jätkuküsimus otsitakse eraldi; ainult „aga miks?” laadne elliptiline küsimus pärib juurküsimuse ja viimase vooru otsingukonteksti. Kuni kolme varasema küsimuse tekst võib mudelile mõtet selgitada, kuid ei muutu tõendiks.
-10. 429, timeout, vigane mudelivastus või nõrk tõend ei muutu väljamõeldud vastuseks. Kogu esimese vastuse ja iga jätkuvooru ühine ülempiir on 15 sekundit.
+10. 429, timeout, vigane mudelivastus või nõrk tõend ei muutu väljamõeldud vastuseks. Kogu esimese vastuse ja iga jätkuvooru ühine ülempiir on 15 sekundit. Mõõdetud Luna piir on kaks paralleelset mudelikutsungit; ülejäänud otsingud ei jää mudelijärjekorda, vaid tagastavad sama tõendi kontrollitud koondvastuse.
 
 Vahemälu võti sisaldab vastuse- ja retrieval-skeemi revisjoni, seega ei saa vana Terrapointi, eelkirjutatud metsakorpuse või varasema tulemuselepingu vastus pärast deploy'd edasi elada.
 
@@ -209,7 +209,9 @@ npm test
 npm run build
 npm run test:sites
 docker compose config
+npm run eval:holdout
 npm run eval:live -- --base-url=https://praktika.arleserver.cfd
+npm run audit:filters -- --base-url=https://praktika.arleserver.cfd
 npm run audit:grounding -- --base-url=https://praktika.arleserver.cfd
 npm run audit:load -- --base-url=https://praktika.arleserver.cfd
 ```
@@ -220,6 +222,7 @@ Automaattestid kontrollivad muu hulgas:
 - eraldiseisva tulemuste lehitsemise, korpuse parserid ja ametlike URL-aliaste deduplikatsiooni;
 - fraasi- ja lõigukattega relevantsusjärjestuse, tegeliku avaldamisaja, tulevikukuupäeva karistuse ning allika-, tüübi- ja aastafiltrite jõustamise;
 - 43 allikaga üldkataloog ning 59 päringuga külmutatud keskkonnaotsingu routing-komplekt;
+- eraldi enne esimest jooksu külmutatud 40 päringuga holdout'i P@1, MRR ja nDCG@5 väravad ning sama komplekti URL-põhise live-kontrolli;
 - 24/24 teenusepäringu õige esimese allika nii deterministlikus järjestajas kui ka külma PostgreSQL-i vahemäluga päris HTTP-voos;
 - külmutatud v2 hindamiskomplekti 30/30 vastatava päringu õiget intent-vastust ja Recall@3 väärtust 100%;
 - `mets` päris sünteesi, täpset FAQ vastust ja turvalist abstention'it;
@@ -236,7 +239,7 @@ Brauseri regression peab katma 1440 × 1100 ja 390 × 844 vaated, autocomplete'i
 
 Vaadetes 1440 × 1100 ja 390 × 844 jäi värske avaleht `scrollY === 0` juurde, aktiivne element oli hostdokumendi `BODY`, põhiotsing oli nähtav ja horisontaalset overflow'd polnud. Terrapointi cross-origin iframe laadis päris `terrapoint.ee` rakenduse, selle sisu ja neli sisendit ega võtnud hostilt fookust. UI-päring „jäätmete ringlussevõtu määr Eestis 2023” pani õigeks esimeseks tulemuseks olmejäätmete ringlussevõtu näitaja; peidetud viide 4 laiendas kaheksa allika loendi ja fokusseeris `source-4`. Mobiilil oli submit-nupp nimega, filtrid üheveerulised ja esimene loatulem KOTKAS. Mõlema sessiooni first-party konsoolis oli 0 viga ja 0 hoiatust.
 
-Sama brauserikontroll avastas enne lõppversiooni ühe katkestatud Valitsusportaali snippet'ist pärinenud avalause. Parandus nõuab nüüd nii deterministlikult väljavõttelt kui ka mudeli intro/osa tekstilt lõpetatud lauset, lisab kaks regressioonitesti, tõstab cache'i revisiooni `answer-v10-complete-sentences` ning kontrollib sama omadust live-evalis. Pärast uut deploy'd lõppes sama 38% vastus terviklikult ja kogu avalik komplekt läbis korduskontrolli.
+Sama brauserikontroll avastas enne lõppversiooni ühe katkestatud Valitsusportaali snippet'ist pärinenud avalause. Parandus nõuab nüüd nii deterministlikult väljavõttelt kui ka mudeli intro/osa tekstilt lõpetatud lauset ja kontrollib sama omadust live-evalis. Uus relevantsusväljalase tõstab cache'i revisjoni `answer-v11-ranked-live-sources`, et varasema järjestuse vastus ei jääks pärast deploy'd kehtima.
 
 ## Olulisemad failid
 
@@ -260,6 +263,7 @@ src/styles.css                          responsive visuaalne süsteem
 tests/                                  automaattestid
 compose.yaml                            Docker Compose keskkond
 design-qa.md                            enne/pärast brauseritõendid
+PRIVAATSUS.md                           otsingu ja välise Luna andmetöötluse piir
 ```
 
 ## Piirangud ja järgmine etapp

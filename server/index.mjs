@@ -20,6 +20,7 @@ import {
   prepareRankedSearchResults,
   publicSearchListing,
 } from "./retrieval.mjs";
+import { requestRateLimitAddress } from "./security.mjs";
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -75,7 +76,10 @@ app.use((request, response, next) => {
 function rateLimit(maxRequests) {
   return (request, response, next) => {
   const now = Date.now();
-  const key = `${request.ip || "unknown"}:${request.path}`;
+  // A client-controlled X-Forwarded-For value must not create a new bucket.
+  // Cloudflare overwrites its own connecting-IP header; otherwise use the
+  // immediate socket address instead of trusting an arbitrary forwarding chain.
+  const key = `${requestRateLimitAddress(request)}:${request.path}`;
   const current = requestWindows.get(key);
   if (!current || now - current.startedAt > 60_000) {
     requestWindows.set(key, { startedAt: now, count: 1 });
@@ -184,7 +188,9 @@ async function handleSearch(request, response) {
       ...searchTimeoutFallback(query, { assessmentQuery: query }),
       searchResults: emptySearchListing(filters, page, pageSize),
     }), controller);
-    response.setHeader("Cache-Control", "private, max-age=30, stale-while-revalidate=120");
+    // The response echoes the query for rendering. Keep it out of the browser's
+    // persistent HTTP cache; the server-side hash-keyed cache remains available.
+    response.setHeader("Cache-Control", "no-store");
     return response.json(payload);
   } catch (error) {
     console.warn(JSON.stringify({
@@ -231,7 +237,7 @@ async function handleSearchResults(request, response) {
         retryable: true,
       });
     }
-    response.setHeader("Cache-Control", "private, max-age=60, stale-while-revalidate=300");
+    response.setHeader("Cache-Control", "no-store");
     return response.json(publicSearchListing(results));
   } catch {
     return response.status(502).json({

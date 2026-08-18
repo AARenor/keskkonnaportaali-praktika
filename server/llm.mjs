@@ -55,7 +55,10 @@ const reasoningEffort = ["none", "low", "medium"].includes(String(process.env.LL
   : "low";
 const circuitBreakMs = Math.max(60_000, Math.min(Number(process.env.LLM_CIRCUIT_BREAK_MS) || 15 * 60_000, 60 * 60_000));
 export function resolveLlmConcurrency(value = process.env.LLM_MAX_CONCURRENCY) {
-  return Math.max(1, Math.min(Number(value) || 4, 8));
+  // The shared Go provider is consistently reliable with two parallel Luna
+  // requests; four simultaneous generations time out together under load.
+  // Additional searches still return the evidence-bound deterministic draft.
+  return Math.max(1, Math.min(Number(value) || 2, 8));
 }
 const maxConcurrentRequests = resolveLlmConcurrency();
 let circuitOpenUntil = 0;
@@ -131,6 +134,21 @@ function cleanGeneratedText(value, maxLength) {
     .replace(/\s+/gu, " ")
     .trim()
     .slice(0, maxLength);
+}
+
+const EVIDENCE_DIRECTIVE_PATTERN = /(?:ignore\s+(?:all|previous)|ignoreeri\s+(?:kõiki|eelnev)|system\s+prompt|süsteemi(?:juhis|prompt)|developer\s+message|api[- ]?(?:key|võti)|reveal\s+(?:the\s+)?secret|avalda\s+(?:saladus|võti)|exfiltrat|javascript\s*:|<\s*script\b|onerror\s*=|data\s*:\s*text\/html)/iu;
+
+export function sanitizeLlmEvidenceText(value) {
+  const text = String(value || "")
+    .normalize("NFKC")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u202A-\u202E\u2066-\u2069]/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  if (!text) return "";
+  return splitTextPassages(text)
+    .filter((passage) => !EVIDENCE_DIRECTIVE_PATTERN.test(passage))
+    .join(" ")
+    .trim();
 }
 
 function canonicalNumber(value) {
@@ -421,22 +439,22 @@ export function buildBoundedEvidence(draft) {
         reviewedClaims.push(part.title, part.text);
       }
     }
-    const content = [
+    const content = sanitizeLlmEvidenceText([
       source.summary,
       source.answer,
       source.content,
       reviewedClaims.length ? `Läbi vaadatud ja selle allikaga viidatud väited: ${reviewedClaims.join(" ")}` : "",
     ]
       .filter(Boolean)
-      .join("\n")
+      .join("\n"))
       .slice(0, Math.max(0, Math.min(perSourceLimit, remaining)));
     remaining -= content.length;
     return {
       citation: source.citation,
-      title: source.title,
-      organization: source.organization,
-      published: source.published,
-      locator: source.locator || null,
+      title: sanitizeLlmEvidenceText(source.title),
+      organization: sanitizeLlmEvidenceText(source.organization),
+      published: sanitizeLlmEvidenceText(source.published),
+      locator: sanitizeLlmEvidenceText(source.locator) || null,
       content,
       url: source.url,
     };
