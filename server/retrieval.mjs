@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   indexOfficialDiscoveryDocuments,
   normalizeSearchFilters,
@@ -28,9 +29,17 @@ const PUBLIC_FILTER_SORTS = new Set(["relevance", "newest"]);
 const CADASTRE_PATTERN = /\b\d{5}:\d{3}:\d{4}\b/u;
 const CADASTRE_SERVICE_IDS = new Set(["official-cadastre-wfs", "official-forest-register-wfs"]);
 const LEGACY_ANSWER_FIXTURE_IDS = new Set(["forest-overview", "forest-inventory-publication"]);
+const VOLATILE_RESULT_ID = /^(?:corpus-|kkp-|vp-)/u;
 
 function clean(value = "") {
   return String(value || "").replace(/\s+/gu, " ").trim();
+}
+
+export function stablePublicResultId(document = {}) {
+  const id = clean(document.id);
+  const canonicalUrl = canonicalResultUrl(document.url);
+  if (!VOLATILE_RESULT_ID.test(id) || !canonicalUrl) return id;
+  return `official-${createHash("sha256").update(canonicalUrl).digest("hex").slice(0, 16)}`;
 }
 
 export function parsePublicSearchFilters(value = {}, currentYear = new Date().getUTCFullYear()) {
@@ -68,6 +77,10 @@ export function canonicalResultUrl(value) {
       if (url.pathname === "/et") url.pathname = "/";
       else if (url.pathname.startsWith("/et/")) url.pathname = url.pathname.slice(3);
     }
+    for (const key of [...url.searchParams.keys()]) {
+      if (/^(?:utm_|fbclid|gclid)/iu.test(key)) url.searchParams.delete(key);
+    }
+    url.searchParams.sort();
     if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/u, "");
     return url.toString();
   } catch {
@@ -699,9 +712,12 @@ export function publicSearchListing(listing = {}) {
       categories: Array.isArray(listing.facets?.categories) ? listing.facets.categories.slice(0, 18) : [],
       years: Array.isArray(listing.facets?.years) ? listing.facets.years.slice(0, 12) : [],
     },
-    items: (listing.items || []).map((item) => Object.fromEntries(PUBLIC_ITEM_FIELDS
-      .filter((field) => item[field] !== undefined)
-      .map((field) => [field, item[field]]))),
+    items: (listing.items || []).map((item) => ({
+      ...Object.fromEntries(PUBLIC_ITEM_FIELDS
+        .filter((field) => item[field] !== undefined)
+        .map((field) => [field, item[field]])),
+      id: stablePublicResultId(item),
+    })),
   };
 }
 

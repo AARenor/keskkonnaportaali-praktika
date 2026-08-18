@@ -12,6 +12,7 @@ import {
   prepareRankedSearchResults,
   rankSearchCandidates,
   resultMatchesFilters,
+  stablePublicResultId,
 } from "./retrieval.mjs";
 import {
   assessEvidence,
@@ -25,7 +26,7 @@ import {
   textHasQueryRoot,
 } from "./search.mjs";
 
-export const SEARCH_RESPONSE_REVISION = "answer-v14-progressive-multisource";
+export const SEARCH_RESPONSE_REVISION = "answer-v15-stable-public-ids";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 
 function rankPortalDocuments(query, documents) {
@@ -86,9 +87,12 @@ export function publicResponse(draft) {
   const { evidence: _evidence, ...response } = draft;
   return {
     ...response,
-    sources: (response.sources || []).map((source) => Object.fromEntries([
-      "id", "citation", "title", "organization", "type", "published", "url", "summary", "locator", "tags", "sourceTier",
-    ].filter((key) => source[key] !== undefined).map((key) => [key, source[key]]))),
+    sources: (response.sources || []).map((source) => ({
+      ...Object.fromEntries([
+        "id", "citation", "title", "organization", "type", "published", "url", "summary", "locator", "tags", "sourceTier",
+      ].filter((key) => source[key] !== undefined).map((key) => [key, source[key]])),
+      id: stablePublicResultId(source),
+    })),
   };
 }
 

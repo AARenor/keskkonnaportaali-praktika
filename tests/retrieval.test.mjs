@@ -688,6 +688,23 @@ test("public search payload strips full text and ranking internals", () => {
   assert.equal(listing.items[0].title, "Ametlik metsaülevaade");
 });
 
+test("a persisted live result keeps the same public ID across its cache boundary", () => {
+  const liveUrl = "https://www.kliimaministeerium.ee/kliimamuutustega-kohanemine/?b=2&utm_source=live&a=1";
+  const persistedUrl = "https://kliimaministeerium.ee/kliimamuutustega-kohanemine?a=1&b=2";
+  const listingFor = (id, url) => publicSearchListing({
+    total: 1,
+    page: 1,
+    pageSize: 12,
+    items: [official({ id, url })],
+    facets: { sources: [], categories: [], years: [] },
+  });
+  const liveId = listingFor("vp-kliimamin-a1b2c3", liveUrl).items[0].id;
+  const persistedId = listingFor("corpus-9122", persistedUrl).items[0].id;
+  assert.equal(liveId, persistedId);
+  assert.match(liveId, /^official-[a-f0-9]{16}$/u);
+  assert.equal(canonicalResultUrl(liveUrl), canonicalResultUrl(persistedUrl));
+});
+
 test("follow-up retrieval context is bounded and keeps only recent questions", () => {
   const query = contextualRetrievalQuery("metsade vanus", "Aga miks?", ["üks", "kaks", "kolm", "neli"]);
   assert.equal(query, "Aga miks? neli metsade vanus");

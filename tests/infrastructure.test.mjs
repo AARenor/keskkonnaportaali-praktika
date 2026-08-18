@@ -882,7 +882,7 @@ test("environmental-impact fallback prefers concrete mitigation over procedural 
 
 test("hydrated source text stays internal and public output uses an allowlist", () => {
   const draft = composeSearchResponse("vesi", [{
-    id: "source-1",
+    id: "vp-keskkonnaagentuur-volatile",
     title: "Veeseire",
     organization: "Keskkonnaagentuur",
     type: "Ametlik leht",
@@ -906,6 +906,7 @@ test("hydrated source text stays internal and public output uses an allowlist", 
   assert.equal(visible.sources[0].excerpt, undefined);
   assert.equal(visible.sources[0].retrieval, undefined);
   assert.equal(visible.sources[0].stale, undefined);
+  assert.match(visible.sources[0].id, /^official-[a-f0-9]{16}$/u);
 });
 
 test("global deadline returns a controlled fallback and aborts remaining work", async () => {

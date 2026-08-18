@@ -252,7 +252,7 @@ Brauseri regression peab katma 1440 × 1100 ja 390 × 844 vaated, autocomplete'i
 
 Vaadetes 1440 × 1000 ja 390 × 844 jäi värske avaleht `scrollY === 0` juurde, aktiivne element oli hostdokumendi `BODY`, põhiotsing oli nähtav ja horisontaalset overflow'd polnud. Terrapointi cross-origin iframe laadis päris `terrapoint.ee` rakenduse ega võtnud hostilt fookust. UI-päring „jäätmete ringlussevõtu määr Eestis 2023” kuvas 37,9% ja EL-i 47,9%, seadis sama ametliku näitaja nii vastuse esimeseks viiteks kui ka laiotsingu esimeseks tulemuseks, fokusseeris tulemuse H1 ning keris viiteklõpsul olemasoleva `source-1` kaardini. Deterministlik race-test tõendas lisaks, et 15,2 s hiline vana otsing ei muuda uuema vastuse pealkirja ega allika-DOM-i ning B→A järjekorras saabunud autocomplete'i vastustest jääb nähtavale ainult B. First-party konsoolis oli 0 viga ja 0 hoiatust.
 
-Cache'i revisjon `answer-v14-progressive-multisource` seob vastuse jooksva järjestatud allikahulga, täpse andmelokaatori ja sisuversiooniga, et varasema järjestuse või muudetud allika vastus ei jääks pärast deploy'd kehtima.
+Cache'i revisjon `answer-v15-stable-public-ids` seob vastuse jooksva järjestatud allikahulga, täpse andmelokaatori ja sisuversiooniga, et varasema järjestuse või muudetud allika vastus ei jääks pärast deploy'd kehtima. Live-allika ja PostgreSQL-i püsikoopia avalik ID tuletatakse kanoniseeritud URL-ist, mistõttu sama tulemus ei vaheta asünkroonse indekseerimise piiril identiteeti ega Reacti võtit.
 
 ## Olulisemad failid
 
