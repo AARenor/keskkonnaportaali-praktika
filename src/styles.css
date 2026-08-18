@@ -2062,6 +2062,13 @@ h3 {
   opacity: 0.5;
 }
 
+.followup-form__privacy {
+  margin: 8px 12px 0;
+  color: #526872;
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
 .followup-error,
 .followup-status {
   margin: 8px 12px 0;

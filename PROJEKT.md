@@ -223,7 +223,14 @@ npm run audit:filters -- --base-url=https://praktika.arleserver.cfd
 npm run audit:followups -- --base-url=https://praktika.arleserver.cfd
 npm run audit:grounding -- --base-url=https://praktika.arleserver.cfd
 npm run audit:load -- --base-url=https://praktika.arleserver.cfd
+npm run audit:load-results -- --base-url=https://praktika.arleserver.cfd
 ```
+
+`audit:load-results` kontrollib eraldi tulemuste endpoint'i jagatud koormuspiiri. Tootmise
+`SEARCH_MAX_CONCURRENCY=8` korral peavad 20 korraga alustatud päringust kaheksa tegema
+täismahus töö ning 12 saama kontrollitud `429` capacity-vastuse koos `Retry-After: 2`
+päisega; sama rate-limit akna 21. päring peab saama `429` ja `Retry-After: 60`.
+Timeout, 5xx või teistsugune jaotus ebaõnnestab auditi.
 
 Automaattestid kontrollivad muu hulgas:
 
@@ -240,6 +247,7 @@ Automaattestid kontrollivad muu hulgas:
 - mudelivastuse viidete, arvude, ühikute, väitekatvuse, polaarsuse ja tervikliku lauselõpu kontrolli;
 - arvuliste ja võrdlevate väidete täpset tõendilauset, sealhulgas üksuse, aasta-väärtuse paari, mõõtühiku ja võrdluse osapoolte vahetamise keeldu;
 - progressiivse voo 15 sekundi ja kõik-korraga JSON-liidese 12 sekundi vastusepiiri kontrollitud fallback'i ning vahemälu toorpäringu eemaldamist;
+- kõigi nelja otsingutee ühist kaheksa töökoha piiri; listing-endpoint annab ülekoormusel kontrollitud `429` capacity-vastuse ega alusta piiramatut retrieval'it;
 - deadline'i järel katastri-cache'i ja PostgreSQL-i tehingu rollback'i ning vana otsingu/autocomplete'i hilise vastuse blokeerimist;
 - võtmega HMAC-sõrmejälge, vana liht-räsi migratsiooni ja allikate liikmelisuse, järjekorra või sisu muutumisel cache'i invalidatsiooni;
 - kolme järjestikuse jätkuküsimuse filtri-, allika- ja viitelepingu püsimist;

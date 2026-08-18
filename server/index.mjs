@@ -347,6 +347,20 @@ async function handleSearchResults(request, response) {
   const query = searchQuery(request);
   if (!query) return response.status(400).json({ error: "Sisesta otsingusõna." });
   if (query.length > 180) return response.status(400).json({ error: "Otsing on liiga pikk." });
+  if (activeSearches >= MAX_ACTIVE_SEARCHES) {
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("Retry-After", "2");
+    return response.status(429).json({
+      error: "Otsing teenindab praegu mitut päringut korraga. Proovi paari sekundi pärast uuesti.",
+      retryable: true,
+    });
+  }
+  activeSearches += 1;
+  const controller = new AbortController();
+  const abortDisconnectedClient = () => {
+    if (!response.writableEnded) controller.abort();
+  };
+  response.once("close", abortDisconnectedClient);
   try {
     const page = searchPage(request, "page", 1, 500);
     const pageSize = searchPage(request, "page_size", 12, 50);
@@ -355,7 +369,6 @@ async function handleSearchResults(request, response) {
     const parsedFilters = searchFilters(request);
     if (!parsedFilters.ok) return response.status(400).json({ error: parsedFilters.error });
     const filters = parsedFilters.filters;
-    const controller = new AbortController();
     const results = await settleWithinDeadline(prepareRankedSearchResults(query, {
       page,
       pageSize,
@@ -376,6 +389,9 @@ async function handleSearchResults(request, response) {
       error: "Otsingutulemuste allikad ei vastanud. Proovi hetke pärast uuesti.",
       retryable: true,
     });
+  } finally {
+    response.off("close", abortDisconnectedClient);
+    activeSearches = Math.max(0, activeSearches - 1);
   }
 }
 

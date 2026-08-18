@@ -105,6 +105,17 @@ test("the all-at-once search keeps transport margin under load", () => {
   assert.equal(searchDeadline(50_000, JSON_SEARCH_DEADLINE_CEILING_MS, "15000"), 62_000);
 });
 
+test("the listing endpoint shares the global search capacity boundary", async () => {
+  const server = await readFile(new URL("../server/index.mjs", import.meta.url), "utf8");
+  const handler = server.match(/async function handleSearchResults[\s\S]*?\n\}\n\napp\.get\("\/api\/search\/results"/u)?.[0] || "";
+  assert.match(handler, /if \(activeSearches >= MAX_ACTIVE_SEARCHES\)/u);
+  assert.match(handler, /response\.setHeader\("Retry-After", "2"\)/u);
+  assert.match(handler, /response\.status\(429\)/u);
+  assert.match(handler, /activeSearches \+= 1/u);
+  assert.match(handler, /response\.once\("close", abortDisconnectedClient\)/u);
+  assert.match(handler, /finally \{[\s\S]*?activeSearches = Math\.max\(0, activeSearches - 1\)/u);
+});
+
 test("local Qdrant embedding is deterministic and normalized", () => {
   const first = localEmbedding("Eesti metsade seisund");
   const second = localEmbedding("Eesti metsade seisund");
@@ -238,7 +249,7 @@ test("forest harvest draft answers the root and temporal follow-up from multiple
     },
     value: { 0: 14370.94, 2: 9100, 3: 9100, 5: 12179, 7: 12013, 8: 11564 },
   };
-  const root = "Kas raiemaht ületab juurdekasvu?";
+  const root = "Kas raiemaht ületab netojuurdekasvu?";
   const documents = forestHarvestBalanceDocumentsFromJson(root, payload);
   const rootDraft = await createPortalDraft(root, {
     deadlineAt: Date.now(),
@@ -265,7 +276,7 @@ test("forest harvest draft answers the root and temporal follow-up from multiple
   assert.equal(streamedDrafts, 0, "a deterministic answer must not emit an identical draft event");
   assert.match(rootResponse.answer.intro, /11,6 miljonit m³ koorega/u);
 
-  const followQuestion = "Mida see viimase 5 aasta jooksul tähendab";
+  const followQuestion = "Mida see viimase 5 aasta jooksul tähendab?";
   const retrievalQuery = `${followQuestion} ${root}`;
   const followDraft = await createPortalDraft(followQuestion, {
     retrievalQuery,
@@ -371,6 +382,19 @@ test("Luna uses the Responses API with strict structured output", () => {
   assert.equal(extractLlmText({
     output: [{ content: [{ type: "output_text", text: "{\"intro\":\"Vastus\"}" }] }],
   }, "responses"), '{"intro":"Vastus"}');
+
+  const followUpRequest = buildLlmRequest({
+    selectedModel: "gpt-5.6-luna",
+    query: "Mida see tähendab?",
+    evidence,
+    singleSource: true,
+    selectedMaxTokens: 1_600,
+    conversationContext: "Metsade vanus → Kas muutus on ühesuunaline? ".repeat(20),
+  });
+  const followUpPayload = JSON.parse(followUpRequest.body.input[1].content[0].text);
+  assert.equal(followUpPayload.question, "Mida see tähendab?");
+  assert.equal(followUpPayload.conversation_context.length, 520);
+  assert.deepEqual(Object.keys(followUpPayload), ["question", "conversation_context", "evidence", "outputContract"]);
 });
 
 test("Luna evidence includes reviewed claims tied to each displayed citation", () => {
@@ -387,6 +411,23 @@ test("Luna evidence includes reviewed claims tied to each displayed citation", (
   assert.match(evidence[0].content, /Läbi vaadatud/iu);
   assert.match(evidence[0].content, /Noorte ja vanade metsade pindala suurenes/iu);
   assert.match(evidence[0].content, /statistilist metsainventuuri/iu);
+});
+
+test("Luna request construction independently caps source count and evidence text", () => {
+  const evidence = buildBoundedEvidence({
+    answer: { title: "Piiratud vastus", intro: "", introCitations: [], parts: [] },
+    sources: Array.from({ length: 12 }, (_, index) => ({
+      citation: index + 1,
+      title: `Allikas ${index + 1}`,
+      organization: "Keskkonnaagentuur",
+      content: `${index + 1} ${"avalik tõend ".repeat(400)}`,
+      url: `https://keskkonnaagentuur.ee/allikas-${index + 1}`,
+    })),
+  });
+  assert.equal(evidence.length, 8);
+  assert.deepEqual(evidence.map((source) => source.citation), [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.ok(evidence.every((source) => source.content.length <= 2_200));
+  assert.ok(evidence.reduce((total, source) => total + source.content.length, 0) <= 10_000);
 });
 
 test("generated related questions remain evidence-bound, unique and safe", () => {
@@ -1130,13 +1171,17 @@ test("search discloses the external Luna privacy boundary before submission", as
     readFile(new URL("../src/App.jsx", import.meta.url), "utf8"),
     readFile(new URL("../PRIVAATSUS.md", import.meta.url), "utf8"),
   ]);
-  assert.match(app, /AI-vastuse koostamiseks saadetakse sinu küsimus ja kuni kaheksa avaliku allika piiratud väljavõtted välisele OpenCode Go Luna teenusele/u);
+  assert.match(app, /Kirjutamisel küsitakse vähemalt kahe märgi järel praktikaserveri kaudu Keskkonnaportaalilt soovitusi/u);
+  assert.match(app, /jätkuküsimuse korral lisandub kuni 520 märki varasemate küsimuste konteksti/u);
+  assert.match(app, /className="followup-form__privacy"[^>]*>Jätkuvastuse koostamiseks saadetakse Luna teenusele uus küsimus, kuni kaheksa avaliku allika piiratud väljavõtted ja kuni 520 märki varasemate küsimuste konteksti/u);
   assert.match(app, /href="#otsingu-privaatsus" onClick=\{revealPrivacyDisclosure\}/u);
   assert.match(app, /disclosure\.open = true/u);
   assert.match(app, /disclosure\.querySelector\("summary"\)\?\.focus/u);
   assert.match(app, /store: false/u);
   assert.match(privacy, /`store: false`/u);
   assert.match(privacy, /küsimust ja vastust/u);
+  assert.match(privacy, /See toimub enne nupu „Küsi” vajutamist; Lunale sel ajal päringut ei saadeta/u);
+  assert.match(privacy, /kuni 50 otsingu teksti ainult avatud lehe protsessimälus/u);
 });
 
 test("citation targets remain focusable after evidence locator links are added", async () => {

@@ -6,7 +6,14 @@ const baseUrl = new URL(String(options["base-url"] || "http://127.0.0.1:4317"));
 if (!["http:", "https:"].includes(baseUrl.protocol) || baseUrl.username || baseUrl.password) {
   throw new Error("--base-url must be an HTTP(S) origin without credentials");
 }
+const endpoint = String(options.endpoint || "search").toLowerCase();
+if (!["search", "results"].includes(endpoint)) throw new Error("--endpoint must be search or results");
+const endpointPath = endpoint === "results" ? "/api/search/results" : "/api/search";
+const resultsEndpoint = endpoint === "results";
 const concurrency = Math.max(1, Math.min(Number(options.concurrency) || 20, 20));
+const serverConcurrency = options["server-concurrency"] === undefined
+  ? null
+  : Math.max(1, Math.min(Number(options["server-concurrency"]) || 8, 20));
 const timeoutMs = Math.max(1_000, Math.min(Number(options["timeout-ms"]) || 20_000, 30_000));
 const expectFallback = String(options["expect-fallback"] || "false").toLowerCase() === "true";
 const expectAi = String(options["expect-ai"] || "false").toLowerCase() === "true";
@@ -43,9 +50,11 @@ function citationCount(body) {
   return citations.size;
 }
 
-function responseClass(status, body) {
+function responseClass(status, body, retryAfter) {
+  if (status === 429 && resultsEndpoint && retryAfter === "2") return "capacity_backpressure";
   if (status === 429) return "rate_limited";
   if (status !== 200) return "http_error";
+  if (resultsEndpoint) return Array.isArray(body?.items) ? "results_ready" : "unknown_success";
   const eyebrow = String(body?.answer?.eyebrow || "");
   if (eyebrow === "AI koondvastus") return "ai_ready";
   if (eyebrow === "Otsing on praegu koormatud") return "capacity_fallback";
@@ -65,7 +74,7 @@ async function request(query, index = 0) {
       "User-Agent": "Keskkonnaportaali-praktika-load-audit/1.0",
     };
     if (spoofForwarded) headers["X-Forwarded-For"] = `198.51.100.${(index % 200) + 1}`;
-    const response = await fetch(new URL("/api/search", baseUrl), {
+    const response = await fetch(new URL(endpointPath, baseUrl), {
       method: "POST",
       headers,
       body: JSON.stringify({ q: query }),
@@ -77,6 +86,7 @@ async function request(query, index = 0) {
     } catch {
       body = null;
     }
+    const retryAfter = response.headers.get("retry-after");
     return {
       index,
       status: response.status,
@@ -89,10 +99,11 @@ async function request(query, index = 0) {
       fallbackKind: body?.answer?.eyebrow || null,
       aiReady: body?.answer?.eyebrow === "AI koondvastus",
       eyebrow: body?.answer?.eyebrow || null,
-      responseClass: responseClass(response.status, body),
+      responseClass: responseClass(response.status, body, retryAfter),
       citationCount: citationCount(body),
       sourceCount: Array.isArray(body?.sources) ? body.sources.length : 0,
-      retryAfter: response.headers.get("retry-after"),
+      itemCount: Array.isArray(body?.items) ? body.items.length : 0,
+      retryAfter,
     };
   } catch (error) {
     return {
@@ -126,8 +137,10 @@ const responseClasses = Object.fromEntries([...new Set(results.map((result) => r
   .map((kind) => [kind, results.filter((result) => result.responseClass === kind).length]));
 const report = {
   baseUrl: baseUrl.origin,
+  endpoint: endpointPath,
   evaluatedAt: new Date().toISOString(),
   concurrency,
+  serverConcurrency,
   requestCount: results.length,
   wallDurationMs,
   latencyMs: {
@@ -138,6 +151,10 @@ const report = {
   },
   statusCounts,
   responseClasses,
+  capacityBackpressureCount: results.filter((result) => result.responseClass === "capacity_backpressure").length,
+  expectedCapacityBackpressureCount: serverConcurrency === null
+    ? null
+    : Math.max(0, concurrency - serverConcurrency),
   fallbackCount: results.filter((result) => result.fallback).length,
   aiReadyCount: results.filter((result) => result.aiReady).length,
   fallbackKinds: Object.fromEntries([...new Set(results.filter((result) => result.fallback).map((result) => result.fallbackKind))]
@@ -153,6 +170,7 @@ const report = {
     eyebrow: result.eyebrow || null,
     citationCount: result.citationCount,
     sourceCount: result.sourceCount,
+    itemCount: result.itemCount,
     durationMs: result.durationMs,
   })),
   overLimit: overLimit ? {
@@ -166,10 +184,19 @@ const report = {
 };
 process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 
-const baselineOk = results.every((result) => result.status === 200)
+const resultsBoundaryOk = !resultsEndpoint || (
+  results.every((result) => ["results_ready", "capacity_backpressure"].includes(result.responseClass))
+  && (serverConcurrency === null
+    || report.capacityBackpressureCount === report.expectedCapacityBackpressureCount)
+);
+const searchBoundaryOk = resultsEndpoint || (
+  results.every((result) => result.status === 200)
   && results.every((result) => result.responseClass !== "unknown_success")
   && results.every((result) => expectFallback ? result.fallback : true)
   && (!expectAi || results.some((result) => result.aiReady))
+);
+const baselineOk = resultsBoundaryOk
+  && searchBoundaryOk
   && report.fiveHundredCount === 0
   && report.status504Count === 0
   && report.timeoutCount === 0;

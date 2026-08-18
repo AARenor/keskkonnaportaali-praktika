@@ -528,8 +528,9 @@ export function validateGroundedAnswer(payload, draft, query) {
 
 export function buildBoundedEvidence(draft) {
   let remaining = 10_000;
-  const perSourceLimit = draft.sources.length === 1 ? 2_000 : 2_200;
-  return draft.sources.map((source) => {
+  const sources = draft.sources.slice(0, 8);
+  const perSourceLimit = sources.length === 1 ? 2_000 : 2_200;
+  return sources.map((source) => {
     const citation = Number(source.citation);
     const reviewedClaims = [];
     if ((draft.answer?.introCitations || []).map(Number).includes(citation)) {

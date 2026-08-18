@@ -16,6 +16,7 @@
     "audit:filters": "node scripts/audit-live-filters.mjs",
     "audit:followups": "node scripts/audit-live-followups.mjs",
     "audit:load": "node scripts/load-search.mjs",
+    "audit:load-results": "node scripts/load-search.mjs --endpoint=results --server-concurrency=8",
     "test": "node --test tests/*.test.mjs",
     "preview": "vite preview",
     "test:sites": "node --test tests/sites-worker.test.mjs"
