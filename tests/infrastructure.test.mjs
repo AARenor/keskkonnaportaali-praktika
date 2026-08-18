@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { assertSafeDatabaseUrl, sanitizeCachedResponse } from "../server/database.mjs";
+import {
+  assertSafeDatabaseUrl,
+  sanitizeCachedResponse,
+  SEARCH_CACHE_READ_SQL,
+} from "../server/database.mjs";
 import {
   buildBoundedEvidence,
   buildLlmRequest,
@@ -642,6 +646,7 @@ test("cached responses never retain raw query text", () => {
   assert.deepEqual(sanitizeCachedResponse({ query: "minu aadress", total: 1, sources: [] }), { total: 1, sources: [] });
   assert.equal(isSearchCacheEnabled("false"), false);
   assert.equal(isSearchCacheEnabled("true"), true);
+  assert.match(SEARCH_CACHE_READ_SQL, /DELETE FROM practice_search_cache[\s\S]*expires_at <= NOW\(\)/u);
 });
 
 test("LLM is eligible only for a strong portal evidence contract", () => {

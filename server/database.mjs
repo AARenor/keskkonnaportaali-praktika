@@ -36,6 +36,16 @@ export function sanitizeCachedResponse(response) {
   return safeResponse;
 }
 
+export const SEARCH_CACHE_READ_SQL = `
+  WITH expired AS (
+    DELETE FROM practice_search_cache
+    WHERE expires_at <= NOW()
+  )
+  SELECT response
+  FROM practice_search_cache
+  WHERE query_hash = $1 AND expires_at > NOW()
+`;
+
 function getPool() {
   if (!databaseUrl) return null;
   if (!pool) {
@@ -118,10 +128,7 @@ export async function readSearchCache(query, revision) {
   if (!getPool()) return null;
   try {
     await ensureSchema();
-    const result = await pool.query(
-      "SELECT response FROM practice_search_cache WHERE query_hash = $1 AND expires_at > NOW()",
-      [queryHash(query, revision)],
-    );
+    const result = await pool.query(SEARCH_CACHE_READ_SQL, [queryHash(query, revision)]);
     const cached = sanitizeCachedResponse(result.rows[0]?.response);
     return cached ? { ...cached, query: String(query || "").replace(/\s+/gu, " ").trim().slice(0, 180) } : null;
   } catch {
