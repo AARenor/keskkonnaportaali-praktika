@@ -10,6 +10,7 @@ import {
   evidenceDocumentsFromListing,
   parsePublicSearchFilters,
   publicSearchListing,
+  rankPublicSearchCandidates,
   rankSearchCandidates,
   resultMatchesFilters,
   scoreSearchCandidate,
@@ -245,6 +246,124 @@ test("forestry answer planning rejects access-control noise and prefers the newe
   });
   assert.deepEqual(areaRanked.slice(0, 2).map((document) => document.id).sort(), ["forest-area", "smi-2025-current-area"]);
   assert.equal(selectAnswerEvidence(areaQuery, areaRanked)?.directDocumentId, "smi-2025-current-area");
+});
+
+test("public forestry comparison ranking keeps the official source above a supplementary broad match", () => {
+  const now = Date.parse("2026-08-19T12:00:00Z");
+  const services = officialServiceCatalogueDocuments();
+  const query = "Mis vahe on SMI ja metsaandmed?";
+  const wikipediaLike = {
+    id: "wikipedia-metsa-inventeerimine",
+    title: "Metsa inventeerimine",
+    url: "https://et.wikipedia.org/wiki/Metsa_inventeerimine",
+    organization: "Wikipedia",
+    type: "Entsüklopeedia",
+    published: "2026",
+    sourceTier: "supplementary",
+    _relevance: 8,
+    tags: ["mets", "metsaandmed", "SMI", "Metsaregister", "metsainventeerimine"],
+    summary: "Mis vahe on SMI ja metsaandmed? Metsaandmete kogumine hõlmab statistilist metsainventuuri ehk SMI-d ning Metsaregistri kinnistute inventeerimisandmeid.",
+    content: "SMI on üleriigiline statistiline valikuuring proovitükkidel. Metsaregister sisaldab kinnistute inventeerimisandmeid ja metsateatisi. Metsaandmeid kogutakse mitmel viisil.",
+  };
+  const accessControlDistractor = official({
+    id: "forest-data-access-control",
+    title: "Metsaandmed on paremini kaitstud",
+    url: "https://keskkonnaagentuur.ee/uudised/metsaandmed-on-paremini-kaitstud",
+    summary: "SMI proovitükkide koordinaadid ja Metsaregistri kaitstud väljad ei ole enam avalikud.",
+    content: "Juurdepääsupiirang puudutab SMI proovitükkide koordinaate ja Metsaregistri kährikuandmeid, mitte andmeallikate metoodilist võrdlust.",
+  });
+  const candidates = [wikipediaLike, accessControlDistractor, ...services];
+
+  // This reproduces the public route's rank → canonical-dedup → rerank path.
+  const reranked = rankSearchCandidates(query, deduplicateResults(rankSearchCandidates(query, candidates, { now })), { now });
+  assert.equal(reranked[0].id, "wikipedia-metsa-inventeerimine");
+  const visible = rankPublicSearchCandidates(query, candidates, { now, intentDocuments: services });
+  assert.equal(visible[0].id, "smi-metsaregister");
+  assert.equal(visible[1].id, "smi");
+
+  const currentArea = official({
+    id: "smi-2025-current-public-area",
+    title: "SMI: Metsatagavara on stabiilne",
+    url: "https://keskkonnaagentuur.ee/uudised/smi-metsatagavara-stabiilne",
+    published: "18.08.2026",
+    summary: "SMI 2025 järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast.",
+    content: "SMI 2025 järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast.",
+    topics: ["mets", "metsamaa", "SMI", "pindala", "metsasus"],
+  });
+  const oldAreaIndicator = official({
+    id: "forest-indicator-2023",
+    title: "Kui suur on Eesti metsamaa pindala?",
+    url: "https://keskkonnaportaal.ee/et/metsamaa-sh-kaitsealuse-metsamaa-osakaal-eestis",
+    type: "Indikaator",
+    published: "12.04.2023",
+    _relevance: 8,
+    summary: "SMI 2023 järgi oli Eesti metsamaa pindala 2,33 miljonit hektarit ehk 51,4% Eesti pindalast.",
+    content: "SMI 2023 järgi oli Eesti metsamaa pindala 2,33 miljonit hektarit ehk 51,4% Eesti pindalast.",
+    topics: ["mets", "metsamaa", "SMI", "pindala", "metsasus"],
+  });
+  const areaQuery = "Kui palju metsa on Eestis?";
+  const areaCandidates = [oldAreaIndicator, ...services, currentArea];
+  const areaReranked = rankSearchCandidates(
+    areaQuery,
+    deduplicateResults(rankSearchCandidates(areaQuery, areaCandidates, { now })),
+    { now },
+  );
+  assert.equal(areaReranked[0].id, "forest-indicator-2023");
+  const areaVisible = rankPublicSearchCandidates(areaQuery, areaCandidates, {
+    now,
+    intentDocuments: services,
+  });
+  assert.equal(areaVisible[0].id, "smi-2025-current-public-area");
+  assert.ok(areaVisible.some((document) => document.id === "forest-area"));
+
+  // An explicit data year must outrank a newer measurement for a different
+  // year; only an unqualified "how much forest" question defaults to newest.
+  const yearQuery = "Kui palju metsamaad oli Eestis 2024. aastal?";
+  const yearRanked = rankSearchCandidates(yearQuery, [currentArea, ...services], { now });
+  assert.equal(selectAnswerEvidence(yearQuery, yearRanked)?.directDocumentId, "forest-area");
+  const yearVisible = rankPublicSearchCandidates(yearQuery, [currentArea, ...services], {
+    now,
+    intentDocuments: services,
+  });
+  assert.equal(yearVisible[0].id, "forest-area");
+
+  // Required directory documents are appended after live results. When both
+  // have the same canonical URL but distinct IDs, the final visible list must
+  // still contain the source once.
+  const comparisonSource = services.find((document) => document.id === "smi-metsaregister");
+  const liveAlias = official({
+    id: "official-live-metsandus-alias",
+    title: comparisonSource.title,
+    url: `${comparisonSource.url}?utm_source=live`,
+    published: "18.08.2026",
+    organization: comparisonSource.organization,
+    type: comparisonSource.type,
+    summary: comparisonSource.summary,
+    content: comparisonSource.content,
+    topics: comparisonSource.tags,
+  });
+  const aliasVisible = rankPublicSearchCandidates(query, [liveAlias], {
+    now,
+    intentDocuments: services,
+  });
+  const comparisonUrl = canonicalResultUrl(comparisonSource.url);
+  assert.equal(aliasVisible.filter((document) => canonicalResultUrl(document.url) === comparisonUrl).length, 1);
+  assert.equal(aliasVisible[0].id, "official-live-metsandus-alias");
+
+  // If filtered/degraded candidates contain the required directory sources but
+  // no strong direct official proof, the public listing must still be safe.
+  const weakVisible = rankPublicSearchCandidates(query, [
+    official({
+      id: "weak-forestry-match",
+      title: "Metsaandmete juurdepääs",
+      summary: "SMI ja Metsaregistri andmete kasutamise tingimused.",
+      content: "Juurdepääsupiirang puudutab koordinaate.",
+    }),
+  ], {
+    now,
+    intentDocuments: [services.find((document) => document.id === "smi")],
+  });
+  assert.equal(weakVisible[0]?.id, "smi");
 });
 
 test("frozen service-intent relevance set keeps every expected source at rank one", async () => {

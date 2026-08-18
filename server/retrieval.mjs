@@ -254,6 +254,34 @@ function uniquePassages(values = [], limit = 3) {
   }).slice(0, limit);
 }
 
+function requestedQueryYear(query) {
+  return normalize(query).match(/\b((?:19|20)\d{2})\b/u)?.[1] || "";
+}
+
+function containsEvidenceYear(value, year) {
+  if (!year) return false;
+  return new RegExp(`\\b${year}\\b`, "u").test(normalize(value));
+}
+
+// Publication date is not necessarily the data year. Prefer an explicit year
+// in the titled/summarised measurement or its direct passage, while retaining
+// the rank-time signal when this selector receives already ranked documents.
+function requestedEvidenceYearMatch(document, year, passages = []) {
+  if (!year) return 0;
+  const titleMatch = containsEvidenceYear(document?.title, year);
+  const summaryMatch = containsEvidenceYear(document?.summary, year);
+  const passageMatch = passages.some((passage) => containsEvidenceYear(passage, year));
+  const contentMatch = containsEvidenceYear(document?.content, year);
+  const rankingMatch = Math.max(0, Number(document?._ranking?.yearMatch) || 0);
+  return Math.max(
+    rankingMatch,
+    (titleMatch ? 60 : 0)
+      + (summaryMatch ? 40 : 0)
+      + (passageMatch ? 30 : 0)
+      + (contentMatch ? 8 : 0),
+  );
+}
+
 function areaMeasurementKey(value = "") {
   const match = String(value || "").match(/\b(\d{1,3}(?:[\s\u00A0]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)\s*(%|protsent(?:i|ides|ides?)?|ha\b|hektar(?:it|i)?|miljonit?\s+hektarit?|tuhat\s+(?:ha\b|hektarit?))/iu);
   return match ? `${match[1].replace(/[\s\u00A0]/gu, "").replace(",", ".")}:${normalize(match[2])}` : "";
@@ -328,16 +356,28 @@ function intentEvidenceForDocument(intent, document) {
 export function selectAnswerEvidence(query, documents = []) {
   const intent = forestEvidenceIntent(query);
   if (!intent) return null;
+  const queryYear = requestedQueryYear(query);
   const candidates = (documents || [])
-    .map((document, index) => ({
-      document,
-      index,
-      publishedAt: Number(document?._ranking?.publishedAt) || resultPublishedAt(document) || 0,
-      ...intentEvidenceForDocument(intent, document),
-    }))
+    .map((document, index) => {
+      const evidence = intentEvidenceForDocument(intent, document);
+      return {
+        document,
+        index,
+        publishedAt: Number(document?._ranking?.publishedAt) || resultPublishedAt(document) || 0,
+        ...evidence,
+        requestedYearMatch: intent.kind === "forest-area"
+          ? requestedEvidenceYearMatch(document, queryYear, evidence.passages)
+          : 0,
+      };
+    })
     .filter((candidate) => candidate.score > 0)
     .sort((left, right) => (intent.kind === "forest-area"
-      ? right.publishedAt - left.publishedAt || right.score - left.score
+      ? (queryYear
+        ? Number(right.requestedYearMatch > 0) - Number(left.requestedYearMatch > 0)
+          || right.requestedYearMatch - left.requestedYearMatch
+          || right.score - left.score
+          || right.publishedAt - left.publishedAt
+        : right.publishedAt - left.publishedAt || right.score - left.score)
       : right.score - left.score || right.publishedAt - left.publishedAt)
       || left.index - right.index);
   const direct = candidates.find((candidate) => candidate.satisfies);
@@ -618,7 +658,7 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
   const freshness = ageYears === null
     ? 0
     : Math.max(0, 1 - ageYears / (freshnessIntent(query) ? 6 : 10)) * (freshnessIntent(query) ? 1.8 : 0.4);
-  const queryYear = normalize(query).match(/\b((?:19|20)\d{2})\b/u)?.[1];
+  const queryYear = requestedQueryYear(query);
   const titleYears = [...titleText.matchAll(/\b((?:19|20)\d{2})\b/gu)].map((match) => match[1]);
   const yearInTitle = queryYear && titleText.includes(queryYear);
   const yearInSummary = queryYear && summaryText.includes(queryYear);
@@ -663,6 +703,7 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
     publishedAt: publishedAt || 0,
     futureDated,
     intentEvidence: intentEvidence.score,
+    yearMatch,
   };
 }
 
@@ -705,21 +746,38 @@ function ensureForestryIntentCandidates(query, ranked = [], available = []) {
   const required = requiredIds.map((id) => byId.get(id)).filter(Boolean);
   if (!required.length) return ranked;
 
-  // Keep up to two current live documents that already have a direct semantic
-  // match in front, then reserve visible result slots for the complementary
-  // official SMI/Metsaregister evidence.  The answer still uses this exact
-  // listing; no hidden forestry corpus document is introduced downstream.
-  const currentDirect = ranked
-    .filter((document) => document.retrieval !== "official-service-directory"
-      && Number(document._ranking?.answerEvidencePriority) > 0)
-    .slice(0, 2);
+  // Lead with the single best *official* semantic proof, not merely the
+  // highest general relevance score. For an unqualified forest-area question
+  // selectAnswerEvidence already prefers the newest dated direct measurement;
+  // for the SMI/Metsaregister comparison it prefers the strongest role-aware
+  // comparison. Supplementary broad matches cannot displace that lead.
+  const officialPlan = selectAnswerEvidence(
+    query,
+    ranked.filter((document) => document.sourceTier === "official"),
+  );
+  const officialLead = ranked.find((document) => document.id === officialPlan?.directDocumentId
+    && document.sourceTier === "official");
   const seen = new Set();
-  return [...currentDirect, ...required, ...ranked].filter((document) => {
-    const key = document.id || canonicalResultUrl(document.url);
+  return [officialLead, ...required, ...ranked].filter(Boolean).filter((document) => {
+    const key = canonicalResultUrl(document.url) || document.id;
     if (!key || seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+}
+
+// The result list and answer draft both start here: relevance rank, canonical
+// deduplication, a second rank with merged text, then the narrowly scoped
+// official-forestry visibility guarantee.
+export function rankPublicSearchCandidates(query, documents = [], {
+  intentDocuments = [],
+  ...rankingOptions
+} = {}) {
+  return ensureForestryIntentCandidates(
+    query,
+    rankAndDeduplicate(query, documents, rankingOptions),
+    intentDocuments,
+  );
 }
 
 export function deduplicateResults(documents = []) {
@@ -880,10 +938,10 @@ export async function prepareRankedSearchResults(query, {
     ? officialServiceCatalogueDocuments().filter((document) => resultMatchesFilters(document, appliedFilters))
     : [];
   queueLiveDocumentsForIndex(filteredLive);
-  let rankedPrefix = rankAndDeduplicate(query, [...(local.items || []), ...filteredStructured, ...filteredLive, ...directory], {
+  const rankedPrefix = rankPublicSearchCandidates(query, [...(local.items || []), ...filteredStructured, ...filteredLive, ...directory], {
     sort: appliedFilters.sort,
+    intentDocuments: directory,
   });
-  rankedPrefix = ensureForestryIntentCandidates(query, rankedPrefix, directory);
   const localUrls = new Set((local.items || []).map((document) => canonicalResultUrl(document.url)));
   const facetExtras = rankAndDeduplicate(query, [...filteredStructured, ...filteredLive, ...directory])
     .filter((document) => !localUrls.has(canonicalResultUrl(document.url)));
