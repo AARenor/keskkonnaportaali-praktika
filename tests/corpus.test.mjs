@@ -185,7 +185,12 @@ test("progressive answer endpoint and broad result pagination remain separate co
   assert.match(server, /settleWithinDeadline/u);
   assert.match(app, /Lai portaaliotsing/u);
   assert.match(app, /Otsingutulemused/u);
-  assert.match(app, /Vastuse allikad/u);
+  assert.match(app, /Vastuses viidatud allikad/u);
+  const resultsView = app.match(/function SearchResults[\s\S]*?function PrivacyDisclosure/u)?.[0] || "";
+  assert.ok(
+    resultsView.indexOf("<BroadSearchResults") < resultsView.indexOf('aria-labelledby="sources-title"'),
+    "broad search results should appear before the expanded answer-source cards",
+  );
   assert.match(server, /searchPage\(request, "page_size", 12, 50\)/u);
   assert.match(server, /app\.post\("\/api\/search\/stream"/u);
   assert.match(server, /application\/x-ndjson/u);

@@ -321,6 +321,26 @@ test("direct fallback rejects a search-card sentence cut off by an ellipsis", ()
   assert.equal(excerpt, "Olmejäätmete ringlussevõtu määr oli Eestis 2023. aastal 38%.");
 });
 
+test("forest-area fallback replaces relative publication wording and stays on the requested measure", () => {
+  const passage = "Täna avaldatud statistilise metsainventeerimise (SMI) 2025. aasta tulemustel põhinevalt oli metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast, millel kasvas 466 miljonit m 3 puitu.";
+  const excerpt = directEvidenceExtract("Kui palju metsa on Eestis?", {
+    id: "forest-area-current",
+    published: "18.08.2026",
+    summary: passage,
+    content: passage,
+  }, {
+    kind: "forest-area",
+    directDocumentId: "forest-area-current",
+    passages: [passage],
+  });
+
+  assert.match(excerpt, /^18\.08\.2026 avaldatud/u);
+  assert.match(excerpt, /2025\. aasta/u);
+  assert.match(excerpt, /2,36 miljonit hektarit ehk 52,1%/u);
+  assert.doesNotMatch(excerpt, /\btäna\b/iu);
+  assert.doesNotMatch(excerpt, /466|m[³3]/u);
+});
+
 test("LLM JSON parser repairs common truncated punctuation without executing content", () => {
   const parsed = parseLlmJson('```json\n{"parts":[{"text":"Tõend", "citations":[1]}], "confidence":"kõrge",}\n```');
   assert.equal(parsed.parts[0].text, "Tõend");
@@ -344,7 +364,7 @@ test("legacy exhausted free-model configuration migrates to the bounded Go targe
   assert.equal(resolveLlmFallback("https://opencode.ai/zen/go/v1", "deepseek-v4-flash", "none"), "");
   assert.equal(resolveLlmFallback("https://example.invalid/v1", "operator-choice"), "");
   assert.equal(resolveLlmFallback("https://opencode.ai/zen/go/v1", "deepseek-v4-flash", "glm-5.2"), "glm-5.2");
-  assert.equal(resolveMaxTokens("gpt-5.6-luna"), 1_600);
+  assert.equal(resolveMaxTokens("gpt-5.6-luna"), 3_200);
   assert.equal(resolveLlmTimeout("gpt-5.6-luna"), 14_500);
   assert.equal(resolveLlmFallback("https://opencode.ai/zen/go/v1", "gpt-5.6-luna"), "");
   assert.deepEqual(resolveLlmAttempts("gpt-5.6-luna", "", 14_000), ["gpt-5.6-luna", "gpt-5.6-luna"]);
@@ -378,7 +398,7 @@ test("Luna uses the Responses API with strict structured output", () => {
   assert.equal(request.body.store, false);
   assert.equal(request.body.messages, undefined);
   assert.equal(request.body.temperature, undefined);
-  assert.equal(request.body.max_output_tokens, 1_200);
+  assert.equal(request.body.max_output_tokens, 1_600);
   assert.equal(extractLlmText({
     output: [{ content: [{ type: "output_text", text: "{\"intro\":\"Vastus\"}" }] }],
   }, "responses"), '{"intro":"Vastus"}');
@@ -389,11 +409,11 @@ test("Luna uses the Responses API with strict structured output", () => {
     evidence,
     singleSource: true,
     selectedMaxTokens: 1_600,
-    conversationContext: "Metsade vanus → Kas muutus on ühesuunaline? ".repeat(20),
+    conversationContext: "Metsade vanus → Kas muutus on ühesuunaline? ".repeat(40),
   });
   const followUpPayload = JSON.parse(followUpRequest.body.input[1].content[0].text);
   assert.equal(followUpPayload.question, "Mida see tähendab?");
-  assert.equal(followUpPayload.conversation_context.length, 520);
+  assert.equal(followUpPayload.conversation_context.length, 1_400);
   assert.deepEqual(Object.keys(followUpPayload), ["question", "conversation_context", "evidence", "outputContract"]);
 });
 
@@ -414,20 +434,28 @@ test("Luna evidence includes reviewed claims tied to each displayed citation", (
 });
 
 test("Luna request construction independently caps source count and evidence text", () => {
-  const evidence = buildBoundedEvidence({
+  const draft = {
     answer: { title: "Piiratud vastus", intro: "", introCitations: [], parts: [] },
     sources: Array.from({ length: 12 }, (_, index) => ({
       citation: index + 1,
       title: `Allikas ${index + 1}`,
       organization: "Keskkonnaagentuur",
-      content: `${index + 1} ${"avalik tõend ".repeat(400)}`,
+      content: `${index + 1}. allika üldine taust. ${"Avalik metsaandmete taustlause. ".repeat(160)} SMI järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit.`,
       url: `https://keskkonnaagentuur.ee/allikas-${index + 1}`,
     })),
-  });
+  };
+  const evidence = buildBoundedEvidence(draft);
   assert.equal(evidence.length, 8);
   assert.deepEqual(evidence.map((source) => source.citation), [1, 2, 3, 4, 5, 6, 7, 8]);
   assert.ok(evidence.every((source) => source.content.length <= 2_200));
   assert.ok(evidence.reduce((total, source) => total + source.content.length, 0) <= 10_000);
+
+  const queryAware = buildBoundedEvidence(draft, "Kui palju metsa on Eestis?");
+  assert.equal(queryAware.length, 10);
+  assert.deepEqual(queryAware.map((source) => source.citation), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assert.ok(queryAware.every((source) => source.content.length <= 4_000));
+  assert.ok(queryAware.reduce((total, source) => total + source.content.length, 0) <= 36_000);
+  assert.ok(queryAware.every((source) => /2,36 miljonit hektarit/u.test(source.content)));
 });
 
 test("generated related questions remain evidence-bound, unique and safe", () => {
@@ -1166,21 +1194,22 @@ test("structured evidence exposes its exact data-table locator in root and follo
   assert.match(app, /<EvidenceLocatorLink source=\{source\} \/>/u);
 });
 
-test("search discloses the external Luna privacy boundary before submission", async () => {
+test("search keeps privacy conditions in the footer instead of crowding either form", async () => {
   const [app, privacy] = await Promise.all([
     readFile(new URL("../src/App.jsx", import.meta.url), "utf8"),
     readFile(new URL("../PRIVAATSUS.md", import.meta.url), "utf8"),
   ]);
-  assert.match(app, /Kirjutamisel küsitakse vähemalt kahe märgi järel praktikaserveri kaudu Keskkonnaportaalilt soovitusi/u);
-  assert.match(app, /jätkuküsimuse korral lisandub kuni 520 märki varasemate küsimuste konteksti/u);
-  assert.match(app, /className="followup-form__privacy"[^>]*>Jätkuvastuse koostamiseks saadetakse Luna teenusele uus küsimus, kuni kaheksa avaliku allika piiratud väljavõtted ja kuni 520 märki varasemate küsimuste konteksti/u);
-  assert.match(app, /href="#otsingu-privaatsus" onClick=\{revealPrivacyDisclosure\}/u);
-  assert.match(app, /disclosure\.open = true/u);
-  assert.match(app, /disclosure\.querySelector\("summary"\)\?\.focus/u);
+  const searchForm = app.match(/function SearchForm[\s\S]*?function Header/u)?.[0] || "";
+  const searchResults = app.match(/function SearchResults[\s\S]*?function PrivacyDisclosure/u)?.[0] || "";
+  const disclosure = app.match(/function PrivacyDisclosure[\s\S]*?function Footer/u)?.[0] || "";
+  assert.doesNotMatch(searchForm, /privaatsus|OpenCode|väärkasutuse/u);
+  assert.doesNotMatch(searchResults, /Jätkuvastuse koostamiseks saadetakse|Ära sisesta tundlikke isikuandmeid/u);
+  assert.match(disclosure, /id="otsingu-privaatsus"/u);
+  assert.match(disclosure, /Vastuse koostamiseks saadetakse OpenCode Go Luna teenusele/u);
   assert.match(app, /store: false/u);
   assert.match(privacy, /`store: false`/u);
   assert.match(privacy, /küsimust ja vastust/u);
-  assert.match(privacy, /See toimub enne nupu „Küsi” vajutamist; Lunale sel ajal päringut ei saadeta/u);
+  assert.match(privacy, /asub lehe jaluses/u);
   assert.match(privacy, /kuni 50 otsingu teksti ainult avatud lehe protsessimälus/u);
 });
 

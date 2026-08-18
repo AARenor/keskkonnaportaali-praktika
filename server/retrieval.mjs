@@ -9,6 +9,9 @@ import { isForestHarvestBalanceQuery, loadStructuredIndicatorDocuments } from ".
 import {
   assessSearchQuery,
   buildDiscoveryQueries,
+  containsUnsafeInstruction,
+  forestEvidenceIntent,
+  forestryIntentServiceDocumentIds,
   normalize,
   officialServiceCatalogueDocuments,
   queryRootVariants,
@@ -130,9 +133,15 @@ function identityQuality(document) {
 function mergeDuplicate(current, candidate) {
   const currentPriority = Number(current?._ranking?.servicePriority) || 0;
   const candidatePriority = Number(candidate?._ranking?.servicePriority) || 0;
-  const preferred = candidatePriority !== currentPriority
-    ? candidatePriority > currentPriority ? candidate : current
-    : identityQuality(candidate) > identityQuality(current) ? candidate : current;
+  const currentAnswerEligible = current?._answerEvidenceEligible !== false;
+  const candidateAnswerEligible = candidate?._answerEvidenceEligible !== false;
+  // A navigation-only duplicate must not displace a richer, answer-eligible
+  // official directory extract for the same public URL.
+  const preferred = currentAnswerEligible !== candidateAnswerEligible
+    ? currentAnswerEligible ? current : candidate
+    : candidatePriority !== currentPriority
+      ? candidatePriority > currentPriority ? candidate : current
+      : identityQuality(candidate) > identityQuality(current) ? candidate : current;
   const fallback = preferred === candidate ? current : candidate;
   const richerContent = clean(candidate.content).length > clean(current.content).length ? candidate : current;
   return {
@@ -182,6 +191,167 @@ const AUXILIARY_QUERY_ROOTS = new Set([
   "muutus", "tulevik", "noor", "vanus", "tallinn", "tartu", "parnu", "parnumaa", "narva", "ida", "virumaa",
   "viljandi", "rakvere", "voru", "kuressaare", "haapsalu", "johvi",
 ]);
+
+function evidenceSourceText(document = {}) {
+  return [
+    document.title,
+    document.summary,
+    document.excerpt,
+    document.content,
+    document.answer,
+    ...(document.tags || []),
+    ...(document.topics || []),
+  ].filter(Boolean).join("\n");
+}
+
+function evidenceSourcePassages(document = {}) {
+  const seen = new Set();
+  // Prefer full text over a search-engine excerpt. The latter can begin in
+  // the middle of a sentence and would make a literal deterministic fallback
+  // misleading even though the complete official passage is available.
+  return [document.content, document.summary, document.excerpt, document.answer]
+    .filter(Boolean)
+    .flatMap(splitTextPassages)
+    .map(clean)
+    .filter((passage) => {
+      const key = normalize(passage);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function forestAreaPassageEvidence(passage = "") {
+  const raw = String(passage || "");
+  const text = normalize(raw);
+  const measurementValue = "(?:\\d{1,3}(?:[\\s\\u00A0]\\d{3})+(?:[.,]\\d+)?|\\d+(?:[.,]\\d+)?)";
+  const hasForestArea = /\b(?:metsamaa\w*|metsaga\s+kaetud|metsasus\w*|metsa\s+pindala|metsade\s+pindala)\b/iu.test(raw);
+  const hasMetsamaaArea = /\b(?:metsamaa\w*|metsa\s+pindala|metsade\s+pindala)\b/iu.test(raw);
+  const hasMeasurement = new RegExp(`\\b${measurementValue}\\s*(?:%|protsent(?:i|ides|ides?)?|ha\\b|hektar(?:it|i)?|miljonit?\\s+hektarit?|tuhat\\s+(?:ha\\b|hektarit?))`, "iu").test(raw);
+  const hasHectares = new RegExp(`\\b${measurementValue}\\s*(?:ha\\b|hektar(?:it|i)?|miljonit?\\s+hektarit?|tuhat\\s+(?:ha\\b|hektarit?))`, "iu").test(raw);
+  const subsetMetric = /\b(?:elaniku\s+kohta|metsamaast|kaitse\s+all|rangelt\s+kait|mittemajandatav|majanduspiirang|okaspuu|lehtpuu|puistute\s+pindala)\b/iu.test(raw);
+  const hasSmi = /\b(?:smi|statistilise\s+metsainvent)/iu.test(raw);
+  const hasEstonia = /\beesti\w*\b/iu.test(text);
+  return {
+    satisfies: hasForestArea && hasMeasurement && !subsetMetric,
+    score: (hasForestArea ? 16 : 0)
+      + (hasMeasurement ? 20 : 0)
+      + (hasMetsamaaArea ? 6 : 0)
+      + (hasHectares ? 4 : 0)
+      + (hasSmi ? 8 : 0)
+      + (hasEstonia ? 4 : 0)
+      - (subsetMetric ? 40 : 0),
+  };
+}
+
+function uniquePassages(values = [], limit = 3) {
+  const seen = new Set();
+  return values.filter((value) => {
+    const key = normalize(value);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, limit);
+}
+
+function areaMeasurementKey(value = "") {
+  const match = String(value || "").match(/\b(\d{1,3}(?:[\s\u00A0]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)\s*(%|protsent(?:i|ides|ides?)?|ha\b|hektar(?:it|i)?|miljonit?\s+hektarit?|tuhat\s+(?:ha\b|hektarit?))/iu);
+  return match ? `${match[1].replace(/[\s\u00A0]/gu, "").replace(",", ".")}:${normalize(match[2])}` : "";
+}
+
+function forestAreaEvidence(document) {
+  const matches = evidenceSourcePassages(document)
+    .map((passage, index) => ({ passage, index, ...forestAreaPassageEvidence(passage) }))
+    .filter((candidate) => candidate.score > 0)
+    .sort((left, right) => right.score - left.score || left.index - right.index);
+  const best = matches[0];
+  if (!best) return { satisfies: false, score: 0, passages: [] };
+  const measurementKeys = new Set();
+  const measurements = matches.filter((candidate) => {
+    if (!candidate.satisfies) return false;
+    const key = areaMeasurementKey(candidate.passage);
+    if (key && measurementKeys.has(key)) return false;
+    if (key) measurementKeys.add(key);
+    return true;
+  });
+  return {
+    satisfies: best.satisfies,
+    score: best.score,
+    passages: uniquePassages([
+      ...measurements.map((candidate) => candidate.passage),
+      ...matches.map((candidate) => candidate.passage),
+    ], 2),
+  };
+}
+
+function forestDataSourcesEvidence(document) {
+  const text = evidenceSourceText(document);
+  const hasSmi = /\b(?:smi|statistilise\s+metsainvent\w*)/iu.test(text);
+  const hasRegister = /\bmetsaregis\w*|metsaressursi\s+arvestuse\s+riiklik/iu.test(text);
+  const hasData = /\b(?:metsa|metsandus|metsainventeerimis)andm\w*|inventeerimisandm\w*/iu.test(text);
+  const hasSmiRole = /\b(?:valikuuring\w*|proovitükk\w*|statistilis\w*|üleriigil\w*|riiklik\s+(?:statistiline|hinnang)|metsade\s+seisund)/iu.test(text);
+  const hasRegisterRole = /\b(?:kinnistu\w*|metsaeraldis\w*|eraldis\w*|inventeerimisandm\w*|registrisse\s+koond|metsateatis\w*)/iu.test(text);
+  const hasMultipleSources = /\b(?:mitmel\s+viisil|eri(?:nevate)?\s+andmeallik\w*|eri\s+allik\w*|metsaandmed\s+on\s+(?:mitme|eri))/iu.test(text);
+  const accessOnlyContext = /\b(?:juurdep[aä]äsupiirang\w*|koordinaat\w*|kährik\w*|kaitstud\s+(?:liik|objekt)|salastatud\w*)/iu.test(text);
+  const passages = evidenceSourcePassages(document);
+  const smiPassage = passages.find((passage) => /\b(?:smi|statistilise\s+metsainvent\w*)/iu.test(passage)
+    && /\b(?:valikuuring\w*|proovitükk\w*|statistilis\w*|üleriigil\w*|metsade\s+seisund)/iu.test(passage))
+    || passages.find((passage) => /\b(?:smi|statistilise\s+metsainvent\w*)/iu.test(passage));
+  const registerPassage = passages.find((passage) => /\bmetsaregis\w*|metsaressursi\s+arvestuse\s+riiklik/iu.test(passage)
+    && /\b(?:kinnistu\w*|eraldis\w*|inventeerimisandm\w*|metsateatis\w*)/iu.test(passage))
+    || passages.find((passage) => /\bmetsaregis\w*|metsaressursi\s+arvestuse\s+riiklik/iu.test(passage));
+  const dataPassage = passages.find((passage) => /\b(?:mitmel\s+viisil|eri(?:nevate)?\s+andmeallik\w*|eri\s+allik\w*|metsaandmed\s+on\s+(?:mitme|eri))/iu.test(passage))
+    || passages.find((passage) => /\b(?:metsa|metsandus|metsainventeerimis)andm\w*|inventeerimisandm\w*/iu.test(passage));
+  const satisfies = hasSmi && hasRegister && (hasMultipleSources || (hasSmiRole && hasRegisterRole)) && !accessOnlyContext;
+  return {
+    satisfies,
+    score: (satisfies ? 70 : 0)
+      + (hasData ? 8 : 0)
+      + (hasSmiRole ? 14 : 0)
+      + (hasRegisterRole ? 14 : 0)
+      + (hasMultipleSources ? 18 : 0)
+      - (accessOnlyContext ? 80 : 0)
+      + (!satisfies && hasSmi && hasData ? 4 : 0),
+    passages: uniquePassages([dataPassage, smiPassage, registerPassage], 3),
+  };
+}
+
+function intentEvidenceForDocument(intent, document) {
+  if (intent?.kind === "forest-area") return forestAreaEvidence(document);
+  if (intent?.kind === "forest-data-sources") return forestDataSourcesEvidence(document);
+  return { satisfies: false, score: 0, passages: [] };
+}
+
+// This is deliberately a semantic contract rather than a prewritten answer:
+// an answer is eligible only when one current result itself contains the
+// quantity or both forestry data sources needed by the user’s question.
+export function selectAnswerEvidence(query, documents = []) {
+  const intent = forestEvidenceIntent(query);
+  if (!intent) return null;
+  const candidates = (documents || [])
+    .map((document, index) => ({
+      document,
+      index,
+      publishedAt: Number(document?._ranking?.publishedAt) || resultPublishedAt(document) || 0,
+      ...intentEvidenceForDocument(intent, document),
+    }))
+    .filter((candidate) => candidate.score > 0)
+    .sort((left, right) => (intent.kind === "forest-area"
+      ? right.publishedAt - left.publishedAt || right.score - left.score
+      : right.score - left.score || right.publishedAt - left.publishedAt)
+      || left.index - right.index);
+  const direct = candidates.find((candidate) => candidate.satisfies);
+  return {
+    kind: intent.kind,
+    strong: Boolean(direct),
+    directDocumentId: direct?.document?.id || null,
+    passages: direct?.passages || [],
+    supportingDocumentIds: candidates
+      .filter((candidate) => candidate.satisfies)
+      .slice(0, 3)
+      .map((candidate) => candidate.document.id),
+  };
+}
 
 function fieldHasRoot(field, root) {
   return textHasQueryRoot(field, root);
@@ -464,6 +634,7 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
   const liveService = liveServiceIntentScore(query, roots, document);
   const cadastreService = CADASTRE_PATTERN.test(query) && CADASTRE_SERVICE_IDS.has(document.id);
   const servicePriority = serviceIntentPriority(query, roots, document);
+  const intentEvidence = intentEvidenceForDocument(forestEvidenceIntent(query), document);
   const primaryTopic = assessSearchQuery(query).topic;
   const primaryIntentMatched = !primaryTopic
     || fieldHasRoot(searchableText, primaryTopic)
@@ -479,6 +650,7 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
     + completeness
     + upstreamSignal
     + sqlSignal
+    + intentEvidence.score
     - conflictingTitleYear
     - roundupPenalty
     - (futureDated ? 0.6 : 0);
@@ -486,9 +658,11 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
     score,
     matched: primaryIntentMatched && (semantic > 0 || coveredRoots > 0 || sqlSignal > 0 || liveService > 0 || cadastreService),
     servicePriority,
+    answerEvidencePriority: intentEvidence.satisfies ? 6 : 0,
     relevanceBucket: Math.floor(Math.max(score, 0) / 6),
     publishedAt: publishedAt || 0,
     futureDated,
+    intentEvidence: intentEvidence.score,
   };
 }
 
@@ -501,14 +675,16 @@ export function rankSearchCandidates(query, documents = [], { sort = "relevance"
     .filter((document) => document._ranking.matched && document._ranking.score > 0)
     .sort((left, right) => {
       if (sort === "newest") {
-        return right._ranking.servicePriority - left._ranking.servicePriority
+        return right._ranking.answerEvidencePriority - left._ranking.answerEvidencePriority
+          || right._ranking.servicePriority - left._ranking.servicePriority
           || right._ranking.relevanceBucket - left._ranking.relevanceBucket
           || Number(left._ranking.futureDated) - Number(right._ranking.futureDated)
           || right._ranking.publishedAt - left._ranking.publishedAt
           || right._ranking.score - left._ranking.score
           || left.title.localeCompare(right.title, "et");
       }
-      return right._ranking.servicePriority - left._ranking.servicePriority
+      return right._ranking.answerEvidencePriority - left._ranking.answerEvidencePriority
+        || right._ranking.servicePriority - left._ranking.servicePriority
         || right._ranking.score - left._ranking.score
         || Number(left._ranking.futureDated) - Number(right._ranking.futureDated)
         || right._ranking.publishedAt - left._ranking.publishedAt
@@ -519,6 +695,31 @@ export function rankSearchCandidates(query, documents = [], { sort = "relevance"
 function rankAndDeduplicate(query, documents, options = {}) {
   const ranked = rankSearchCandidates(query, documents, options);
   return rankSearchCandidates(query, deduplicateResults(ranked), options);
+}
+
+function ensureForestryIntentCandidates(query, ranked = [], available = []) {
+  const requiredIds = forestryIntentServiceDocumentIds(query);
+  if (!requiredIds.length) return ranked;
+  const rankedAvailable = rankSearchCandidates(query, available);
+  const byId = new Map([...ranked, ...rankedAvailable].map((document) => [document.id, document]));
+  const required = requiredIds.map((id) => byId.get(id)).filter(Boolean);
+  if (!required.length) return ranked;
+
+  // Keep up to two current live documents that already have a direct semantic
+  // match in front, then reserve visible result slots for the complementary
+  // official SMI/Metsaregister evidence.  The answer still uses this exact
+  // listing; no hidden forestry corpus document is introduced downstream.
+  const currentDirect = ranked
+    .filter((document) => document.retrieval !== "official-service-directory"
+      && Number(document._ranking?.answerEvidencePriority) > 0)
+    .slice(0, 2);
+  const seen = new Set();
+  return [...currentDirect, ...required, ...ranked].filter((document) => {
+    const key = document.id || canonicalResultUrl(document.url);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export function deduplicateResults(documents = []) {
@@ -679,9 +880,10 @@ export async function prepareRankedSearchResults(query, {
     ? officialServiceCatalogueDocuments().filter((document) => resultMatchesFilters(document, appliedFilters))
     : [];
   queueLiveDocumentsForIndex(filteredLive);
-  const rankedPrefix = rankAndDeduplicate(query, [...(local.items || []), ...filteredStructured, ...filteredLive, ...directory], {
+  let rankedPrefix = rankAndDeduplicate(query, [...(local.items || []), ...filteredStructured, ...filteredLive, ...directory], {
     sort: appliedFilters.sort,
   });
+  rankedPrefix = ensureForestryIntentCandidates(query, rankedPrefix, directory);
   const localUrls = new Set((local.items || []).map((document) => canonicalResultUrl(document.url)));
   const facetExtras = rankAndDeduplicate(query, [...filteredStructured, ...filteredLive, ...directory])
     .filter((document) => !localUrls.has(canonicalResultUrl(document.url)));
@@ -752,10 +954,14 @@ export function evidenceDocumentsFromListing(listing = {}) {
 }
 
 export function contextualRetrievalQuery(rootQuery, question, previousQuestions = []) {
-  const root = clean(rootQuery).slice(0, 180);
-  const followUp = clean(question).slice(0, 180);
+  const safeFragment = (value) => {
+    const fragment = clean(value).slice(0, 180);
+    return fragment && !containsUnsafeInstruction(fragment) ? fragment : "";
+  };
+  const root = safeFragment(rootQuery);
+  const followUp = safeFragment(question);
   const previous = (Array.isArray(previousQuestions) ? previousQuestions : [])
-    .map((value) => clean(value).slice(0, 180))
+    .map(safeFragment)
     .filter(Boolean)
     .slice(-3);
   if (followUp && assessSearchQuery(followUp).kind === "answerable") return followUp;
@@ -772,7 +978,9 @@ export function conversationContext(rootQuery, previousQuestions = []) {
     .map(keepSafeContext)
     .filter(Boolean)
     .slice(-3);
-  return [root, ...previous].filter(Boolean).join(" → ").slice(0, 520);
+  // Retrieval itself remains short and bounded, but the answer model can use
+  // more safe context to resolve a real follow-up. It is never evidence.
+  return [root, ...previous].filter(Boolean).join(" → ").slice(0, 1_400);
 }
 
 export function queryHasEnvironmentContext(query) {

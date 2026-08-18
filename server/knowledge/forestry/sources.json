@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "reviewed_at": "2026-08-16",
+  "reviewed_at": "2026-08-18",
   "sources": [
     {
       "id": "kkp-forest-overview",
@@ -28,7 +28,7 @@
       "license": null,
       "access": "public",
       "review_status": "prototype_research_reviewed",
-      "notes": "SMI valikuuringu kirjeldus, statistilise vea hoiatus ning ametlike tulemuste lingid."
+      "notes": "Ametlik metoodikaleht määratleb SMI üleriigiliste proovitükkidega valikuuringuna, mille mõõtmistest koostatakse statistiliste meetoditega üldistatud metsaressursi hinnangud kogu Eesti kohta; hinnanguga kaasneb valikust tulenev statistiline viga."
     },
     {
       "id": "smi-2024-tables",
@@ -42,7 +42,7 @@
       "license": null,
       "access": "public",
       "review_status": "prototype_research_reviewed",
-      "notes": "61-leheküljeline tabel-PDF. Prototüübis kasutatud read kontrolliti ka visuaalse renderdusega."
+      "notes": "61-leheküljeline ametlik tabel-PDF. Lk 3 ja 7 visuaalselt kontrollitud read: metsamaa 2 350,6 tuhat ha ehk 51,84% kogu Eesti 4 533,9 tuhande ha pindalast, suhteline viga ±1,2%; puistute pindala on eraldi 2 135,8 tuhat ha ehk 47,11%."
     },
     {
       "id": "kaur-smi-2025-summary",
@@ -98,7 +98,7 @@
       "license": null,
       "access": "public",
       "review_status": "prototype_research_reviewed",
-      "notes": "Selgitab Metsaregistri, RMK ja metsateatiste jooksvalt uuenevaid vaateid ning nende katvust."
+      "notes": "Ametlik jooksvate metsaandmete koondvaade eristab metsateatisi, RMK hallatavate metsade takseerandmeid ja Metsaregistri ülepinnalise takseerimisega kogutud inventeerimisandmeid; vaadetel on eri katvus, ajaseis ja tähendus."
     },
     {
       "id": "kkp-metsaregister-data",
@@ -112,7 +112,7 @@
       "license": "CC BY 4.0 for listed WMS/WFS distributions",
       "access": "public",
       "review_status": "prototype_research_reviewed",
-      "notes": "Andmekataloog kirjeldab Metsaregistri kihte, seoseid, avalikke teenuseid ja levituste litsentse."
+      "notes": "Ametlik andmekataloog kirjeldab Metsaregistrit riikliku andmekoguna ning eristab inventeerimis-, metsateatise ja välitööde andmestikke; avalikke ruumiandmeid levitatakse Metsaportaalis ning WMS/WFS teenustena."
     },
     {
       "id": "keskkonnaamet-forest-notice",
@@ -196,7 +196,7 @@
       "license": null,
       "access": "public",
       "review_status": "prototype_research_reviewed",
-      "notes": "ETAK-il põhinev ametlik näitaja kaitsealuse ja range kaitse all oleva metsamaa osakaalu kohta."
+      "notes": "Ametlik näitajaleht kinnitab SMI 2024 metsamaa pindalaks 2 350 600 ha ehk 51,8% Eesti pindalast ja hinnangu suhteliseks standardveaks ±1,2%; samal lehel võrreldakse SMI-d ETAK-i ruumiandmetega ning avaldatakse kaitse osakaalud."
     },
     {
       "id": "kkp-forest-environment-review",

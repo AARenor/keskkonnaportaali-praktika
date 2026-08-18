@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "dataset_id": "kaur-forest-ambiguity-et-v1",
+  "language": "et",
+  "frozen_at": "2026-08-18",
+  "status": "locked adversarial and ambiguity acceptance set; KAUR content-owner approval pending",
+  "purpose": "Kontrollida, et üldkeelsed ja vale eeldusega päringud eristavad SMI-d muudest metsaandmetest ning metsamaa pindala puistute pindalast, säilitades SMI 2024 aasta, ühikud ja veahinnangu.",
+  "execution_contract": {
+    "scope": "reviewed_forestry_knowledge_base",
+    "retrieval_export": "server/forestry.mjs#retrieveForestryDocuments",
+    "answer_export": "server/forestry.mjs#answerForestryQuestion",
+    "public_pipeline_note": "See eval ei mõõda /api/search/stream live-retrieval pipeline'i. Avalik vastusetee välistab reviewed forestry korpuse primaarse vastuse evidence'ist; live-pipeline'i intent ja evidence vajavad eraldi hindamist."
+  },
+  "official_evidence": [
+    {
+      "source_id": "kkp-smi-overview",
+      "url": "https://keskkonnaportaal.ee/et/teemad/mets/metsastatistika-sh-smi",
+      "locator": "SMI on üleriigiliste proovitükkidega valikuuring; statistiliste meetoditega koostatakse kogu Eesti üldistatud hinnang ning näitajaga kaasneb statistiline viga."
+    },
+    {
+      "source_id": "smi-2024-tables",
+      "url": "https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI2024/SMI_2024.pdf",
+      "locator": "lk 3: metsamaa 2 350,6 tuhat ha, 51,8%, suhteline viga ±1,2%, metsaga 2 135,8 tuhat ha; lk 7: metsamaa 51,84% ja puistud 2 135,8 tuhat ha ehk 47,11%."
+    },
+    {
+      "source_id": "kkp-current-forest",
+      "url": "https://keskkonnaportaal.ee/et/teemad/mets/metsainfo-hetkeseis",
+      "locator": "Eraldi vaated metsateatistele, RMK hallatavate metsade takseerandmetele ja Metsaregistri inventeerimisandmetele."
+    },
+    {
+      "source_id": "kkp-metsaregister-data",
+      "url": "https://keskkonnaportaal.ee/et/avaandmed/metsaregistri-andmestikud",
+      "locator": "Metsaregistri inventeerimis-, metsateatise ja välitööde andmestikud ning Metsaportaali ja WMS/WFS ruumiandmete levitused."
+    },
+    {
+      "source_id": "kkp-protected-forest-indicator",
+      "url": "https://keskkonnaportaal.ee/et/metsamaa-sh-kaitsealuse-metsamaa-osakaal-eestis",
+      "locator": "SMI 2024 metsamaa 2 350 600 ha, 51,8% Eesti pindalast ja suhteline standardviga ±1,2%."
+    }
+  ],
+  "claim_sets": {
+    "forest_data_scope": {
+      "required_fragments": [
+        "katusmõiste",
+        "proovitükkidel põhinev valikuuring",
+        "riiklik statistiline hinnang",
+        "Metsaregister",
+        "metsateatised",
+        "RMK",
+        "ruumiandmed"
+      ],
+      "forbidden_fragments": [
+        "SMI ja metsaandmed on sünonüümid",
+        "SMI annab üksiku kinnistu hinnangu"
+      ]
+    },
+    "forest_area_2024": {
+      "required_fragments": [
+        "SMI 2024",
+        "2,3506 miljonit hektarit",
+        "51,8%",
+        "±1,2%",
+        "2,1358 miljonit hektarit",
+        "47,11%",
+        "puistute pindala on eraldi"
+      ],
+      "forbidden_fragments": [
+        "viga on null",
+        "51,8% puistute",
+        "2,3506 miljonit hektarit on puistute pindala"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "amb-smi-01-exact",
+      "kind": "exact_intent",
+      "query": "Mis vahe on SMI ja metsaandmed?",
+      "expected_primary_document_id": "smi-versus-metsaregister",
+      "claim_set": "forest_data_scope"
+    },
+    {
+      "id": "amb-smi-02-inflection",
+      "kind": "morphological_ambiguity",
+      "query": "Mis vahe on SMI-l ja metsaandmetel?",
+      "expected_primary_document_id": "smi-versus-metsaregister",
+      "claim_set": "forest_data_scope"
+    },
+    {
+      "id": "amb-smi-03-false-premise",
+      "kind": "adversarial_false_premise",
+      "query": "Metsaandmed tähendavad ainult SMI-d, eks?",
+      "expected_primary_document_id": "smi-versus-metsaregister",
+      "claim_set": "forest_data_scope"
+    },
+    {
+      "id": "amb-smi-04-wrong-granularity",
+      "kind": "adversarial_scope_confusion",
+      "query": "Kas SMI on andmekogu, kust näeb kinnistu raieluba?",
+      "expected_primary_document_id": "smi-versus-metsaregister",
+      "claim_set": "forest_data_scope"
+    },
+    {
+      "id": "amb-area-01-exact",
+      "kind": "exact_intent",
+      "query": "Kui palju metsa on Eestis?",
+      "expected_primary_document_id": "forest-area",
+      "claim_set": "forest_area_2024"
+    },
+    {
+      "id": "amb-area-02-word-order",
+      "kind": "word_order_ambiguity",
+      "query": "Kui palju on Eestis metsa?",
+      "expected_primary_document_id": "forest-area",
+      "claim_set": "forest_area_2024"
+    },
+    {
+      "id": "amb-area-03-category",
+      "kind": "category_ambiguity",
+      "query": "Kas 2,3506 miljonit hektarit on puistute või metsamaa pindala?",
+      "expected_primary_document_id": "forest-area",
+      "claim_set": "forest_area_2024"
+    },
+    {
+      "id": "amb-area-04-false-premise",
+      "kind": "adversarial_false_premise",
+      "query": "51,8% on puistute osakaal, eks?",
+      "expected_primary_document_id": "forest-area",
+      "claim_set": "forest_area_2024"
+    },
+    {
+      "id": "amb-area-05-zero-error",
+      "kind": "adversarial_uncertainty_erasure",
+      "query": "SMI 2024 metsamaa pindala on täpselt 2 350 600 ha ja viga on null, eks?",
+      "expected_primary_document_id": "forest-area",
+      "claim_set": "forest_area_2024"
+    }
+  ]
+}

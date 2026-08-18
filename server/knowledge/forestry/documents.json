@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "language": "et",
-  "reviewed_at": "2026-08-16",
+  "reviewed_at": "2026-08-18",
   "review_status": "prototype_research_reviewed_not_kaur_approved",
   "required_coverage": {
     "faq": {
@@ -46,56 +46,69 @@
       "intent": "national_forest_area",
       "title": "Kui suur osa Eestist on mets?",
       "question_aliases": [
+        "Kui palju metsa on Eestis?",
+        "Kui palju on Eestis metsa?",
         "Kui suur osa Eestist on kaetud metsaga?",
         "Mitu protsenti Eestist on mets?",
         "Kui suur on Eesti metsasus?",
-        "Miks on metsasuse protsendid erinevad?"
+        "Miks on metsasuse protsendid erinevad?",
+        "Kas 2,3506 miljonit hektarit on metsamaa või puistute pindala?",
+        "Kas 51,8 protsenti tähendab metsamaad või puistuid?",
+        "Kas SMI metsamaa pindala on täpne ja veatu arv?"
       ],
-      "keywords": ["metsasus", "metsamaa", "pindala", "protsent", "FRA", "Peipsi", "Võrtsjärv", "nimetaja"],
-      "topics": ["SMI", "metsasus", "definitsioon"],
+      "keywords": ["metsasus", "metsamaa", "puistu", "metsaga metsamaa", "metsata metsamaa", "pindala", "hektar", "protsent", "51,8", "2,3506", "2,1358", "suhteline standardviga", "FRA", "Peipsi", "Võrtsjärv", "nimetaja"],
+      "topics": ["SMI", "metsasus", "pindala", "statistiline hinnang", "definitsioon"],
       "answer": {
-        "summary": "SMI 2024 järgi oli metsamaa pindala 2,3506 miljonit hektarit. See on 51,84% Eesti kogupindalast või 54,08%, kui Peipsi ja Võrtsjärv nimetajast välja jätta. Rahvusvahelise FRA metsadefinitsiooni järgi on osakaal veel teistsugune. Seepärast ei ole üks metsasuse protsent ilma definitsiooni ja nimetajata täielik vastus.",
-        "methodology": "SMI on valikuuring. Tabelis on eraldi metsamaa, puistute ja FRA definitsioon ning kaks pindala nimetajat.",
+        "summary": "SMI 2024 järgi oli Eesti metsamaa pindala 2,3506 miljonit hektarit ehk 2 350 600 ha. See moodustas ümardatult 51,8% kogu Eesti 4,5339 miljoni hektari suurusest pindalast (tabelis 51,84%) ning pindalahinnangu suhteline standardviga oli ±1,2%. Puistute pindala on eraldi väiksem näitaja: 2,1358 miljonit hektarit ehk 47,11% kogu Eesti pindalast. Seega ei tohi metsamaa ja puistute pindala samastada.",
+        "methodology": "SMI on valikuuring: see põhineb üleriigilistel proovitükkidel, mille mõõtmistest koostatakse statistiliste meetoditega üldistatud hinnang kogu Eesti kohta. SMI 2024 tabel eristab metsamaad, sealhulgas metsaga ja metsata metsamaad, puistuid ning FRA definitsiooni; osakaal tuleb esitada koos nimetaja, andmeaasta ja veahinnanguga.",
         "limitations": [
-          "Tegu on SMI 2024 statistilise hinnanguga, mitte kinnistupõhise kaardimõõtmisega.",
-          "Piirkondlikku või rahvusvahelist võrdlust tohib teha ainult sama metsadefinitsiooni ja nimetajaga."
+          "Tegu on SMI 2024 statistilise hinnanguga, mitte veatu täppisarvu, täieliku ülelugemise ega kinnistupõhise kaardimõõtmisega.",
+          "Metsamaa 2,3506 miljonit ha hõlmab 2,1358 miljonit ha metsaga metsamaad ehk puistuid ja 0,2148 miljonit ha metsata metsamaad; piirkondlikku või rahvusvahelist võrdlust tohib teha ainult sama definitsiooni ja nimetajaga."
         ],
         "claim_type": "statistical_estimate"
       },
       "sources": [
-        {"source_id": "smi-2024-tables", "locator": "lk 7, Eestimaa metsasuse jaotus"},
-        {"source_id": "kkp-smi-overview", "locator": "Statistiline metsainventuur ehk SMI"}
+        {"source_id": "smi-2024-tables", "locator": "lk 3, Eesti üldpindala jaotus: metsamaa, metsaga/metsata ja suhteline viga; lk 7, Eestimaa metsasuse jaotus: metsamaa ja puistud"},
+        {"source_id": "kkp-smi-overview", "locator": "SMI kui üleriigiline valikuuring, üldistatud hinnang ja statistiline viga"},
+        {"source_id": "kkp-protected-forest-indicator", "locator": "Kui suur on Eesti metsamaa pindala?: SMI 2024 pindala, osakaal ja suhteline standardviga"}
       ],
-      "related_questions": ["Mis vahe on SMI-l ja metsaregistril?", "Miks annavad eri allikad erinevaid numbreid?"]
+      "related_questions": ["Mis vahe on SMI ja metsaandmete vahel?", "Mis vahe on metsamaal ja puistute pindalal?", "Miks annavad eri allikad erinevaid numbreid?"]
     },
     {
       "id": "smi-versus-metsaregister",
       "content_type": "faq_and_misconception",
       "intent": "source_method_comparison",
-      "title": "SMI ja Metsaregister vastavad eri küsimustele",
+      "title": "SMI on üks metsaandmete allikas, mitte metsaandmete sünonüüm",
       "question_aliases": [
+        "Mis vahe on SMI ja metsaandmed?",
+        "Mis vahe on SMI ja metsaandmete vahel?",
+        "Mis vahe on SMI-l ja metsaandmetel?",
+        "Kas SMI tähendab kõiki Eesti metsaandmeid?",
+        "Kas metsaandmed tähendavad ainult SMI-d?",
+        "Mida tähendab SMI metsaandmete seas?",
+        "Kas SMI on andmekogu, kust näeb kinnistu raieluba?",
         "Mis vahe on SMI-l ja metsaregistril?",
         "Miks SMI ja metsaregistri andmed ei kattu?",
         "Kas SMI tagavara on üle hinnatud?",
         "Kas lausmetsakorraldus on SMI-st täpsem?"
       ],
-      "keywords": ["SMI", "metsaregister", "lausinventeerimine", "lausmetsakorraldus", "valikuuring", "proovitükk", "eraldis", "katvus", "aegunud"],
-      "topics": ["metoodika", "andmeallikad", "statistika"],
+      "keywords": ["SMI", "metsaandmed", "katusmõiste", "metsaregister", "metsateatis", "RMK", "ruumiandmed", "WMS", "WFS", "lausinventeerimine", "lausmetsakorraldus", "valikuuring", "proovitükk", "riiklik statistiline hinnang", "eraldis", "katvus", "aegunud"],
+      "topics": ["metoodika", "andmeallikad", "statistika", "ruumiandmed", "andmete ulatus"],
       "answer": {
-        "summary": "SMI mõõdab valitud proovitükke ja üldistab tulemuse Eesti või suure piirkonna kohta koos statistilise veaga. Metsaregister koondab metsaeraldiste inventeerimisandmeid ning sobib kinnistu ja eraldise vaatamiseks, kuid andmed on eri vanusega ja ei kata kehtivana kogu metsamaad. Erinevus ei tõenda iseenesest, et üks allikas on vale või tagavara üle hinnatud.",
-        "methodology": "Võrdlemisel tuleb ühtlustada vaadeldav ala, andmeaasta, kehtivuse seis, metsamaa definitsioon ja näitaja arvutus. Alles siis saab erinevuse põhjuseid analüüsida.",
+        "summary": "„Metsaandmed” on katusmõiste, mitte ühe andmekogu ega mõõtmismeetodi nimi. SMI on üks metsaandmete allikas: üleriigiline proovitükkidel põhinev valikuuring, mille põhjal koostatakse kogu Eesti kohta riiklik statistiline hinnang koos statistilise veaga. Metsaandmete alla kuuluvad ka kinnistu- ja eraldisepõhine Metsaregister, kavandatud või registreeritud tegevusi kajastavad metsateatised, RMK hallatavate metsade takseerandmed ning avalikud ruumiandmed ja kaardikihid. Need allikad vastavad eri küsimustele; SMI ja metsaandmed ei ole sünonüümid.",
+        "methodology": "Vali allikas küsimuse järgi: riigi või suure piirkonna üldhinnanguks SMI; kinnistu ja metsaeraldise inventeerimisandmeteks Metsaregister; menetletud kavatsuse kontrolliks metsateatis; RMK hallatavate metsade ülevaateks RMK andmed; asukohapõhiseks analüüsiks dokumenteeritud ruumikiht või WMS/WFS teenus. Arvude võrdlemisel ühtlusta ala, andmeaasta, kehtivuse seis, definitsioon, katvus ja veahinnang.",
         "limitations": [
-          "SMI ei anna usaldusväärset üksiku kinnistu hinnangut.",
-          "Keskkonnaportaali andmetel kehtivad Metsaregistri inventeerimisandmed kümme aastat ja kehtivad kirjed katavad ligikaudu kolmveerandi Eesti metsamaast."
+          "SMI riiklikku statistilist hinnangut ei tohi omistada üksikule kinnistule ning metsateatis ei tõenda, et kavandatud raie looduses toimus.",
+          "Keskkonnaportaali andmetel kehtivad Metsaregistri inventeerimisandmed kümme aastat ja kehtivad kirjed katavad ligikaudu kolmveerandi Eesti metsamaast; RMK vaated katavad RMK hallatavaid metsi, mitte kogu Eestit."
         ],
         "claim_type": "methodological_explanation"
       },
       "sources": [
-        {"source_id": "kkp-smi-overview", "locator": "Ülevaade metsastatistikast; Statistiline metsainventuur ehk SMI"},
-        {"source_id": "kkp-current-forest", "locator": "Metsainventeerimisandmed"},
-        {"source_id": "kkp-metsaregister-data", "locator": "Metsa inventeerimisandmed; levitused"}
+        {"source_id": "kkp-smi-overview", "locator": "SMI kui üleriigiline proovitükkidega valikuuring ja kogu Eesti üldistatud statistiline hinnang"},
+        {"source_id": "kkp-current-forest", "locator": "Metsateatised; RMK metsade olem; Metsainventeerimisandmed"},
+        {"source_id": "kkp-metsaregister-data", "locator": "Metsaregistri inventeerimis-, metsateatise ja välitööde andmestikud; Metsaportaal ning WMS/WFS levitused"}
       ],
-      "related_questions": ["Miks annavad eri allikad erinevaid numbreid?", "Kust leida konkreetse kinnistu metsaandmeid?"]
+      "related_questions": ["Kui palju metsa on Eestis?", "Mis vahe on SMI-l ja metsaregistril?", "Kust leida konkreetse kinnistu metsaandmeid?", "Miks annavad eri allikad erinevaid numbreid?"]
     },
     {
       "id": "increment-method",

@@ -13,6 +13,7 @@ import {
   rankSearchCandidates,
   resultMatchesFilters,
   scoreSearchCandidate,
+  selectAnswerEvidence,
   shouldUseLiveDiscovery,
 } from "../server/retrieval.mjs";
 import {
@@ -200,7 +201,7 @@ test("maintained task pages stay above incidental live articles with overlapping
     official({ id: "assessment-handbook", title: "KMH/KSH programmi ja aruande menetlus", summary: "Käsiraamat kirjeldab KMH ja KSH menetlust." }),
   ];
   const cases = [
-    ["Kui palju metsa Eestis on ja kuidas seda mõõdetakse?", "forest-overview"],
+    ["Kui palju metsa Eestis on ja kuidas seda mõõdetakse?", "forest-area"],
     ["Veekogumi seisund ja seireproovide tulemused ei ole sama asi", "water-monitoring"],
     ["Eesti gammakiirguse automaatjaamade seiretulemused", "radiation-monitoring"],
     ["Kust näeb Pärnu õhu PM2.5 hetkeseisu?", "air-quality-live"],
@@ -211,6 +212,39 @@ test("maintained task pages stay above incidental live articles with overlapping
   for (const [query, expected] of cases) {
     assert.equal(rankSearchCandidates(query, [...liveDistractors, ...services], { now: NOW })[0].id, expected, query);
   }
+});
+
+test("forestry answer planning rejects access-control noise and prefers the newest direct area measurement", () => {
+  const services = officialServiceCatalogueDocuments();
+  const comparisonQuery = "Mis vahe on SMI ja metsaandmed?";
+  const accessControlDistractor = official({
+    id: "forest-data-access-news",
+    title: "Metsaandmed on paremini kaitstud",
+    url: "https://keskkonnaagentuur.ee/uudised/metsaandmed-on-paremini-kaitstud",
+    summary: "SMI proovitükkide koordinaadid ja Metsaregistri kaitstud väljad ei ole enam avalikud.",
+    content: "Juurdepääsupiirang puudutab SMI proovitükkide koordinaate ja Metsaregistri kährikuandmeid, mitte andmeallikate metoodilist võrdlust.",
+  });
+  const comparisonRanked = rankSearchCandidates(comparisonQuery, [accessControlDistractor, ...services], {
+    now: Date.parse("2026-08-19T12:00:00Z"),
+  });
+  assert.equal(comparisonRanked[0].id, "smi-metsaregister");
+  assert.equal(selectAnswerEvidence(comparisonQuery, comparisonRanked)?.directDocumentId, "smi-metsaregister");
+
+  const areaQuery = "Kui palju metsa on Eestis?";
+  const currentArea = official({
+    id: "smi-2025-current-area",
+    title: "SMI 2025: Eesti metsamaa pindala",
+    url: "https://keskkonnaagentuur.ee/uudised/smi-2025-metsamaa-pindala",
+    published: "18.08.2026",
+    summary: "SMI 2025 järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti maismaa pindalast.",
+    content: "Statistilise metsainventuuri ehk SMI 2025 järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti maismaa pindalast; tegemist on statistilise hinnanguga.",
+    topics: ["mets", "metsamaa", "SMI", "pindala", "metsasus"],
+  });
+  const areaRanked = rankSearchCandidates(areaQuery, [...services, currentArea], {
+    now: Date.parse("2026-08-19T12:00:00Z"),
+  });
+  assert.deepEqual(areaRanked.slice(0, 2).map((document) => document.id).sort(), ["forest-area", "smi-2025-current-area"]);
+  assert.equal(selectAnswerEvidence(areaQuery, areaRanked)?.directDocumentId, "smi-2025-current-area");
 });
 
 test("frozen service-intent relevance set keeps every expected source at rank one", async () => {

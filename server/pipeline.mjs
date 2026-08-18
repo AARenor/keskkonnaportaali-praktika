@@ -12,6 +12,7 @@ import {
   prepareRankedSearchResults,
   rankSearchCandidates,
   resultMatchesFilters,
+  selectAnswerEvidence,
   stablePublicResultId,
 } from "./retrieval.mjs";
 import {
@@ -19,6 +20,7 @@ import {
   assessSearchQuery,
   composeScopeResponse,
   composeSearchResponse,
+  forestryIntentServiceDocumentIds,
   hasCompleteSentenceEnding,
   normalize,
   queryTerms,
@@ -26,14 +28,35 @@ import {
   textHasQueryRoot,
 } from "./search.mjs";
 
-export const SEARCH_RESPONSE_REVISION = "answer-v15-stable-public-ids";
+export const SEARCH_RESPONSE_REVISION = "answer-v16-query-aware-forestry";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 
 function rankPortalDocuments(query, documents) {
-  return rankSearchCandidates(query, documents).map((document) => ({
+  const ranked = rankSearchCandidates(query, documents).map((document) => ({
     ...document,
     score: document._ranking.score,
   }));
+  const plannedEvidence = selectAnswerEvidence(query, ranked);
+  if (!plannedEvidence?.strong) return ranked;
+  const directIndex = ranked.findIndex((document) => document.id === plannedEvidence.directDocumentId);
+  const withDirectFirst = directIndex > 0
+    ? [ranked[directIndex], ...ranked.slice(0, directIndex), ...ranked.slice(directIndex + 1)]
+    : ranked;
+  const requiredIds = forestryIntentServiceDocumentIds(query);
+  const required = requiredIds
+    .map((id) => withDirectFirst.find((document) => document.id === id))
+    .filter(Boolean);
+  if (!required.length) return withDirectFirst;
+  // The displayed list and the answer use the same ranked candidate set. A
+  // verified passage may lead that set, and the complementary official
+  // SMI/Metsaregister documents stay visible in the same evidence set. No
+  // separately fetched source can enter the answer here.
+  const seen = new Set();
+  return [withDirectFirst[0], ...required, ...withDirectFirst].filter((document) => {
+    if (!document?.id || seen.has(document.id)) return false;
+    seen.add(document.id);
+    return true;
+  });
 }
 
 function passageQueryCoverage(query, passage) {
@@ -68,17 +91,46 @@ function passageDirectness(query, passage) {
   return yearScore;
 }
 
-export function directEvidenceExtract(query, document) {
+export function directEvidenceExtract(query, document, plannedEvidence = null) {
+  const stablePublicationText = (value) => {
+    const published = /^\d{2}\.\d{2}\.\d{4}$/u.test(String(document?.published || "").trim())
+      ? String(document.published).trim()
+      : "";
+    return String(value || "")
+      .replace(/\btäna\s+avaldatud\b/giu, published ? `${published} avaldatud` : "avaldatud")
+      .replace(/\bm\s*3\b/giu, "m³");
+  };
+  const plannedPassages = plannedEvidence?.directDocumentId === document?.id
+    ? plannedEvidence?.passages || []
+    : [];
+  const plannedExtract = plannedPassages
+    .map(sanitizeLlmEvidenceText)
+    .map(stablePublicationText)
+    .map((value) => plannedEvidence?.kind === "forest-area"
+      ? value.replace(/,\s*millel\s+kasv\w*[\s\S]*$/iu, ".")
+      : value)
+    .map((value) => value.replace(/\s+/gu, " ").trim())
+    .filter((value) => value.length >= 20 && hasCompleteSentenceEnding(value))
+    .reduce((extract, passage) => {
+      const joined = [extract, passage].filter(Boolean).join(" ");
+      return joined.length <= 520 ? joined : extract;
+    }, "");
+  if (plannedExtract && hasCompleteSentenceEnding(plannedExtract)) return plannedExtract;
+  const preferred = new Set(plannedPassages.map((value) => normalize(value)));
   const passages = [document?.summary, document?.content]
     .filter(Boolean)
     .flatMap(splitTextPassages)
     .map(sanitizeLlmEvidenceText)
+    .map(stablePublicationText)
     .map((value) => value.replace(/\s+/gu, " ").trim())
     .filter((value) => value.length >= 35 && value.length <= 520 && hasCompleteSentenceEnding(value));
   return passages
     .map((passage, index) => ({
       passage: passage.replace(/^[„“”"']+|[„“”"']+$/gu, "").trim(),
-      score: passageQueryCoverage(query, passage) * 20 + passageDirectness(query, passage) - index * 0.001,
+      score: passageQueryCoverage(query, passage) * 20
+        + passageDirectness(query, passage)
+        + (preferred.has(normalize(passage)) ? 80 : 0)
+        - index * 0.001,
     }))
     .sort((left, right) => right.score - left.score)[0]?.passage?.slice(0, 520) || "";
 }
@@ -145,14 +197,24 @@ export async function createPortalDraft(query, {
   const ranked = rankPortalDocuments(retrievalQuery, candidates);
   const hydrationBudget = remainingBudget(deadlineAt, 7_000);
   const hydrated = hydrationBudget >= 500
-    ? await hydrateOfficialDocuments(ranked.slice(0, 8), 8, {
+    ? await hydrateOfficialDocuments(ranked.slice(0, 10), 10, {
       timeoutMs: Math.min(2_000, hydrationBudget),
       signal,
     })
     : ranked.slice(0, 8);
   const reranked = rankPortalDocuments(retrievalQuery, hydrated);
   const forestBalance = composeForestHarvestBalanceAnswer(retrievalQuery, reranked);
-  const quality = assessEvidence(retrievalQuery, reranked);
+  const conventionalQuality = assessEvidence(retrievalQuery, reranked);
+  const plannedEvidence = selectAnswerEvidence(retrievalQuery, reranked);
+  const quality = plannedEvidence?.strong
+    ? {
+      ...conventionalQuality,
+      strong: true,
+      directDocumentId: plannedEvidence.directDocumentId,
+      answerIntent: plannedEvidence.kind,
+      supportingDocumentIds: plannedEvidence.supportingDocumentIds,
+    }
+    : conventionalQuality;
   const direct = quality.strong
     ? reranked.find((document) => document.id === quality.directDocumentId)
     : null;
@@ -167,7 +229,7 @@ export async function createPortalDraft(query, {
     evidenceKind: forestBalance
       ? "structured-forest-balance"
       : quality.strong ? "ranked-search-results" : "insufficient-evidence",
-    limit: 8,
+    limit: 10,
     quality,
     total: Number(listing.total || reranked.length),
   });
@@ -176,7 +238,9 @@ export async function createPortalDraft(query, {
     draft.related = forestBalance.related;
     draft.evidence.answerable = true;
   }
-  const directExtract = !forestBalance && direct ? directEvidenceExtract(retrievalQuery, direct) : "";
+  const directExtract = !forestBalance && direct
+    ? directEvidenceExtract(retrievalQuery, direct, plannedEvidence)
+    : "";
   if (directExtract) {
     draft.answer.eyebrow = "Allikapõhine kokkuvõte";
     draft.answer.intro = directExtract;
@@ -386,6 +450,10 @@ export async function searchEnvironmentLive(query, options = {}) {
   const startedAt = Number(options.startedAt) || Date.now();
   const cleanQuery = String(query ?? "").replace(/\s+/g, " ").trim().slice(0, 180);
   if (!cleanQuery) return composeSearchResponse("", [], { limit: 3, total: 0 });
+  const directAssessment = assessSearchQuery(cleanQuery);
+  if (directAssessment.reason === "unsafe-instruction") {
+    return publicResponse(composeScopeResponse(cleanQuery, directAssessment));
+  }
 
   const configuredDeadlineMs = Math.max(1_000, Math.min(Number(process.env.SEARCH_DEADLINE_MS) || DEFAULT_SEARCH_DEADLINE_MS, 15_000));
   const absoluteDeadline = Number(options.deadlineAt) || startedAt + configuredDeadlineMs;

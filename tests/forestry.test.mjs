@@ -19,6 +19,15 @@ function assertCitationIntegrity(result) {
   assert.ok(result.sources.every((source) => new URL(source.url).protocol === "https:"));
 }
 
+function answerContractText(result) {
+  return [
+    result.answer.title,
+    result.answer.intro,
+    result.answer.note,
+    ...result.answer.parts.flatMap((part) => [part.title, part.text]),
+  ].filter(Boolean).join(" ");
+}
+
 test("reviewed forestry corpus covers the full vision manifest", () => {
   assert.deepEqual(forestryKnowledgeStats(), {
     revision: forestryKnowledgeStats().revision,
@@ -47,6 +56,34 @@ test("exact forestry FAQ returns the direct reviewed answer", () => {
   assert.match(result.answer.intro, /2,3506 miljonit hektarit/);
   assert.match(result.answer.parts[0].text, /SMI on valikuuring/);
   assertCitationIntegrity(result);
+});
+
+test("exact and adversarial queries pass forestry knowledge-base retrieval and answer contracts", async () => {
+  const evaluation = JSON.parse(await readFile(
+    new URL("../evaluation/forestry_ambiguity_v1.json", import.meta.url),
+    "utf8",
+  ));
+  assert.equal(evaluation.execution_contract.scope, "reviewed_forestry_knowledge_base");
+  assert.equal(evaluation.cases.length, 9);
+
+  for (const item of evaluation.cases) {
+    const expected = item.expected_primary_document_id;
+    const retrieved = retrieveForestryDocuments(item.query, 3);
+    assert.equal(retrieved[0]?.document.id, expected, `${item.id}: retrieval routed to ${retrieved[0]?.document.id}`);
+
+    const result = answerForestryQuestion(item.query);
+    assert.equal(result?.evidence?.documentIds?.[0], expected, `${item.id}: answer routed to the wrong reviewed document`);
+    assertCitationIntegrity(result);
+
+    const contract = evaluation.claim_sets[item.claim_set];
+    const answerText = answerContractText(result).toLocaleLowerCase("et");
+    for (const fragment of contract.required_fragments) {
+      assert.ok(answerText.includes(fragment.toLocaleLowerCase("et")), `${item.id}: answer omitted ${fragment}`);
+    }
+    for (const fragment of contract.forbidden_fragments) {
+      assert.ok(!answerText.includes(fragment.toLocaleLowerCase("et")), `${item.id}: answer preserved false premise ${fragment}`);
+    }
+  }
 });
 
 test("forest age question answers the question directly and explains SMI", () => {

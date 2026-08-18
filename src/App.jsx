@@ -405,15 +405,6 @@ function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoF
     }
   };
 
-  const revealPrivacyDisclosure = (event) => {
-    event.preventDefault();
-    const disclosure = document.getElementById("otsingu-privaatsus");
-    if (!(disclosure instanceof HTMLDetailsElement)) return;
-    disclosure.open = true;
-    disclosure.scrollIntoView({ block: "center" });
-    disclosure.querySelector("summary")?.focus({ preventScroll: true });
-  };
-
   return (
     <form className={`search-form search-form--${variant}`} onSubmit={submit} role="search">
       <div className="search-control">
@@ -485,9 +476,6 @@ function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoF
       {variant === "hero" ? (
         <p className="search-form__hint">Vastus esmalt, kasutatud ametlikud allikad kohe järel</p>
       ) : null}
-      <p className="search-form__privacy">
-        Kirjutamisel küsitakse vähemalt kahe märgi järel praktikaserveri kaudu Keskkonnaportaalilt soovitusi. AI-vastuse koostamiseks saadetakse sinu küsimus ja kuni kaheksa avaliku allika piiratud väljavõtted välisele OpenCode Go Luna teenusele; jätkuküsimuse korral lisandub kuni 520 märki varasemate küsimuste konteksti. Väärkasutuse jälgimise logid võivad säilida kuni 30 päeva. Ära sisesta tundlikke isikuandmeid. <a href="#otsingu-privaatsus" onClick={revealPrivacyDisclosure}>Loe privaatsusest</a>.
-      </p>
     </form>
   );
 }
@@ -1201,18 +1189,28 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
                       {followUpBusy ? <LoaderCircle className="spin" size={18} /> : <ArrowRight size={18} />}
                     </button>
                   </div>
-                  <p className="followup-form__privacy">Jätkuvastuse koostamiseks saadetakse Luna teenusele uus küsimus, kuni kaheksa avaliku allika piiratud väljavõtted ja kuni 520 märki varasemate küsimuste konteksti. Ära sisesta tundlikke isikuandmeid.</p>
                   {followUpError ? <p className="followup-error" role="alert">{followUpError}</p> : null}
                   {followUpBusy ? <p className="followup-status" role="status">Otsin jätkuküsimusele uued allikad …</p> : null}
                 </form>
               </div>
             </article>
 
+            <BroadSearchResults
+              busy={listingBusy}
+              error={listingError}
+              headingRef={listingHeadingRef}
+              interactive={!busy}
+              listing={listing || result?.searchResults || previewListing}
+              onFilters={applyFilters}
+              onPage={loadListingPage}
+            />
+
             {result.sources.length ? <section className="sources-section" aria-labelledby="sources-title">
               <div className="sources-title-row">
-                <h2 id="sources-title">Vastuse allikad</h2>
+                <h2 id="sources-title">Vastuses viidatud allikad</h2>
                 <span>{result.sources.length}</span>
               </div>
+              <p className="sources-section__hint">Vastuse tekstis olev viide näitab allika nime. Siin saad avada algallika ja kontrollida täielikku konteksti.</p>
               <div className="sources-list" id={sourcesListId}>
                 {visibleSources.map((source) => (
                   <div className="source-entry" key={source.id}>
@@ -1236,21 +1234,11 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
                   onClick={() => setShowAllSources((current) => !current)}
                   type="button"
                 >
-                  {showAllSources ? "Näita vähem" : `Kõik allikad (${result.sources.length})`}
+                  {showAllSources ? "Näita vähem" : `Kõik viidatud allikad (${result.sources.length})`}
                   <ChevronDown className={showAllSources ? "rotated" : ""} size={17} />
                 </button>
               ) : null}
             </section> : null}
-
-            <BroadSearchResults
-              busy={listingBusy}
-              error={listingError}
-              headingRef={listingHeadingRef}
-              interactive={!busy}
-              listing={listing || result?.searchResults || previewListing}
-              onFilters={applyFilters}
-              onPage={loadListingPage}
-            />
 
             {result.related?.length ? (
               <section className="related-section">
@@ -1282,7 +1270,7 @@ function PrivacyDisclosure() {
     <details className="footer-privacy" id="otsingu-privaatsus">
       <summary>Otsingu ja AI-vastuse privaatsus</summary>
       <p>
-        Vastuse koostamiseks saadetakse OpenCode Go Luna teenusele otsingu tekst, kuni kaheksa järjestatud avaliku allika piiratud väljavõtted ja jätkuküsimuse korral kuni 520 märki varasemate küsimuste konteksti. IP-aadressi, küpsiseid ega kogu andmekogu mudelile ei saadeta. Praktikaportaal ei säilita toorpäringut oma otsingu- või vahemälutabelis. Ära sisesta otsingusse tundlikke isikuandmeid.
+        Vastuse koostamiseks saadetakse OpenCode Go Luna teenusele otsingu tekst, kuni kümme päringu järgi valitud avaliku allika väljavõtet (kokku kuni 36 000 märki) ja jätkuküsimuse korral kuni 1 400 märki varasemate küsimuste konteksti. IP-aadressi, küpsiseid ega kogu andmekogu mudelile ei saadeta. Praktikaportaal ei säilita toorpäringut oma otsingu- või vahemälutabelis. Ära sisesta otsingusse tundlikke isikuandmeid.
       </p>
       <p>
         OpenCode'i mudelipõhise privaatsustabeli järgi ei kasutata Luna sisendit mudeli treenimiseks; väärkasutuse jälgimise logid võivad säilida kuni 30 päeva. <ExternalAnchor href="https://opencode.ai/docs/go/#privacy">Vaata teenusepakkuja tingimusi</ExternalAnchor>.
