@@ -1147,8 +1147,8 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
                           ))}
                           {turn.result.sources?.length ? <div className="followup-sources" aria-label={`Jätkuvastuse ${turnIndex + 1} allikad`}>
                             {turn.result.sources.map((source) => (
-                              <div className="followup-source-item" id={`${prefix}-${source.citation}`} key={source.id}>
-                                <ExternalAnchor className="followup-source-primary" href={source.url}>
+                              <div className="followup-source-item" key={source.id}>
+                                <ExternalAnchor className="followup-source-primary" href={source.url} id={`${prefix}-${source.citation}`}>
                                   <span>{source.citation}</span><span>{source.title}<small>{source.organization}{source.published ? ` · ${source.published}` : ""}</small></span><ExternalLink size={14} />
                                 </ExternalAnchor>
                                 <EvidenceLocatorLink compact source={source} />
@@ -1202,8 +1202,8 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
               </div>
               <div className="sources-list" id={sourcesListId}>
                 {visibleSources.map((source) => (
-                  <div className="source-entry" id={`source-${source.citation}`} key={source.id}>
-                    <ExternalAnchor className="source-row" href={source.url}>
+                  <div className="source-entry" key={source.id}>
+                    <ExternalAnchor className="source-row" href={source.url} id={`source-${source.citation}`}>
                       <span className="source-number">{source.citation}</span>
                       <div className="source-card__body">
                         <div className="source-meta"><span className={`source-tier source-tier--${source.sourceTier || "official"}`}>{sourceTierLabel(source.sourceTier || "official")}</span><span>{source.organization}</span><span>{source.published}</span></div>

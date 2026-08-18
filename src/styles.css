@@ -1950,7 +1950,6 @@ h3 {
 
 .followup-source-item {
   border-top: 1px solid #d9e5e1;
-  scroll-margin-top: 24px;
 }
 
 .followup-source-primary {
@@ -1962,6 +1961,7 @@ h3 {
   color: var(--brand-700);
   font-size: 0.82rem;
   font-weight: 700;
+  scroll-margin-top: 24px;
 }
 
 .followup-source-primary > span:first-child {
@@ -2083,7 +2083,6 @@ h3 {
 
 .source-entry {
   border-bottom: 1px solid #dbe4e8;
-  scroll-margin-top: 24px;
 }
 
 .source-row {
@@ -2091,6 +2090,7 @@ h3 {
   grid-template-columns: 30px minmax(0, 1fr);
   gap: 13px;
   padding: 18px 2px;
+  scroll-margin-top: 24px;
 }
 
 .source-row:hover h3 {
