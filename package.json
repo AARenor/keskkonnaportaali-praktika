@@ -10,6 +10,8 @@
     "start": "NODE_ENV=production node server/index.mjs",
     "sync:corpus": "node server/sync-corpus.mjs",
     "eval:live": "node scripts/evaluate-live-search.mjs",
+    "audit:grounding": "node scripts/audit-live-grounding.mjs",
+    "audit:load": "node scripts/load-search.mjs",
     "test": "node --test tests/*.test.mjs",
     "preview": "vite preview",
     "test:sites": "node --test tests/sites-worker.test.mjs"

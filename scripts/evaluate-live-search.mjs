@@ -35,11 +35,27 @@ async function request(pathname, parameters = {}) {
   const waitMs = Math.max(0, minimumIntervalMs - (Date.now() - lastRequestStartedAt));
   if (waitMs) await new Promise((resolve) => setTimeout(resolve, waitMs));
   const url = new URL(pathname, baseUrl);
-  for (const [key, value] of Object.entries(parameters)) url.searchParams.set(key, String(value));
+  const requestBody = {
+    q: parameters.q,
+    page: parameters.page,
+    page_size: parameters.page_size,
+    filters: {
+      source: parameters.source,
+      category: parameters.category,
+      year: parameters.year,
+      sort: parameters.sort,
+    },
+  };
   lastRequestStartedAt = Date.now();
   const startedAt = Date.now();
   const response = await fetch(url, {
-    headers: { Accept: "application/json", "User-Agent": "Keskkonnaportaali-praktika-live-eval/1.0" },
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "User-Agent": "Keskkonnaportaali-praktika-live-eval/1.0",
+    },
+    body: JSON.stringify(requestBody),
     redirect: "error",
     signal: AbortSignal.timeout(20_000),
   });

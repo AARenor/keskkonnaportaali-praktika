@@ -684,6 +684,7 @@ test("public page uses the complete Terrapoint application and permits only its 
 test("unknown API paths never fall through to the SPA HTML shell", async () => {
   const server = await readFile(new URL("../server/index.mjs", import.meta.url), "utf8");
   assert.match(server, /request\.path === "\/api" \|\| request\.path\.startsWith\("\/api\/"\)/u);
+  assert.match(server, /Strict-Transport-Security", "max-age=31536000; includeSubDomains"/u);
 });
 
 test("mobile header reuses the home search instead of rendering a second form", async () => {

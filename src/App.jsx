@@ -30,6 +30,8 @@ import {
 
 const SOURCE = "https://keskkonnaportaal.ee";
 const DEFAULT_SEARCH_FILTERS = { source: "all", category: "", year: null, sort: "relevance" };
+const navigationSearches = new globalThis.Map();
+let navigationSearchCounter = 0;
 
 function clientSearchFilters(value = {}) {
   return {
@@ -40,26 +42,41 @@ function clientSearchFilters(value = {}) {
   };
 }
 
-function filtersFromLocation(search = window.location.search) {
+function legacySearchFromLocation(search = window.location.search) {
   const params = new URLSearchParams(search);
-  return clientSearchFilters({
-    source: params.get("source") || "all",
-    category: params.get("category") || "",
-    year: params.get("year"),
-    sort: params.get("sort") || "relevance",
-  });
+  return {
+    query: String(params.get("q") || "").trim(),
+    filters: clientSearchFilters({
+      source: params.get("source") || "all",
+      category: params.get("category") || "",
+      year: params.get("year"),
+      sort: params.get("sort") || "relevance",
+    }),
+  };
 }
 
-function searchParameters(query, filters = DEFAULT_SEARCH_FILTERS, page = 1, pageSize = 12) {
+function searchRequestPayload(query, filters = DEFAULT_SEARCH_FILTERS, page = 1, pageSize = 12) {
   const applied = clientSearchFilters(filters);
-  const params = new URLSearchParams({ q: query });
-  if (applied.source !== "all") params.set("source", applied.source);
-  if (applied.category) params.set("category", applied.category);
-  if (applied.year) params.set("year", String(applied.year));
-  if (applied.sort !== "relevance") params.set("sort", applied.sort);
-  if (page > 1) params.set("page", String(page));
-  if (pageSize !== 12) params.set("page_size", String(pageSize));
-  return params;
+  return { q: query, filters: applied, page, page_size: pageSize };
+}
+
+function rememberNavigationSearch(query, filters) {
+  navigationSearchCounter += 1;
+  const id = `${Date.now().toString(36)}-${navigationSearchCounter.toString(36)}`;
+  navigationSearches.set(id, { query, filters: clientSearchFilters(filters) });
+  if (navigationSearches.size > 50) navigationSearches.delete(navigationSearches.keys().next().value);
+  return id;
+}
+
+function navigationSearch(state = window.history.state, search = window.location.search) {
+  const saved = navigationSearches.get(String(state?.practiceSearchId || ""));
+  if (saved && typeof saved === "object") {
+    return {
+      query: String(saved.query || "").trim(),
+      filters: clientSearchFilters(saved.filters),
+    };
+  }
+  return legacySearchFromLocation(search);
 }
 
 const navItems = [
@@ -308,7 +325,12 @@ function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoF
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       try {
-        const response = await fetch(`/api/suggestions?q=${encodeURIComponent(query)}`, { signal: controller.signal });
+        const response = await fetch("/api/suggestions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ q: query }),
+          signal: controller.signal,
+        });
         const data = await response.json();
         if (response.ok && Array.isArray(data.suggestions)) setRemoteSuggestions(data.suggestions);
       } catch (error) {
@@ -900,7 +922,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
   }, [result?.generatedAt, result?.query]);
   useEffect(() => {
     if (!busy && hasResult) {
-      document.title = `${result.answer.title} | Keskkonnaportaali praktika`;
+      document.title = "Otsingutulemused | Keskkonnaportaali praktika";
       headingRef.current?.focus({ preventScroll: true });
     }
   }, [busy, hasResult, result?.answer?.title, result?.query]);
@@ -919,8 +941,12 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
     setListingBusy(true);
     setListingError("");
     try {
-      const params = searchParameters(query, appliedFilters, page, listing?.pageSize || 12);
-      const response = await fetch(`/api/search/results?${params}`, { signal: controller.signal });
+      const response = await fetch("/api/search/results", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(searchRequestPayload(query, appliedFilters, page, listing?.pageSize || 12)),
+        signal: controller.signal,
+      });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Tulemusi ei saanud laadida.");
       if (listingRequestRef.current.id !== id) return;
@@ -1255,8 +1281,9 @@ function TerrapointEmbed() {
 
 export function App() {
   const isEmbed = window.location.pathname.startsWith("/embed/terrapoint");
-  const [view, setView] = useState(window.location.pathname.startsWith("/otsi") ? "search" : "home");
-  const [query, setQuery] = useState(new URLSearchParams(window.location.search).get("q") || "");
+  const initialNavigation = navigationSearch();
+  const [view, setView] = useState(window.location.pathname.startsWith("/otsi") && initialNavigation.query ? "search" : "home");
+  const [query, setQuery] = useState(initialNavigation.query);
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -1269,7 +1296,7 @@ export function App() {
     const options = typeof control === "boolean" ? { pushState: control } : control || {};
     const pushState = options.pushState !== false;
     const filters = clientSearchFilters(options.filters || DEFAULT_SEARCH_FILTERS);
-    const params = searchParameters(clean, filters);
+    const requestPayload = searchRequestPayload(clean, filters);
     searchRequestRef.current.controller?.abort();
     const requestId = searchRequestRef.current.id + 1;
     const controller = new AbortController();
@@ -1278,10 +1305,17 @@ export function App() {
     setView("search");
     setBusy(true);
     setError("");
-    if (pushState) window.history.pushState({}, "", `/otsi?${params}`);
+    if (pushState) {
+      window.history.pushState({ practiceSearchId: rememberNavigationSearch(clean, filters) }, "", "/otsi");
+    }
     window.scrollTo({ top: 0, behavior: pushState ? "smooth" : "auto" });
     try {
-      const response = await fetch(`/api/search?${params}`, { signal: controller.signal });
+      const response = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestPayload),
+        signal: controller.signal,
+      });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Otsing ei vastanud.");
       if (searchRequestRef.current.id !== requestId) return;
@@ -1300,17 +1334,20 @@ export function App() {
 
   useEffect(() => {
     if (isEmbed) return undefined;
-    const initial = new URLSearchParams(window.location.search).get("q");
-    if (window.location.pathname.startsWith("/otsi") && initial) {
-      performSearch(initial, { pushState: false, filters: filtersFromLocation() });
+    const initial = navigationSearch();
+    if (window.location.pathname.startsWith("/otsi") && initial.query) {
+      window.history.replaceState({ practiceSearchId: rememberNavigationSearch(initial.query, initial.filters) }, "", "/otsi");
+      performSearch(initial.query, { pushState: false, filters: initial.filters });
+    } else if (window.location.pathname.startsWith("/otsi")) {
+      window.history.replaceState({}, "", "/");
     }
 
-    const onPopState = () => {
+    const onPopState = (event) => {
       const searchView = window.location.pathname.startsWith("/otsi");
       setView(searchView ? "search" : "home");
-      const next = new URLSearchParams(window.location.search).get("q") || "";
-      setQuery(next);
-      if (searchView && next) performSearch(next, { pushState: false, filters: filtersFromLocation() });
+      const next = navigationSearch(event.state);
+      setQuery(next.query);
+      if (searchView && next.query) performSearch(next.query, { pushState: false, filters: next.filters });
       else {
         searchRequestRef.current.controller?.abort();
         searchRequestRef.current = { id: searchRequestRef.current.id + 1, controller: null };

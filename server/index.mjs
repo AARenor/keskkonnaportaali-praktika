@@ -54,6 +54,7 @@ app.use((request, response, next) => {
 app.use(express.json({ limit: "32kb" }));
 app.use((request, response, next) => {
   response.setHeader("X-Content-Type-Options", "nosniff");
+  response.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   response.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   response.setHeader("X-Robots-Tag", "noindex, nofollow");
@@ -107,6 +108,14 @@ function searchFilters(request) {
   });
 }
 
+function searchQuery(request) {
+  return String(request.body?.q ?? request.query?.q ?? "").trim();
+}
+
+function searchPage(request, name, fallback, maximum) {
+  return Math.max(1, Math.min(Number(request.body?.[name] ?? request.query?.[name]) || fallback, maximum));
+}
+
 function searchDeadline(startedAt) {
   const configured = Math.max(1_000, Math.min(Number(process.env.SEARCH_DEADLINE_MS) || 15_000, 15_000));
   return startedAt + configured;
@@ -126,15 +135,15 @@ function emptySearchListing(filters, page = 1, pageSize = 12) {
   });
 }
 
-app.get("/api/search", async (request, response) => {
-  const query = String(request.query.q || "").trim();
+async function handleSearch(request, response) {
+  const query = searchQuery(request);
   if (!query) return response.status(400).json({ error: "Sisesta otsingusõna." });
   if (query.length > 180) return response.status(400).json({ error: "Otsing on liiga pikk." });
   try {
     const startedAt = Date.now();
     const deadlineAt = searchDeadline(startedAt);
-    const page = Math.max(1, Math.min(Number(request.query.page) || 1, 500));
-    const pageSize = Math.max(1, Math.min(Number(request.query.page_size) || 12, 50));
+    const page = searchPage(request, "page", 1, 500);
+    const pageSize = searchPage(request, "page_size", 12, 50);
     const parsedFilters = searchFilters(request);
     if (!parsedFilters.ok) return response.status(400).json({ error: parsedFilters.error });
     const filters = parsedFilters.filters;
@@ -167,15 +176,18 @@ app.get("/api/search", async (request, response) => {
       retryable: true,
     });
   }
-});
+}
 
-app.get("/api/search/results", async (request, response) => {
-  const query = String(request.query.q || "").trim();
+app.get("/api/search", handleSearch);
+app.post("/api/search", handleSearch);
+
+async function handleSearchResults(request, response) {
+  const query = searchQuery(request);
   if (!query) return response.status(400).json({ error: "Sisesta otsingusõna." });
   if (query.length > 180) return response.status(400).json({ error: "Otsing on liiga pikk." });
   try {
-    const page = Math.max(1, Math.min(Number(request.query.page) || 1, 500));
-    const pageSize = Math.max(1, Math.min(Number(request.query.page_size) || 12, 50));
+    const page = searchPage(request, "page", 1, 500);
+    const pageSize = searchPage(request, "page_size", 12, 50);
     const startedAt = Date.now();
     const deadlineAt = searchDeadline(startedAt);
     const parsedFilters = searchFilters(request);
@@ -203,7 +215,10 @@ app.get("/api/search/results", async (request, response) => {
       retryable: true,
     });
   }
-});
+}
+
+app.get("/api/search/results", handleSearchResults);
+app.post("/api/search/results", handleSearchResults);
 
 app.post("/api/search/follow-up", async (request, response) => {
   const rootQuery = String(request.body?.root_query || "").replace(/\s+/gu, " ").trim();
@@ -264,8 +279,8 @@ app.get("/api/corpus", async (_request, response) => {
   return response.json(stats);
 });
 
-app.get("/api/suggestions", async (request, response) => {
-  const query = String(request.query.q || "").trim();
+async function handleSuggestions(request, response) {
+  const query = searchQuery(request);
   if (query.length < 2) return response.json({ suggestions: [] });
   if (query.length > 80) return response.status(400).json({ error: "Otsing on liiga pikk." });
   const curated = getForestrySuggestions(query, 5).map((value) => ({ value, count: null }));
@@ -285,7 +300,10 @@ app.get("/api/suggestions", async (request, response) => {
   } catch {
     return response.json({ suggestions: curated.slice(0, 5) });
   }
-});
+}
+
+app.get("/api/suggestions", handleSuggestions);
+app.post("/api/suggestions", handleSuggestions);
 
 function safePathSegment(value, maxLength = 180) {
   const clean = String(value || "").trim();

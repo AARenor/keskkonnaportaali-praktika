@@ -178,6 +178,7 @@ test("answer endpoint and broad result pagination remain separate contracts", as
     readFile(new URL("../server/corpus.mjs", import.meta.url), "utf8"),
   ]);
   assert.match(server, /app\.get\("\/api\/search\/results"/u);
+  assert.match(server, /app\.post\("\/api\/search\/results"/u);
   assert.match(server, /prepareRankedSearchResults/u);
   assert.match(server, /publicSearchListing/u);
   assert.match(server, /app\.post\("\/api\/search\/follow-up"/u);
@@ -185,7 +186,14 @@ test("answer endpoint and broad result pagination remain separate contracts", as
   assert.match(app, /Lai portaaliotsing/u);
   assert.match(app, /Otsingutulemused/u);
   assert.match(app, /Vastuse allikad/u);
-  assert.match(server, /page_size[^\n]+\|\| 12, 50/u);
+  assert.match(server, /searchPage\(request, "page_size", 12, 50\)/u);
+  assert.match(app, /fetch\("\/api\/search", \{[\s\S]*?method: "POST"/u);
+  assert.match(app, /fetch\("\/api\/suggestions", \{[\s\S]*?method: "POST"/u);
+  assert.match(server, /app\.post\("\/api\/suggestions"/u);
+  assert.match(app, /pushState\(\{ practiceSearchId: rememberNavigationSearch\(clean, filters\) \}, "", "\/otsi"\)/u);
+  assert.match(app, /navigationSearches = new globalThis\.Map\(\)/u);
+  assert.doesNotMatch(app, /pushState\([^\n]+\/otsi\?/u);
+  assert.doesNotMatch(app, /document\.title = `\$\{result\.answer\.title\}/u);
   assert.match(corpus, /distinctTotal/u);
   assert.match(corpus, /CHECK \(query_source = 'configured-seed'\)/u);
 });

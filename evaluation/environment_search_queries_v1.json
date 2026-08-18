@@ -1,6 +1,20 @@
 {
   "version": "environment-search-v1",
   "description": "Frozen routing set for broad Estonian environmental search. It prevents arbitrary answers before retrieval or LLM synthesis.",
+  "coverage": {
+    "factual": ["A03", "A05", "A08", "A13", "A18", "A22"],
+    "regulatory": ["A01", "A04", "A06", "A11", "A20"],
+    "location": ["A02", "A03", "A07", "A16", "A18", "A19", "A22"],
+    "emergency_or_live": ["W01", "W02", "W03", "W04", "W05", "Q01", "Q02"],
+    "comparative": ["A05", "A28"],
+    "colloquial": ["A24"],
+    "misspelled": ["A25"],
+    "diacritic_free": ["A26"],
+    "inflected_morphology": ["A27", "A28"],
+    "clarification": ["C01", "C02", "C03", "C04", "C05", "C06", "C07", "C08", "C09", "C10", "C11"],
+    "out_of_scope_and_injection": ["O01", "O02", "O03", "O04", "O05", "O06", "O07", "O08", "O09", "O10", "O11", "O12", "O13"]
+  },
+  "zeroResultContract": "A valid filter with no matching documents returns HTTP 200 with zero visible results, zero answer sources and zero citations.",
   "cases": [
     { "id": "A01", "query": "Kas Eestis tohib vanu rehve põletada?", "expected": "answerable", "topSource": "waste-burning-guidance" },
     { "id": "A02", "query": "õhukvaliteet Tallinnas", "expected": "answerable" },
@@ -25,6 +39,11 @@
     { "id": "A21", "query": "12345:678:9012", "expected": "answerable" },
     { "id": "A22", "query": "hüdroloogilised seireandmed Emajõel 2025", "expected": "answerable", "topSource": "historical-hydrology-data" },
     { "id": "A23", "query": "Millised on Ida-Virumaa kaevandamise peamised keskkonnamõjud ja leevendusmeetmed?", "expected": "answerable", "topSource": "mining-impact-guidance" },
+    { "id": "A24", "query": "kuhu ma vanad rehvid viin või kas võin neid lõkkes põletada", "expected": "answerable", "topSource": "waste-burning-guidance" },
+    { "id": "A25", "query": "keskkonnaloa taotlemne ettevõtele", "expected": "answerable", "topSource": "environmental-permits" },
+    { "id": "A26", "query": "pohjavee seisund Harjumaal 2024", "expected": "answerable", "topSource": "groundwater-status" },
+    { "id": "A27", "query": "elektriautode keskkonnamõjud kogu elutsükli jooksul", "expected": "answerable", "topSource": "electric-vehicle-lifecycle" },
+    { "id": "A28", "query": "Kas elektriauto on kogu elutsükli jooksul sisepõlemisautost keskkonnasõbralikum?", "expected": "answerable", "topSource": "electric-vehicle-lifecycle" },
     { "id": "C01", "query": "vesi", "expected": "needs-clarification" },
     { "id": "C02", "query": "õhk", "expected": "needs-clarification" },
     { "id": "C03", "query": "saaste", "expected": "needs-clarification" },

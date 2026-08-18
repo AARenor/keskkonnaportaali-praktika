@@ -1,5 +1,7 @@
 # Keskkonnaportaali praktikaprojekt
 
+Tootmise vastuvõtukriteeriumide, andmevoo, marsruutide ja koodikaardi detailne register on failis [`acceptance-evidence.md`](./acceptance-evidence.md).
+
 ## Eesmärk
 
 See on Keskkonnaportaali eraldiseisev praktikaversioon aadressil [praktika.arleserver.cfd](https://praktika.arleserver.cfd). Avaleht kasutab Keskkonnaportaali tuttavat visuaalset keelt ja lisab kaks selgelt eraldatud kasutusvoogu:
@@ -192,7 +194,7 @@ Avaliku timeout-ahela kontroll 18.08.2026: rakendus piirab kogu otsingu 15 sekun
 - LLM-võti ei jõua brauserisse; mudel saab ainult avaliku küsimuse ja valitud avalikud tõendid.
 - Luna töötab välise OpenCode Go teenusena. Payload sisaldab küsimust, piiratud avalikku tõendipakki, väljundskeemi ja jätkuvoorus kuni 520 märki varasemate küsimuste konteksti; kasutaja IP-d, küpsiseid, andmebaasilogi ega kogu korpust sinna ei lisata. OpenCode'i [mudelipõhine privaatsustabel](https://opencode.ai/docs/go/#privacy) märgib Luna sisendi mudelitreeningus mittekasutatavaks, kuid abuse-monitoring'u logid võivad säilida kuni 30 päeva.
 - Ametlikud live-otsingud näevad serveri päringut ja väljuvat IP-d. Terrapointi iframe on brauseri otseühendus: sinna sisestatud andmed lähevad Terrapointile, kuid praktikaportaali üldotsingu päringuid Terrapointile ei saadeta.
-- Otsingulogi ei säilita kasutaja toorpäringut. Ka vahemällu salvestatavast JSON-ist eemaldatakse `query`, aegunud vahemäluread kustutatakse ning varasemad toorpäringud redigeeritakse skeemimigratsiooniga.
+- Otsingulogi ei säilita kasutaja toorpäringut. Ka vahemällu salvestatavast JSON-ist eemaldatakse `query`, aegunud vahemäluread kustutatakse ning varasemad toorpäringud redigeeritakse skeemimigratsiooniga. UI saadab otsingu ja soovitused JSON POST-kehas: toorpäring ei lähe aadressiribale, lehe pealkirja ega püsivasse brauserisalvestusse; back/forward hoiab ainult läbipaistmatut protsessimälu ID-d.
 - Degradeerunud portaali- või ruumivastust ei salvestata tunniajase kvaliteetvastusena, et järgmine päring saaks taastunud allikaid uuesti proovida.
 - PostgreSQL-i transaktsioon kasutab ühte reserveeritud klienti ning SQL on parameeterdatud.
 - Coolify runtime kasutab eraldi kasutajat `practice_user` ja andmebaasi `keskkonnaportaal_practice`; kontrollhetkel olid PostgreSQL-i `log_statement=none` ja `log_min_duration_statement=-1`, seega päringutekste serveri SQL-logisse ei kirjutatud.
