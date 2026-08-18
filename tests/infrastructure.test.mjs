@@ -367,8 +367,9 @@ test("legacy exhausted free-model configuration migrates to the bounded Go targe
   assert.equal(resolveMaxTokens("gpt-5.6-luna"), 3_200);
   assert.equal(resolveLlmTimeout("gpt-5.6-luna"), 14_500);
   assert.equal(resolveLlmFallback("https://opencode.ai/zen/go/v1", "gpt-5.6-luna"), "");
-  assert.deepEqual(resolveLlmAttempts("gpt-5.6-luna", "", 14_000), ["gpt-5.6-luna", "gpt-5.6-luna"]);
+  assert.deepEqual(resolveLlmAttempts("gpt-5.6-luna", "", 14_000), ["gpt-5.6-luna"]);
   assert.deepEqual(resolveLlmAttempts("gpt-5.6-luna", "", 8_000), ["gpt-5.6-luna"]);
+  assert.deepEqual(resolveLlmAttempts("gpt-5.6-luna", "operator-fallback", 14_000), ["gpt-5.6-luna", "operator-fallback"]);
 });
 
 test("Luna uses the Responses API with strict structured output", () => {
@@ -669,6 +670,41 @@ test("a requested year's direct measurement stays ahead of grounded side statist
   assert.equal(answer.intro, directIntro);
   assert.deepEqual(answer.introCitations, [1]);
   assert.match(answer.parts.map((part) => part.text).join(" "), /63,9%/u);
+});
+
+test("a current forest-area draft keeps its verified measurement while Luna adds grounded context", () => {
+  const query = "Kui palju metsa on Eestis?";
+  const directIntro = "Keskkonnaagentuuri 18.08.2026 avaldatud uue statistilise metsainventeerimise (SMI) andmete kohaselt moodustab Eesti pindalast metsamaa 52,1%. 2025. aastal oli metsamaa pindala 2,36 miljonit hektarit.";
+  const draft = {
+    evidence: { kind: "ranked-search-results", answerable: true },
+    answer: {
+      title: query,
+      intro: directIntro,
+      introCitations: [1],
+      parts: [],
+      note: "Kontrolli algallikat.",
+    },
+    sources: [{
+      citation: 1,
+      title: "SMI: Metsatagavara on stabiilne",
+      organization: "Keskkonnaagentuur",
+      published: "18.08.2026",
+      content: directIntro,
+    }],
+  };
+
+  const answer = validateGroundedAnswer({
+    intro: "2025. aastal oli Eestis metsamaad 2,36 miljonit hektarit ehk 52,1% Eesti pindalast.",
+    intro_citations: [1],
+    parts: [{
+      text: "SMI on proovitükkidel põhinev üle-eestiline statistiline valikuuring.",
+      citations: [1],
+    }],
+  }, draft, query);
+
+  assert.equal(answer.eyebrow, "AI koondvastus");
+  assert.equal(answer.intro, directIntro);
+  assert.deepEqual(answer.introCitations, [1]);
 });
 
 test("an incomplete protected measurement cannot replace a complete grounded introduction", () => {

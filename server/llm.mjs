@@ -37,7 +37,11 @@ export function resolveLlmAttempts(primaryModel, secondaryModel, budgetMs) {
   if (secondaryModel && secondaryModel !== primaryModel) {
     return budgetMs < 13_000 ? [secondaryModel] : [primaryModel, secondaryModel];
   }
-  return budgetMs >= 9_000 ? [primaryModel, primaryModel] : [primaryModel];
+  // Give a single Luna generation the whole remaining request budget. Two
+  // identical attempts used to split a ~12 s production window into two
+  // ~6 s calls, so both could time out even though one uninterrupted call
+  // consistently completes inside the overall 15 s search deadline.
+  return [primaryModel];
 }
 export function resolveLlmTimeout(selectedModel, value) {
   const slowModel = selectedModel === "deepseek-v4-flash" || selectedModel === "gpt-5.6-luna";
@@ -184,14 +188,16 @@ function numberOccurrences(value) {
 }
 
 function protectedDirectIntro(draft, query, sourceCount) {
+  const answerIntent = forestEvidenceIntent(query);
   const requestedYears = new Set(
     (String(query || "").match(/\b(?:19|20)\d{2}\b/gu) || []).map(canonicalNumber),
   );
-  if (!requestedYears.size) return null;
+  if (!requestedYears.size && answerIntent?.kind !== "forest-area") return null;
 
   const intro = String(draft.answer?.intro || "").trim();
   const occurrences = numberOccurrences(intro);
-  const containsRequestedYear = occurrences.some(({ number }) => requestedYears.has(number));
+  const containsRequestedYear = !requestedYears.size
+    || occurrences.some(({ number }) => requestedYears.has(number));
   const containsMeasuredValue = occurrences.some(({ number, units }) => (
     !requestedYears.has(number)
       && units.size > 0
@@ -290,7 +296,7 @@ function numericEntityAnchors(value) {
 }
 
 function unitsComparable(left, right) {
-  if (!left.size && !right.size) return true;
+  if (!left.size || !right.size) return left.size === right.size;
   return [...left].every((unit) => right.has(unit))
     || [...right].every((unit) => left.has(unit));
 }
@@ -355,14 +361,26 @@ function unitsExactlyMatch(left, right) {
   return left.size === right.size && [...left].every((unit) => right.has(unit));
 }
 
-function assertClaimGrounding(text, citations, draft, label, query = "") {
+function sensitiveClaimMatchesReference(sentence, reference) {
+  const claims = numberOccurrences(sentence);
+  if (!claims.length) return false;
+  const referenceOccurrences = numberOccurrences(reference);
+  return claims.every((claim) => referenceOccurrences.some((candidate) => (
+    candidate.number === claim.number
+      && unitsExactlyMatch(claim.units, candidate.units)
+  )));
+}
+
+function assertClaimGrounding(text, citations, draft, label, query = "", sensitiveReference = "") {
   if (!citations.length) throw new Error(`LLM ${label} has no citations`);
   if (!hasCompleteSentenceEnding(text)) throw new Error(`LLM ${label} ends with an incomplete sentence`);
   const trustedEvidence = sourceEvidence(draft, citations, query);
   const claims = numberOccurrences(text);
   const evidence = numberOccurrences(trustedEvidence);
   for (const sentence of splitTextPassages(text)) {
-    if (isSensitiveClaim(sentence) && !sensitiveClaimIsVerbatim(sentence, trustedEvidence)) {
+    if (isSensitiveClaim(sentence)
+      && !sensitiveClaimIsVerbatim(sentence, trustedEvidence)
+      && !sensitiveClaimMatchesReference(sentence, sensitiveReference)) {
       throw new Error(`LLM ${label} rewrites a sensitive numeric or comparative claim`);
     }
   }
@@ -490,6 +508,20 @@ export function validateGroundedAnswer(payload, draft, query) {
     && directDraftCitations.length
     && !directDraftCitations.some((citation) => introCitations.includes(citation))) {
     throw new Error("LLM introduction bypasses the directly matched current source");
+  }
+  if (protectedIntro && proposedIntro !== String(draft.answer.intro || "").trim()) {
+    // The final answer keeps the deterministic current measurement verbatim,
+    // but the model's proposed lead must still be safe before any of its
+    // additional parts are accepted. Equivalent reordering of the same
+    // entity/year/value/unit tuples is allowed; a new or swapped number is not.
+    assertClaimGrounding(
+      proposedIntro,
+      introCitations,
+      draft,
+      "proposed introduction",
+      query,
+      protectedIntro.intro,
+    );
   }
   const parts = (Array.isArray(payload?.parts) ? payload.parts : [])
     .slice(0, 5)
