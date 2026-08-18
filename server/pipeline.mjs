@@ -269,30 +269,43 @@ export function searchTimeoutFallback(cleanQuery, {
   const assessment = assessSearchQuery(assessmentQuery);
   if (assessment.kind !== "answerable") return publicResponse(composeScopeResponse(cleanQuery, assessment));
   const sourceUnavailable = reason === "source-error";
+  const capacityLimited = reason === "capacity";
   const ranked = searchResults?.items?.length
     ? rankPortalDocuments(assessmentQuery, evidenceDocumentsFromListing(searchResults))
     : [];
   const quality = assessEvidence(cleanQuery, ranked);
   const draft = composeSearchResponse(cleanQuery, ranked, {
     answerable: false,
-    clarification: sourceUnavailable
-      ? "Osa värskeid allikaid ei vastanud. Proovi uuesti või lisa täpsem objekt, näitaja, piirkond või aasta."
-      : "Värskete allikate laadimine võttis liiga kaua. Proovi uuesti või lisa täpsem objekt, näitaja, piirkond või aasta.",
-    evidenceKind: sourceUnavailable ? "source-unavailable-fallback" : "deadline-fallback",
+    clarification: capacityLimited
+      ? "Otsing teenindab praegu mitut päringut korraga. Proovi paari sekundi pärast uuesti."
+      : sourceUnavailable
+        ? "Osa värskeid allikaid ei vastanud. Proovi uuesti või lisa täpsem objekt, näitaja, piirkond või aasta."
+        : "Värskete allikate laadimine võttis liiga kaua. Proovi uuesti või lisa täpsem objekt, näitaja, piirkond või aasta.",
+    evidenceKind: capacityLimited
+      ? "capacity-fallback"
+      : sourceUnavailable ? "source-unavailable-fallback" : "deadline-fallback",
     limit: 6,
     quality,
   });
-  draft.answer.eyebrow = sourceUnavailable ? "Osa allikaid ei vastanud" : "Otsing võttis liiga kaua";
-  draft.answer.intro = sourceUnavailable
-    ? "Osa värskeid allikaid ei vastanud ning uut faktivastust ei koostatud. See ei tähenda, et otsitud andmeid ei ole."
-    : "Värskete allikate laadimine ei jõudnud vastuse ajapiiri sisse. See ei tähenda, et otsitud andmeid ei ole.";
+  draft.answer.eyebrow = capacityLimited
+    ? "Otsing on praegu koormatud"
+    : sourceUnavailable ? "Osa allikaid ei vastanud" : "Otsing võttis liiga kaua";
+  draft.answer.intro = capacityLimited
+    ? "Otsing teenindab praegu mitut päringut korraga ning uut faktivastust ei koostatud. See ei tähenda, et otsitud andmeid ei ole."
+    : sourceUnavailable
+      ? "Osa värskeid allikaid ei vastanud ning uut faktivastust ei koostatud. See ei tähenda, et otsitud andmeid ei ole."
+      : "Värskete allikate laadimine ei jõudnud vastuse ajapiiri sisse. See ei tähenda, et otsitud andmeid ei ole.";
   draft.answer.introCitations = [];
   draft.answer.parts = [];
   draft.answer.note = ranked.length
-    ? sourceUnavailable
+    ? capacityLimited
+      ? "Proovi otsingut paari sekundi pärast uuesti."
+      : sourceUnavailable
       ? "Juba leitud ametlikud allikad on kuvatud allpool, kuid ajutise vea järel neist uut faktivastust ei koostatud. Proovi otsingut uuesti."
       : "Juba leitud ametlikud allikad on kuvatud allpool, kuid neist ei koostatud ajapiiri järel uut faktivastust. Proovi otsingut uuesti."
-    : "Proovi otsingut uuesti või lisa täpsem objekt, näitaja, piirkond või aasta.";
+    : capacityLimited
+      ? "Proovi otsingut paari sekundi pärast uuesti."
+      : "Proovi otsingut uuesti või lisa täpsem objekt, näitaja, piirkond või aasta.";
   return publicResponse(draft);
 }
 

@@ -55,7 +55,12 @@ async function request(query) {
     return {
       status: response.status,
       durationMs: Date.now() - startedAt,
-      fallback: body?.answer?.eyebrow === "Otsing võttis liiga kaua",
+      fallback: [
+        "Otsing võttis liiga kaua",
+        "Osa allikaid ei vastanud",
+        "Otsing on praegu koormatud",
+      ].includes(body?.answer?.eyebrow),
+      fallbackKind: body?.answer?.eyebrow || null,
       retryAfter: response.headers.get("retry-after"),
     };
   } catch (error) {
@@ -90,6 +95,9 @@ const report = {
   },
   statusCounts,
   fallbackCount: results.filter((result) => result.fallback).length,
+  fallbackKinds: Object.fromEntries([...new Set(results.filter((result) => result.fallback).map((result) => result.fallbackKind))]
+    .sort()
+    .map((kind) => [kind, results.filter((result) => result.fallbackKind === kind).length])),
   timeoutCount: results.filter((result) => result.error === "TimeoutError").length,
   fiveHundredCount: results.filter((result) => Number(result.status) >= 500).length,
   status504Count: results.filter((result) => result.status === 504).length,

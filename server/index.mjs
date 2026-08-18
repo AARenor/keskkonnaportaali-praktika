@@ -30,6 +30,8 @@ const cache = new Map();
 const requestWindows = new Map();
 const MAX_RATE_LIMIT_KEYS = 2_000;
 const MAX_PROXY_CACHE_ENTRIES = 250;
+const MAX_ACTIVE_SEARCHES = Math.max(1, Math.min(Number(process.env.SEARCH_MAX_CONCURRENCY) || 12, 20));
+let activeSearches = 0;
 
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
@@ -139,14 +141,23 @@ async function handleSearch(request, response) {
   const query = searchQuery(request);
   if (!query) return response.status(400).json({ error: "Sisesta otsingusõna." });
   if (query.length > 180) return response.status(400).json({ error: "Otsing on liiga pikk." });
+  const page = searchPage(request, "page", 1, 500);
+  const pageSize = searchPage(request, "page_size", 12, 50);
+  const parsedFilters = searchFilters(request);
+  if (!parsedFilters.ok) return response.status(400).json({ error: parsedFilters.error });
+  const filters = parsedFilters.filters;
+  if (activeSearches >= MAX_ACTIVE_SEARCHES) {
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("Retry-After", "2");
+    return response.status(200).json({
+      ...searchTimeoutFallback(query, { assessmentQuery: query, reason: "capacity" }),
+      searchResults: emptySearchListing(filters, page, pageSize),
+    });
+  }
+  activeSearches += 1;
   try {
     const startedAt = Date.now();
     const deadlineAt = searchDeadline(startedAt);
-    const page = searchPage(request, "page", 1, 500);
-    const pageSize = searchPage(request, "page_size", 12, 50);
-    const parsedFilters = searchFilters(request);
-    if (!parsedFilters.ok) return response.status(400).json({ error: parsedFilters.error });
-    const filters = parsedFilters.filters;
     const controller = new AbortController();
     const payload = await settleWithinDeadline((async () => {
       const searchResults = await prepareRankedSearchResults(query, {
@@ -181,6 +192,8 @@ async function handleSearch(request, response) {
       ...searchTimeoutFallback(query, { assessmentQuery: query, reason: "source-error" }),
       searchResults: emptySearchListing(filters, page, pageSize),
     });
+  } finally {
+    activeSearches = Math.max(0, activeSearches - 1);
   }
 }
 

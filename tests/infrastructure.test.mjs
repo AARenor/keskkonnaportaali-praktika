@@ -656,6 +656,14 @@ test("source failures degrade without turning an outage into an absence claim", 
   assert.deepEqual(result.answer.parts, []);
 });
 
+test("capacity fallback is explicit, retryable and never claims missing data", () => {
+  const result = searchTimeoutFallback("mullaseire tulemused Eestis", { reason: "capacity" });
+  assert.equal(result.answer.eyebrow, "Otsing on praegu koormatud");
+  assert.match(result.answer.intro, /ei tähenda, et otsitud andmeid ei ole/iu);
+  assert.match(result.answer.note, /paari sekundi pärast/iu);
+  assert.deepEqual(result.sources, []);
+});
+
 test("cached responses never retain raw query text", () => {
   assert.deepEqual(sanitizeCachedResponse({ query: "minu aadress", total: 1, sources: [] }), { total: 1, sources: [] });
   assert.equal(isSearchCacheEnabled("false"), false);
