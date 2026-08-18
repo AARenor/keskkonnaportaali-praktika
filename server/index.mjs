@@ -170,10 +170,16 @@ async function handleSearch(request, response) {
     }), controller);
     response.setHeader("Cache-Control", "private, max-age=30, stale-while-revalidate=120");
     return response.json(payload);
-  } catch {
-    return response.status(502).json({
-      error: "Otsingu andmeallikad ei vastanud. Proovi hetke pärast uuesti.",
-      retryable: true,
+  } catch (error) {
+    console.warn(JSON.stringify({
+      event: "search-degraded",
+      errorName: String(error?.name || "Error").slice(0, 80),
+      errorCode: String(error?.code || "unknown").slice(0, 80),
+    }));
+    response.setHeader("Cache-Control", "no-store");
+    return response.status(200).json({
+      ...searchTimeoutFallback(query, { assessmentQuery: query, reason: "source-error" }),
+      searchResults: emptySearchListing(filters, page, pageSize),
     });
   }
 }
@@ -265,10 +271,16 @@ app.post("/api/search/follow-up", async (request, response) => {
     }), controller);
     response.setHeader("Cache-Control", "no-store");
     return response.json(payload);
-  } catch {
-    return response.status(502).json({
-      error: "Jätkuküsimuse allikad ei vastanud. Proovi hetke pärast uuesti.",
-      retryable: true,
+  } catch (error) {
+    console.warn(JSON.stringify({
+      event: "follow-up-search-degraded",
+      errorName: String(error?.name || "Error").slice(0, 80),
+      errorCode: String(error?.code || "unknown").slice(0, 80),
+    }));
+    response.setHeader("Cache-Control", "no-store");
+    return response.status(200).json({
+      ...searchTimeoutFallback(question, { assessmentQuery: retrievalQuery, reason: "source-error" }),
+      searchResults: emptySearchListing(filters),
     });
   }
 });

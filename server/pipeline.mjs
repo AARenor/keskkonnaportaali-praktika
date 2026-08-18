@@ -261,26 +261,37 @@ async function searchWithinBudget(cleanQuery, {
   return response;
 }
 
-export function searchTimeoutFallback(cleanQuery, { assessmentQuery = cleanQuery, searchResults } = {}) {
+export function searchTimeoutFallback(cleanQuery, {
+  assessmentQuery = cleanQuery,
+  searchResults,
+  reason = "deadline",
+} = {}) {
   const assessment = assessSearchQuery(assessmentQuery);
   if (assessment.kind !== "answerable") return publicResponse(composeScopeResponse(cleanQuery, assessment));
+  const sourceUnavailable = reason === "source-error";
   const ranked = searchResults?.items?.length
     ? rankPortalDocuments(assessmentQuery, evidenceDocumentsFromListing(searchResults))
     : [];
   const quality = assessEvidence(cleanQuery, ranked);
   const draft = composeSearchResponse(cleanQuery, ranked, {
     answerable: false,
-    clarification: "Värskete allikate laadimine võttis liiga kaua. Proovi uuesti või lisa täpsem objekt, näitaja, piirkond või aasta.",
-    evidenceKind: "deadline-fallback",
+    clarification: sourceUnavailable
+      ? "Osa värskeid allikaid ei vastanud. Proovi uuesti või lisa täpsem objekt, näitaja, piirkond või aasta."
+      : "Värskete allikate laadimine võttis liiga kaua. Proovi uuesti või lisa täpsem objekt, näitaja, piirkond või aasta.",
+    evidenceKind: sourceUnavailable ? "source-unavailable-fallback" : "deadline-fallback",
     limit: 6,
     quality,
   });
-  draft.answer.eyebrow = "Otsing võttis liiga kaua";
-  draft.answer.intro = "Värskete allikate laadimine ei jõudnud vastuse ajapiiri sisse. See ei tähenda, et otsitud andmeid ei ole.";
+  draft.answer.eyebrow = sourceUnavailable ? "Osa allikaid ei vastanud" : "Otsing võttis liiga kaua";
+  draft.answer.intro = sourceUnavailable
+    ? "Osa värskeid allikaid ei vastanud ning uut faktivastust ei koostatud. See ei tähenda, et otsitud andmeid ei ole."
+    : "Värskete allikate laadimine ei jõudnud vastuse ajapiiri sisse. See ei tähenda, et otsitud andmeid ei ole.";
   draft.answer.introCitations = [];
   draft.answer.parts = [];
   draft.answer.note = ranked.length
-    ? "Juba leitud ametlikud allikad on kuvatud allpool, kuid neist ei koostatud ajapiiri järel uut faktivastust. Proovi otsingut uuesti."
+    ? sourceUnavailable
+      ? "Juba leitud ametlikud allikad on kuvatud allpool, kuid ajutise vea järel neist uut faktivastust ei koostatud. Proovi otsingut uuesti."
+      : "Juba leitud ametlikud allikad on kuvatud allpool, kuid neist ei koostatud ajapiiri järel uut faktivastust. Proovi otsingut uuesti."
     : "Proovi otsingut uuesti või lisa täpsem objekt, näitaja, piirkond või aasta.";
   return publicResponse(draft);
 }
@@ -322,6 +333,6 @@ export async function searchEnvironmentLive(query, options = {}) {
     filters: options.filters || {},
     conversationContext: options.conversationContext || "",
     useCache: options.useCache !== false,
-  }).catch(() => searchTimeoutFallback(cleanQuery, options));
+  }).catch(() => searchTimeoutFallback(cleanQuery, { ...options, reason: "source-error" }));
   return settleWithinDeadline(operation, deadlineMs, () => searchTimeoutFallback(cleanQuery, options), controller);
 }

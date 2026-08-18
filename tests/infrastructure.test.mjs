@@ -642,6 +642,16 @@ test("deadline fallback never turns a timeout into an absence claim", () => {
   assert.deepEqual(result.answer.parts, []);
 });
 
+test("source failures degrade without turning an outage into an absence claim", () => {
+  const result = searchTimeoutFallback("kaevandamise keskkonnamõju Ida-Virumaal", {
+    reason: "source-error",
+  });
+  assert.equal(result.answer.eyebrow, "Osa allikaid ei vastanud");
+  assert.match(result.answer.intro, /ei tähenda, et otsitud andmeid ei ole/iu);
+  assert.deepEqual(result.answer.introCitations, []);
+  assert.deepEqual(result.answer.parts, []);
+});
+
 test("cached responses never retain raw query text", () => {
   assert.deepEqual(sanitizeCachedResponse({ query: "minu aadress", total: 1, sources: [] }), { total: 1, sources: [] });
   assert.equal(isSearchCacheEnabled("false"), false);
