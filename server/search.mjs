@@ -908,7 +908,7 @@ const AMBIGUOUS_ROOTS = new Set([
   "vesi", "jarv", "ohk", "ohukvaliteet", "saaste", "jaat", "looduskaitse", "elurikkus",
   "kliima", "ilm", "keskkond", "energia", "elektriauto", "seire", "andmed",
 ]);
-const INJECTION_PATTERN = /(?:ignore\s+(?:(?:all|previous)\s+)?(?:instructions?|prompts?)|(?:ignoreeri|eira)\s+(?:(?:kõiki|koiki|eelnev\w*|varasem\w*|süsteemi\w*)\s+)*(?:(?:süsteemi)?juhis\w*|korraldus\w*|reegel\w*|prompt\w*)|system\s+prompt|developer\s+message|api[- ]?key|reveal\s+(?:the\s+)?secret|unusta\s+(?:eelnev\w*|juhis\w*)|(?:avalda|näita|naita|kuva|paljasta)\s+(?:(?:api[- ]?)?(?:saladus\w*|võti\w*|voti\w*|parool\w*|token\w*))|<\s*script\b)/iu;
+const INJECTION_PATTERN = /(?:ignore\s+(?:(?:all|previous)\s+)*(?:instructions?|prompts?)|(?:ignoreeri|eira)\s+(?:(?:kõiki|koiki|eelnev\w*|varasem\w*|süsteemi\w*)\s+)*(?:(?:süsteemi)?juhis\w*|korraldus\w*|reegel\w*|prompt\w*)|system\s+prompt|developer\s+message|api[- ]?key|reveal\s+(?:the\s+)?secret|unusta\s+(?:eelnev\w*|juhis\w*)|(?:avalda|näita|naita|kuva|paljasta)\s+(?:(?:api[- ]?)?(?:saladus\w*|võti\w*|voti\w*|parool\w*|token\w*))|<\s*script\b)/iu;
 const CADASTRE_PATTERN = /\b\d{5}:\d{3}:\d{4}\b/u;
 
 export function containsUnsafeInstruction(value) {
