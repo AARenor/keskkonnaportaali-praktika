@@ -43,7 +43,8 @@ function roots(value) {
 }
 
 function measurements(value) {
-  return [...new Set(normalize(value).match(/\b\d+(?:[.,]\d+)?\s*%?/gu) || [])];
+  return [...new Set((String(value || "").match(/\b\d+(?:[.,]\d+)?\s*%?/gu) || [])
+    .map((token) => token.replace(/\s+/gu, "").replace(/%$/u, "").replace(",", ".")))];
 }
 
 function citations(body) {
@@ -97,7 +98,13 @@ async function sourceText(url) {
     if (response.status !== 200) throw new Error(`citation HTTP ${response.status}`);
     const $ = load(html);
     $("script, style, noscript, svg, nav, footer, form").remove();
-    return { status: response.status, text: normalize($("body").text()) };
+    const sourceBody = $("body").text();
+    return {
+      status: response.status,
+      text: normalize(sourceBody),
+      measurements: measurements(sourceBody),
+      hasPercentUnit: sourceBody.includes("%"),
+    };
   })();
   fetchedSources.set(url, promise);
   return promise;
@@ -130,7 +137,8 @@ for (const item of dataset.representative) {
       continue;
     }
     const evidence = [];
-    const fetchedEvidence = [];
+    const fetchedMeasurements = new Set();
+    let fetchedPercentUnit = false;
     for (const number of claim.citations) {
       const source = body.sources?.[number - 1];
       const evidenceUrl = source?.locator || source?.url;
@@ -145,7 +153,8 @@ for (const item of dataset.representative) {
         // title and only dimensions/values in the CSV body. Use both for the
         // lexical check, while measurements must still occur in fetched bytes.
         evidence.push(normalize(`${source.title || ""} ${source.url || ""} ${fetched.text}`));
-        fetchedEvidence.push(fetched.text);
+        for (const measurement of fetched.measurements) fetchedMeasurements.add(measurement);
+        fetchedPercentUnit ||= fetched.hasPercentUnit;
       } catch (error) {
         fail(item.id, error.message);
       }
@@ -157,8 +166,9 @@ for (const item of dataset.representative) {
     const supportRatio = claimRoots.length ? supported.length / claimRoots.length : 1;
     if (supportRatio < 0.4) fail(item.id, `claim lexical support ${supportRatio.toFixed(2)} < 0.40`);
     for (const measurement of measurements(claim.text)) {
-      if (!fetchedEvidence.join(" ").includes(measurement)) fail(item.id, "claim measurement is absent from cited source");
+      if (!fetchedMeasurements.has(measurement)) fail(item.id, "claim measurement is absent from cited source");
     }
+    if (claim.text.includes("%") && !fetchedPercentUnit) fail(item.id, "claim percent unit is absent from cited source");
   }
 }
 

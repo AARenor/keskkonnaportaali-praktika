@@ -1,6 +1,6 @@
 # Vastuvõtutõendite register
 
-See fail seob projekti tootmisvalmiduse väited korduvkäivitatavate testide, runtime'i konfiguratsiooni ja koodiga. Avalikud testpäringud on fikseeritud näited ega sisalda kasutajaandmeid. Allolevad tootmistulemused mõõdeti Coolifys samal commit'il, mida vastuvõtu ajal teenindas `praktika.arleserver.cfd`.
+See fail seob projekti tootmisvalmiduse väited korduvkäivitatavate testide, runtime'i konfiguratsiooni ja koodiga. Avalikud testpäringud on fikseeritud näited ega sisalda kasutajaandmeid. Iga ajalooline jaotis nimetab mõõdetud commit'i; kõige uuem kehtiv lõpptõend on jaotises „Struktureeritud näitajate lõppväljalase”.
 
 ## Otsingu hindamisspetsifikatsioon
 
@@ -66,6 +66,26 @@ Eraldi enne esimest käivitust külmutatud `environment_search_holdout_v1.json` 
 Värske Playwrighti desktop- ja 390 × 844 mobiilisessioon algasid `scrollY=0`, aktiivse `BODY`, nähtava ühe otsingukasti ja ilma horisontaalse overflow'ta. Mobiili submit-nupu nimi oli „Küsi”. Jätkuküsimuse voog andis ühe uue fokusseeritud vastuse, kaheksa jätkuallikat ja viis pakutud küsimust; juur- ja jätkupäring läksid ainult same-origin POST-kehadesse ning Terrapoint ei saanud kumbagi. Terrapointi päris iframe'is avanes „Kaardi vaade”, „Piirangud” vahekaart ja töötav Leafleti zoom. Kõigi värskete first-party sessioonide konsoolis oli 0 viga ja 0 hoiatust.
 
 Uus kasutajale nähtav privaatsusplokk kirjeldab täpselt Luna payloadi ja linki teenusepakkuja säilitustingimustele. Server eemaldab tõenditest prompt-injection'i lõigud, lubab väljaminevaks tulemuse-URL-iks ainult HTTPS-i ja ignoreerib rate-limit'i identiteedis kliendi suvalist `X-Forwarded-For` väärtust. Neid piire katavad viis pahatahtlikku tõendifixtuuri, URL-protokolli kontroll ja 21 pöörleva XFF-aadressi regressioon.
+
+## Struktureeritud näitajate lõppväljalase 18.08.2026
+
+Commit `f082af86f3ef4aaae6715884bdcf96e17608279d` juurutati Coolify deployment'ina `qb0095el8pczl1g2n8vubzd7`. Konteiner `asdyidu5wvjx54d0b09t9rhw-080523014106` teenindas sama commit'i image'it, oli `healthy`, restartide arv 0, kasutaja `node`, `init=true` ja Linuxi capability'd `--cap-drop=ALL`. Coolify Dockerfile-runtime'i `ReadonlyRootfs` oli ausalt `false`; `/app` jäi root-omandi tõttu mitte-root kasutajale kirjutuskaitstuks. Compose'i eraldi leping kasutab jätkuvalt `read_only`, tmpfs-i ja `no-new-privileges` seadeid.
+
+| Kontroll | Mõõdetud lõpptulemus |
+|---|---|
+| Unit/ehitus | 125/125; build edukas; Sites 4/4; Compose põhi- ja `experimental-vector` profiil kehtivad; `npm audit` 0 |
+| Põhikomplekti live-eval | 24/24 qrel'i ja 1270/1270 avaliku lepingu kontrolli; p50 7778 ms, p95 14 822 ms, max 14 907 ms; 0 viga ja 0 HTTP 504 |
+| Külmutatud holdout | 40/40 nii deterministlikult kui live'is; P@1 = MRR = nDCG@5 = 1,0; live p50 6232 ms, p95 14 835 ms, max 14 890 ms; qrel-faili hash muutumata |
+| Grounding | 10/10 esinduslikku ja 10/10 adversariaalset; 17 väidet, 24 viiteavamist, 18 eri HTTPS-allikat; iga arv peab esinema viidatud lehes või masinloetavas tabelis; 0 viga |
+| Filtrid | 53 päringut ja 210/210 kontrolli; p50 1153 ms, p95 6509 ms, max 9284 ms; 0 viga |
+| Jätkuküsimused | juur + 3 vooru, 36/36 kontrolli; filtrid, nähtava loendi liikmelisus ja viitenumbrid püsisid; nõrk voor küsis ausalt täpsustust |
+| Koormus/backpressure | 20/20 HTTP 200; 1 `AI koondvastus`, 11 allikapõhist fallback'i, 8 capacity-fallback'i; p50 9887 ms, p95 15 066 ms, max 15 091 ms; 0 timeout'i/5xx-i/504; 21. päring 429 + `Retry-After: 60` ka pöörleva XFF-iga |
+| Täielik fault-injection | DB, ametlikud upstream'id ja AI korraga kättesaamatud, 1 s rakenduseelarve: 5/5 HTTP 200 fallback'i; p50 1388 ms, max 1728 ms; 0 timeout'i/5xx-i/504 ja 0 restarti |
+| Brauser | desktop 1440×1000 ja mobiil 390×844: värske laadimine `scrollY=0`, aktiivne `BODY`, üks põhiotsing, 0 overflow'd ja 0 konsoolihoiatust; tulemuse H1 sai fookuse, viide lahendus olemasolevale allikakaardile ning Terrapointi päris iframe laadis |
+
+Olmejäätmete ringlussevõtu määra päring „jäätmete ringlussevõtu määr Eestis 2023” oli live'is esikohal `municipal-waste-recycling`. AI-vastus ja deterministlik draft näitasid Eesti 37,9% ning EL-i 47,9%; mõlemad väärtused kontrolliti portaali manustatud ametliku Tableau CSV vastu. Inimesele avanev URL jäi Keskkonnaportaali näitajaleheks, `locator` osutas täpsele CSV-vaatele ning CSV hash osales revisjonis `answer-v13-structured-indicators`. KOTKAS-e menetluse staatuse väide sai eraldi loetava Keskkonnaameti juhendi `locator`-i.
+
+Tootmise SQL-risttabel pärast live-auditeid: `practice_search_runs` 191 rida, millest toorpäringuga 0, vana hash-versiooniga 0 ja üle säilitustähtaja 0; `practice_search_cache` 48 rida, millest toorpäringuga 0, `response.query` väljaga 0, vana võtmeversiooniga 0 ja aegunuid 0. Korpus oli 12 940 aktiivset dokumenti = 12 072 `official` + 8 `supplementary` + 860 `other`; 2379 täistekstiga ja 10 561 metadata-only. Arvud on kontrollhetke läbilõige, mitte püsiv konfiguratsioon.
 
 ## Runtime'i andmevoog
 
