@@ -823,6 +823,19 @@ function sourceTierLabel(value) {
   return "Veebiallikas";
 }
 
+function EvidenceLocatorLink({ compact = false, source }) {
+  const locator = safeExternalHref(source?.locator);
+  const primaryUrl = safeExternalHref(source?.url);
+  if (!locator || locator === primaryUrl) return null;
+  return (
+    <ExternalAnchor className={compact ? "evidence-locator evidence-locator--compact" : "evidence-locator"} href={locator}>
+      <FileText size={compact ? 12 : 14} />
+      <span>Ava andmetabel</span>
+      <ExternalLink size={compact ? 11 : 13} />
+    </ExternalAnchor>
+  );
+}
+
 function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRef, interactive = true }) {
   if (!listing && !busy) return null;
   const total = Number(listing?.total || 0);
@@ -1134,9 +1147,12 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
                           ))}
                           {turn.result.sources?.length ? <div className="followup-sources" aria-label={`Jätkuvastuse ${turnIndex + 1} allikad`}>
                             {turn.result.sources.map((source) => (
-                              <ExternalAnchor href={source.url} id={`${prefix}-${source.citation}`} key={source.id}>
-                                <span>{source.citation}</span><span>{source.title}<small>{source.organization}{source.published ? ` · ${source.published}` : ""}</small></span><ExternalLink size={14} />
-                              </ExternalAnchor>
+                              <div className="followup-source-item" id={`${prefix}-${source.citation}`} key={source.id}>
+                                <ExternalAnchor className="followup-source-primary" href={source.url}>
+                                  <span>{source.citation}</span><span>{source.title}<small>{source.organization}{source.published ? ` · ${source.published}` : ""}</small></span><ExternalLink size={14} />
+                                </ExternalAnchor>
+                                <EvidenceLocatorLink compact source={source} />
+                              </div>
                             ))}
                           </div> : null}
                         </div>
@@ -1186,14 +1202,17 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
               </div>
               <div className="sources-list" id={sourcesListId}>
                 {visibleSources.map((source) => (
-                  <ExternalAnchor className="source-row" href={source.url} id={`source-${source.citation}`} key={source.id}>
-                    <span className="source-number">{source.citation}</span>
-                    <div className="source-card__body">
-                      <div className="source-meta"><span className={`source-tier source-tier--${source.sourceTier || "official"}`}>{sourceTierLabel(source.sourceTier || "official")}</span><span>{source.organization}</span><span>{source.published}</span></div>
-                      <h3>{source.title}<ExternalLink size={15} /></h3>
-                      <p>{source.summary}</p>
-                    </div>
-                  </ExternalAnchor>
+                  <div className="source-entry" id={`source-${source.citation}`} key={source.id}>
+                    <ExternalAnchor className="source-row" href={source.url}>
+                      <span className="source-number">{source.citation}</span>
+                      <div className="source-card__body">
+                        <div className="source-meta"><span className={`source-tier source-tier--${source.sourceTier || "official"}`}>{sourceTierLabel(source.sourceTier || "official")}</span><span>{source.organization}</span><span>{source.published}</span></div>
+                        <h3>{source.title}<ExternalLink size={15} /></h3>
+                        <p>{source.summary}</p>
+                      </div>
+                    </ExternalAnchor>
+                    <EvidenceLocatorLink source={source} />
+                  </div>
                 ))}
               </div>
               {result.sources.length > 3 ? (

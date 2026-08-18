@@ -1095,6 +1095,15 @@ test("public page uses the complete Terrapoint application and permits only its 
   assert.match(server, /frame-src 'self' https:\/\/www\.openstreetmap\.org https:\/\/terrapoint\.ee/);
 });
 
+test("structured evidence exposes its exact data-table locator in root and follow-up sources", async () => {
+  const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+  assert.match(app, /function EvidenceLocatorLink/u);
+  assert.match(app, /href=\{locator\}/u);
+  assert.match(app, /Ava andmetabel/u);
+  assert.match(app, /<EvidenceLocatorLink compact source=\{source\} \/>/u);
+  assert.match(app, /<EvidenceLocatorLink source=\{source\} \/>/u);
+});
+
 test("unknown API paths never fall through to the SPA HTML shell", async () => {
   const server = await readFile(new URL("../server/index.mjs", import.meta.url), "utf8");
   assert.match(server, /request\.path === "\/api" \|\| request\.path\.startsWith\("\/api\/"\)/u);
