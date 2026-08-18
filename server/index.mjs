@@ -7,6 +7,7 @@ import {
   startCorpusSyncIfStale,
 } from "./corpus.mjs";
 import { getForestrySuggestions } from "./forestry.mjs";
+import { createGracefulShutdown } from "./graceful-shutdown.mjs";
 import { getKeskkonnaportaalSuggestions } from "./integrations.mjs";
 import {
   searchEnvironmentLive,
@@ -569,7 +570,7 @@ app.use((request, response, next) => {
 
 app.use((_request, response) => response.status(404).json({ error: "Lehte ei leitud." }));
 
-app.listen(port, "0.0.0.0", () => {
+const server = app.listen(port, "0.0.0.0", () => {
   process.stdout.write(`Keskkonnaportaali praktika listening on ${port}\n`);
   const refreshCorpus = () => {
     void startCorpusSyncIfStale().catch(() => undefined);
@@ -577,3 +578,7 @@ app.listen(port, "0.0.0.0", () => {
   setTimeout(refreshCorpus, 1_000).unref();
   setInterval(refreshCorpus, 60 * 60 * 1_000).unref();
 });
+
+const gracefulShutdown = createGracefulShutdown(server);
+process.once("SIGTERM", () => gracefulShutdown.shutdown("SIGTERM"));
+process.once("SIGINT", () => gracefulShutdown.shutdown("SIGINT"));
