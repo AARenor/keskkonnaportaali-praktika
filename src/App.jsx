@@ -405,6 +405,15 @@ function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoF
     }
   };
 
+  const revealPrivacyDisclosure = (event) => {
+    event.preventDefault();
+    const disclosure = document.getElementById("otsingu-privaatsus");
+    if (!(disclosure instanceof HTMLDetailsElement)) return;
+    disclosure.open = true;
+    disclosure.scrollIntoView({ block: "center" });
+    disclosure.querySelector("summary")?.focus({ preventScroll: true });
+  };
+
   return (
     <form className={`search-form search-form--${variant}`} onSubmit={submit} role="search">
       <div className="search-control">
@@ -476,6 +485,9 @@ function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoF
       {variant === "hero" ? (
         <p className="search-form__hint">Vastus esmalt, kasutatud ametlikud allikad kohe järel</p>
       ) : null}
+      <p className="search-form__privacy">
+        AI-vastuse koostamiseks saadetakse sinu küsimus ja kuni kaheksa avaliku allika piiratud väljavõtted välisele OpenCode Go Luna teenusele. Väärkasutuse jälgimise logid võivad säilida kuni 30 päeva. Ära sisesta tundlikke isikuandmeid. <a href="#otsingu-privaatsus" onClick={revealPrivacyDisclosure}>Loe privaatsusest</a>.
+      </p>
     </form>
   );
 }
@@ -1273,6 +1285,9 @@ function PrivacyDisclosure() {
       </p>
       <p>
         OpenCode'i mudelipõhise privaatsustabeli järgi ei kasutata Luna sisendit mudeli treenimiseks; väärkasutuse jälgimise logid võivad säilida kuni 30 päeva. <ExternalAnchor href="https://opencode.ai/docs/go/#privacy">Vaata teenusepakkuja tingimusi</ExternalAnchor>.
+      </p>
+      <p>
+        Mudelipäring kasutab seadet <code>store: false</code>, mis piirab Responses API oleku talletamist, kuid ei lülita välja teenusepakkuja väärkasutuse jälgimise logi. See logi võib sisaldada teenusele saadetud küsimust ja vastust. Teenusepakkuja tingimused võivad muutuda ning tuleb enne ametlikku kasutuselevõttu uuesti üle kontrollida.
       </p>
     </details>
   );

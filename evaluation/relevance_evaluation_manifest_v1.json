@@ -1,0 +1,122 @@
+{
+  "version": "relevance-evaluation-manifest-v1",
+  "createdAt": "2026-08-18",
+  "candidateSource": {
+    "path": "server/search.mjs",
+    "export": "officialServiceCatalogueDocuments",
+    "description": "Maintained official service catalogue; runtime live discovery may merge the same canonical URL under another public ID."
+  },
+  "evaluator": {
+    "path": "scripts/evaluate-relevance-holdout.mjs",
+    "sha256": "845714f6add3392f1b7279f18414c5a2bc35923a2e5957612a74df6f24bd509f",
+    "fixedNow": "2026-08-18T00:00:00.000Z",
+    "liveIdentity": "canonical URL rather than volatile upstream ID"
+  },
+  "queryShape": ["id", "query", "topSource"],
+  "hashCanonicalization": "SHA-256 lowercase hexadecimal digest of UTF-8 JSON.stringify projection; object key and array insertion order are preserved and no extra whitespace is added.",
+  "qrelsSemantics": "One binary expected top source per query.",
+  "metricDefinitions": {
+    "precisionAt1": "Proportion whose one expected source is ranked first.",
+    "mrr": "Mean reciprocal rank of the one expected source; zero when absent.",
+    "ndcgAt5": "With one binary relevant source, 1/log2(rank+1) when rank is at most five, otherwise zero.",
+    "recallAt5": "Proportion whose one expected source appears in the first five results."
+  },
+  "datasets": [
+    {
+      "datasetPath": "evaluation/environment_search_holdout_v1.json",
+      "datasetSha256": "c0dab1a8c1e8d97e9ad65e4e98ef068344ef35754e87feb1d39e783ebc56f2c0",
+      "caseCount": 40,
+      "queriesSha256": "5b526b3f59cbaac38309f6823b1624ebc087e7dccf2edebc50135da007f8fb5e",
+      "qrelsSha256": "b123c28988ee28270e1351bda8901d5a7ef71e59e69cc4ddef8d8830c43e907f",
+      "casesSha256": "12e3c494e47121e462f7a379764279398a93a7ffc1e9565bccf54ee322b6d3c5",
+      "selectedAt": "2026-08-18",
+      "repositoryIntroductionRevision": "373324dc657986b693aa1df138f5a9c1866d5754",
+      "gates": { "precisionAt1": 0.9, "mrr": 0.95, "ndcgAt5": 0.97, "recallAt5": 0.97 },
+      "baseline": {
+        "revision": "1f8671b22761c571154844a8de5c10dbffae8d2e",
+        "status": "reproduced-with-locked-cases",
+        "metrics": { "precisionAt1": 0.75, "mrr": 0.8021, "ndcgAt5": 0.8206, "recallAt5": 0.875 },
+        "artifactPersisted": false,
+        "limitation": "The dataset and ranking fix entered repository history in the same later commit, so Git history alone cannot prove selection preceded the first evaluation."
+      },
+      "runs": [
+        {
+          "revision": "9c615908de67ab1844bb7afb8ec0a6d66834e796",
+          "command": "npm run eval:holdout -- --base-url=https://praktika.arleserver.cfd",
+          "evaluatedAt": "2026-08-18T18:55:18.865Z",
+          "datasetSha256AtRun": "4cf69a01005817a135f69890a70070fb9f4bb21e45675abec3b9b39c3b7898c7",
+          "queriesSha256AtRun": "5b526b3f59cbaac38309f6823b1624ebc087e7dccf2edebc50135da007f8fb5e",
+          "qrelsSha256AtRun": "b123c28988ee28270e1351bda8901d5a7ef71e59e69cc4ddef8d8830c43e907f",
+          "exitCode": 0,
+          "metrics": { "precisionAt1": 1, "mrr": 1, "ndcgAt5": 1, "recallAt5": 1 },
+          "liveMetrics": {
+            "precisionAt1": 1,
+            "mrr": 1,
+            "ndcgAt5": 1,
+            "recallAt5": 1,
+            "p50Ms": 1005,
+            "p95Ms": 11248,
+            "maxMs": 11821,
+            "failures": 0
+          },
+          "artifactPersisted": false,
+          "outputSha256": null
+        }
+      ]
+    },
+    {
+      "datasetPath": "evaluation/environment_search_blind_spot_v1.json",
+      "datasetSha256": "5b92c3dc63c036ae64788865fcffc59759da263eaa9b3afea0a1915ad39f9915",
+      "caseCount": 10,
+      "queriesSha256": "2430f4b94a969d686c1edb5e7b681efb5f3d5209dc887411d530eed4abcab28e",
+      "qrelsSha256": "53f9cfc6dae34eca5ff232051c622cd794ecaba9e8db8e5807d6a1ccd663a50e",
+      "casesSha256": "80ec7fbf84e0329334038fb735f072c1619f5e9def444fc7a38b6ffeb6686a67",
+      "selectedAt": "2026-08-18",
+      "repositoryIntroductionRevision": "5f0d2f7f86635b6c4a454e19b5fde39667f0e1d2",
+      "gates": { "precisionAt1": 1, "mrr": 1, "ndcgAt5": 1, "recallAt5": 1 },
+      "baselineClaim": {
+        "revision": "ecee6451708f06e82160ec40baa1c6e79339281d",
+        "claimedPrecisionAt1": 0.5,
+        "status": "not-reproducible",
+        "reproducedPrecisionAt1": 0.3,
+        "reason": "The historical evaluator aborts because two expected source IDs are absent at that revision."
+      },
+      "runs": [
+        {
+          "revision": "9c615908de67ab1844bb7afb8ec0a6d66834e796",
+          "command": "npm run eval:blind -- --base-url=https://praktika.arleserver.cfd --interval-ms=3200",
+          "evaluatedAt": "2026-08-18T18:51:30.401Z",
+          "datasetSha256AtRun": "ea40bd339d5f0ba2f4176c747063b84387bd86278c1852ad4166298ff6593f40",
+          "queriesSha256AtRun": "2430f4b94a969d686c1edb5e7b681efb5f3d5209dc887411d530eed4abcab28e",
+          "qrelsSha256AtRun": "53f9cfc6dae34eca5ff232051c622cd794ecaba9e8db8e5807d6a1ccd663a50e",
+          "exitCode": 0,
+          "metrics": { "precisionAt1": 1, "mrr": 1, "ndcgAt5": 1, "recallAt5": 1 },
+          "liveMetrics": {
+            "precisionAt1": 1,
+            "mrr": 1,
+            "ndcgAt5": 1,
+            "recallAt5": 1,
+            "p50Ms": 710,
+            "p95Ms": 8041,
+            "maxMs": 8041,
+            "failures": 0
+          },
+          "artifactPersisted": false,
+          "outputSha256": null
+        }
+      ]
+    }
+  ],
+  "review": {
+    "type": "isolated-agent-consistency-review",
+    "reviewedAt": "2026-08-18T18:55:18.865Z",
+    "inputSha256": "2b95e89b4bf0e85e5712cf4a9314207b3d1ff582d2fb0ebdf4ae295e70cf449f",
+    "verdict": "runtime-pass-after-provenance-correction",
+    "independentHuman": false,
+    "limitations": [
+      "The review was performed by a separate read-only agent, not an independent human relevance judge.",
+      "Each query has one binary qrel, so the metrics do not represent graded or multi-relevant human judgments.",
+      "The persisted run records contain metrics and timestamps but no standalone stdout artifact hash."
+    ]
+  }
+}

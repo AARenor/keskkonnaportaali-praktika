@@ -2,9 +2,20 @@
   "name": "environment-search-blind-spot-v1",
   "version": "environment-search-blind-spot-v1",
   "createdAt": "2026-08-18",
-  "baselineRevision": "ecee6451708f06e82160ec40baa1c6e79339281d",
-  "method": "Ten previously unseen Estonian, misspelled and multi-intent queries were selected before inspecting their results. The baseline placed five expected maintained services at rank one; the unchanged labels are retained as a post-fix regression set.",
-  "baseline": { "precisionAt1": 0.5 },
+  "method": "Ten Estonian, misspelled and multi-intent queries selected during an isolated completion audit. Their cases and labels are locked as a post-fix regression set, not presented as an independently preregistered blind benchmark.",
+  "provenance": {
+    "selectionRevision": "5f0d2f7f86635b6c4a454e19b5fde39667f0e1d2",
+    "independentHumanReview": false,
+    "preRegistered": false,
+    "caseLabelsLocked": true
+  },
+  "baselineClaim": {
+    "revision": "ecee6451708f06e82160ec40baa1c6e79339281d",
+    "claimedPrecisionAt1": 0.5,
+    "status": "not-reproducible",
+    "reproducedPrecisionAt1": 0.3,
+    "reason": "The historical evaluator aborts because well-register and marine-observations do not exist at that revision; a faithful manual score over the ten locked labels is 0.3. The claim is retained only as an explicitly invalidated audit record."
+  },
   "gates": { "precisionAt1": 1, "mrr": 1, "ndcgAt5": 1, "recallAt5": 1 },
   "cases": [
     { "id": "B01", "query": "Kust näen praegust peenosakeste taset Tartus?", "topSource": "air-quality-live" },

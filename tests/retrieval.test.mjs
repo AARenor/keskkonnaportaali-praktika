@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
@@ -23,6 +24,10 @@ import {
 } from "../server/search.mjs";
 
 const NOW = Date.parse("2026-08-17T12:00:00Z");
+
+function sha256(value) {
+  return createHash("sha256").update(value).digest("hex");
+}
 
 function official(overrides = {}) {
   return {
@@ -221,7 +226,7 @@ test("frozen service-intent relevance set keeps every expected source at rank on
   assert.deepEqual(failures, []);
 });
 
-test("separately frozen relevance holdout clears its P@1, MRR and nDCG@5 gates", async () => {
+test("locked relevance holdout clears its P@1, MRR, nDCG@5 and Recall@5 gates", async () => {
   const dataset = JSON.parse(await readFile(
     new URL("../evaluation/environment_search_holdout_v1.json", import.meta.url),
     "utf8",
@@ -237,10 +242,40 @@ test("separately frozen relevance holdout clears its P@1, MRR and nDCG@5 gates",
   const ndcgAt5 = ranks.reduce((sum, rank) => (
     sum + (rank && rank <= 5 ? 1 / Math.log2(rank + 1) : 0)
   ), 0) / ranks.length;
+  const recallAt5 = ranks.filter((rank) => rank && rank <= 5).length / ranks.length;
 
   assert.ok(precisionAt1 >= dataset.gates.precisionAt1, `P@1 ${precisionAt1}`);
   assert.ok(mrr >= dataset.gates.mrr, `MRR ${mrr}`);
   assert.ok(ndcgAt5 >= dataset.gates.ndcgAt5, `nDCG@5 ${ndcgAt5}`);
+  assert.ok(recallAt5 >= dataset.gates.recallAt5, `Recall@5 ${recallAt5}`);
+});
+
+test("relevance manifest locks dataset, query and qrel hashes without overstating review independence", async () => {
+  const manifest = JSON.parse(await readFile(
+    new URL("../evaluation/relevance_evaluation_manifest_v1.json", import.meta.url),
+    "utf8",
+  ));
+
+  for (const entry of manifest.datasets) {
+    const datasetUrl = new URL(`../${entry.datasetPath}`, import.meta.url);
+    const raw = await readFile(datasetUrl, "utf8");
+    const dataset = JSON.parse(raw);
+    const queries = dataset.cases.map(({ id, query }) => ({ id, query }));
+    const qrels = dataset.cases.map(({ id, topSource }) => ({ id, topSource }));
+    const cases = dataset.cases.map(({ id, query, topSource }) => ({ id, query, topSource }));
+
+    assert.equal(entry.caseCount, dataset.cases.length, entry.datasetPath);
+    assert.equal(entry.datasetSha256, sha256(raw), entry.datasetPath);
+    assert.equal(entry.queriesSha256, sha256(JSON.stringify(queries)), entry.datasetPath);
+    assert.equal(entry.qrelsSha256, sha256(JSON.stringify(qrels)), entry.datasetPath);
+    assert.equal(entry.casesSha256, sha256(JSON.stringify(cases)), entry.datasetPath);
+    assert.deepEqual(entry.gates, dataset.gates, entry.datasetPath);
+  }
+
+  const evaluator = await readFile(new URL(`../${manifest.evaluator.path}`, import.meta.url), "utf8");
+  assert.equal(manifest.evaluator.sha256, sha256(evaluator));
+  assert.equal(manifest.review.independentHuman, false);
+  assert.equal(manifest.datasets[1].baselineClaim.status, "not-reproducible");
 });
 
 test("blind-spot service intents outrank plausible article distractors", async () => {

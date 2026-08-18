@@ -175,7 +175,7 @@ Vaikimisi käivituvad veebirakendus ja PostgreSQL. Eksperimentaalse Qdranti kont
 
 - build pack: **Dockerfile**;
 - sisemine port: `3000`;
-- health check: `/api/health`;
+- Coolify konteineri readiness health check: `/api/health/container-readiness` iga sekundi järel, timeout 2 s ja üks ebaõnnestumine; avalik minimaalne olek jääb `/api/health`;
 - domeen: `https://praktika.arleserver.cfd`;
 - `PUBLIC_ORIGIN=https://praktika.arleserver.cfd`;
 - projektile eraldatud `DATABASE_URL`;
@@ -197,7 +197,7 @@ Avaliku timeout-ahela kontroll 18.08.2026: rakendus piirab progressiivse otsingu
 - Päringu pikkus, URL-id, allikate hostid, response size ja redirect'id valideeritakse serveris.
 - Avalik `/api/health` on minimaalne ega paljasta teenuseid või pakkujaid.
 - LLM-võti ei jõua brauserisse; mudel saab ainult avaliku küsimuse ja valitud avalikud tõendid.
-- Luna töötab välise OpenCode Go teenusena. Payload sisaldab küsimust, piiratud avalikku tõendipakki, väljundskeemi ja jätkuvoorus kuni 520 märki varasemate küsimuste konteksti; kasutaja IP-d, küpsiseid, andmebaasilogi ega kogu korpust sinna ei lisata. OpenCode'i [mudelipõhine privaatsustabel](https://opencode.ai/docs/go/#privacy) märgib Luna sisendi mudelitreeningus mittekasutatavaks, kuid abuse-monitoring'u logid võivad säilida kuni 30 päeva.
+- Luna töötab välise OpenCode Go teenusena. Payload sisaldab küsimust, kuni kaheksat piiratud avalikku tõendiväljavõtet, väljundskeemi ja jätkuvoorus kuni 520 märki varasemate küsimuste konteksti; kasutaja IP-d, küpsiseid, andmebaasilogi ega kogu korpust sinna ei lisata. Sama piir on nähtav enne esimest submit'i. OpenCode'i [mudelipõhine privaatsustabel](https://opencode.ai/docs/go/#privacy) märgib Luna sisendi mudelitreeningus mittekasutatavaks, kuid abuse-monitoring'u logid võivad säilida kuni 30 päeva.
 - Ametlikud live-otsingud näevad serveri päringut ja väljuvat IP-d. Terrapointi iframe on brauseri otseühendus: sinna sisestatud andmed lähevad Terrapointile, kuid praktikaportaali üldotsingu päringuid Terrapointile ei saadeta.
 - Otsingulogi ei säilita kasutaja toorpäringut. Logi ja cache kasutavad võtmega HMAC-SHA-256 sõrmejälge; varasema lihtsa räsi read kustutatakse migratsiooniga. Ka vahemällu salvestatavast JSON-ist eemaldatakse `query`, aegunud vahemäluread kustutatakse ning UI saadab otsingu ja soovitused JSON POST-kehas: toorpäring ei lähe aadressiribale, lehe pealkirja ega püsivasse brauserisalvestusse; back/forward hoiab ainult läbipaistmatut protsessimälu ID-d.
 - Degradeerunud portaali- või ruumivastust ei salvestata tunniajase kvaliteetvastusena, et järgmine päring saaks taastunud allikaid uuesti proovida.
@@ -208,6 +208,8 @@ Avaliku timeout-ahela kontroll 18.08.2026: rakendus piirab progressiivse otsingu
 - Rakendus ei renderda mudeli või allikate toorest HTML-i.
 
 ## Testid ja väljalaskekontroll
+
+Relevantsusandmestike masinloetav provenance, eraldi päringu- ja qrel-hashid, mõõdikute definitsioonid ning ausad piirangud asuvad failis [`evaluation/relevance_evaluation_manifest_v1.json`](./evaluation/relevance_evaluation_manifest_v1.json). Testisviit arvutab hashid uuesti, kontrollib väravaid ja ebaõnnestub vaikse andmestikumuudatuse korral.
 
 ```bash
 npm test
@@ -228,8 +230,8 @@ Automaattestid kontrollivad muu hulgas:
 - 16 allikaga regressioonikorpuse, 21 dokumendi, 18 FAQ teema ja 12 väärarusaama sisemise tervikluse;
 - eraldiseisva tulemuste lehitsemise, korpuse parserid ja ametlike URL-aliaste deduplikatsiooni;
 - fraasi- ja lõigukattega relevantsusjärjestuse, tegeliku avaldamisaja, tulevikukuupäeva karistuse ning allika-, tüübi- ja aastafiltrite jõustamise;
-- 48 allikaga üldkataloog, 59 päringuga külmutatud routing-komplekt, 40 päringuga holdout ja 10 varem nägemata päringuga pimekomplekt;
-- eraldi enne esimest jooksu külmutatud 40 päringuga holdout'i P@1, MRR ja nDCG@5 väravad ning sama komplekti URL-põhise live-kontrolli;
+- 48 allikaga üldkataloog, 59 päringuga külmutatud routing-komplekt, 40 päringuga holdout ja 10 päringuga lukustatud post-fix regressioonikomplekt;
+- 40 päringuga holdout'i P@1, MRR, nDCG@5 ja Recall@5 väravad ning sama komplekti URL-põhise live-kontrolli; andmevaliku tõenduspiir ja ühe binaarse qrel'i piirang on masinloetavas eval-manifestis;
 - 24/24 teenusepäringu õige esimese allika nii deterministlikus järjestajas kui ka külma PostgreSQL-i vahemäluga päris HTTP-voos;
 - külmutatud v2 hindamiskomplekti 30/30 vastatava päringu õiget intent-vastust ja Recall@3 väärtust 100%;
 - `mets` päris sünteesi, täpset FAQ vastust ja turvalist abstention'it;

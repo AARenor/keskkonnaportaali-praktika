@@ -17,7 +17,8 @@
   "gates": {
     "precisionAt1": 0.9,
     "mrr": 0.95,
-    "ndcgAt5": 0.97
+    "ndcgAt5": 0.97,
+    "recallAt5": 0.97
   },
   "cases": [
     { "id": "H01", "query": "Kust saab Eesti keskkonna avaandmeid alla laadida?", "topSource": "open-data" },

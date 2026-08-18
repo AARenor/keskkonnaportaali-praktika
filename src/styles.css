@@ -556,6 +556,31 @@ h3 {
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
 }
 
+.search-form__privacy {
+  margin: 8px 0 0;
+  color: #405762;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.search-form__privacy a {
+  color: var(--brand-800);
+  font-weight: 700;
+  white-space: nowrap;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.search-form--hero .search-form__privacy {
+  color: #fff;
+  text-align: right;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.72);
+}
+
+.search-form--hero .search-form__privacy a {
+  color: #fff;
+}
+
 .portal-tiles {
   position: relative;
   z-index: 3;
@@ -2982,14 +3007,17 @@ h3 {
 
   .hero {
     display: block;
-    height: 315px;
+    height: auto;
+    min-height: 365px;
     background-position: 58% center;
   }
 
   .hero__content {
+    height: auto;
+    min-height: 365px;
     align-items: stretch;
     justify-content: center;
-    padding-top: 6px;
+    padding: 6px 0 18px;
     text-align: left;
   }
 
@@ -3029,6 +3057,12 @@ h3 {
   .hero .search-form__hint {
     margin-top: 9px;
     font-size: 0.78rem;
+    text-align: left;
+  }
+
+  .hero .search-form__privacy {
+    margin-top: 7px;
+    font-size: 0.8125rem;
     text-align: left;
   }
 

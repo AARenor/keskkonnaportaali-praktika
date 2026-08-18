@@ -1125,6 +1125,20 @@ test("structured evidence exposes its exact data-table locator in root and follo
   assert.match(app, /<EvidenceLocatorLink source=\{source\} \/>/u);
 });
 
+test("search discloses the external Luna privacy boundary before submission", async () => {
+  const [app, privacy] = await Promise.all([
+    readFile(new URL("../src/App.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../PRIVAATSUS.md", import.meta.url), "utf8"),
+  ]);
+  assert.match(app, /AI-vastuse koostamiseks saadetakse sinu küsimus ja kuni kaheksa avaliku allika piiratud väljavõtted välisele OpenCode Go Luna teenusele/u);
+  assert.match(app, /href="#otsingu-privaatsus" onClick=\{revealPrivacyDisclosure\}/u);
+  assert.match(app, /disclosure\.open = true/u);
+  assert.match(app, /disclosure\.querySelector\("summary"\)\?\.focus/u);
+  assert.match(app, /store: false/u);
+  assert.match(privacy, /`store: false`/u);
+  assert.match(privacy, /küsimust ja vastust/u);
+});
+
 test("citation targets remain focusable after evidence locator links are added", async () => {
   const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
   assert.match(app, /<ExternalAnchor className="followup-source-primary" href=\{source\.url\} id=\{`\$\{prefix\}-\$\{source\.citation\}`\}>/u);
