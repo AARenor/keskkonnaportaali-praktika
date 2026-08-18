@@ -65,6 +65,11 @@ function etDecimal(value, maximumFractionDigits = 3) {
   }).format(value);
 }
 
+function etYearList(years = []) {
+  if (years.length <= 1) return years[0] || "";
+  return `${years.slice(0, -1).map((year) => `${year}.`).join(", ")} ja ${years.at(-1)}`;
+}
+
 function requestedYear(query) {
   const match = String(query || "").match(/\b((?:19|20)\d{2})\b/u);
   return match ? Number(match[1]) : null;
@@ -268,7 +273,7 @@ export function forestHarvestBalanceDocumentsFromJson(query, payload, options = 
     published: "2024",
     url: FOREST_BALANCE_EFA_HANDBOOK_URL,
     summary: "EFA removals mõõdab aruandeperioodil metsast eemaldatud elusate ja surnud puude mahtu koorega. Sama aasta eemaldamise ja netojuurdekasvu võrdlus näitab, kas eemaldamine ületab juurdekasvu või jääb sellest alla, kuid EFA näitaja ei võrdu üks-ühele ühe aasta SMI raiemahuga.",
-    content: "European Forest Accounts käsiraamatu peatükid 4.14–4.18 määratlevad mahu koorega. Removals hõlmab aruandeperioodil metsast eemaldatud elusaid ja surnud puid, sealhulgas taastatud looduslikke kadusid, varasemal perioodil langetatud puitu ning eemaldatud mittetüvepuitu. Sama aasta eemaldamise ja netojuurdekasvu võrdlus näitab, kas eemaldamine ületab juurdekasvu või jääb sellest alla. Seetõttu ei ole EFA removals üks-ühele sama mis ühe aasta SMI raiemaht.",
+    content: "European Forest Accounts käsiraamatu peatükid 4.14–4.18 määratlevad mahu koorega. Removals hõlmab aruandeperioodil metsast eemaldatud elusaid ja surnud puid, sealhulgas metsast ära toodud looduslikku väljalangemist, varasemal perioodil langetatud puitu ning eemaldatud mittetüvepuitu. Sama aasta eemaldamise ja netojuurdekasvu võrdlus näitab, kas eemaldamine ületab juurdekasvu või jääb sellest alla. Seetõttu ei ole EFA removals üks-ühele sama mis ühe aasta SMI raiemaht.",
     topics: ["mets", "puidu eemaldamine", "removals", "metoodika", "koorega"],
     tags: ["mets", "puidu eemaldamine", "removals", "metoodika", "koorega"],
     sourceTier: "official",
@@ -344,9 +349,9 @@ export function composeForestHarvestBalanceAnswer(query, sources = []) {
     const lowerYears = comparableWindow.filter((item) => item.removals < item.increment).map((item) => String(item.year));
     const equalYears = comparableWindow.filter((item) => item.removals === item.increment).map((item) => String(item.year));
     const relations = [
-      higherYears.length ? `${higherYears.join(" ja ")}. aastal oli eemaldamine suurem` : "",
-      lowerYears.length ? `${lowerYears.join(" ja ")}. aastal oli eemaldamine väiksem` : "",
-      equalYears.length ? `${equalYears.join(" ja ")}. aastal olid näitajad võrdsed` : "",
+      higherYears.length ? `${etYearList(higherYears)}. aastal oli eemaldamine suurem` : "",
+      lowerYears.length ? `${etYearList(lowerYears)}. aastal oli eemaldamine väiksem` : "",
+      equalYears.length ? `${etYearList(equalYears)}. aastal olid näitajad võrdsed` : "",
     ].filter(Boolean).join("; ");
     const startYear = window[0]?.year;
     const endYear = window.at(-1)?.year;
@@ -369,7 +374,7 @@ export function composeForestHarvestBalanceAnswer(query, sources = []) {
         parts: [
           ...(handbookCitation ? [{
             title: "Mida Eurostati eemaldamine tähendab",
-            text: "EFA removals mõõdab perioodil metsast eemaldatud elusate ja surnud puude mahtu koorega ning võib hõlmata taastatud looduslikke kadusid, varem langetatud puitu ja mittetüvepuitu. See ei ole üks-ühele sama mis ühe aasta SMI raiemaht.",
+            text: "EFA removals mõõdab perioodil metsast eemaldatud elusate ja surnud puude mahtu koorega ning võib hõlmata metsast ära toodud looduslikku väljalangemist, varem langetatud puitu ja mittetüvepuitu. See ei ole üks-ühele sama mis ühe aasta SMI raiemaht.",
             citations: [handbookCitation],
           }] : []),
           ...(fiveYearCitation ? [{
@@ -420,7 +425,7 @@ export function composeForestHarvestBalanceAnswer(query, sources = []) {
       parts: [
         ...(handbookCitation ? [{
           title: "Mida Eurostati eemaldamine tähendab",
-          text: "EFA removals mõõdab perioodil metsast eemaldatud elusate ja surnud puude mahtu koorega ning võib hõlmata taastatud looduslikke kadusid, varem langetatud puitu ja mittetüvepuitu. See ei ole üks-ühele sama mis ühe aasta SMI raiemaht.",
+          text: "EFA removals mõõdab perioodil metsast eemaldatud elusate ja surnud puude mahtu koorega ning võib hõlmata metsast ära toodud looduslikku väljalangemist, varem langetatud puitu ja mittetüvepuitu. See ei ole üks-ühele sama mis ühe aasta SMI raiemaht.",
           citations: [handbookCitation],
         }] : []),
         {

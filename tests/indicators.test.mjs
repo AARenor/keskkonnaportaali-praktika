@@ -95,6 +95,8 @@ test("forest balance synthesis answers directly from four separately cited offic
   assert.match(followUp.answer.intro, /2025\. aasta rida selles väljavõttes veel ei ole/u);
   assert.match(followUp.answer.intro, /2020: eemaldamine 12,2 ja netojuurdekasv 14,4/u);
   assert.match(followUp.answer.intro, /2022: eemaldamine 12,0 ja netojuurdekasv 9,1/u);
+  assert.match(followUp.answer.intro, /2022\. ja 2023\. aastal oli eemaldamine suurem/u);
+  assert.doesNotMatch(followUp.answer.intro, /2022 ja 2023\. aastal/u);
   assert.match(followUp.answer.intro, /imputeerituna/u);
   assert.match(followUp.answer.intro, /hinnangulisena/u);
   assert.match(followUp.answer.intro, /2021 ja 2024/u);
@@ -102,6 +104,7 @@ test("forest balance synthesis answers directly from four separately cited offic
     ...followUp.answer.introCitations,
     ...followUp.answer.parts.flatMap((part) => part.citations),
   ]).size >= 4);
+  assert.match(followUp.answer.parts[0].text, /metsast ära toodud looduslikku väljalangemist/u);
   assert.equal(isForestHarvestBalanceQuery("raiemaht ja netojuurdekasv"), true);
   assert.equal(isForestHarvestBalanceQuery("raiemaht 2023"), false);
   assert.equal(isForestHarvestBalanceQuery("Kuidas raiemaht mõjutab metsa juurdekasvu?"), false);
