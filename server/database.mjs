@@ -46,6 +46,21 @@ export const SEARCH_CACHE_READ_SQL = `
   WHERE query_hash = $1 AND expires_at > NOW()
 `;
 
+export const SEARCH_DATA_PURGE_SQL = `
+  WITH deleted_cache AS (
+    DELETE FROM practice_search_cache
+    WHERE expires_at <= NOW()
+    RETURNING 1
+  ), deleted_runs AS (
+    DELETE FROM practice_search_runs
+    WHERE created_at < NOW() - INTERVAL '30 days'
+    RETURNING 1
+  )
+  SELECT
+    (SELECT COUNT(*)::INTEGER FROM deleted_cache) AS deleted_cache,
+    (SELECT COUNT(*)::INTEGER FROM deleted_runs) AS deleted_runs
+`;
+
 function getPool() {
   if (!databaseUrl) return null;
   if (!pool) {
@@ -134,6 +149,22 @@ export async function readSearchCache(query, revision) {
     return cached ? { ...cached, query: String(query || "").replace(/\s+/gu, " ").trim().slice(0, 180) } : null;
   } catch {
     return null;
+  }
+}
+
+export async function purgeExpiredSearchData() {
+  const poolInstance = getPool();
+  if (!poolInstance) return { status: "disabled", deletedCache: 0, deletedRuns: 0 };
+  try {
+    await ensureSchema();
+    const result = await poolInstance.query(SEARCH_DATA_PURGE_SQL);
+    return {
+      status: "ready",
+      deletedCache: Number(result.rows[0]?.deleted_cache || 0),
+      deletedRuns: Number(result.rows[0]?.deleted_runs || 0),
+    };
+  } catch {
+    return { status: "degraded", deletedCache: 0, deletedRuns: 0 };
   }
 }
 

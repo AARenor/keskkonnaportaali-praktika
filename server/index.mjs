@@ -1,6 +1,7 @@
 import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { purgeExpiredSearchData } from "./database.mjs";
 import {
   corpusStats,
   startCorpusSyncIfStale,
@@ -32,6 +33,10 @@ const MAX_RATE_LIMIT_KEYS = 2_000;
 const MAX_PROXY_CACHE_ENTRIES = 250;
 const MAX_ACTIVE_SEARCHES = Math.max(1, Math.min(Number(process.env.SEARCH_MAX_CONCURRENCY) || 12, 20));
 let activeSearches = 0;
+
+void purgeExpiredSearchData();
+const searchDataMaintenance = setInterval(() => void purgeExpiredSearchData(), 60_000);
+searchDataMaintenance.unref();
 
 app.disable("x-powered-by");
 app.set("trust proxy", 1);

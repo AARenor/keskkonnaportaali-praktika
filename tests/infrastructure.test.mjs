@@ -5,6 +5,7 @@ import {
   assertSafeDatabaseUrl,
   sanitizeCachedResponse,
   SEARCH_CACHE_READ_SQL,
+  SEARCH_DATA_PURGE_SQL,
 } from "../server/database.mjs";
 import {
   buildBoundedEvidence,
@@ -669,6 +670,8 @@ test("cached responses never retain raw query text", () => {
   assert.equal(isSearchCacheEnabled("false"), false);
   assert.equal(isSearchCacheEnabled("true"), true);
   assert.match(SEARCH_CACHE_READ_SQL, /DELETE FROM practice_search_cache[\s\S]*expires_at <= NOW\(\)/u);
+  assert.match(SEARCH_DATA_PURGE_SQL, /DELETE FROM practice_search_cache[\s\S]*expires_at <= NOW\(\)/u);
+  assert.match(SEARCH_DATA_PURGE_SQL, /DELETE FROM practice_search_runs[\s\S]*INTERVAL '30 days'/u);
 });
 
 test("LLM is eligible only for a strong portal evidence contract", () => {
