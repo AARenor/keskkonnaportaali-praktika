@@ -2,9 +2,41 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   articleText,
+  fetchOfficialJsonDataset,
   readBoundedResponseText,
   validatedOfficialUrl,
 } from "../server/integrations.mjs";
+
+test("an already aborted official request never returns a fresh or stale cache entry", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async (_url, options = {}) => {
+    calls += 1;
+    if (options.signal?.aborted) throw new DOMException("The operation was aborted", "AbortError");
+    return new Response('{"ok":true}', { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const url = `https://ec.europa.eu/eurostat/api/cache-abort-test-${Date.now()}`;
+    await fetchOfficialJsonDataset(url, { ttlMs: 60_000 });
+    const controller = new AbortController();
+    controller.abort();
+    await assert.rejects(
+      fetchOfficialJsonDataset(url, { ttlMs: 60_000, signal: controller.signal }),
+      (error) => error?.name === "AbortError",
+    );
+    assert.equal(calls, 1);
+
+    const staleUrl = `${url}-stale`;
+    await fetchOfficialJsonDataset(staleUrl, { ttlMs: 0, staleMs: 60_000 });
+    await assert.rejects(
+      fetchOfficialJsonDataset(staleUrl, { ttlMs: 0, staleMs: 60_000, signal: controller.signal }),
+      (error) => error?.name === "AbortError",
+    );
+    assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test("official fetch targets reject non-HTTPS and off-list redirect destinations", () => {
   assert.equal(

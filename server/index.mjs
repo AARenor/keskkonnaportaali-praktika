@@ -213,6 +213,116 @@ async function handleSearch(request, response) {
 app.get("/api/search", handleSearch);
 app.post("/api/search", handleSearch);
 
+function writeSearchStreamEvent(response, type, payload) {
+  if (response.writableEnded || response.destroyed) return false;
+  response.write(`${JSON.stringify({ type, ...payload })}\n`);
+  return true;
+}
+
+app.post("/api/search/stream", async (request, response) => {
+  const query = searchQuery(request);
+  if (!query) return response.status(400).json({ error: "Sisesta otsingusõna." });
+  if (query.length > 180) return response.status(400).json({ error: "Otsing on liiga pikk." });
+  const page = searchPage(request, "page", 1, 500);
+  const pageSize = searchPage(request, "page_size", 12, 50);
+  const parsedFilters = searchFilters(request);
+  if (!parsedFilters.ok) return response.status(400).json({ error: parsedFilters.error });
+  const filters = parsedFilters.filters;
+
+  response.status(200);
+  response.setHeader("Cache-Control", "no-store");
+  response.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+  response.setHeader("X-Accel-Buffering", "no");
+  response.flushHeaders?.();
+
+  if (activeSearches >= MAX_ACTIVE_SEARCHES) {
+    const searchResults = emptySearchListing(filters, page, pageSize);
+    writeSearchStreamEvent(response, "results", { searchResults });
+    writeSearchStreamEvent(response, "answer", {
+      result: {
+        ...searchTimeoutFallback(query, { assessmentQuery: query, reason: "capacity" }),
+        searchResults,
+      },
+    });
+    response.end();
+    return undefined;
+  }
+
+  activeSearches += 1;
+  const startedAt = Date.now();
+  const deadlineAt = searchDeadline(startedAt);
+  const controller = new AbortController();
+  const abortDisconnectedClient = () => {
+    if (!response.writableEnded) controller.abort();
+  };
+  response.once("close", abortDisconnectedClient);
+  let publicListing = emptySearchListing(filters, page, pageSize);
+  let resultsWritten = false;
+  try {
+    const searchResults = await settleWithinDeadline(prepareRankedSearchResults(query, {
+      page,
+      pageSize,
+      filters,
+      deadlineAt,
+      signal: controller.signal,
+    }), Math.max(250, Math.min(3_500, deadlineAt - Date.now())), null, controller);
+    if (!searchResults) {
+      writeSearchStreamEvent(response, "results", { searchResults: publicListing });
+      resultsWritten = true;
+      writeSearchStreamEvent(response, "answer", {
+        result: {
+          ...searchTimeoutFallback(query, { assessmentQuery: query }),
+          searchResults: publicListing,
+        },
+      });
+      return undefined;
+    }
+    publicListing = publicSearchListing(searchResults);
+    writeSearchStreamEvent(response, "results", { searchResults: publicListing });
+    resultsWritten = true;
+    const result = await searchEnvironmentLive(query, {
+      startedAt,
+      deadlineAt,
+      searchResults,
+      filters,
+      signal: controller.signal,
+      onDraft: (draft) => writeSearchStreamEvent(response, "draft", {
+        result: { ...draft, searchResults: publicListing },
+      }),
+    });
+    writeSearchStreamEvent(response, "answer", {
+      result: { ...result, searchResults: publicListing },
+    });
+  } catch (error) {
+    if (!controller.signal.aborted || !response.destroyed) {
+      if (!resultsWritten) {
+        writeSearchStreamEvent(response, "results", { searchResults: publicListing });
+        resultsWritten = true;
+      }
+      writeSearchStreamEvent(response, "answer", {
+        result: {
+          ...searchTimeoutFallback(query, {
+            assessmentQuery: query,
+            searchResults: { items: publicListing.items || [] },
+            reason: "source-error",
+          }),
+          searchResults: publicListing,
+        },
+      });
+    }
+    console.warn(JSON.stringify({
+      event: "search-stream-degraded",
+      errorName: String(error?.name || "Error").slice(0, 80),
+      errorCode: String(error?.code || "unknown").slice(0, 80),
+    }));
+  } finally {
+    response.off("close", abortDisconnectedClient);
+    if (!response.writableEnded && !response.destroyed) response.end();
+    activeSearches = Math.max(0, activeSearches - 1);
+  }
+  return undefined;
+});
+
 async function handleSearchResults(request, response) {
   const query = searchQuery(request);
   if (!query) return response.status(400).json({ error: "Sisesta otsingusõna." });
@@ -269,6 +379,15 @@ app.post("/api/search/follow-up", async (request, response) => {
   if (!parsedFilters.ok) return response.status(400).json({ error: parsedFilters.error });
   const filters = parsedFilters.filters;
   const retrievalQuery = contextualRetrievalQuery(rootQuery, question, previousQuestions);
+  if (activeSearches >= MAX_ACTIVE_SEARCHES) {
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("Retry-After", "2");
+    return response.status(200).json({
+      ...searchTimeoutFallback(question, { assessmentQuery: retrievalQuery, reason: "capacity" }),
+      searchResults: emptySearchListing(filters),
+    });
+  }
+  activeSearches += 1;
   try {
     const controller = new AbortController();
     const payload = await settleWithinDeadline((async () => {
@@ -308,6 +427,8 @@ app.post("/api/search/follow-up", async (request, response) => {
       ...searchTimeoutFallback(question, { assessmentQuery: retrievalQuery, reason: "source-error" }),
       searchResults: emptySearchListing(filters),
     });
+  } finally {
+    activeSearches = Math.max(0, activeSearches - 1);
   }
 });
 

@@ -171,7 +171,7 @@ test("crawler refuses HTML or response headers marked noindex", () => {
   assert.equal(pageRobotsPolicy("<html><body>Avalik sisu</body></html>", "index, follow").noindex, false);
 });
 
-test("answer endpoint and broad result pagination remain separate contracts", async () => {
+test("progressive answer endpoint and broad result pagination remain separate contracts", async () => {
   const [server, app, corpus] = await Promise.all([
     readFile(new URL("../server/index.mjs", import.meta.url), "utf8"),
     readFile(new URL("../src/App.jsx", import.meta.url), "utf8"),
@@ -187,7 +187,12 @@ test("answer endpoint and broad result pagination remain separate contracts", as
   assert.match(app, /Otsingutulemused/u);
   assert.match(app, /Vastuse allikad/u);
   assert.match(server, /searchPage\(request, "page_size", 12, 50\)/u);
-  assert.match(app, /fetch\("\/api\/search", \{[\s\S]*?method: "POST"/u);
+  assert.match(server, /app\.post\("\/api\/search\/stream"/u);
+  assert.match(server, /application\/x-ndjson/u);
+  assert.match(server, /if \(!resultsWritten\) \{[\s\S]*?writeSearchStreamEvent\(response, "results"/u);
+  assert.match(app, /fetch\("\/api\/search\/stream", \{[\s\S]*?method: "POST"/u);
+  assert.match(app, /readSearchStream\(response/u);
+  assert.match(app, /\{!busy && focused && suggestions\.length \? \(/u);
   assert.match(app, /fetch\("\/api\/suggestions", \{[\s\S]*?method: "POST"/u);
   assert.match(server, /app\.post\("\/api\/suggestions"/u);
   assert.match(app, /pushState\(\{ practiceSearchId: rememberNavigationSearch\(clean, filters\) \}, "", "\/otsi"\)/u);

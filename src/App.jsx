@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { safeExternalHref } from "./url-safety.js";
 import { suggestionsForValue } from "./search-suggestions.js";
+import { readSearchStream } from "./search-stream.js";
 
 const SOURCE = "https://keskkonnaportaal.ee";
 const DEFAULT_SEARCH_FILTERS = { source: "all", category: "", year: null, sort: "relevance" };
@@ -379,7 +380,12 @@ function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoF
       chooseSuggestion(suggestions[activeIndex]);
       return;
     }
-    if (value.trim()) onSearch(value.trim());
+    if (value.trim()) {
+      suggestionRequestRef.current.controller?.abort();
+      setFocused(false);
+      setActiveIndex(-1);
+      onSearch(value.trim());
+    }
   };
 
   const handleKeyDown = (event) => {
@@ -441,7 +447,7 @@ function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoF
           {busy ? <LoaderCircle className="spin" size={19} /> : <Sparkles size={18} />}
           <span>{busy ? "Otsin" : "Küsi"}</span>
         </button>
-        {focused && suggestions.length ? (
+        {!busy && focused && suggestions.length ? (
           <div className="search-suggestions">
             <div className="search-suggestions__title" id={`${listboxId}-label`}>Soovitatud päringud</div>
             <div aria-labelledby={`${listboxId}-label`} id={listboxId} role="listbox">
@@ -787,8 +793,27 @@ function Home({ onSearch, busy, searchInputRef }) {
   );
 }
 
-function Citation({ number, onNavigate, targetPrefix = "source" }) {
-  return <a className="citation" href={`#${targetPrefix}-${number}`} onClick={(event) => onNavigate(event, number, targetPrefix)} aria-label={`Allikas ${number}`}>{number}</a>;
+function citationSourceLabel(source) {
+  const organization = String(source?.organization || "").trim();
+  if (/^Keskkonnaagentuur$/iu.test(organization)) return "KAUR";
+  if (/^Keskkonnaportaal/u.test(organization)) return "Keskkonnaportaal";
+  return organization || "Allikas";
+}
+
+function Citation({ number, onNavigate, sources = [], targetPrefix = "source" }) {
+  const source = sources.find((candidate) => Number(candidate.citation) === Number(number));
+  const label = citationSourceLabel(source);
+  return (
+    <a
+      aria-label={`Allikas ${number}: ${source?.title || label}`}
+      className="citation"
+      href={`#${targetPrefix}-${number}`}
+      onClick={(event) => onNavigate(event, number, targetPrefix)}
+      title={source ? `${source.title} — ${source.organization}` : `Allikas ${number}`}
+    >
+      <span>{number}</span><span>{label}</span>
+    </a>
+  );
 }
 
 function sourceTierLabel(value) {
@@ -798,7 +823,7 @@ function sourceTierLabel(value) {
   return "Veebiallikas";
 }
 
-function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRef }) {
+function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRef, interactive = true }) {
   if (!listing && !busy) return null;
   const total = Number(listing?.total || 0);
   const distinctTotal = Number(listing?.distinctTotal || total);
@@ -830,7 +855,7 @@ function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRe
       <div className="search-filters" aria-label="Otsingutulemuste filtrid">
         <label>
           <span>Allikas</span>
-          <select value={filters.source} onChange={(event) => changeFilter("source", event.target.value)}>
+          <select disabled={!interactive || busy} value={filters.source} onChange={(event) => changeFilter("source", event.target.value)}>
             <option value="all">Kõik allikad</option>
             <option value="trusted">Ametlikud ja kontrollitud</option>
             <option value="official">Ametlikud</option>
@@ -840,26 +865,26 @@ function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRe
         </label>
         <label>
           <span>Sisutüüp</span>
-          <select value={filters.category} onChange={(event) => changeFilter("category", event.target.value)}>
+          <select disabled={!interactive || busy} value={filters.category} onChange={(event) => changeFilter("category", event.target.value)}>
             <option value="">Kõik tüübid</option>
             {categories.map((item) => <option key={item.value} value={item.value}>{item.value} ({item.count})</option>)}
           </select>
         </label>
         <label>
           <span>Aasta</span>
-          <select value={filters.year || ""} onChange={(event) => changeFilter("year", event.target.value)}>
+          <select disabled={!interactive || busy} value={filters.year || ""} onChange={(event) => changeFilter("year", event.target.value)}>
             <option value="">Kõik aastad</option>
             {years.map((item) => <option key={item.value} value={item.value}>{item.value} ({item.count})</option>)}
           </select>
         </label>
         <label>
           <span>Järjestus</span>
-          <select value={filters.sort} onChange={(event) => changeFilter("sort", event.target.value)}>
+          <select disabled={!interactive || busy} value={filters.sort} onChange={(event) => changeFilter("sort", event.target.value)}>
             <option value="relevance">Asjakohasemad enne</option>
             <option value="newest">Uuemad asjakohased enne</option>
           </select>
         </label>
-        {hasActiveFilters ? <button className="filters-reset" onClick={() => onFilters(DEFAULT_SEARCH_FILTERS)} type="button">Lähtesta</button> : null}
+        {hasActiveFilters ? <button className="filters-reset" disabled={!interactive || busy} onClick={() => onFilters(DEFAULT_SEARCH_FILTERS)} type="button">Lähtesta</button> : null}
       </div>
       {error ? <div className="broad-results__error" role="alert">{error}</div> : null}
       {busy ? <div className="broad-results__loading" role="status"><LoaderCircle className="spin" size={20} /> Laadin tulemusi …</div> : null}
@@ -882,34 +907,51 @@ function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRe
       {!busy && !error && total === 0 ? <p className="broad-results__empty">Laiast indeksist vasteid ei leitud.</p> : null}
       {pageCount > 1 ? (
         <nav className="results-pagination" aria-label="Otsingutulemuste lehed">
-          <button disabled={busy || current <= 1} onClick={() => onPage(current - 1)} type="button"><ArrowLeft size={15} /> Eelmine</button>
+          <button disabled={!interactive || busy || current <= 1} onClick={() => onPage(current - 1)} type="button"><ArrowLeft size={15} /> Eelmine</button>
           <div>
             {pages.map((page, index) => (
               <span key={page}>
                 {index > 0 && page - pages[index - 1] > 1 ? <i aria-hidden="true">…</i> : null}
-                <button aria-current={page === current ? "page" : undefined} disabled={busy || page === current} onClick={() => onPage(page)} type="button">{page}</button>
+                <button aria-current={page === current ? "page" : undefined} disabled={!interactive || busy || page === current} onClick={() => onPage(page)} type="button">{page}</button>
               </span>
             ))}
           </div>
-          <button disabled={busy || current >= pageCount} onClick={() => onPage(current + 1)} type="button">Järgmine <ArrowRight size={15} /></button>
+          <button disabled={!interactive || busy || current >= pageCount} onClick={() => onPage(current + 1)} type="button">Järgmine <ArrowRight size={15} /></button>
         </nav>
       ) : null}
     </section>
   );
 }
 
-function SearchResults({ result, query, busy, error, onSearch, onHome }) {
+function SearchLoadingSkeleton({ resultsReady = false }) {
+  return (
+    <section aria-hidden="true" className="search-skeleton">
+      <div className="search-skeleton__status"><LoaderCircle className="spin" size={18} /><span>{resultsReady ? "Tulemused on valmis, koostan koondvastust …" : "Otsin asjakohaseid ametlikke allikaid …"}</span></div>
+      <div aria-hidden="true" className="search-skeleton__answer">
+        <span className="skeleton-line skeleton-line--label" />
+        <span className="skeleton-line skeleton-line--title" />
+        <span className="skeleton-line skeleton-line--wide" />
+        <span className="skeleton-line skeleton-line--medium" />
+        <div className="search-skeleton__citations"><span /><span /><span /></div>
+      </div>
+    </section>
+  );
+}
+
+function SearchResults({ result, query, busy, error, onSearch, onHome, previewListing }) {
   const hasResult = Boolean(result?.answer);
   const [showAllSources, setShowAllSources] = useState(false);
-  const [listing, setListing] = useState(result?.searchResults || null);
+  const [listing, setListing] = useState(result?.searchResults || previewListing || null);
   const [listingBusy, setListingBusy] = useState(false);
   const [listingError, setListingError] = useState("");
   const [followUps, setFollowUps] = useState([]);
   const [followUpValue, setFollowUpValue] = useState("");
   const [followUpBusy, setFollowUpBusy] = useState(false);
+  const [pendingFollowUpQuestion, setPendingFollowUpQuestion] = useState("");
   const [followUpError, setFollowUpError] = useState("");
   const headingRef = useRef(null);
   const listingHeadingRef = useRef(null);
+  const followUpInputRef = useRef(null);
   const listingRequestRef = useRef({ id: 0, controller: null });
   const followUpRequestRef = useRef({ id: 0, controller: null });
   const sourcesListId = useId();
@@ -917,17 +959,18 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
   useEffect(() => {
     listingRequestRef.current.controller?.abort();
     listingRequestRef.current = { id: listingRequestRef.current.id + 1, controller: null };
-    setListing(result?.searchResults || null);
+    setListing(result?.searchResults || previewListing || null);
     setListingBusy(false);
     setListingError("");
     return () => listingRequestRef.current.controller?.abort();
-  }, [result?.query, result?.searchResults]);
+  }, [previewListing, result?.query, result?.searchResults]);
   useEffect(() => {
     followUpRequestRef.current.controller?.abort();
     followUpRequestRef.current = { id: followUpRequestRef.current.id + 1, controller: null };
     setFollowUps([]);
     setFollowUpValue("");
     setFollowUpBusy(false);
+    setPendingFollowUpQuestion("");
     setFollowUpError("");
     return () => followUpRequestRef.current.controller?.abort();
   }, [result?.generatedAt, result?.query]);
@@ -998,12 +1041,13 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
   };
   const askFollowUp = async (questionValue) => {
     const cleanQuestion = String(questionValue || followUpValue).replace(/\s+/gu, " ").trim();
-    if (!cleanQuestion || followUpBusy || followUps.length >= 4) return;
+    if (!cleanQuestion || busy || followUpBusy || followUps.length >= 4) return;
     followUpRequestRef.current.controller?.abort();
     const id = followUpRequestRef.current.id + 1;
     const controller = new AbortController();
     followUpRequestRef.current = { id, controller };
     setFollowUpBusy(true);
+    setPendingFollowUpQuestion(cleanQuestion);
     setFollowUpError("");
     setFollowUpValue("");
     try {
@@ -1026,17 +1070,19 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
       if (followUpLoadError.name === "AbortError" || followUpRequestRef.current.id !== id) return;
       setFollowUpValue(cleanQuestion);
       setFollowUpError(followUpLoadError.message || "Jätkuküsimusele ei saanud vastata.");
+      window.requestAnimationFrame(() => followUpInputRef.current?.focus());
     } finally {
       if (followUpRequestRef.current.id === id) {
         followUpRequestRef.current = { id, controller: null };
         setFollowUpBusy(false);
+        setPendingFollowUpQuestion("");
       }
     }
   };
   return (
     <main className="search-page" id="main-content">
       <div aria-atomic="true" aria-live="polite" className="sr-only">
-        {busy ? "Koostan vastust." : error ? "Otsing ebaõnnestus." : hasResult ? `Vastus valmis: ${result.answer.title}` : ""}
+        {busy ? (previewListing ? "Otsingutulemused on valmis. Koostan koondvastust." : "Otsin asjakohaseid ametlikke allikaid.") : ""}
       </div>
       <div className="search-page__header">
         <div className="shell search-results-shell">
@@ -1045,24 +1091,23 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
         </div>
       </div>
       <div className="shell search-results-shell search-page__content">
-        {busy ? (
-          <div className="search-state" role="status"><LoaderCircle className="spin" size={28} /><h1>Koostan vastust …</h1><p>Loen ametlikke allikaid ja kontrollin viiteid.</p></div>
-        ) : null}
+        {busy && !hasResult ? <SearchLoadingSkeleton resultsReady={Boolean(previewListing)} /> : null}
         {error ? <div className="search-error" role="alert"><CircleHelp size={22} /><div><strong>Otsingut ei saanud lõpetada</strong><p>{error}</p></div></div> : null}
-        {!busy && hasResult ? (
+        {hasResult ? (
           <>
             <article className="answer-card">
+              {busy ? <div className="answer-progress"><LoaderCircle className="spin" size={16} /> Kontrollin veel AI-sõnastust …</div> : null}
               <div className="answer-label"><Sparkles size={17} /><span>{result.answer.eyebrow || "AI koondvastus"}</span></div>
               <h1 ref={headingRef} tabIndex={-1}>{result.answer.title}</h1>
               <p className="answer-intro">
                 {result.answer.intro}{" "}
-                {(result.answer.introCitations || []).map((citation) => <Citation key={citation} number={citation} onNavigate={revealCitation} />)}
+                {(result.answer.introCitations || []).map((citation) => <Citation key={citation} number={citation} onNavigate={revealCitation} sources={result.sources} />)}
               </p>
               <div className="answer-parts">
                 {(result.answer.parts || []).map((part, index) => (
                   <section key={index}>
                     {part.title ? <h2>{part.title}</h2> : null}
-                    <p>{part.text} {(part.citations || []).map((citation) => <Citation key={citation} number={citation} onNavigate={revealCitation} />)}</p>
+                    <p>{part.text} {(part.citations || []).map((citation) => <Citation key={citation} number={citation} onNavigate={revealCitation} sources={result.sources} />)}</p>
                   </section>
                 ))}
               </div>
@@ -1074,7 +1119,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
                 </div>
               ) : null}
               <div className="answer-followup">
-                {followUps.length ? <div className="followup-thread" aria-live="polite">
+                {followUps.length || pendingFollowUpQuestion ? <div className="followup-thread">
                   {followUps.map((turn, turnIndex) => {
                     const prefix = `followup-${turnIndex + 1}-source`;
                     return (
@@ -1083,9 +1128,9 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
                         <div className="followup-answer">
                           <span>Koondvastus</span>
                           <h2 id={`followup-${turnIndex + 1}-title`} tabIndex={-1}>{turn.result.answer.title}</h2>
-                          <p>{turn.result.answer.intro}{" "}{(turn.result.answer.introCitations || []).map((citation) => <Citation key={citation} number={citation} onNavigate={revealCitation} targetPrefix={prefix} />)}</p>
+                          <p>{turn.result.answer.intro}{" "}{(turn.result.answer.introCitations || []).map((citation) => <Citation key={citation} number={citation} onNavigate={revealCitation} sources={turn.result.sources} targetPrefix={prefix} />)}</p>
                           {(turn.result.answer.parts || []).map((part, partIndex) => (
-                            <p key={partIndex}>{part.text}{" "}{(part.citations || []).map((citation) => <Citation key={citation} number={citation} onNavigate={revealCitation} targetPrefix={prefix} />)}</p>
+                            <p key={partIndex}>{part.text}{" "}{(part.citations || []).map((citation) => <Citation key={citation} number={citation} onNavigate={revealCitation} sources={turn.result.sources} targetPrefix={prefix} />)}</p>
                           ))}
                           {turn.result.sources?.length ? <div className="followup-sources" aria-label={`Jätkuvastuse ${turnIndex + 1} allikad`}>
                             {turn.result.sources.map((source) => (
@@ -1098,21 +1143,33 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
                       </section>
                     );
                   })}
+                  {pendingFollowUpQuestion ? (
+                    <section aria-busy="true" className="followup-turn followup-turn--pending">
+                      <div className="followup-question"><span>Teie</span><p>{pendingFollowUpQuestion}</p></div>
+                      <div aria-hidden="true" className="followup-answer followup-answer--skeleton">
+                        <span>Koondvastus</span>
+                        <i className="skeleton-line skeleton-line--medium" />
+                        <i className="skeleton-line skeleton-line--wide" />
+                        <i className="skeleton-line skeleton-line--short" />
+                      </div>
+                    </section>
+                  ) : null}
                 </div> : null}
                 <form className="followup-form" onSubmit={(event) => { event.preventDefault(); askFollowUp(); }}>
                   <label htmlFor="answer-followup-input">Küsi selle vastuse kohta</label>
                   <div>
                     <input
                       autoComplete="off"
-                      disabled={followUpBusy || followUps.length >= 4}
+                      disabled={busy || followUpBusy || followUps.length >= 4}
                       id="answer-followup-input"
                       maxLength={180}
                       onChange={(event) => setFollowUpValue(event.target.value)}
                       placeholder={followUps.length >= 4 ? "Alusta uue otsinguga, et teemat jätkata" : "Näiteks: mida see viimase viie aasta jooksul tähendab?"}
                       type="text"
+                      ref={followUpInputRef}
                       value={followUpValue}
                     />
-                    <button aria-label="Saada jätkuküsimus" disabled={followUpBusy || !followUpValue.trim() || followUps.length >= 4} type="submit">
+                    <button aria-label="Saada jätkuküsimus" disabled={busy || followUpBusy || !followUpValue.trim() || followUps.length >= 4} type="submit">
                       {followUpBusy ? <LoaderCircle className="spin" size={18} /> : <ArrowRight size={18} />}
                     </button>
                   </div>
@@ -1157,7 +1214,8 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
               busy={listingBusy}
               error={listingError}
               headingRef={listingHeadingRef}
-              listing={listing}
+              interactive={!busy}
+              listing={listing || result?.searchResults || previewListing}
               onFilters={applyFilters}
               onPage={loadListingPage}
             />
@@ -1165,10 +1223,22 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
             {result.related?.length ? (
               <section className="related-section">
                 <h2>Küsi veel</h2>
-                <div>{result.related.map((item) => <button disabled={followUpBusy || followUps.length >= 4} key={item} onClick={() => askFollowUp(item)} type="button">{item}<ArrowRight size={16} /></button>)}</div>
+                <p>Vali küsimus—otsin sellele uued allikad ja seon vastuse praeguse teemaga.</p>
+                <div>{result.related.map((item) => <button disabled={busy || followUpBusy || followUps.length >= 4} key={item} onClick={() => askFollowUp(item)} type="button">{item}<ArrowRight size={16} /></button>)}</div>
               </section>
             ) : null}
           </>
+        ) : null}
+        {!hasResult && previewListing ? (
+          <BroadSearchResults
+            busy={false}
+            error=""
+            headingRef={listingHeadingRef}
+            interactive={!busy}
+            listing={listing || previewListing}
+            onFilters={applyFilters}
+            onPage={loadListingPage}
+          />
         ) : null}
       </div>
     </main>
@@ -1312,6 +1382,7 @@ export function App() {
   const [view, setView] = useState(window.location.pathname.startsWith("/otsi") && initialNavigation.query ? "search" : "home");
   const [query, setQuery] = useState(initialNavigation.query);
   const [result, setResult] = useState(null);
+  const [previewListing, setPreviewListing] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const searchRequestRef = useRef({ id: 0, controller: null });
@@ -1330,27 +1401,45 @@ export function App() {
     searchRequestRef.current = { id: requestId, controller };
     setQuery(clean);
     setView("search");
+    setResult(null);
+    setPreviewListing(null);
     setBusy(true);
     setError("");
     if (pushState) {
       window.history.pushState({ practiceSearchId: rememberNavigationSearch(clean, filters) }, "", "/otsi");
     }
     window.scrollTo({ top: 0, behavior: pushState ? "smooth" : "auto" });
+    let latestListing = null;
+    let latestSafeResult = null;
     try {
-      const response = await fetch("/api/search", {
+      const response = await fetch("/api/search/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestPayload),
         signal: controller.signal,
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Otsing ei vastanud.");
-      if (searchRequestRef.current.id !== requestId) return;
-      setResult(data);
+      await readSearchStream(response, (event) => {
+        if (searchRequestRef.current.id !== requestId) return;
+        if (event.type === "results") {
+          latestListing = event.searchResults;
+          setPreviewListing(event.searchResults);
+          return;
+        }
+        const nextResult = event.result;
+        latestSafeResult = nextResult;
+        latestListing = nextResult.searchResults || latestListing;
+        setPreviewListing(latestListing || null);
+        setResult(nextResult);
+      });
     } catch (searchError) {
       if (searchError.name === "AbortError" || searchRequestRef.current.id !== requestId) return;
-      setResult(null);
-      setError(searchError.message || "Serveriga ei saanud ühendust.");
+      if (latestSafeResult) setResult(latestSafeResult);
+      if (latestListing) setPreviewListing(latestListing);
+      setError(latestSafeResult
+        ? "Lõpliku sõnastuse voog katkes. Kuvan kontrollitud esialgset vastust ja juba leitud allikaid."
+        : latestListing
+          ? "Koondvastuse voog katkes. Juba leitud otsingutulemused on endiselt saadaval."
+          : searchError.message || "Serveriga ei saanud ühendust.");
     } finally {
       if (searchRequestRef.current.id === requestId) {
         searchRequestRef.current = { id: requestId, controller: null };
@@ -1379,6 +1468,7 @@ export function App() {
         searchRequestRef.current.controller?.abort();
         searchRequestRef.current = { id: searchRequestRef.current.id + 1, controller: null };
         setBusy(false);
+        setPreviewListing(null);
         document.title = "Keskkonnaportaali praktika";
       }
     };
@@ -1400,6 +1490,7 @@ export function App() {
     setView("home");
     setQuery("");
     setResult(null);
+    setPreviewListing(null);
     setError("");
     setBusy(false);
     document.title = "Keskkonnaportaali praktika";
@@ -1420,7 +1511,7 @@ export function App() {
     <>
       <Header compact={view === "search"} onRevealSearch={revealHomeSearch} />
       {view === "search" ? (
-        <SearchResults busy={busy} error={error} onHome={goHome} onSearch={performSearch} query={query} result={result} />
+        <SearchResults busy={busy} error={error} onHome={goHome} onSearch={performSearch} previewListing={previewListing} query={query} result={result} />
       ) : (
         <Home busy={busy} onSearch={performSearch} searchInputRef={homeSearchInputRef} />
       )}

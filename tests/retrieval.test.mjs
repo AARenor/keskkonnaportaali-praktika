@@ -60,6 +60,10 @@ test("official discovery expands Estonian intent without keeping pronouns as ran
     ["vanus", "mets", "osakaal", "muutus"],
   );
   assert.deepEqual(
+    queryTerms("Kas raiemaht ületab juurdekasvu?"),
+    ["raie", "uletamine", "juurdekasv"],
+  );
+  assert.deepEqual(
     queryTerms("Eesti kasvuhoonegaaside heide 2022"),
     ["kasvuhoonegaas", "heide"],
   );
@@ -455,6 +459,15 @@ test("a broad topic starts with its maintained overview instead of a keyword-hea
   assert.equal(ranked[1].id, "forest-catalogue");
 });
 
+test("a multi-format forest discovery intent starts with the maintained catalogue", () => {
+  const ranked = rankSearchCandidates(
+    "Metsanduse andmestikud, väljaanded ja kaardid ühest kohast",
+    officialServiceCatalogueDocuments(),
+    { now: NOW },
+  );
+  assert.equal(ranked[0].id, "forest-catalogue");
+});
+
 test("relevance ranking puts the exact current harvest claim above scattered keyword matches", () => {
   const ranked = rankSearchCandidates("raiemaht tulevikus", [
     official({
@@ -488,6 +501,36 @@ test("relevance ranking puts the exact current harvest claim above scattered key
     }),
   ], { now: NOW, sort: "newest" });
   assert.equal(newest[0].id, "current");
+});
+
+test("current structured harvest balance sources outrank an old policy quote", () => {
+  const query = "Kas raiemaht ületab juurdekasvu?";
+  const oldPolicy = official({
+    id: "old-policy-quote",
+    title: "Metsanduse arengukava pikendamine",
+    published: "17.09.2020",
+    summary: "Metsaseadus lubab piiranguid, kui raiemaht ületab majandatava metsa juurdekasvu.",
+  });
+  const eurostat = official({
+    id: "forest-balance-eurostat",
+    title: "Eesti raiemaht ja netojuurdekasv Eurostati metsa arvepidamises",
+    organization: "Eurostat",
+    published: "20.03.2026",
+    url: "https://ec.europa.eu/eurostat/forest-balance",
+    summary: "2023. aastal ületas raiemaht 11,564 miljoni m³ juures netojuurdekasvu 9,1 miljonit m³.",
+  });
+  const methodology = official({
+    id: "forest-balance-kaur-methodology",
+    title: "Netojuurdekasvu ja raie tasakaal",
+    published: "09.04.2026",
+    url: "https://keskkonnaagentuur.ee/node/2720",
+    summary: "Keskkonnaagentuuri analüüs võrdleb raiemahtu ja netojuurdekasvu pika perioodi jooksul.",
+  });
+  const ranked = rankSearchCandidates(query, [oldPolicy, methodology, eurostat], { now: NOW });
+  assert.deepEqual(ranked.slice(0, 2).map((document) => document.id), [
+    "forest-balance-eurostat",
+    "forest-balance-kaur-methodology",
+  ]);
 });
 
 test("observed forest-age trend outranks an older document with scattered forest words", () => {
@@ -656,6 +699,14 @@ test("follow-up retrieval context is bounded and keeps only recent questions", (
       [],
     ),
     "Mida tähendab, et vana ja noore metsa pindala kasvas korraga?",
+  );
+  assert.equal(
+    contextualRetrievalQuery(
+      "Kas raiemaht ületab juurdekasvu?",
+      "Mida see viimase 5 aasta jooksul tähendab",
+      [],
+    ),
+    "Mida see viimase 5 aasta jooksul tähendab Kas raiemaht ületab juurdekasvu?",
   );
 });
 

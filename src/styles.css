@@ -1,12 +1,4 @@
 @font-face {
-  font-family: "Rubik Local";
-  src: url("/assets/rubik.woff2") format("woff2");
-  font-display: swap;
-  font-style: normal;
-  font-weight: 300 900;
-}
-
-@font-face {
   font-family: "Roboto Local";
   src: url("/assets/roboto.woff2") format("woff2");
   font-display: swap;
@@ -59,7 +51,9 @@ body.menu-locked {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
@@ -88,7 +82,7 @@ p {
 h1,
 h2,
 h3 {
-  font-family: "Rubik Local", Rubik, Arial, sans-serif;
+  font-family: "Roboto Local", Roboto, Arial, sans-serif;
 }
 
 :focus-visible {
@@ -133,7 +127,7 @@ h3 {
 
 .eyebrow {
   color: var(--brand-700);
-  font-family: "Rubik Local", Rubik, sans-serif;
+  font-family: "Roboto Local", Roboto, sans-serif;
   font-size: 0.77rem;
   font-weight: 700;
   letter-spacing: 0.075em;
@@ -227,7 +221,7 @@ h3 {
   border: 1px solid rgba(255, 255, 255, 0.45);
   border-radius: 999px;
   color: #d9f4ff;
-  font-family: "Rubik Local", sans-serif;
+  font-family: "Roboto Local", Roboto, sans-serif;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -285,7 +279,7 @@ h3 {
   padding: 0 2px;
   background: none;
   color: #fff;
-  font-family: "Rubik Local", Rubik, sans-serif;
+  font-family: "Roboto Local", Roboto, sans-serif;
   font-size: 1rem;
   font-weight: 500;
   cursor: pointer;
@@ -416,7 +410,7 @@ h3 {
 
 .hero__subtitle {
   margin-bottom: 39px;
-  font-family: "Rubik Local", Rubik, sans-serif;
+  font-family: "Roboto Local", Roboto, sans-serif;
   font-size: clamp(1.6rem, 2.4vw, 2.15rem);
   line-height: 1.2;
 }
@@ -611,7 +605,7 @@ h3 {
   z-index: 1;
   max-width: 90%;
   margin-top: 62px;
-  font-family: "Rubik Local", sans-serif;
+  font-family: "Roboto Local", Roboto, sans-serif;
   font-size: 1.08rem;
   font-weight: 500;
   line-height: 1.42;
@@ -947,7 +941,7 @@ h3 {
 }
 
 .event-date strong {
-  font-family: "Rubik Local", sans-serif;
+  font-family: "Roboto Local", Roboto, sans-serif;
   font-size: 2.1rem;
   font-weight: 400;
 }
@@ -1032,7 +1026,7 @@ h3 {
   padding: 20px;
   background: #edf0c9;
   color: #3d6955;
-  font-family: "Rubik Local", sans-serif;
+  font-family: "Roboto Local", Roboto, sans-serif;
   font-weight: 600;
   line-height: 1.4;
 }
@@ -1092,7 +1086,7 @@ h3 {
   width: max-content;
   padding-bottom: 8px;
   border-bottom: 3px solid var(--cyan);
-  font-family: "Rubik Local", sans-serif;
+  font-family: "Roboto Local", Roboto, sans-serif;
   font-size: 1.16rem;
   font-weight: 500;
   text-transform: uppercase;
@@ -1382,25 +1376,6 @@ h3 {
   line-height: 1.62;
 }
 
-.citation {
-  display: inline-grid;
-  width: 22px;
-  height: 22px;
-  place-items: center;
-  margin-left: 3px;
-  border-radius: 5px;
-  background: var(--brand-100);
-  color: var(--brand-800);
-  font-size: 0.72rem;
-  font-weight: 800;
-  vertical-align: super;
-}
-
-.citation:hover {
-  background: var(--brand-700);
-  color: #fff;
-}
-
 .answer-note {
   display: flex;
   align-items: flex-start;
@@ -1524,7 +1499,7 @@ h3 {
   border-radius: 4px;
   background: var(--brand-900);
   color: #fff;
-  font-family: "Rubik Local", sans-serif;
+  font-family: "Roboto Local", Roboto, sans-serif;
   font-weight: 700;
 }
 
@@ -1584,7 +1559,7 @@ h3 {
   cursor: pointer;
 }
 
-.related-section button:hover {
+.related-section button:hover:not(:disabled) {
   background: var(--brand-100);
 }
 
@@ -1651,6 +1626,71 @@ h3 {
   padding-top: 38px;
 }
 
+.search-skeleton {
+  max-width: 780px;
+  margin-bottom: 30px;
+}
+
+.search-skeleton__status,
+.answer-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #526872;
+  font-size: 0.86rem;
+  font-weight: 650;
+}
+
+.search-skeleton__status {
+  margin-bottom: 17px;
+}
+
+.search-skeleton__answer {
+  display: grid;
+  gap: 11px;
+  border: 1px solid #dce7eb;
+  border-radius: 12px;
+  padding: 22px;
+  background: #fbfdfe;
+}
+
+.skeleton-line,
+.search-skeleton__citations span {
+  display: block;
+  overflow: hidden;
+  border-radius: 999px;
+  background: linear-gradient(100deg, #e7eef1 24%, #f8fbfc 40%, #e7eef1 56%);
+  background-size: 320% 100%;
+  animation: skeleton-shimmer 1.35s ease-in-out infinite;
+}
+
+.skeleton-line {
+  width: 100%;
+  height: 12px;
+}
+
+.skeleton-line--label { width: 22%; height: 9px; }
+.skeleton-line--title { width: 68%; height: 21px; margin-bottom: 3px; }
+.skeleton-line--wide { width: 94%; }
+.skeleton-line--medium { width: 73%; }
+.skeleton-line--short { width: 48%; }
+
+.search-skeleton__citations {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.search-skeleton__citations span {
+  width: 78px;
+  height: 24px;
+}
+
+@keyframes skeleton-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: 0 0; }
+}
+
 .search-state {
   min-height: 340px;
 }
@@ -1678,7 +1718,7 @@ h3 {
   gap: 7px;
   margin-bottom: 12px;
   color: var(--brand-700);
-  font-family: "Rubik Local", Rubik, sans-serif;
+  font-family: "Roboto Local", Roboto, sans-serif;
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.045em;
@@ -1691,11 +1731,6 @@ h3 {
   color: #1f3847;
   font-size: clamp(1.2rem, 2vw, 1.38rem);
   line-height: 1.35;
-}
-
-.answer-card > h1:focus {
-  outline: 0;
-  box-shadow: none;
 }
 
 .answer-intro {
@@ -1735,10 +1770,62 @@ h3 {
 }
 
 .citation {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
+  display: inline-flex;
+  width: auto;
+  min-height: 23px;
+  height: auto;
+  align-items: center;
+  gap: 4px;
+  margin: 0 2px;
+  border: 1px solid #bcdce8;
+  border-radius: 999px;
+  padding: 2px 7px 2px 4px;
+  background: #eef8fc;
+  color: #004a7d;
   font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1;
+  text-decoration: none;
+  vertical-align: 0.12em;
+  white-space: nowrap;
+}
+
+.citation:hover {
+  background: var(--brand-700);
+  color: #fff;
+}
+
+.citation > span:first-child {
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  border-radius: 50%;
+  background: #d4edf6;
+  color: #003b66;
+  flex: 0 0 auto;
+}
+
+.citation > span:last-child {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.citation:hover > span:first-child {
+  background: #fff;
+  color: var(--brand-900);
+}
+
+.answer-progress {
+  width: max-content;
+  max-width: 100%;
+  margin-bottom: 13px;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: #eef7fa;
+  color: #315f73;
+  font-size: 0.78rem;
 }
 
 .answer-note {
@@ -1766,7 +1853,7 @@ h3 {
 
 .answer-clarification strong {
   color: var(--brand-900);
-  font-family: "Rubik Local", Rubik, sans-serif;
+  font-family: "Roboto Local", Roboto, sans-serif;
   font-size: 0.87rem;
 }
 
@@ -1827,6 +1914,7 @@ h3 {
   color: #304854;
   font-size: 0.94rem;
   line-height: 1.58;
+  overflow-wrap: anywhere;
 }
 
 .followup-answer p + p {
@@ -1838,6 +1926,20 @@ h3 {
   color: #294453;
   font-size: 0.98rem;
   line-height: 1.4;
+}
+
+.followup-answer--skeleton {
+  display: grid;
+  gap: 10px;
+  min-height: 126px;
+}
+
+.followup-answer--skeleton > span {
+  margin-bottom: 1px;
+}
+
+.followup-answer--skeleton .skeleton-line {
+  margin: 0;
 }
 
 .followup-sources {
@@ -2090,10 +2192,6 @@ h3 {
   font-size: 1.35rem;
 }
 
-.broad-results__heading h2:focus {
-  outline: 0;
-}
-
 .broad-results__heading p {
   margin: 6px 0 0;
   color: #526872;
@@ -2110,7 +2208,7 @@ h3 {
   padding: 0 12px;
   background: #eaf4f7;
   color: #24556d;
-  font-family: "Rubik Local", Rubik, sans-serif;
+  font-family: "Roboto Local", Roboto, sans-serif;
   font-size: 0.94rem;
 }
 
@@ -2162,6 +2260,26 @@ h3 {
   font-size: 0.78rem;
   font-weight: 750;
   white-space: nowrap;
+}
+
+.search-filters select:disabled,
+.filters-reset:disabled,
+.related-section button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.related-section button:disabled {
+  background: #fff;
+}
+
+.answer-card > h1:focus,
+.broad-results__heading h2:focus,
+.followup-answer > h2:focus {
+  border-radius: 3px;
+  outline: 3px solid #006a96;
+  outline-offset: 4px;
+  box-shadow: 0 0 0 6px #fff;
 }
 
 .broad-results__list {
@@ -2301,6 +2419,13 @@ h3 {
   padding-top: 44px;
 }
 
+.related-section > p {
+  margin: 7px 0 0;
+  color: #5a6f7a;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
 .related-section > div {
   gap: 8px;
   margin-top: 14px;
@@ -2351,7 +2476,7 @@ h3 {
 }
 
 .tp-header strong {
-  font-family: "Rubik Local", sans-serif;
+  font-family: "Roboto Local", Roboto, sans-serif;
   font-size: 1.18rem;
   letter-spacing: -0.02em;
   text-transform: lowercase;
@@ -2911,7 +3036,7 @@ h3 {
     padding: 0 20px;
     background: var(--brand-900);
     color: #fff;
-    font-family: "Rubik Local", sans-serif;
+    font-family: "Roboto Local", Roboto, sans-serif;
     font-weight: 700;
   }
 
@@ -2931,7 +3056,7 @@ h3 {
     border-bottom: 1px solid #dae2e6;
     padding: 0 21px;
     color: var(--brand-900);
-    font-family: "Rubik Local", sans-serif;
+    font-family: "Roboto Local", Roboto, sans-serif;
     font-weight: 600;
   }
 
@@ -3344,6 +3469,10 @@ h3 {
   .answer-intro,
   .answer-parts p {
     font-size: 0.94rem;
+  }
+
+  .citation > span:last-child {
+    max-width: 88px;
   }
 
   .search-filters {

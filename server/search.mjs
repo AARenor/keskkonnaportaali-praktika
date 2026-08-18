@@ -631,6 +631,8 @@ const STOP_WORDS = new Set([
   "vanu",
   "mida",
   "tahendab",
+  "viimase",
+  "jooksul",
   "kui",
   "suur",
   "suured",
@@ -737,6 +739,8 @@ function topicRoot(word) {
   if (word.startsWith("kasvuhoonegaas") || word === "khg") return "kasvuhoonegaas";
   if (word.startsWith("mets")) return "mets";
   if (word.startsWith("rai")) return "raie";
+  if (word.startsWith("netojuurdekasv") || word.startsWith("juurdekasv")) return "juurdekasv";
+  if (word.startsWith("ulet")) return "uletamine";
   if (word.startsWith("noor")) return "noor";
   if (word.startsWith("vanus") || word.startsWith("vanamets") || word.startsWith("keskeal")) return "vanus";
   if (word.startsWith("osakaal")) return "osakaal";
@@ -835,6 +839,8 @@ export function queryTerms(query) {
 
 export function queryRootVariants(root) {
   if (root === "raie") return ["rai"];
+  if (root === "juurdekasv") return ["juurdekasv", "netojuurdekasv"];
+  if (root === "uletamine") return ["ulet", "suurem", "rohkem"];
   if (root === "noor") return ["noor", "vanus", "vanuse", "vanem", "keskeal"];
   if (root === "vanus") return ["vanus", "vana", "noor", "keskeal"];
   if (root === "muutus") return ["muut", "trend", "suuren", "vahen", "kahan", "lang", "pusi"];

@@ -28,6 +28,9 @@ const OFFICIAL_HOSTS = new Set([
   "tallinn.ee",
   "www.tallinn.ee",
   "tableau.envir.ee",
+  "ec.europa.eu",
+  "foresteurope.org",
+  "www.foresteurope.org",
   "eea.europa.eu",
   "www.eea.europa.eu",
 ]);
@@ -127,6 +130,13 @@ export async function readBoundedResponseText(response, maximumBytes = MAX_UPSTR
   return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8");
 }
 
+function throwIfRequestAborted(signal) {
+  if (!signal?.aborted) return;
+  throw signal.reason instanceof Error
+    ? signal.reason
+    : new DOMException("The operation was aborted", "AbortError");
+}
+
 async function fetchCached(url, {
   accept,
   ttlMs = 5 * 60_000,
@@ -134,6 +144,7 @@ async function fetchCached(url, {
   timeoutMs = 7_000,
   signal: externalSignal,
 } = {}) {
+  throwIfRequestAborted(externalSignal);
   const now = Date.now();
   const cached = responseCache.get(url);
   if (cached && now - cached.savedAt < ttlMs) return { body: cached.body, cache: "hit", stale: false };
@@ -157,6 +168,7 @@ async function fetchCached(url, {
     cacheResponse(url, body);
     return { body, cache: "miss", stale: false };
   } catch (error) {
+    throwIfRequestAborted(externalSignal);
     if (cached && now - cached.savedAt < staleMs) return { body: cached.body, cache: "stale", stale: true };
     throw error;
   } finally {
@@ -168,6 +180,15 @@ export async function fetchOfficialDataset(url, options = {}) {
   return fetchCached(url, {
     ...options,
     accept: "text/csv,text/plain;q=0.9",
+    ttlMs: options.ttlMs ?? 15 * 60_000,
+    staleMs: options.staleMs ?? 24 * 60 * 60_000,
+  });
+}
+
+export async function fetchOfficialJsonDataset(url, options = {}) {
+  return fetchCached(url, {
+    ...options,
+    accept: "application/json",
     ttlMs: options.ttlMs ?? 15 * 60_000,
     staleMs: options.staleMs ?? 24 * 60 * 60_000,
   });
@@ -208,6 +229,7 @@ async function fetchVportalJson(url, origin, {
   timeoutMs = 4_500,
   signal: externalSignal,
 } = {}) {
+  throwIfRequestAborted(externalSignal);
   const cacheKey = `vportal:${url}`;
   const now = Date.now();
   const cached = responseCache.get(cacheKey);
@@ -269,6 +291,7 @@ async function fetchVportalJson(url, origin, {
     cacheResponse(cacheKey, body);
     return { payload, cache: "miss", stale: false };
   } catch (error) {
+    throwIfRequestAborted(externalSignal);
     if (cached && now - cached.savedAt < staleMs) {
       return { payload: JSON.parse(cached.body), cache: "stale", stale: true };
     }

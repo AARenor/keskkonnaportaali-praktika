@@ -56,6 +56,7 @@ import { requestRateLimitAddress } from "../server/security.mjs";
 import { publicDeploymentRevision } from "../server/version.mjs";
 import { safeExternalHref } from "../src/url-safety.js";
 import { suggestionsForValue } from "../src/search-suggestions.js";
+import { forestHarvestBalanceDocumentsFromJson } from "../server/indicators.mjs";
 
 test("PostgreSQL guard accepts a dedicated database and rejects Chatwoot", () => {
   assert.equal(
@@ -185,6 +186,59 @@ test("answer evidence does not displace the most relevant search result", async 
   assert.equal(draft.sources[0].id, "municipal-waste-recycling");
   assert.match(draft.answer.intro, /38%/u);
   assert.deepEqual(draft.answer.introCitations, [2]);
+});
+
+test("forest harvest draft answers the root and temporal follow-up from multiple visible sources", async () => {
+  const payload = {
+    id: ["freq", "stk_flow", "indic_fo", "unit", "geo", "time"],
+    size: [1, 2, 1, 1, 1, 5],
+    dimension: {
+      freq: { category: { index: { A: 0 } } },
+      stk_flow: { category: { index: { NAI: 0, RMOV: 1 } } },
+      indic_fo: { category: { index: { FOR: 0 } } },
+      unit: { category: { index: { THS_M3: 0 } } },
+      geo: { category: { index: { EE: 0 } } },
+      time: { category: { index: { 2020: 0, 2021: 1, 2022: 2, 2023: 3, 2024: 4 } } },
+    },
+    value: { 0: 14370.94, 2: 9100, 3: 9100, 5: 12179, 7: 12013, 8: 11564 },
+  };
+  const root = "Kas raiemaht ületab juurdekasvu?";
+  const documents = forestHarvestBalanceDocumentsFromJson(root, payload);
+  const rootDraft = await createPortalDraft(root, {
+    deadlineAt: Date.now(),
+    searchResults: { total: documents.length, items: documents },
+  });
+  assert.equal(rootDraft.evidence.kind, "structured-forest-balance");
+  assert.deepEqual(rootDraft.sources.slice(0, 3).map((source) => source.id), [
+    "forest-balance-eurostat",
+    "forest-balance-eurostat-handbook",
+    "forest-balance-kaur-methodology",
+  ]);
+  assert.match(rootDraft.answer.intro, /11,6 miljonit m³ koorega/u);
+  assert.ok(new Set([
+    ...rootDraft.answer.introCitations,
+    ...rootDraft.answer.parts.flatMap((part) => part.citations),
+  ]).size >= 4);
+  assert.equal(shouldGenerateGroundedAnswer(rootDraft), false);
+  let streamedDrafts = 0;
+  const rootResponse = await searchEnvironmentLive(root, {
+    deadlineAt: Date.now() + 1_000,
+    searchResults: { total: documents.length, items: documents },
+    onDraft: () => { streamedDrafts += 1; },
+  });
+  assert.equal(streamedDrafts, 0, "a deterministic answer must not emit an identical draft event");
+  assert.match(rootResponse.answer.intro, /11,6 miljonit m³ koorega/u);
+
+  const followQuestion = "Mida see viimase 5 aasta jooksul tähendab";
+  const retrievalQuery = `${followQuestion} ${root}`;
+  const followDraft = await createPortalDraft(followQuestion, {
+    retrievalQuery,
+    deadlineAt: Date.now(),
+    searchResults: { total: documents.length, items: documents },
+  });
+  assert.match(followDraft.answer.title, /viie võrdlusaasta/iu);
+  assert.match(followDraft.answer.intro, /2020: eemaldamine 12,2 ja netojuurdekasv 14,4/u);
+  assert.match(followDraft.answer.note, /Puuduvaid aastaid ei ole interpoleeritud/u);
 });
 
 test("LLM intent validation distinguishes a rate from a regulation", () => {

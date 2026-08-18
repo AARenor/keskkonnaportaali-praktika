@@ -5,6 +5,7 @@ import {
   hydrateOfficialDocuments,
 } from "./integrations.mjs";
 import { generateGroundedAnswer, sanitizeLlmEvidenceText } from "./llm.mjs";
+import { composeForestHarvestBalanceAnswer } from "./indicators.mjs";
 import {
   canonicalResultUrl,
   evidenceDocumentsFromListing,
@@ -24,7 +25,7 @@ import {
   textHasQueryRoot,
 } from "./search.mjs";
 
-export const SEARCH_RESPONSE_REVISION = "answer-v13-structured-indicators";
+export const SEARCH_RESPONSE_REVISION = "answer-v14-progressive-multisource";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 
 function rankPortalDocuments(query, documents) {
@@ -146,6 +147,7 @@ export async function createPortalDraft(query, {
     })
     : ranked.slice(0, 8);
   const reranked = rankPortalDocuments(retrievalQuery, hydrated);
+  const forestBalance = composeForestHarvestBalanceAnswer(retrievalQuery, reranked);
   const quality = assessEvidence(retrievalQuery, reranked);
   const direct = quality.strong
     ? reranked.find((document) => document.id === quality.directDocumentId)
@@ -154,16 +156,23 @@ export async function createPortalDraft(query, {
     ? reranked.findIndex((document) => document.id === direct.id) + 1
     : 0;
   const draft = composeSearchResponse(query, reranked, {
-    answerable: quality.strong,
-    clarification: quality.strong
+    answerable: Boolean(forestBalance) || quality.strong,
+    clarification: forestBalance || quality.strong
       ? null
       : "Leitud allikad ei kata küsimust piisavalt täpselt. Lisa konkreetne objekt, näitaja, piirkond või aasta.",
-    evidenceKind: quality.strong ? "ranked-search-results" : "insufficient-evidence",
+    evidenceKind: forestBalance
+      ? "structured-forest-balance"
+      : quality.strong ? "ranked-search-results" : "insufficient-evidence",
     limit: 8,
     quality,
     total: Number(listing.total || reranked.length),
   });
-  const directExtract = direct ? directEvidenceExtract(retrievalQuery, direct) : "";
+  if (forestBalance) {
+    draft.answer = forestBalance.answer;
+    draft.related = forestBalance.related;
+    draft.evidence.answerable = true;
+  }
+  const directExtract = !forestBalance && direct ? directEvidenceExtract(retrievalQuery, direct) : "";
   if (directExtract) {
     draft.answer.eyebrow = "Allikapõhine kokkuvõte";
     draft.answer.intro = directExtract;
@@ -213,6 +222,7 @@ async function searchWithinBudget(cleanQuery, {
   filters = {},
   conversationContext = "",
   useCache = true,
+  onDraft,
 }) {
   const defaultFilters = !filters?.category && !filters?.year
     && [undefined, "", "all"].includes(filters?.source)
@@ -222,7 +232,9 @@ async function searchWithinBudget(cleanQuery, {
   const listingBackedCache = cacheEnabled && Boolean(searchResults?.items?.length);
   if (listingBackedCache) {
     const cached = await readSearchCache(cleanQuery, cacheRevision);
-    if (cached && cachedSourcesBelongToListing(cached, searchResults)) return cached;
+    if (cached && cachedSourcesBelongToListing(cached, searchResults)) {
+      return cached;
+    }
   }
 
   const assessment = assessSearchQuery(assessmentQuery);
@@ -253,8 +265,12 @@ async function searchWithinBudget(cleanQuery, {
       searchResults,
     });
   }
+  draft.generatedAt = new Date().toISOString();
   const canGenerate = shouldGenerateGroundedAnswer(draft);
   const llmBudget = remainingBudget(deadlineAt, 300);
+  if (canGenerate && llmBudget >= 500 && typeof onDraft === "function") {
+    onDraft(publicResponse(draft));
+  }
   const llmResult = canGenerate && llmBudget >= 500
     ? await generateGroundedAnswer(cleanQuery, draft, {
       timeoutMs: llmBudget,
@@ -271,12 +287,15 @@ async function searchWithinBudget(cleanQuery, {
   const evidenceKind = draft.evidence?.kind;
   const spatialDegraded = evidenceKind === "official-spatial-snapshot"
     && Object.values(draft.evidence?.states || {}).some((state) => state === "unavailable");
+  const structuredStale = evidenceKind === "structured-forest-balance"
+    && draft.sources.some((source) => source._stale === true);
   const cacheResponse = llmResult.status === "ready"
     || evidenceKind === "safe-abstention"
     || evidenceKind === "needs-clarification"
     || evidenceKind === "official-live-routing"
+    || (evidenceKind === "structured-forest-balance" && !structuredStale)
     || (evidenceKind === "official-spatial-snapshot" && !spatialDegraded);
-  const ttlMinutes = evidenceKind === "official-live-routing" ? 5 : 20;
+  const ttlMinutes = ["official-live-routing", "structured-forest-balance"].includes(evidenceKind) ? 5 : 20;
 
   if (requestCanStillPersist({ signal, deadlineAt })) {
     void recordSearch({
@@ -366,7 +385,10 @@ export async function searchEnvironmentLive(query, options = {}) {
 
   const configuredDeadlineMs = Math.max(1_000, Math.min(Number(process.env.SEARCH_DEADLINE_MS) || DEFAULT_SEARCH_DEADLINE_MS, 15_000));
   const absoluteDeadline = Number(options.deadlineAt) || startedAt + configuredDeadlineMs;
-  const deadlineMs = Math.max(250, Math.min(configuredDeadlineMs, absoluteDeadline - Date.now()));
+  if (absoluteDeadline <= Date.now()) {
+    return searchTimeoutFallback(cleanQuery, options);
+  }
+  const deadlineMs = Math.max(1, Math.min(configuredDeadlineMs, absoluteDeadline - Date.now()));
   const controller = new AbortController();
   const signal = options.signal && typeof AbortSignal.any === "function"
     ? AbortSignal.any([controller.signal, options.signal])
@@ -381,6 +403,7 @@ export async function searchEnvironmentLive(query, options = {}) {
     filters: options.filters || {},
     conversationContext: options.conversationContext || "",
     useCache: options.useCache !== false,
+    onDraft: options.onDraft,
   }).catch(() => searchTimeoutFallback(cleanQuery, { ...options, reason: "source-error" }));
   return settleWithinDeadline(operation, deadlineMs, () => searchTimeoutFallback(cleanQuery, options), controller);
 }

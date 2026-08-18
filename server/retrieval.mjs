@@ -4,7 +4,7 @@ import {
   searchCorpus,
 } from "./corpus.mjs";
 import { searchOfficialSites } from "./integrations.mjs";
-import { loadStructuredIndicatorDocuments } from "./indicators.mjs";
+import { isForestHarvestBalanceQuery, loadStructuredIndicatorDocuments } from "./indicators.mjs";
 import {
   assessSearchQuery,
   buildDiscoveryQueries,
@@ -252,9 +252,19 @@ function serviceIntentPriority(query, roots, document) {
   const liveScore = liveServiceIntentScore(query, roots, document);
   const normalizedQuery = normalize(query);
   const requestsHistoricalYear = /\b(?:19|20)\d{2}\b/u.test(normalizedQuery);
+  if (isForestHarvestBalanceQuery(query)) {
+    if (document.id === "forest-balance-eurostat") return 6;
+    if (document.id === "forest-balance-eurostat-handbook") return 5.5;
+    if (document.id === "forest-balance-kaur-methodology") return 5;
+    if (document.id === "forest-balance-kaur-five-year") return 4;
+  }
   if (CADASTRE_PATTERN.test(query) && CADASTRE_SERVICE_IDS.has(document.id)) return 4;
   if (liveScore >= 60) return 3;
   if (liveScore > 0) return 2;
+  const requestsForestCatalogue = roots.includes("mets")
+    && roots.includes("kaart")
+    && roots.some((root) => root.startsWith("andmestik") || root.startsWith("valjaand"));
+  if (requestsForestCatalogue && document.id === "forest-catalogue") return 4;
   if (roots.includes("jaatmekaitluskoht") && document.id === "waste-facilities-map") return 3;
   if (roots.includes("mets") && roots.includes("mootmine") && document.id === "forest-overview") return 4;
   if (roots.includes("vesi") && roots.includes("seisund") && roots.includes("seire")

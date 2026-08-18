@@ -68,11 +68,14 @@ function getPool() {
   if (!databaseUrl) return null;
   if (!pool) {
     const poolMax = Math.max(4, Math.min(Number(process.env.DATABASE_POOL_MAX) || 12, 20));
+    const queryTimeoutMs = Math.max(500, Math.min(Number(process.env.DATABASE_QUERY_TIMEOUT_MS) || 4_000, 10_000));
     pool = new Pool({
       connectionString: databaseUrl,
       max: poolMax,
       connectionTimeoutMillis: 3_000,
       idleTimeoutMillis: 20_000,
+      query_timeout: queryTimeoutMs,
+      statement_timeout: queryTimeoutMs,
       ssl: String(process.env.DATABASE_SSL || "").toLowerCase() === "true" ? { rejectUnauthorized: false } : undefined,
     });
     pool.on("error", () => undefined);
