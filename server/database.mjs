@@ -178,6 +178,65 @@ export async function purgeExpiredSearchData() {
   }
 }
 
+export function persistenceWindowOpen({ signal, deadlineAt, now = Date.now(), reserveMs = 0 } = {}) {
+  return !signal?.aborted
+    && (!Number.isFinite(deadlineAt) || now + Math.max(0, Number(reserveMs) || 0) < deadlineAt);
+}
+
+function requirePersistenceWindow(options, reserveMs = 0) {
+  if (persistenceWindowOpen({ ...options, reserveMs })) return;
+  const error = new Error("Search persistence deadline expired");
+  error.name = "AbortError";
+  throw error;
+}
+
+export async function runSearchPersistenceTransaction(client, {
+  hash,
+  safeResponse,
+  cacheResponse,
+  ttlMinutes,
+  answerProvider,
+  response,
+  durationMs,
+  provenance,
+  signal,
+  deadlineAt,
+}) {
+  await client.query("BEGIN");
+  try {
+    if (Number.isFinite(deadlineAt)) {
+      const statementBudget = Math.max(1, deadlineAt - Date.now() - 120);
+      await client.query("SELECT set_config('statement_timeout', $1, TRUE)", [`${statementBudget}ms`]);
+    }
+    requirePersistenceWindow({ signal, deadlineAt }, 100);
+    if (cacheResponse && safeResponse) {
+      await client.query(
+        `INSERT INTO practice_search_cache (query_hash, query_text, response, expires_at, key_version)
+         VALUES ($1, '[cache-key]', $2::jsonb, NOW() + ($3 * INTERVAL '1 minute'), 'hmac-sha256-v1')
+         ON CONFLICT (query_hash) DO UPDATE SET
+           query_text = '[cache-key]',
+           response = EXCLUDED.response,
+           key_version = EXCLUDED.key_version,
+           created_at = NOW(),
+           expires_at = EXCLUDED.expires_at`,
+        [hash, JSON.stringify(safeResponse), Math.max(1, Math.min(Number(ttlMinutes) || 60, 24 * 60))],
+      );
+      requirePersistenceWindow({ signal, deadlineAt }, 100);
+    }
+    await client.query(
+      `INSERT INTO practice_search_runs
+        (query_hash, query_text, answer_provider, source_count, duration_ms, provenance)
+       VALUES ($1, '[redacted]', $2, $3, $4, $5::jsonb)`,
+      [hash, answerProvider, response?.sources?.length || 0, Math.round(durationMs), JSON.stringify(provenance)],
+    );
+    requirePersistenceWindow({ signal, deadlineAt }, 100);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  }
+}
+
 export async function recordSearch({
   query,
   response,
@@ -188,13 +247,18 @@ export async function recordSearch({
   durationMs,
   ttlMinutes = 60,
   cacheResponse = true,
+  signal,
+  deadlineAt,
 }) {
   const poolInstance = getPool();
   if (!poolInstance) return { status: "disabled" };
+  if (!persistenceWindowOpen({ signal, deadlineAt, reserveMs: 150 })) return { status: "cancelled" };
   let client;
   try {
     await ensureSchema();
+    requirePersistenceWindow({ signal, deadlineAt }, 150);
     client = await poolInstance.connect();
+    requirePersistenceWindow({ signal, deadlineAt }, 150);
     const hash = queryFingerprint(query, revision);
     const provenance = {
       revision,
@@ -203,41 +267,23 @@ export async function recordSearch({
       documentIds: (documentIds || []).map(String).slice(0, 12),
     };
     const safeResponse = sanitizeCachedResponse(response);
-    await client.query("BEGIN");
-    try {
-      if (cacheResponse && safeResponse) {
-        await client.query(
-          `INSERT INTO practice_search_cache (query_hash, query_text, response, expires_at, key_version)
-           VALUES ($1, '[cache-key]', $2::jsonb, NOW() + ($3 * INTERVAL '1 minute'), 'hmac-sha256-v1')
-           ON CONFLICT (query_hash) DO UPDATE SET
-             query_text = '[cache-key]',
-             response = EXCLUDED.response,
-             key_version = EXCLUDED.key_version,
-             created_at = NOW(),
-             expires_at = EXCLUDED.expires_at`,
-          [hash, JSON.stringify(safeResponse), Math.max(1, Math.min(Number(ttlMinutes) || 60, 24 * 60))],
-        );
-      }
-      await client.query(
-        `INSERT INTO practice_search_runs
-          (query_hash, query_text, answer_provider, source_count, duration_ms, provenance)
-         VALUES ($1, '[redacted]', $2, $3, $4, $5::jsonb)`,
-        [hash, answerProvider, response?.sources?.length || 0, Math.round(durationMs), JSON.stringify(provenance)],
-      );
-      await client.query(
-        "DELETE FROM practice_search_runs WHERE created_at < NOW() - INTERVAL '30 days'",
-      );
-      await client.query(
-        "DELETE FROM practice_search_cache WHERE expires_at <= NOW()",
-      );
-      await client.query("COMMIT");
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    }
+    await runSearchPersistenceTransaction(client, {
+      hash,
+      safeResponse,
+      cacheResponse,
+      ttlMinutes,
+      answerProvider,
+      response,
+      durationMs,
+      provenance,
+      signal,
+      deadlineAt,
+    });
     return { status: "ready" };
   } catch (error) {
-    return { status: "degraded", error: error.message };
+    return error?.name === "AbortError"
+      ? { status: "cancelled" }
+      : { status: "degraded", error: error.message };
   } finally {
     client?.release();
   }

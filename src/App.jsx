@@ -28,6 +28,7 @@ import {
   Youtube,
 } from "lucide-react";
 import { safeExternalHref } from "./url-safety.js";
+import { suggestionsForValue } from "./search-suggestions.js";
 
 const SOURCE = "https://keskkonnaportaal.ee";
 const DEFAULT_SEARCH_FILTERS = { source: "all", category: "", year: null, sort: "relevance" };
@@ -313,18 +314,23 @@ function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoF
   const inputRef = providedInputRef || internalInputRef;
   const [value, setValue] = useState(initialValue);
   const [focused, setFocused] = useState(false);
-  const [remoteSuggestions, setRemoteSuggestions] = useState([]);
+  const [remoteSuggestions, setRemoteSuggestions] = useState({ query: "", items: [] });
   const [activeIndex, setActiveIndex] = useState(-1);
+  const suggestionRequestRef = useRef({ id: 0, controller: null });
 
   useEffect(() => setValue(initialValue), [initialValue]);
 
   useEffect(() => {
     const query = value.trim();
+    suggestionRequestRef.current.controller?.abort();
+    const requestId = suggestionRequestRef.current.id + 1;
     if (query.length < 2) {
-      setRemoteSuggestions([]);
+      suggestionRequestRef.current = { id: requestId, controller: null };
+      setRemoteSuggestions({ query: "", items: [] });
       return undefined;
     }
     const controller = new AbortController();
+    suggestionRequestRef.current = { id: requestId, controller };
     const timer = window.setTimeout(async () => {
       try {
         const response = await fetch("/api/suggestions", {
@@ -334,25 +340,28 @@ function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoF
           signal: controller.signal,
         });
         const data = await response.json();
-        if (response.ok && Array.isArray(data.suggestions)) setRemoteSuggestions(data.suggestions);
+        if (response.ok
+          && Array.isArray(data.suggestions)
+          && suggestionRequestRef.current.id === requestId) {
+          setRemoteSuggestions({ query, items: data.suggestions });
+        }
       } catch (error) {
-        if (error.name !== "AbortError") setRemoteSuggestions([]);
+        if (error.name !== "AbortError" && suggestionRequestRef.current.id === requestId) {
+          setRemoteSuggestions({ query, items: [] });
+        }
       }
     }, 180);
     return () => {
       controller.abort();
       window.clearTimeout(timer);
+      if (suggestionRequestRef.current.id === requestId) {
+        suggestionRequestRef.current = { id: requestId, controller: null };
+      }
     };
   }, [value]);
 
   const suggestions = useMemo(() => {
-    const query = value.trim().toLocaleLowerCase("et");
-    if (query.length < 2) return [];
-    if (remoteSuggestions.length) return remoteSuggestions.slice(0, 5);
-    return searchSuggestions
-      .filter((item) => item.toLocaleLowerCase("et").includes(query))
-      .slice(0, 5)
-      .map((item) => ({ value: item, count: null }));
+    return suggestionsForValue(value, remoteSuggestions, searchSuggestions, 5);
   }, [remoteSuggestions, value]);
 
   useEffect(() => setActiveIndex(-1), [value, suggestions.length]);
@@ -417,7 +426,7 @@ function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoF
         {value ? (
           <button className="icon-button search-control__clear" onClick={() => {
             setValue("");
-            setRemoteSuggestions([]);
+            setRemoteSuggestions({ query: "", items: [] });
             inputRef.current?.focus();
           }} type="button" aria-label="Tühjenda otsing">
             <X size={19} />

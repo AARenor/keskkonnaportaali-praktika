@@ -11,6 +11,8 @@ const SOURCE_DEFINITIONS = [
     organization: "Maa- ja Ruumiamet",
     type: "Avalik ruumiandmeteenus",
     url: "https://geoportaal.maaamet.ee/est/teenused/wms-wfs-wcs-teenused-p65.html",
+    sourceTier: "official",
+    tags: ["WFS", "kataster", "katastriüksus", "ruumiandmed"],
   },
   {
     id: "official-forest-register-wfs",
@@ -18,8 +20,23 @@ const SOURCE_DEFINITIONS = [
     organization: "Keskkonnaagentuur / Keskkonnaportaal",
     type: "Avalik ruumiandmeteenus",
     url: "https://keskkonnaportaal.ee/et/avaandmed/metsaregistri-andmestikud",
+    sourceTier: "official",
+    tags: ["WFS", "metsaregister", "kataster", "metsaeraldis"],
   },
 ];
+
+export function cadastreSourceDocuments(published = new Date().toISOString().slice(0, 10).split("-").reverse().join(".")) {
+  return SOURCE_DEFINITIONS.map((source, index) => ({
+    ...source,
+    published,
+    summary: index === 0
+      ? "Maa- ja Ruumiameti avalik WFS annab katastritunnuse alusel informatiivse katastriüksuse väljavõtte."
+      : "Keskkonnaportaali Metsaregistri avalik WFS annab katastritunnusega seotud metsaeraldiste kirjed.",
+    topics: [...source.tags],
+    retrieval: "official-service-directory",
+    _answerEvidenceEligible: false,
+  }));
+}
 
 export function extractCadastreNumber(value = "") {
   return String(value).match(CADASTRE_PATTERN)?.[0] || null;
@@ -51,9 +68,12 @@ function wfsUrl(workspace, typeName, cqlFilter, propertyName, count) {
   return url;
 }
 
-async function fetchFeatureCollection(url, timeoutMs = 4_800) {
+async function fetchFeatureCollection(url, timeoutMs = 4_800, externalSignal) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const signal = externalSignal && typeof AbortSignal.any === "function"
+    ? AbortSignal.any([controller.signal, externalSignal])
+    : controller.signal;
   try {
     const response = await fetch(url, {
       headers: {
@@ -61,7 +81,7 @@ async function fetchFeatureCollection(url, timeoutMs = 4_800) {
         "User-Agent": "Keskkonnaportaali-praktika/3.0 (+https://praktika.arleserver.cfd)",
       },
       redirect: "error",
-      signal: controller.signal,
+      signal,
     });
     if (!response.ok) throw new Error(`Official WFS returned ${response.status}`);
     const declaredSize = Number(response.headers.get("content-length") || 0);
@@ -161,14 +181,12 @@ export function composeCadastreAnswer(query, cadastreNumber, snapshot) {
     forestText = "Metsaregistri avalik WFS ei vastanud ettenähtud aja jooksul. Puuduv vastus ei tähenda, et kinnistul metsa või piiranguid ei ole.";
   }
 
-  const sources = SOURCE_DEFINITIONS.map((source, index) => ({
+  const sources = cadastreSourceDocuments(dateLabel).map((source, index) => ({
     ...source,
     citation: index + 1,
-    published: dateLabel,
     sourceSystem: source.organization,
     summary: `Avaliku teenuse väljavõte ${dateLabel}.`,
     locator: index === 0 ? "kataster:ky_kehtiv" : "metsaregister:eraldis",
-    tags: ["WFS", index === 0 ? "kataster" : "metsaregister"],
   }));
 
   return {
@@ -198,10 +216,16 @@ export function composeCadastreAnswer(query, cadastreNumber, snapshot) {
   };
 }
 
-export async function answerCadastreQuestion(query) {
+export async function answerCadastreQuestion(query, { signal, deadlineAt } = {}) {
   if (/\b(?:https?|file|ftp|gopher):\/\//iu.test(String(query)) || /<\s*\/?\s*[a-z]/iu.test(String(query))) return null;
   const cadastreNumber = extractCadastreNumber(query);
   if (!cadastreNumber) return null;
+  const requestActive = () => !signal?.aborted && (!Number.isFinite(deadlineAt) || Date.now() < deadlineAt);
+  if (!requestActive()) {
+    const error = new Error("Cadastre request deadline expired");
+    error.name = "AbortError";
+    throw error;
+  }
   const cached = snapshotCache.get(cadastreNumber);
   if (cached && Date.now() - cached.savedAt < cached.ttlMs) {
     return composeCadastreAnswer(query, cadastreNumber, cached.snapshot);
@@ -222,9 +246,14 @@ export async function answerCadastreQuestion(query) {
     250,
   );
   const [cadastreResult, forestResult] = await Promise.allSettled([
-    fetchFeatureCollection(cadastreUrl),
-    fetchFeatureCollection(forestUrl),
+    fetchFeatureCollection(cadastreUrl, Math.max(1, Math.min(4_800, Number.isFinite(deadlineAt) ? deadlineAt - Date.now() : 4_800)), signal),
+    fetchFeatureCollection(forestUrl, Math.max(1, Math.min(4_800, Number.isFinite(deadlineAt) ? deadlineAt - Date.now() : 4_800)), signal),
   ]);
+  if (!requestActive()) {
+    const error = new Error("Cadastre request deadline expired");
+    error.name = "AbortError";
+    throw error;
+  }
   const snapshot = {
     extractedAt: new Date().toISOString(),
     cadastre: cadastreResult.status === "fulfilled"
@@ -235,8 +264,10 @@ export async function answerCadastreQuestion(query) {
       : { status: "unavailable" },
   };
   const degraded = snapshot.cadastre.status === "unavailable" || snapshot.forest.status === "unavailable";
-  if (snapshotCache.has(cadastreNumber)) snapshotCache.delete(cadastreNumber);
-  snapshotCache.set(cadastreNumber, { savedAt: Date.now(), ttlMs: degraded ? 30_000 : 10 * 60_000, snapshot });
-  while (snapshotCache.size > MAX_CACHE_ENTRIES) snapshotCache.delete(snapshotCache.keys().next().value);
+  if (requestActive()) {
+    if (snapshotCache.has(cadastreNumber)) snapshotCache.delete(cadastreNumber);
+    snapshotCache.set(cadastreNumber, { savedAt: Date.now(), ttlMs: degraded ? 30_000 : 10 * 60_000, snapshot });
+    while (snapshotCache.size > MAX_CACHE_ENTRIES) snapshotCache.delete(snapshotCache.keys().next().value);
+  }
   return composeCadastreAnswer(query, cadastreNumber, snapshot);
 }

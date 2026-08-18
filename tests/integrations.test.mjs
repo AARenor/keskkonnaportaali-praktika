@@ -17,6 +17,17 @@ test("official fetch targets reject non-HTTPS and off-list redirect destinations
   );
   assert.throws(() => validatedOfficialUrl("http://keskkonnaportaal.ee/et/mets"), /allowlist/u);
   assert.throws(() => validatedOfficialUrl("https://example.com/collect"), /allowlist/u);
+  for (const unsafe of [
+    "https://localhost/private",
+    "https://127.0.0.1/private",
+    "https://[::1]/private",
+    "https://169.254.169.254/latest/meta-data/",
+    "https://10.0.0.1/private",
+    "https://172.16.0.1/private",
+    "https://192.168.1.1/private",
+  ]) {
+    assert.throws(() => validatedOfficialUrl(unsafe), /allowlist/u);
+  }
 });
 
 test("chunked upstream bodies are stopped at the byte limit", async () => {

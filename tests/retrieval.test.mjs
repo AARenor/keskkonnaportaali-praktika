@@ -142,6 +142,15 @@ test("service intents outrank articles that match only a place or the word API",
   assert.equal(apiRanked[0].id, "official-data-services");
 });
 
+test("a cadastral number exposes its two live official data sources as the first visible results", () => {
+  const ranked = rankSearchCandidates("78404:409:0113", officialServiceCatalogueDocuments(), { now: NOW });
+  assert.deepEqual(ranked.slice(0, 2).map((document) => document.id), [
+    "official-cadastre-wfs",
+    "official-forest-register-wfs",
+  ]);
+  assert.ok(ranked.slice(0, 2).every((document) => document.sourceTier === "official"));
+});
+
 test("precise environmental tasks start with their maintained official service page", () => {
   const services = officialServiceCatalogueDocuments();
   const cases = [

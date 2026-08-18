@@ -1,3 +1,5 @@
+import { cadastreSourceDocuments } from "./cadastre.mjs";
+
 const SEARCH_DOCUMENTS = [
   {
     id: "forest-overview",
@@ -906,8 +908,12 @@ const AMBIGUOUS_ROOTS = new Set([
   "vesi", "jarv", "ohk", "ohukvaliteet", "saaste", "jaat", "looduskaitse", "elurikkus",
   "kliima", "ilm", "keskkond", "energia", "elektriauto", "seire", "andmed",
 ]);
-const INJECTION_PATTERN = /(?:ignore\s+(?:all|previous)|system\s+prompt|developer\s+message|api[- ]?key|reveal\s+(?:the\s+)?secret|unusta\s+(?:eelnev|juhised)|avalda\s+(?:saladus|võti|voti)|<\s*script\b)/iu;
+const INJECTION_PATTERN = /(?:ignore\s+(?:(?:all|previous)\s+)?(?:instructions?|prompts?)|(?:ignoreeri|eira)\s+(?:(?:kõiki|koiki|eelnev\w*|varasem\w*|süsteemi\w*)\s+)*(?:(?:süsteemi)?juhis\w*|korraldus\w*|reegel\w*|prompt\w*)|system\s+prompt|developer\s+message|api[- ]?key|reveal\s+(?:the\s+)?secret|unusta\s+(?:eelnev\w*|juhis\w*)|(?:avalda|näita|naita|kuva|paljasta)\s+(?:(?:api[- ]?)?(?:saladus\w*|võti\w*|voti\w*|parool\w*|token\w*))|<\s*script\b)/iu;
 const CADASTRE_PATTERN = /\b\d{5}:\d{3}:\d{4}\b/u;
+
+export function containsUnsafeInstruction(value) {
+  return INJECTION_PATTERN.test(String(value || "").normalize("NFKC"));
+}
 
 function rootIsDomain(root) {
   if (DOMAIN_ROOTS.has(root)) return true;
@@ -942,7 +948,7 @@ export function assessSearchQuery(query) {
   const roots = queryTerms(cleanQuery);
   const domainRoots = roots.filter(rootIsDomain);
   if (!cleanQuery) return { kind: "needs-clarification", topic: null, reason: "empty", clarification: clarificationFor(null) };
-  if (INJECTION_PATTERN.test(cleanQuery)) {
+  if (containsUnsafeInstruction(cleanQuery)) {
     return {
       kind: "out-of-scope",
       topic: null,
@@ -1165,7 +1171,7 @@ export function officialServiceCatalogueDocuments() {
   // forestry evidence must arrive through the live/corpus retrieval path, but
   // their maintained official URLs remain useful ranked navigation results.
   const legacyForestryFacts = new Set(["forest-overview", "forest-inventory-publication"]);
-  return SEARCH_DOCUMENTS.map(({ answer: _answer, tags, ...document }) => ({
+  const directory = SEARCH_DOCUMENTS.map(({ answer: _answer, tags, ...document }) => ({
     ...document,
     tags: [...(tags || [])],
     topics: [...(tags || [])],
@@ -1173,6 +1179,7 @@ export function officialServiceCatalogueDocuments() {
     retrieval: "official-service-directory",
     _answerEvidenceEligible: !legacyForestryFacts.has(document.id),
   }));
+  return [...directory, ...cadastreSourceDocuments()];
 }
 
 export function rankDocuments(query, documents = SEARCH_DOCUMENTS) {

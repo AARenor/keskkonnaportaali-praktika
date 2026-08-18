@@ -10,6 +10,7 @@ import {
   evidenceDocumentsFromListing,
   prepareRankedSearchResults,
   rankSearchCandidates,
+  resultMatchesFilters,
 } from "./retrieval.mjs";
 import {
   assessEvidence,
@@ -96,6 +97,10 @@ function remainingBudget(deadlineAt, reserveMs = 0) {
 
 export function isSearchCacheEnabled(value = process.env.SEARCH_CACHE_ENABLED) {
   return String(value ?? "true").toLocaleLowerCase("et") !== "false";
+}
+
+export function requestCanStillPersist({ signal, deadlineAt, now = Date.now() } = {}) {
+  return !signal?.aborted && (!Number.isFinite(deadlineAt) || now < deadlineAt);
 }
 
 export function shouldGenerateGroundedAnswer(draft) {
@@ -192,6 +197,12 @@ function draftSourcesBelongToListing(draft, listing) {
   return draft.sources.every((source) => urls.has(canonicalResultUrl(source.url)));
 }
 
+export function draftMatchesListingAndFilters(draft, listing, filters = {}) {
+  return Boolean(draft)
+    && draft.sources.every((source) => resultMatchesFilters(source, filters))
+    && (!listing || draftSourcesBelongToListing(draft, listing));
+}
+
 async function searchWithinBudget(cleanQuery, {
   startedAt,
   deadlineAt,
@@ -231,7 +242,10 @@ async function searchWithinBudget(cleanQuery, {
       });
     }
   } else {
-    const cadastreDraft = await answerCadastreQuestion(cleanQuery);
+    const cadastreCandidate = await answerCadastreQuestion(cleanQuery, { signal, deadlineAt });
+    const cadastreDraft = draftMatchesListingAndFilters(cadastreCandidate, searchResults, filters)
+      ? cadastreCandidate
+      : null;
     draft = cadastreDraft || await createPortalDraft(cleanQuery, {
       deadlineAt,
       signal,
@@ -264,17 +278,21 @@ async function searchWithinBudget(cleanQuery, {
     || (evidenceKind === "official-spatial-snapshot" && !spatialDegraded);
   const ttlMinutes = evidenceKind === "official-live-routing" ? 5 : 20;
 
-  void recordSearch({
-    query: cleanQuery,
-    response,
-    revision: cacheRevision,
-    answerProvider: llmResult.provider,
-    answerStatus: llmResult.status,
-    documentIds: draft.evidence?.documentIds || [],
-    durationMs,
-    ttlMinutes,
-    cacheResponse: listingBackedCache && cacheResponse,
-  }).catch(() => undefined);
+  if (requestCanStillPersist({ signal, deadlineAt })) {
+    void recordSearch({
+      query: cleanQuery,
+      response,
+      revision: cacheRevision,
+      answerProvider: llmResult.provider,
+      answerStatus: llmResult.status,
+      documentIds: draft.evidence?.documentIds || [],
+      durationMs,
+      ttlMinutes,
+      cacheResponse: listingBackedCache && cacheResponse,
+      signal,
+      deadlineAt,
+    }).catch(() => undefined);
+  }
   return response;
 }
 

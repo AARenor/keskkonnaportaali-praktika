@@ -21,6 +21,7 @@ import {
   publicSearchListing,
 } from "./retrieval.mjs";
 import { requestRateLimitAddress } from "./security.mjs";
+import { publicDeploymentRevision } from "./version.mjs";
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -106,6 +107,7 @@ app.get("/api/health", (_request, response) => {
   response.json({
     status: "ok",
     service: "keskkonnaportaali-praktika",
+    revision: publicDeploymentRevision(),
     timestamp: new Date().toISOString(),
   });
 });

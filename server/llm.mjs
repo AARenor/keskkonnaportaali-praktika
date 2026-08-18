@@ -1,6 +1,7 @@
 import { jsonrepair } from "jsonrepair";
 import {
   hasCompleteSentenceEnding,
+  containsUnsafeInstruction,
   normalize,
   queryTerms,
   splitTextPassages,
@@ -136,7 +137,7 @@ function cleanGeneratedText(value, maxLength) {
     .slice(0, maxLength);
 }
 
-const EVIDENCE_DIRECTIVE_PATTERN = /(?:ignore\s+(?:all|previous)|ignoreeri\s+(?:kõiki|eelnev)|system\s+prompt|süsteemi(?:juhis|prompt)|developer\s+message|api[- ]?(?:key|võti)|reveal\s+(?:the\s+)?secret|avalda\s+(?:saladus|võti)|exfiltrat|javascript\s*:|<\s*script\b|onerror\s*=|data\s*:\s*text\/html)/iu;
+const EVIDENCE_DIRECTIVE_PATTERN = /(?:süsteemi(?:juhis|prompt)|exfiltrat|javascript\s*:|<\s*script\b|onerror\s*=|data\s*:\s*text\/html)/iu;
 
 export function sanitizeLlmEvidenceText(value) {
   const text = String(value || "")
@@ -146,7 +147,7 @@ export function sanitizeLlmEvidenceText(value) {
     .trim();
   if (!text) return "";
   return splitTextPassages(text)
-    .filter((passage) => !EVIDENCE_DIRECTIVE_PATTERN.test(passage))
+    .filter((passage) => !containsUnsafeInstruction(passage) && !EVIDENCE_DIRECTIVE_PATTERN.test(passage))
     .join(" ")
     .trim();
 }
@@ -163,10 +164,16 @@ function numberOccurrences(value) {
     if (/^[\s.]*(?:%|protsent)/u.test(tail)) units.add("percent");
     if (/^[\s.]*(?:miljon(?:it|i)?\s*)?(?:ha\b|hektar)/u.test(tail)) units.add("area");
     if (/^[\s.]*(?:miljon(?:it|i)?\s*)?(?:tm\b|tihumeet|m[³3]\b|kuupmeet)/u.test(tail)) units.add("volume");
+    if (/^[\s.]*(?:miljon(?:it|i)?\s*)?(?:t\b|tonn|kg\b|kilogramm|g\b|gramm)/u.test(tail)) units.add("mass");
     if (/^[\s.]*(?:miljon(?:it|i)?)/u.test(tail)) units.add("million");
     if (/^[\s.]*(?:tuhat|tuhande)/u.test(tail)) units.add("thousand");
     if (/^[\s.]*(?:aasta|aastal|aastat|aastane)/u.test(tail)) units.add("year");
-    return { number: canonicalNumber(match[1]), units };
+    return {
+      number: canonicalNumber(match[1]),
+      units,
+      index: match.index || 0,
+      end: (match.index || 0) + match[0].length,
+    };
   });
 }
 
@@ -235,6 +242,9 @@ function sentencePolarity(value) {
     forbidden: /\b(?:keelatud|ei\s+tohi|pole\s+lubatud)\b/u.test(text),
     increasing: /\b(?:kasvab|kasvanud|suureneb|suurenenud|tõuseb|tõusnud)\b/u.test(text),
     decreasing: /\b(?:väheneb|vähenenud|langeb|langenud|kahaneb|kahanenud)\b/u.test(text),
+    higher: /\b(?:kõrgem|suurem|rohkem|ületab|ületas|ületanud)\b/u.test(text),
+    lower: /\b(?:madalam|väiksem|vähem)\b/u.test(text)
+      || /\b(?:jääb|jäi|jäänud)\b[^.!?;]{0,80}\balla\b/u.test(text),
   };
 }
 
@@ -245,9 +255,92 @@ function assertPolarityParity(claimSentence, evidenceSentence, label) {
     || (claim.allowed && evidence.forbidden)
     || (claim.forbidden && evidence.allowed)
     || (claim.increasing && evidence.decreasing)
-    || (claim.decreasing && evidence.increasing)) {
+    || (claim.decreasing && evidence.increasing)
+    || (claim.higher && !evidence.higher)
+    || (claim.lower && !evidence.lower)) {
     throw new Error(`LLM ${label} reverses the polarity of cited evidence`);
   }
+}
+
+function numericClause(value, occurrence) {
+  const text = String(value || "").normalize("NFKC").toLocaleLowerCase("et");
+  const boundaries = [...text.matchAll(/(?:[;!?]|(?<!\d),(?!\d)|\.(?=\s|$)|\b(?:ja|ning|aga|kuid|samas|võrreldes)\b)/gu)]
+    .map((match) => ({ start: match.index || 0, end: (match.index || 0) + match[0].length }));
+  const left = boundaries.filter((boundary) => boundary.end <= occurrence.index).at(-1)?.end || 0;
+  const right = boundaries.find((boundary) => boundary.start >= occurrence.end)?.start ?? text.length;
+  return text.slice(left, right).trim();
+}
+
+function numericEntityAnchors(value) {
+  const text = String(value || "").normalize("NFKC").toLocaleLowerCase("et");
+  const anchors = new Set();
+  if (/\beesti\w*\b/u.test(text)) anchors.add("entity:estonia");
+  if (/\b(?:euroopa\s+lii\w*|el(?:i|is|iga|ist|ile|ilt|isse)?|eu)\b/u.test(text)) anchors.add("entity:european-union");
+  return anchors;
+}
+
+function unitsComparable(left, right) {
+  if (!left.size && !right.size) return true;
+  return [...left].every((unit) => right.has(unit))
+    || [...right].every((unit) => left.has(unit));
+}
+
+function sharesToken(tokens, token) {
+  return tokens.some((candidate) => tokensShareStem(token, candidate));
+}
+
+function numericBindingMatches(claim, claimText, candidate, evidenceText, evidenceOccurrences) {
+  const claimClause = numericClause(claimText, claim);
+  const candidateClause = numericClause(evidenceText, candidate);
+  const claimTokensInClause = [...new Set(claimTokens(claimClause))];
+  const candidateTokens = [...new Set(claimTokens(candidateClause))];
+  const claimAnchors = numericEntityAnchors(claimClause);
+  const candidateAnchors = numericEntityAnchors(candidateClause);
+  const alternatives = evidenceOccurrences.filter((occurrence) => (
+    occurrence !== candidate
+      && occurrence.number !== candidate.number
+      && unitsComparable(claim.units, occurrence.units)
+  ));
+  if (!alternatives.length) return true;
+
+  const alternativeTokenSets = alternatives.map((occurrence) => claimTokens(numericClause(evidenceText, occurrence)));
+  const alternativeAnchors = new Set(alternatives.flatMap((occurrence) => [...numericEntityAnchors(numericClause(evidenceText, occurrence))]));
+  const displacedEntity = [...claimAnchors].some((anchor) => (
+    !candidateAnchors.has(anchor) && alternativeAnchors.has(anchor)
+  ));
+  if (displacedEntity) return false;
+
+  // A token next to the generated number that belongs next to another
+  // same-unit measurement in the cited evidence indicates a label swap.
+  return !claimTokensInClause.some((token) => (
+    !sharesToken(candidateTokens, token)
+      && alternativeTokenSets.some((tokens) => sharesToken(tokens, token))
+  ));
+}
+
+function canonicalSensitiveClaim(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .toLocaleLowerCase("et")
+    .replace(/(?<=\d),(?=\d)/gu, ".")
+    .replace(/[^0-9a-zõäöüšž%]+/giu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+function isSensitiveClaim(value) {
+  const polarity = sentencePolarity(value);
+  return numberOccurrences(value).length > 0 || polarity.higher || polarity.lower;
+}
+
+function sensitiveClaimIsVerbatim(sentence, trustedEvidence) {
+  const claim = canonicalSensitiveClaim(sentence);
+  const evidence = canonicalSensitiveClaim(trustedEvidence);
+  return Boolean(claim && evidence.includes(claim));
+}
+
+function unitsExactlyMatch(left, right) {
+  return left.size === right.size && [...left].every((unit) => right.has(unit));
 }
 
 function assertClaimGrounding(text, citations, draft, label) {
@@ -256,9 +349,15 @@ function assertClaimGrounding(text, citations, draft, label) {
   const trustedEvidence = sourceEvidence(draft, citations);
   const claims = numberOccurrences(text);
   const evidence = numberOccurrences(trustedEvidence);
+  for (const sentence of splitTextPassages(text)) {
+    if (isSensitiveClaim(sentence) && !sensitiveClaimIsVerbatim(sentence, trustedEvidence)) {
+      throw new Error(`LLM ${label} rewrites a sensitive numeric or comparative claim`);
+    }
+  }
   for (const claim of claims) {
     const grounded = evidence.some((candidate) => candidate.number === claim.number
-      && [...claim.units].every((unit) => candidate.units.has(unit)));
+      && unitsExactlyMatch(claim.units, candidate.units)
+      && numericBindingMatches(claim, text, candidate, trustedEvidence, evidence));
     if (!grounded) throw new Error(`LLM ${label} contains an ungrounded numeric claim (${claim.number})`);
   }
 
@@ -285,7 +384,9 @@ function assertClaimGrounding(text, citations, draft, label) {
         };
       })
       .sort((left, right) => right.overlap - left.overlap)[0];
-    if (nearestSentence?.overlap / tokens.length >= 0.75) {
+    const polarity = sentencePolarity(sentence);
+    const strictComparison = polarity.higher || polarity.lower;
+    if (nearestSentence && (nearestSentence.overlap / tokens.length >= 0.75 || strictComparison)) {
       assertPolarityParity(sentence, nearestSentence.candidate, label);
     }
   }
@@ -480,7 +581,8 @@ export function validateRelatedQuestions(payload, draft, query) {
   return (Array.isArray(payload?.related_questions) ? payload.related_questions : [])
     .flatMap((value) => {
       let question = cleanGeneratedText(value, 160);
-      if (!question || /(?:https?:\/\/|api\s*võti|parool|ignoreeri|süsteemijuhis)/iu.test(question)) return [];
+      if (!question || containsUnsafeInstruction(question)
+        || /(?:https?:\/\/|api\s*võti|parool|süsteemijuhis)/iu.test(question)) return [];
       if (!/[?]$/u.test(question)) question = `${question.replace(/[.!]+$/u, "")}?`;
       const normalized = question.normalize("NFKC").toLocaleLowerCase("et").replace(/[^0-9a-zõäöüšž]+/giu, " ").trim();
       if (!normalized || normalized === original || seen.has(normalized)) return [];
@@ -500,6 +602,7 @@ export function buildLlmRequest({
   selectedMaxTokens = maxTokens,
   conversationContext = "",
 }) {
+  const safeConversationContext = containsUnsafeInstruction(conversationContext) ? "" : conversationContext;
   const system = [
     "Vasta eesti keeles otse kasutaja küsimusele ja kasuta ainult kaasa antud evidence'i.",
     "Alusta esimeses lauses küsimuse täpse järeldusega; ära asenda küsitud näitajat mõne kõrvalnäitajaga. Seejärel selgita tavainimesele, miks järeldus tõenditest tuleneb.",
@@ -514,7 +617,7 @@ export function buildLlmRequest({
   ].join(" ");
   const user = JSON.stringify({
     question: query,
-    ...(conversationContext ? { conversation_context: String(conversationContext).slice(0, 520) } : {}),
+    ...(safeConversationContext ? { conversation_context: String(safeConversationContext).slice(0, 520) } : {}),
     evidence,
     outputContract: {
       intro: "Otsene vastus ja lühike tavakeelne tõlgendus.",

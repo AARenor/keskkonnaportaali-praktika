@@ -25,6 +25,9 @@ const MAX_LIVE_INDEX_KEYS = 2_000;
 const recentlyIndexedLiveUrls = new Map();
 const PUBLIC_FILTER_SOURCES = new Set(["all", "trusted", "official", "reviewed", "supplementary", "other"]);
 const PUBLIC_FILTER_SORTS = new Set(["relevance", "newest"]);
+const CADASTRE_PATTERN = /\b\d{5}:\d{3}:\d{4}\b/u;
+const CADASTRE_SERVICE_IDS = new Set(["official-cadastre-wfs", "official-forest-register-wfs"]);
+const LEGACY_ANSWER_FIXTURE_IDS = new Set(["forest-overview", "forest-inventory-publication"]);
 
 function clean(value = "") {
   return String(value || "").replace(/\s+/gu, " ").trim();
@@ -249,6 +252,7 @@ function serviceIntentPriority(query, roots, document) {
   const liveScore = liveServiceIntentScore(query, roots, document);
   const normalizedQuery = normalize(query);
   const requestsHistoricalYear = /\b(?:19|20)\d{2}\b/u.test(normalizedQuery);
+  if (CADASTRE_PATTERN.test(query) && CADASTRE_SERVICE_IDS.has(document.id)) return 4;
   if (liveScore >= 60) return 3;
   if (liveScore > 0) return 2;
   if (roots.includes("jaatmekaitluskoht") && document.id === "waste-facilities-map") return 3;
@@ -417,6 +421,7 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
   const upstreamSignal = Math.max(0, 1.2 - sourceRank * 0.04);
   const sqlSignal = Math.max(0, Math.min(Number(document._relevance) || 0, 8)) * 0.22;
   const liveService = liveServiceIntentScore(query, roots, document);
+  const cadastreService = CADASTRE_PATTERN.test(query) && CADASTRE_SERVICE_IDS.has(document.id);
   const servicePriority = serviceIntentPriority(query, roots, document);
   const primaryTopic = assessSearchQuery(query).topic;
   const primaryIntentMatched = !primaryTopic
@@ -426,6 +431,7 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
     + coverageScore
     + ageIntentScore(document, roots, now)
     + liveService
+    + (cadastreService ? 48 : 0)
     + authorityScore(document.sourceTier)
     + freshness
     + yearMatch
@@ -437,7 +443,7 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
     - (futureDated ? 0.6 : 0);
   return {
     score,
-    matched: primaryIntentMatched && (semantic > 0 || coveredRoots > 0 || sqlSignal > 0 || liveService > 0),
+    matched: primaryIntentMatched && (semantic > 0 || coveredRoots > 0 || sqlSignal > 0 || liveService > 0 || cadastreService),
     servicePriority,
     relevanceBucket: Math.floor(Math.max(score, 0) / 6),
     publishedAt: publishedAt || 0,
@@ -692,6 +698,7 @@ export function publicSearchListing(listing = {}) {
 export function evidenceDocumentsFromListing(listing = {}) {
   return (listing.items || [])
     .filter((item) => ["official", "reviewed"].includes(item.sourceTier)
+      && !LEGACY_ANSWER_FIXTURE_IDS.has(item.id)
       && item._answerEvidenceEligible !== false)
     .map((item) => ({
       ...item,
