@@ -259,7 +259,8 @@ test("forest harvest draft answers the root and temporal follow-up from multiple
     deadlineAt: Date.now(),
     searchResults: { total: documents.length, items: documents },
   });
-  assert.match(followDraft.answer.title, /viie võrdlusaasta/iu);
+  assert.match(followDraft.answer.title, /^2020–2024 viie aasta kohta/iu);
+  assert.match(followDraft.answer.intro, /2025\. aasta rida selles väljavõttes veel ei ole/u);
   assert.match(followDraft.answer.intro, /2020: eemaldamine 12,2 ja netojuurdekasv 14,4/u);
   assert.match(followDraft.answer.note, /Puuduvaid aastaid ei ole interpoleeritud/u);
 });

@@ -350,6 +350,7 @@ export function composeForestHarvestBalanceAnswer(query, sources = []) {
     ].filter(Boolean).join("; ");
     const startYear = window[0]?.year;
     const endYear = window.at(-1)?.year;
+    const nextUnavailableYear = Number.isInteger(endYear) ? endYear + 1 : null;
     const latestWindow = comparableWindow.at(-1);
     const latestWindowRelation = latestWindow
       ? latestWindow.removals > latestWindow.increment
@@ -361,9 +362,9 @@ export function composeForestHarvestBalanceAnswer(query, sources = []) {
       answer: {
         eyebrow: "Allikapõhine koondvastus",
         title: incompleteWindow
-          ? "Viie võrdlusaasta kohta ei saa lünkade tõttu täielikku trendi anda"
+          ? `${startYear}–${endYear} viie aasta kohta ei saa lünkade tõttu täielikku trendi anda`
           : `Viie värskeima võrdlusaasta reas oli ${latestWindow.year}. aastal eemaldamine netojuurdekasvust ${latestWindowRelation}`,
-        intro: `Eurostati ${startYear}–${endYear} viie värskeima võrdlusaasta väljavõttes on avaldatud need paarid: ${availableWindow || "ühtegi täielikku paari ei ole"}. ${relations ? `${relations}.` : ""}${missingWindow.length ? ` Aastate ${missingWindow.join(" ja ")} kohta puudub vähemalt üks võrreldav väärtus, seega ei moodusta need punktid täielikku viie aasta trendi.` : ""}${forestObservationStatusSentence(comparableWindow)}`,
+        intro: `„Viimased viis aastat” tähendab siin Eurostati kasutatud väljavõtte viit värskeimat allikas olevat aastat (${startYear}–${endYear}); ${nextUnavailableYear}. aasta rida selles väljavõttes veel ei ole. Avaldatud on need võrreldavad paarid: ${availableWindow || "ühtegi täielikku paari ei ole"}. ${relations ? `${relations}.` : ""}${missingWindow.length ? ` Aastate ${missingWindow.join(" ja ")} kohta puudub vähemalt üks võrreldav väärtus, seega ei moodusta need punktid täielikku viie aasta trendi.` : ""}${forestObservationStatusSentence(comparableWindow)}`,
         introCitations: [eurostatCitation],
         parts: [
           ...(handbookCitation ? [{

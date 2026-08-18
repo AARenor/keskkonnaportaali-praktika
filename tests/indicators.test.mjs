@@ -90,6 +90,9 @@ test("forest balance synthesis answers directly from four separately cited offic
     "Mida see viimase 5 aasta jooksul tähendab Kas raiemaht ületab juurdekasvu?",
     documents,
   );
+  assert.match(followUp.answer.title, /^2020–2024 viie aasta kohta/u);
+  assert.match(followUp.answer.intro, /viit värskeimat allikas olevat aastat \(2020–2024\)/u);
+  assert.match(followUp.answer.intro, /2025\. aasta rida selles väljavõttes veel ei ole/u);
   assert.match(followUp.answer.intro, /2020: eemaldamine 12,2 ja netojuurdekasv 14,4/u);
   assert.match(followUp.answer.intro, /2022: eemaldamine 12,0 ja netojuurdekasv 9,1/u);
   assert.match(followUp.answer.intro, /imputeerituna/u);
@@ -161,5 +164,6 @@ test("forest balance keeps dense JSON-stat nulls missing and derives a rolling w
   assert.doesNotMatch(answer.answer.intro, /2020:/u);
   assert.match(answer.answer.intro, /2021:/u);
   assert.match(answer.answer.intro, /2025: eemaldamine 9,0 ja netojuurdekasv 12,5/u);
+  assert.match(answer.answer.intro, /2026\. aasta rida selles väljavõttes veel ei ole/u);
   assert.match(answer.answer.title, /2025\. aastal.*väiksem$/u);
 });
