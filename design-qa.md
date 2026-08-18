@@ -95,7 +95,7 @@ Coolify kaudu juurutatud commit `ee42516` kontrolliti 18.08.2026 aadressil `http
 - „jäätmete ringlussevõtu määr Eestis 2023” asetas näitaja lehe esimeseks, vastas tervikliku 38% lausega ning peidetud viide 4 laiendas kaheksa allika loendi ja fokusseeris `source-4`;
 - „keskkonnaloa taotlemine ettevõttele” asetas mobiilis esimeseks KOTKASe; neli filtrit muutusid ühel veerul loetavaks ning ükski ikoonnupp ei jäänud nimeta;
 - first-party konsoolivigu ja hoiatusi oli mõlemas sessioonis 0;
-- avalik live-eval sai 19/19 oodatud esikohta ja 1026/1026 API-lepingu, viite, filtri, paginationi, privaatsusvälja ning lõpetatud lause kontrolli. p50 oli 10,450 s, p95/maksimum 14,136 s ja 504 vastuseid oli 0;
+- avalik live-eval sai 19/19 oodatud esikohta ja 1045/1045 API-lepingu, viite, filtri, paginationi, privaatsusvälja ning lõpetatud lause kontrolli. p50 oli 1,884 s, p95/maksimum 11,677 s ja 504 vastuseid oli 0;
 - brauserikontrollis leitud katkine otsingusnippet põhjustas enne lõppdeploy'd pooliku avalause. Cache'i revisioon `answer-v10-complete-sentences`, kaks uut regressioonitesti ja live-evali lauselõpukontroll välistavad sama vea kordumise.
 
 final local result: passed
