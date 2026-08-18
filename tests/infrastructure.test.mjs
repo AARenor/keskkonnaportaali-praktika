@@ -304,6 +304,38 @@ test("LLM intent validation distinguishes a rate from a regulation", () => {
   );
 });
 
+test("a grounded SMI comparison may state the supported non-synonym conclusion", () => {
+  const query = "Mis vahe on SMI ja metsaandmed?";
+  const draft = {
+    evidence: { kind: "ranked-search-results", answerable: true },
+    answer: {
+      title: query,
+      intro: "Metsaandmed on mitmel viisil kogutavate andmete katusmõiste. SMI annab kogu Eesti metsade kohta statistilise hinnangu, Metsaregister aga kinnistu- ja eraldisepõhiseid andmeid.",
+      introCitations: [1, 2],
+      parts: [],
+      note: "Kontrolli algallikat.",
+    },
+    sources: [{
+      citation: 1,
+      title: "Metsandus: SMI ja Metsaregister",
+      content: "Metsaandmed on mitmel viisil kogutavate andmete katusmõiste. SMI-ga koostatakse statistiline kokkuvõte Eesti metsade seisundist ja muutustest. Metsaregister sisaldab kinnistute metsainventeerimise andmeid.",
+    }, {
+      citation: 2,
+      title: "Metsastatistika, sh SMI",
+      content: "SMI on üleriigiline proovitükkidega valikuuring, mille põhjal koostatakse kogu Eesti metsade üldistatud statistiline hinnang.",
+    }],
+  };
+
+  const answer = validateGroundedAnswer({
+    intro: "SMI on üleriigiline proovitükkidega valikuuring ja metsaandmed on laiem katusmõiste. Seega ei ole metsaandmed SMI sünonüüm.",
+    intro_citations: [1, 2],
+    parts: [],
+  }, draft, query);
+
+  assert.equal(answer.eyebrow, "AI koondvastus");
+  assert.match(answer.intro, /ei ole metsaandmed SMI sünonüüm/u);
+});
+
 test("direct fallback prefers a numeric rate over a regulation reference", () => {
   const excerpt = directEvidenceExtract("jäätmete ringlussevõtu määr 2023", {
     summary: "Jäätmete vedu toimus 2023. aastal määruse 1013/2006 alusel.",

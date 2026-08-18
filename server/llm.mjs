@@ -229,7 +229,7 @@ function sourceEvidence(draft, citations, query = "") {
 
 const CLAIM_STOPWORDS = new Set([
   "aga", "ei", "et", "ja", "kas", "kui", "mida", "mis", "ning", "on", "oma", "see", "seda", "selle",
-  "siis", "või", "saab", "tuleb", "põhjal", "järgi", "kohta", "kuni", "läbi", "ning", "ehk",
+  "siis", "või", "saab", "tuleb", "põhjal", "järgi", "kohta", "kuni", "läbi", "ning", "ehk", "ole", "seega",
 ]);
 
 function claimTokens(value) {
