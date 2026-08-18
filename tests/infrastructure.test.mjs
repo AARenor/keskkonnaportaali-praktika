@@ -15,6 +15,7 @@ import {
   resolveLlmApiStyle,
   resolveLlmFallback,
   resolveLlmAttempts,
+  resolveLlmConcurrency,
   resolveLlmTarget,
   resolveLlmTimeout,
   resolveMaxTokens,
@@ -155,6 +156,9 @@ test("Luna uses the Responses API with strict structured output", () => {
   }];
   assert.equal(resolveLlmApiStyle("gpt-5.6-luna"), "responses");
   assert.equal(resolveLlmApiStyle("deepseek-v4-flash"), "chat-completions");
+  assert.equal(resolveLlmConcurrency(), 4);
+  assert.equal(resolveLlmConcurrency(20), 8);
+  assert.equal(resolveLlmConcurrency(0), 4);
   const request = buildLlmRequest({
     selectedModel: "gpt-5.6-luna",
     query: "Kas metsad muutuvad nooremaks?",

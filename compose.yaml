@@ -10,6 +10,7 @@ services:
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://praktika.arleserver.cfd}
       DATABASE_URL: postgresql://practice_user:${POSTGRES_PASSWORD}@postgres:5432/keskkonnaportaal_practice
       DATABASE_SSL: "false"
+      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-12}
       OPENCODE_GO_API_KEY: ${OPENCODE_GO_API_KEY:-}
       OPENCODE_ZEN_API_KEY: ${OPENCODE_ZEN_API_KEY:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://opencode.ai/zen/go/v1}
@@ -20,6 +21,7 @@ services:
       LLM_REASONING_EFFORT: ${LLM_REASONING_EFFORT:-low}
       LLM_API_STYLE: ${LLM_API_STYLE:-responses}
       LLM_CIRCUIT_BREAK_MS: ${LLM_CIRCUIT_BREAK_MS:-900000}
+      LLM_MAX_CONCURRENCY: ${LLM_MAX_CONCURRENCY:-4}
       SEARCH_CACHE_ENABLED: ${SEARCH_CACHE_ENABLED:-true}
       SEARCH_DEADLINE_MS: ${SEARCH_DEADLINE_MS:-15000}
       LLM_ENABLED: ${LLM_ENABLED:-true}

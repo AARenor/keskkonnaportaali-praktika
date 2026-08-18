@@ -49,9 +49,10 @@ export const SEARCH_CACHE_READ_SQL = `
 function getPool() {
   if (!databaseUrl) return null;
   if (!pool) {
+    const poolMax = Math.max(4, Math.min(Number(process.env.DATABASE_POOL_MAX) || 12, 20));
     pool = new Pool({
       connectionString: databaseUrl,
-      max: 4,
+      max: poolMax,
       connectionTimeoutMillis: 3_000,
       idleTimeoutMillis: 20_000,
       ssl: String(process.env.DATABASE_SSL || "").toLowerCase() === "true" ? { rejectUnauthorized: false } : undefined,

@@ -54,8 +54,13 @@ const reasoningEffort = ["none", "low", "medium"].includes(String(process.env.LL
   ? String(process.env.LLM_REASONING_EFFORT || "low")
   : "low";
 const circuitBreakMs = Math.max(60_000, Math.min(Number(process.env.LLM_CIRCUIT_BREAK_MS) || 15 * 60_000, 60 * 60_000));
+export function resolveLlmConcurrency(value = process.env.LLM_MAX_CONCURRENCY) {
+  return Math.max(1, Math.min(Number(value) || 4, 8));
+}
+const maxConcurrentRequests = resolveLlmConcurrency();
 let circuitOpenUntil = 0;
 let consecutiveTimeouts = 0;
+let activeRequests = 0;
 
 export function resolveLlmApiStyle(selectedModel, value = process.env.LLM_API_STYLE) {
   const configured = String(value || "").trim().toLocaleLowerCase("en");
@@ -557,7 +562,12 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
   if (Date.now() < circuitOpenUntil) {
     return { answer: null, status: "circuit-open", provider: "deterministic-current-evidence" };
   }
+  if (activeRequests >= maxConcurrentRequests) {
+    return { answer: null, status: "capacity-fallback", provider: "deterministic-current-evidence" };
+  }
 
+  activeRequests += 1;
+  try {
   const evidence = buildBoundedEvidence(draft);
   const singleSource = evidence.length === 1;
   const requestTimeoutMs = Math.max(250, Math.min(Number(options.timeoutMs) || timeoutMs, timeoutMs));
@@ -627,6 +637,9 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
     consecutiveTimeouts = 0;
   }
   return { answer: null, status: "degraded", provider: "deterministic-current-evidence", error: finalError.message };
+  } finally {
+    activeRequests = Math.max(0, activeRequests - 1);
+  }
 }
 
 export function llmConfiguration() {
