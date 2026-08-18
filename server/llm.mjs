@@ -377,6 +377,7 @@ function assertClaimGrounding(text, citations, draft, label, query = "", sensiti
   const trustedEvidence = sourceEvidence(draft, citations, query);
   const claims = numberOccurrences(text);
   const evidence = numberOccurrences(trustedEvidence);
+  const referenceEvidence = numberOccurrences(sensitiveReference);
   for (const sentence of splitTextPassages(text)) {
     if (isSensitiveClaim(sentence)
       && !sensitiveClaimIsVerbatim(sentence, trustedEvidence)
@@ -385,7 +386,10 @@ function assertClaimGrounding(text, citations, draft, label, query = "", sensiti
     }
   }
   for (const claim of claims) {
-    const grounded = evidence.some((candidate) => candidate.number === claim.number
+    const groundedByProtectedReference = referenceEvidence.some((candidate) => candidate.number === claim.number
+      && unitsExactlyMatch(claim.units, candidate.units)
+      && numericBindingMatches(claim, text, candidate, sensitiveReference, referenceEvidence));
+    const grounded = groundedByProtectedReference || evidence.some((candidate) => candidate.number === claim.number
       && unitsExactlyMatch(claim.units, candidate.units)
       && numericBindingMatches(claim, text, candidate, trustedEvidence, evidence));
     if (!grounded) throw new Error(`LLM ${label} contains an ungrounded numeric claim (${claim.number})`);

@@ -28,7 +28,7 @@ import {
   textHasQueryRoot,
 } from "./search.mjs";
 
-export const SEARCH_RESPONSE_REVISION = "answer-v16-query-aware-forestry";
+export const SEARCH_RESPONSE_REVISION = "answer-v17-luna-budgeted-forestry";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 
 function rankPortalDocuments(query, documents) {

@@ -689,7 +689,7 @@ test("a current forest-area draft keeps its verified measurement while Luna adds
       title: "SMI: Metsatagavara on stabiilne",
       organization: "Keskkonnaagentuur",
       published: "18.08.2026",
-      content: directIntro,
+      content: `${directIntro} SMI 2024 järgi oli metsamaa pindala 2,3506 miljonit hektarit ehk 51,8% Eesti pindalast.`,
     }],
   };
 
