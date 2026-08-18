@@ -14,6 +14,7 @@ Kontrollid:
 - `npm run eval:live -- --base-url=https://praktika.arleserver.cfd` kontrollib samu 24 esikohta tootmises ning lisaks vastuse, viidete, filtrite, lehitsemise, privaatsusväljade ja terviklausete avalikku lepingut;
 - `npm run audit:grounding -- --base-url=https://praktika.arleserver.cfd` kontrollib kümmet esinduslikku maandatud vastust ja kümmet adversariaalset loobumist, viidatud URL-ide HTTP 200 olekut ning väidete sõna- ja arvutuge;
 - `npm run eval:holdout -- --base-url=https://praktika.arleserver.cfd` kontrollib eraldi enne esimest jooksu külmutatud 40 päringu relevantsust nii kataloogi kui ka päris ühendotsingu vastu;
+- `npm run eval:blind -- --base-url=https://praktika.arleserver.cfd` kontrollib Swarmi lõppauditi järel enne tulemuste vaatamist valitud kümmet uut käände-, kirjavea-, asukoha- ja mitme intentiga päringut; muutmata qrel'ide baseline P@1 oli 0,5;
 - `npm run audit:filters -- --base-url=https://praktika.arleserver.cfd` kontrollib allika-, kategooria-, aasta-, järjestuse- ja kombineeritud filtrimaatriksit;
 - `npm run audit:followups -- --base-url=https://praktika.arleserver.cfd` teeb ühe juurpäringu ja kolm järjestikust jätkuküsimust, hoides sama filtrit ning kontrollides igal voorul allikate liikmelisust ja viitenumbreid;
 - `npm run audit:load -- --base-url=https://praktika.arleserver.cfd` kontrollib 20 samaaegset kasutajat ja 21. päringu 429 backpressure'i.
@@ -49,6 +50,8 @@ Tootmise andmebaasi lõpp-risttabel:
 Commit `373324dc657986b693aa1df138f5a9c1866d5754` juurutati Coolifys deployment'ina `i6uwu6e3rq71g77pnn8sx97s`. Uus konteiner oli `healthy`, restartide arv 0 ning image'i `SOURCE_COMMIT` ühtis täispika commit'iga.
 
 Eraldi enne esimest käivitust külmutatud `environment_search_holdout_v1.json` sisaldab 40 uut päringut ja selle SHA-256 on `4cf69a01005817a135f69890a70070fb9f4bb21e45675abec3b9b39c3b7898c7`. Esimene jooks leidis kümme esikoha viga (P@1 0,75; MRR 0,8021; nDCG@5 0,8206). Qrel-faili muutmata parandati üldist eesti tüvede ja teenuseintendi järjestust; lõpptulemus oli nii deterministlikult kui tootmise URL-põhises ühendotsingus P@1 = MRR = nDCG@5 = 1,0 ehk 40/40. Tootmise p50 oli 6234 ms, p95 14 052 ms ja maksimum 14 809 ms.
+
+Swarmi väljalaskeauditile järgnenud `environment_search_blind_spot_v1.json` külmutati enne tulemuste avamist kümne uue käände-, kirjavea-, asukoha- ja mitme intentiga päringuga. Revisjoni `ecee6451708f06e82160ec40baa1c6e79339281d` esimene jooks sai P@1 0,5; qrel'e ei muudetud. Faili SHA-256 on `ea40bd339d5f0ba2f4176c747063b84387bd86278c1852ad4166298ff6593f40` ning `npm run eval:blind` jõustab nii kohalikus kataloogis kui `--base-url` kasutamisel P@1, MRR, nDCG@5 ja Recall@5 väärtuse 1,0.
 
 | Kontroll | Uue väljalaske tulemus |
 |---|---|

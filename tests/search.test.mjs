@@ -162,6 +162,9 @@ test("official source catalogue covers monitoring, APIs, spatial data, weather, 
     "municipal-waste-recycling",
     "protected-area-construction",
     "groundwater-status",
+    "well-register",
+    "marine-observations",
+    "marine-ice-map",
     "marine-strategy-status",
   ]) assert.ok(ids.has(required), required);
   assert.equal(ids.size, SEARCH_DOCUMENTS.length);

@@ -11,6 +11,7 @@
     "sync:corpus": "node server/sync-corpus.mjs",
     "eval:live": "node scripts/evaluate-live-search.mjs",
     "eval:holdout": "node scripts/evaluate-relevance-holdout.mjs",
+    "eval:blind": "node scripts/evaluate-relevance-holdout.mjs --dataset=environment_search_blind_spot_v1.json",
     "audit:grounding": "node scripts/audit-live-grounding.mjs",
     "audit:filters": "node scripts/audit-live-filters.mjs",
     "audit:followups": "node scripts/audit-live-followups.mjs",

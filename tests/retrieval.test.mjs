@@ -16,6 +16,7 @@ import {
 } from "../server/retrieval.mjs";
 import {
   assessEvidence,
+  assessSearchQuery,
   buildDiscoveryQueries,
   officialServiceCatalogueDocuments,
   queryTerms,
@@ -240,6 +241,69 @@ test("separately frozen relevance holdout clears its P@1, MRR and nDCG@5 gates",
   assert.ok(precisionAt1 >= dataset.gates.precisionAt1, `P@1 ${precisionAt1}`);
   assert.ok(mrr >= dataset.gates.mrr, `MRR ${mrr}`);
   assert.ok(ndcgAt5 >= dataset.gates.ndcgAt5, `nDCG@5 ${ndcgAt5}`);
+});
+
+test("blind-spot service intents outrank plausible article distractors", async () => {
+  const dataset = JSON.parse(await readFile(
+    new URL("../evaluation/environment_search_blind_spot_v1.json", import.meta.url),
+    "utf8",
+  ));
+  const distractors = [
+    official({
+      id: "cams-tartu-news",
+      title: "CAMS-i õhukvaliteedi prognoos Tartus",
+      summary: "Varasem uudis kirjeldab peenosakeste taset Tartu õhus ja üht seireprojekti.",
+    }),
+    official({
+      id: "emajogi-flood-news",
+      title: "Emajõe veetase tõusis üleujutuse ajal",
+      summary: "Uudis kirjeldab üht varasemat Emajõe veetaseme mõõtmist.",
+    }),
+    official({
+      id: "mined-land-news",
+      title: "Uue karjääri ala korrastamine",
+      summary: "Uudis käsitleb kaevandatud maa taastamist, mitte keskkonnaloa taotlemist.",
+    }),
+    official({
+      id: "groundwater-news",
+      title: "Põhjaveekihi seisund ja puurkaevud",
+      summary: "Uudis kirjeldab põhjavee üldist seisundit, mitte konkreetse puurkaevu registriandmeid.",
+    }),
+    official({
+      id: "copernicus-sea-news",
+      title: "Copernicuse uudis merevee temperatuuri ja jääolude kohta",
+      summary: "Varasem artikkel kirjeldab Läänemere temperatuuri ja jääolusid, kuid ei kuva vaatlusandmeid.",
+    }),
+  ];
+  const services = officialServiceCatalogueDocuments();
+  const ranks = dataset.cases.map((item) => {
+    const initial = rankSearchCandidates(item.query, [...distractors, ...services], { now: NOW });
+    const ranked = rankSearchCandidates(item.query, deduplicateResults(initial), { now: NOW });
+    const index = ranked.findIndex((document) => document.id === item.topSource);
+    return index < 0 ? null : index + 1;
+  });
+  const precisionAt1 = ranks.filter((rank) => rank === 1).length / ranks.length;
+  const recallAt5 = ranks.filter((rank) => rank && rank <= 5).length / ranks.length;
+
+  assert.ok(precisionAt1 >= dataset.gates.precisionAt1, `P@1 ${precisionAt1}`);
+  assert.ok(recallAt5 >= dataset.gates.recallAt5, `Recall@5 ${recallAt5}`);
+});
+
+test("current air and historical hydrology intents tolerate Estonian inflection and word order", () => {
+  assert.equal(assessSearchQuery("Kust näen praegust peenosakeste taset Tartus?").kind, "live-air");
+  const services = officialServiceCatalogueDocuments();
+  for (const query of [
+    "Emajõe vanad veetaseme mõõtmised",
+    "Emajõe veetaseme vanad mõõtmised",
+  ]) {
+    const result = rankSearchCandidates(query, services, { now: NOW })[0];
+    assert.equal(result.id, "historical-hydrology-data", query);
+    assert.equal(result._ranking.servicePriority, 3, query);
+  }
+});
+
+test("a generic company-register request remains outside the environmental search domain", () => {
+  assert.equal(assessSearchQuery("Kust näen registrist ettevõtte andmeid?").kind, "out-of-scope");
 });
 
 test("permission intent selects the prohibition guidance, not an industrial permit", () => {

@@ -132,7 +132,7 @@ Keskkonnaportaali Drupali otsa ei käsitleta versioonitud lepingulise API-na. P�
 
 ### Kontrollitud andmeteenused ja järgmised tüübikindlad adapterid
 
-Uuringu käigus kontrollitud ametlikud algallikad on lisatud 43 kirjega suunamiskataloogi. Esimene toorarvu adapter (`server/indicators.mjs`) katab olmejäätmete ringlussevõtu määra. Järgmised teenused vajavad enne automaatset arvvastust samasugust skeemi-, ühiku-, aasta- ja eval-kontrolliga adapterit:
+Uuringu käigus kontrollitud ametlikud algallikad on lisatud 48 kirjega suunamiskataloogi. Esimene toorarvu adapter (`server/indicators.mjs`) katab olmejäätmete ringlussevõtu määra. Järgmised teenused vajavad enne automaatset arvvastust samasugust skeemi-, ühiku-, aasta- ja eval-kontrolliga adapterit:
 
 - KAUR PostgREST `https://keskkonnaandmed.envir.ee/` kliima- ja seireandmetele;
 - EELIS avalikud JSON-jaotused ning KAUR GeoServeri WFS kaitse-, Natura-, vääriselupaiga ja Metsaregistri andmetele;
@@ -215,6 +215,7 @@ npm run build
 npm run test:sites
 docker compose config
 npm run eval:holdout
+npm run eval:blind
 npm run eval:live -- --base-url=https://praktika.arleserver.cfd
 npm run audit:filters -- --base-url=https://praktika.arleserver.cfd
 npm run audit:followups -- --base-url=https://praktika.arleserver.cfd
@@ -227,7 +228,7 @@ Automaattestid kontrollivad muu hulgas:
 - 16 allikaga regressioonikorpuse, 21 dokumendi, 18 FAQ teema ja 12 väärarusaama sisemise tervikluse;
 - eraldiseisva tulemuste lehitsemise, korpuse parserid ja ametlike URL-aliaste deduplikatsiooni;
 - fraasi- ja lõigukattega relevantsusjärjestuse, tegeliku avaldamisaja, tulevikukuupäeva karistuse ning allika-, tüübi- ja aastafiltrite jõustamise;
-- 45 allikaga üldkataloog ning 59 päringuga külmutatud keskkonnaotsingu routing-komplekt;
+- 48 allikaga üldkataloog, 59 päringuga külmutatud routing-komplekt, 40 päringuga holdout ja 10 varem nägemata päringuga pimekomplekt;
 - eraldi enne esimest jooksu külmutatud 40 päringuga holdout'i P@1, MRR ja nDCG@5 väravad ning sama komplekti URL-põhise live-kontrolli;
 - 24/24 teenusepäringu õige esimese allika nii deterministlikus järjestajas kui ka külma PostgreSQL-i vahemäluga päris HTTP-voos;
 - külmutatud v2 hindamiskomplekti 30/30 vastatava päringu õiget intent-vastust ja Recall@3 väärtust 100%;

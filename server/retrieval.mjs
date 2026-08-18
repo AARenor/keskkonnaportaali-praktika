@@ -265,6 +265,8 @@ function serviceIntentPriority(query, roots, document) {
   const liveScore = liveServiceIntentScore(query, roots, document);
   const normalizedQuery = normalize(query);
   const requestsHistoricalYear = /\b(?:19|20)\d{2}\b/u.test(normalizedQuery);
+  const requestsHistoricalObservations = requestsHistoricalYear
+    || /\b(?:ajalool\w*|varasem\w*|arhiiv\w*|vanad?|endisaeg\w*)\b/u.test(normalizedQuery);
   if (isForestHarvestBalanceQuery(query)) {
     if (document.id === "forest-balance-eurostat") return 6;
     if (document.id === "forest-balance-eurostat-handbook") return 5.5;
@@ -279,6 +281,9 @@ function serviceIntentPriority(query, roots, document) {
     && roots.some((root) => root.startsWith("andmestik") || root.startsWith("valjaand"));
   if (requestsForestCatalogue && document.id === "forest-catalogue") return 4;
   if (roots.includes("jaatmekaitluskoht") && document.id === "waste-facilities-map") return 3;
+  if (roots.includes("kaart")
+    && roots.some((root) => ["natura", "kaitseala"].includes(root))
+    && document.id === "environment-register") return 4;
   if (roots.includes("mets") && roots.includes("mootmine") && document.id === "forest-overview") return 4;
   if (roots.includes("vesi") && roots.includes("seisund") && roots.includes("seire")
     && document.id === "water-monitoring") return 4;
@@ -306,6 +311,9 @@ function serviceIntentPriority(query, roots, document) {
     if (["open-data", "open-data-downloader"].includes(document.id)) return 2;
   }
   if (roots.includes("keskkonnaluba") && roots.includes("taotlemine") && document.id === "environmental-permits") return 3;
+  if (roots.includes("puurkaev")
+    && roots.some((root) => ["register", "andmed", "pohjavesi"].includes(root))
+    && document.id === "well-register") return 4;
   if (roots.includes("rehv") && roots.includes("polet") && document.id === "waste-burning-guidance") return 3;
   const requestsClimateMap = roots.includes("kliima")
     && roots.some((root) => ["kaart", "stsenaarium"].includes(root));
@@ -322,7 +330,9 @@ function serviceIntentPriority(query, roots, document) {
   if (roots.includes("muld") && document.id === "soil-monitoring-results") return 3;
   if (roots.includes("kiirgus") && document.id === "radiation-monitoring") return 3;
   if (roots.includes("ajalooline") && roots.includes("temperatuur") && document.id === "historical-weather-data") return 3;
-  if (roots.includes("vesi") && roots.includes("seire") && requestsHistoricalYear
+  if (roots.some((root) => ["vesi", "emajogi", "jogi"].includes(root))
+    && roots.some((root) => ["seire", "mootmine"].includes(root))
+    && requestsHistoricalObservations
     && document.id === "historical-hydrology-data") return 3;
   if (roots.includes("keskkonnamoju") && roots.includes("tuulepark")
     && document.id === "wind-farm-assessment-guide") return 3;
@@ -345,6 +355,14 @@ function serviceIntentPriority(query, roots, document) {
   if ((roots.includes("meri") || roots.includes("laanemeri"))
     && roots.includes("seisund")
     && document.id === "marine-strategy-status") return 3;
+  if ((roots.includes("meri") || roots.includes("laanemeri"))
+    && roots.some((root) => ["seire", "mootmine", "temperatuur", "jaaolud"].includes(root))
+    && document.id === "marine-observations") return 4;
+  if ((roots.includes("meri") || roots.includes("laanemeri"))
+    && roots.includes("jaaolud")
+    && document.id === "marine-ice-map") {
+    return roots.some((root) => ["seire", "mootmine", "temperatuur"].includes(root)) ? 3 : 4;
+  }
   if (roots.length === 1) {
     const primaryByTopic = {
       mets: ["forest-overview", "forest-catalogue"],

@@ -60,9 +60,9 @@ const SEARCH_DOCUMENTS = [
     type: "Kaardirakendus",
     published: "jooksev",
     url: "https://register.keskkonnaportaal.ee/register",
-    tags: ["kaart", "andmed", "EELIS", "kaitseala", "elupaik", "keskkonnaregister"],
+    tags: ["kaart", "andmed", "EELIS", "kaitseala", "Natura 2000", "kaitsepiirang", "elupaik", "keskkonnaregister"],
     summary:
-      "Kaardirakendus võimaldab otsida ja vaadata ruumilisi keskkonnaandmeid, sealhulgas kaitstavaid alasid ja objekte.",
+      "Kaardirakendus võimaldab otsida ja vaadata ruumilisi keskkonnaandmeid, sealhulgas Natura 2000 alasid, kaitsealasid, elupaiku ja kaitstavaid objekte. Kaart aitab leida registriobjekti; konkreetse piirangu kehtivus tuleb kontrollida objekti andmetest ja õigusaktist.",
     answer:
       "Asukohapõhiste keskkonnapiirangute kontrollimiseks kasuta Andmed ja kaart rakendust ning võrdle nähtavaid kihte registri objektiandmetega.",
   },
@@ -405,9 +405,9 @@ const SEARCH_DOCUMENTS = [
     type: "Ametlik kaardirakendus",
     published: "jooksev",
     url: "https://register.keskkonnaportaal.ee/register",
-    tags: ["jäätmed", "jäätmekäitluskoht", "jäätmekäitluskohad", "kaart", "KOTKAS", "Pärnumaa", "maakond"],
+    tags: ["jäätmed", "jäätmekäitluskoht", "jäätmekäitluskohad", "vastuvõtukoht", "katkine", "külmkapp", "kodumasin", "elektroonikaromu", "kaart", "KOTKAS", "Pärnumaa", "Viljandimaa", "maakond"],
     summary:
-      "Pärnumaa jäätmekäitluskohtade leidmiseks saab Keskkonnaportaali kaardirakenduses valida jäätmekäitluskohtade kihi ja piirata kaardi maakonnale. Vaade sisaldab kehtivaid ning arhiveeritud kohti ja seost KOTKASe menetlusandmetega.",
+      "Katkise külmkapi, kodumasina või muu jäätme vastuvõtukoha leidmiseks saab Keskkonnaportaali kaardirakenduses valida jäätmekäitluskohtade kihi ja piirata kaardi maakonnale. Vaade sisaldab kehtivaid ning arhiveeritud kohti ja seost KOTKASe menetlusandmetega.",
     answer:
       "Piirkonna jäätmekäitluskohtade leidmiseks ava Andmed ja kaart, vali jäätmekäitluskohtade kiht ning piira kaart soovitud maakonnale. Enne jäätmete viimist kontrolli objekti kehtivust ja vastuvõetavaid jäätmeliike KOTKASest või käitlejalt.",
   },
@@ -540,6 +540,41 @@ const SEARCH_DOCUMENTS = [
       "Keskkonnaportaali püsileht koondab põhjaveekogumite keemilise ja koguselise seisundi hinnangud, kaardiloo ning kogumipõhised aruanded, sealhulgas Siluri–Ordoviitsiumi Harju kogumi materjali.",
   },
   {
+    id: "well-register",
+    title: "Puurkaevude ja puuraukude andmed registris",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Ametlik register ja avaandmed",
+    published: "jooksev",
+    url: "https://register.keskkonnaportaal.ee/register/search?objectType=DRIVEN_WELL&status=kinnitatud",
+    locator: "https://keskkonnaportaal.ee/et/eelise-andmestikud",
+    tags: ["puurkaev", "puurauk", "register", "EELIS", "põhjaveekiht", "põhjavesi", "andmed", "kaart"],
+    summary:
+      "Keskkonnaportaali Andmed ja kaart rakenduses saab otsida puurkaevu või puurauku ning vaadata EELISe registriandmeid. EELISe andmestike kirjeldus kinnitab, et puurkaevude andmestik hõlmab puurauke ja puurkaeve; konkreetse objekti juures tuleb kontrollida registrikoodi, asukohta ja geoloogilisi andmeid.",
+  },
+  {
+    id: "marine-observations",
+    title: "Mere seireandmed ja jääkaart",
+    organization: "Keskkonnaagentuur",
+    type: "Reaalaja- ja ajaloolised seireandmed",
+    published: "jooksev",
+    url: "https://www.ilmateenistus.ee/meri/vaatlusandmed/",
+    locator: "https://www.ilmateenistus.ee/meri/jaakaart/",
+    tags: ["meri", "merevesi", "veetemperatuur", "veetase", "vaatlusandmed", "seire", "rannik", "jääkaart", "jääolud"],
+    summary:
+      "Keskkonnaagentuuri merevaatluste vaade kuvab rannikujaamade veetaset, veetemperatuuri ja muid jooksvaid näite; samas ametlikus mereteenuses on eraldi ajaloolised seireandmed ning jääkaart.",
+  },
+  {
+    id: "marine-ice-map",
+    title: "Mere jääkaart",
+    organization: "Keskkonnaagentuur",
+    type: "Ametlik jääolude kaart",
+    published: "jooksev",
+    url: "https://www.ilmateenistus.ee/meri/jaakaart/",
+    tags: ["meri", "merejää", "jääkaart", "jääolud", "jääkate", "vaatlus", "kaart"],
+    summary:
+      "Keskkonnaagentuuri jääkaart näitab Eesti mereala jääolusid. Merevee temperatuuri ja veetaseme jooksvaid näite kuvatakse eraldi mere seireandmete vaates.",
+  },
+  {
     id: "marine-strategy-status",
     title: "Eesti merestrateegia: Läänemere seisundihinnang 2024",
     organization: "Kliimaministeerium",
@@ -644,6 +679,8 @@ const STOP_WORDS = new Set([
   "aasta",
   "aastal",
   "kust",
+  "kuhu",
+  "viia",
   "saab",
   "saada",
   "leia",
@@ -755,6 +792,7 @@ function topicRoot(word) {
   if (word.startsWith("laadida") || word.startsWith("allalaadi") || word.startsWith("alalaadi")) return "allalaadimine";
   if (word.startsWith("kasutusjuh")) return "kasutusjuhend";
   if (word.startsWith("jaatmekaitluskoh")) return "jaatmekaitluskoht";
+  if (word.startsWith("kulmkapp") || word.startsWith("kodumasin") || word.startsWith("elektroonik")) return "jaatmekaitluskoht";
   if (word.startsWith("jaat")) return "jaat";
   if (word.startsWith("ringlussevot")) return "ringlussevott";
   if (word === "maar" || word.startsWith("protsent")) return "maar";
@@ -764,6 +802,7 @@ function topicRoot(word) {
   if (word.startsWith("polet")) return "polet";
   if (["tohib", "voib", "lubatud", "keelatud"].includes(word)) return "lubatavus";
   if (word.startsWith("ohukval") || word === "ohu") return "ohukvaliteet";
+  if (word.startsWith("peenosak")) return "ohukvaliteet";
   if (word === "ohk" || word.startsWith("valisoh")) return "ohk";
   if (word.startsWith("saast")) return "saaste";
   if (word.startsWith("heit")) return "heide";
@@ -775,13 +814,18 @@ function topicRoot(word) {
   if (word.startsWith("kaitstav")) return "kaitstav";
   if (word.startsWith("liig")) return "liik";
   if (word.startsWith("pohjave")) return "pohjavesi";
+  if (word.startsWith("puurkaev") || word.startsWith("puurauk")) return "puurkaev";
+  if (word.startsWith("registr")) return "register";
   if (word.startsWith("laanemer")) return "laanemeri";
   if (word.startsWith("hudro")) return "vesi";
   if (word.startsWith("emajog") || word.startsWith("emajoe")) return "emajogi";
   if (word.startsWith("jarv")) return "jarv";
   if (word.startsWith("jog")) return "jogi";
   if (word === "vee" || word.startsWith("veek")) return "vesi";
+  if (word.startsWith("veetas")) return "vesi";
   if (word.startsWith("mer")) return "meri";
+  if (word.startsWith("jaaolu") || word === "jaakaart") return "jaaolud";
+  if (word.startsWith("vaatlusandm")) return "seire";
   if (word.startsWith("temperatuur")) return "temperatuur";
   if (word.startsWith("sadem") || word.startsWith("saju")) return "sademed";
   if (word.startsWith("prognoos")) return "prognoos";
@@ -789,7 +833,7 @@ function topicRoot(word) {
   if (word.startsWith("hoiatus") || word.includes("hoiatus")) return "hoiatus";
   if (word.startsWith("katastr")) return "kataster";
   if (word.startsWith("kinnist")) return "kinnistu";
-  if (word.startsWith("keskkonnalub") || word.startsWith("keskkonnalo")) return "keskkonnaluba";
+  if (word.startsWith("keskkonnalub") || word.startsWith("keskkonnalo") || word.startsWith("keskonnalo")) return "keskkonnaluba";
   if (word.startsWith("kotkas")) return "kotkas";
   if (word.startsWith("taotl") || word.startsWith("taotle")) return "taotlemine";
   if (word.startsWith("nousole")) return "nousolek";
@@ -819,6 +863,7 @@ function topicRoot(word) {
   if (word.startsWith("harju")) return "harjumaa";
   if (word.startsWith("tallinn")) return "tallinn";
   if (word.startsWith("tartu")) return "tartu";
+  if (word.startsWith("viljand")) return "viljandi";
   if (word.endsWith("maal") && word.length >= 7) return word.slice(0, -1);
   return word;
 }
@@ -897,7 +942,7 @@ export function textHasQueryRoot(value, root) {
 
 const DOMAIN_ROOTS = new Set([
   "mets", "raie", "kliima", "ilm", "prognoos", "hoiatus", "temperatuur", "sademed", "tuul",
-  "vesi", "jarv", "jogi", "meri", "laanemeri", "pohjavesi", "ohk", "ohukvaliteet", "saaste", "heide", "kasvuhoonegaas",
+  "vesi", "jarv", "jogi", "meri", "laanemeri", "pohjavesi", "puurkaev", "jaaolud", "ohk", "ohukvaliteet", "saaste", "heide", "kasvuhoonegaas",
   "jaat", "jaatmekaitluskoht", "prugi", "rehv", "polet", "ringmajandus", "ringlussevott", "looduskaitse", "elurikkus", "elupaik",
   "kaitseala", "natura", "liik", "seire", "keskkond", "keskkonnaportaal", "keskkonnaluba",
   "tuulepark",
@@ -1016,7 +1061,7 @@ export function assessSearchQuery(query) {
         : "Lisa asukoht, et avada õige piirkonna prognoos.",
     };
   }
-  const explicitlyCurrentAir = /\b(?:praegu|praegune|hetkel|hetke|reaalajas|tana|värske|varske)\b/u.test(normalized);
+  const explicitlyCurrentAir = /\b(?:praeg\w*|hetkel|hetke|reaalajas|tana|värske|varske)\b/u.test(normalized);
   if (roots.some((root) => ["ohk", "ohukvaliteet", "saaste"].includes(root)) && explicitlyCurrentAir) {
     return {
       kind: "live-air",

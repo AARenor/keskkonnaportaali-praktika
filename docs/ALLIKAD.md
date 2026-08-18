@@ -29,7 +29,7 @@ Versioonitud metsakorpus sisaldab 16 algallikat ja 21 vastusedokumenti ning sell
 
 ## Kontrollitud kataloogi- ja suunamisallikad
 
-Need 43 kohalikus kataloogis olevat kirjet aitavad valida õige ametliku teenuse ja on nõrga võrguolukorra korral kasutajale suunavad allikad. Need ei muutu automaatselt konkreetse arvu või õigusliku järelduse tõendiks. 18.08.2026 automaatne lingikontroll sai kõigilt 43 siht-URL-ilt eduka vastuse või ümbersuunamise.
+Need 48 kohalikus kataloogis olevat kirjet aitavad valida õige ametliku teenuse ja on nõrga võrguolukorra korral kasutajale suunavad allikad. Need ei muutu automaatselt konkreetse arvu või õigusliku järelduse tõendiks. 18.08.2026 automaatne lingikontroll sai kõigilt 48 siht-URL-ilt eduka vastuse või ümbersuunamise.
 
 | Valdkond | Ametlik teenus | Kontrollitud omadus | Runtime-roll |
 |---|---|---|---|
@@ -42,6 +42,8 @@ Need 43 kohalikus kataloogis olevat kirjet aitavad valida õige ametliku teenuse
 | Ametlik statistika | `https://andmed.stat.ee/api/v1/et/stat` | PXWeb API, sh keskkonna, energia, transpordi ja jäätmete tabelid | Kataloogiallikas; arvvastus vajab tabeli, mõõtme, ühiku ja perioodi adapterit |
 | Load ja menetlused | KOTKAS | Keskkonnaload, KMH/KSH ja aruandlus | Menetluse ametliku seisu algallikas; otsing leiab juhendi või menetluse viite |
 | Vee seisund | KESE, VEKA, KOTKAS ja Keskkonnaagentuuri veeleht | Eristab mõõtmise, veekogumi seisundihinnangu ja kasutusandmed | Otsing nõuab veekogu/näitaja/aasta täpsustust |
+| Puurkaevud | [Keskkonnaportaali register](https://register.keskkonnaportaal.ee/register/search?objectType=DRIVEN_WELL&status=kinnitatud) | EELISe puurkaevude ja puuraukude registrikirjed ning objekti geoloogilised andmed | Puurkaevu päring suunatakse filtreeritud registrivaatesse, mitte põhjaveekogumi üldise seisundi artiklisse |
+| Merevaatlused ja jää | [Keskkonnaagentuuri merevaatlused](https://www.ilmateenistus.ee/meri/vaatlusandmed/) ning [jääkaart](https://www.ilmateenistus.ee/meri/jaakaart/) | Rannikujaamade veetase, veetemperatuur, ajaloolised vaatlusandmed ja mere jääolud | Jooksev vaatlus suunatakse mõõteandmetesse; jääpäringus tõstetakse eraldi jääkaart teiseks või esimeseks tulemuseks |
 | Tallinna müra | Tallinna linna 2022. aasta mürakaart | Liiklus-, tööstus- ja summaarne müra; kaart kirjeldab 2019. aasta pikaajalist olukorda ning ei lahenda lokaalset häiringut | Täpne mürakaardi suunamine koos ajaperioodi ja kasutuspiiranguga |
 | Jäätmekäitluskohad | Keskkonnaportaali Andmed ja kaart + KOTKAS | Kehtivate ja arhiveeritud käitluskohtade kaardikiht ning objekti menetlusinfo | Piirkondlik otsing suunatakse kaardikihile; vastuvõetav jäätmeliik tuleb kontrollida käitlejalt |
 | Kiirgusseire | Keskkonnaameti riiklik kiirgusseire | 15 automaatjaama, reaalaja doosikiirus ja varajane hoiatus | Üksiknäitu ei tõlgendata automaatselt kiirgusõnnetusena |

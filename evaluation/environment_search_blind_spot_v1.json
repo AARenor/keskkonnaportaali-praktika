@@ -1,0 +1,21 @@
+{
+  "name": "environment-search-blind-spot-v1",
+  "version": "environment-search-blind-spot-v1",
+  "createdAt": "2026-08-18",
+  "baselineRevision": "ecee6451708f06e82160ec40baa1c6e79339281d",
+  "method": "Ten previously unseen Estonian, misspelled and multi-intent queries were selected before inspecting their results. The baseline placed five expected maintained services at rank one; the unchanged labels are retained as a post-fix regression set.",
+  "baseline": { "precisionAt1": 0.5 },
+  "gates": { "precisionAt1": 1, "mrr": 1, "ndcgAt5": 1, "recallAt5": 1 },
+  "cases": [
+    { "id": "B01", "query": "Kust näen praegust peenosakeste taset Tartus?", "topSource": "air-quality-live" },
+    { "id": "B02", "query": "Kas homme tuleb Pärnus torm ja kust näen ilmahoiatust?", "topSource": "weather-forecast" },
+    { "id": "B03", "query": "Kust leian Emajõe veetaseme vanad mõõtmised?", "topSource": "historical-hydrology-data" },
+    { "id": "B04", "query": "Milline kaart näitab Natura 2000 alasid ja kaitsepiiranguid?", "topSource": "environment-register" },
+    { "id": "B05", "query": "Kuhu viia katkine külmkapp Viljandis?", "topSource": "waste-facilities-map" },
+    { "id": "B06", "query": "Keskonnaloa taotlemne uue karjääri jaoks", "topSource": "environmental-permits" },
+    { "id": "B07", "query": "Kuidas kontrollida registrist puurkaevu andmeid ja põhjaveekihti?", "topSource": "well-register" },
+    { "id": "B08", "query": "Kas katastriüksusel 78401:101:1234 on vääriselupaik?", "topSource": "official-cadastre-wfs" },
+    { "id": "B09", "query": "Kust laadida alla Eesti kasvuhoonegaaside inventuuri andmed?", "topSource": "greenhouse-gas-inventory" },
+    { "id": "B10", "query": "Kust näeb merevee temperatuuri ja jääolude vaatlusandmeid?", "topSource": "marine-observations" }
+  ]
+}

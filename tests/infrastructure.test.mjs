@@ -1111,3 +1111,18 @@ test("mobile header reuses the home search instead of rendering a second form", 
   assert.match(header, /onRevealSearch/u);
   assert.match(app, /homeSearchInputRef/u);
 });
+
+test("home links and the 320px quick bar keep accessible names, contrast and reflow", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(new URL("../src/App.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/styles.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(app, /aria-label=\{`Ava artikkel: \$\{card\.title\}`\}/u);
+  assert.match(app, /aria-label=\{`Ava uudis: \$\{item\.title\}`\}/u);
+  assert.match(app, /className="search-filters" aria-label="Otsingutulemuste filtrid" role="group"/u);
+  assert.match(styles, /--brand-700:\s*#0073b8/u);
+  assert.match(styles, /--brand-600:\s*#007dbb/u);
+  assert.match(styles, /--green:\s*#008849/u);
+  assert.match(styles, /body\s*\{[^}]*min-width:\s*0;/su);
+  assert.match(styles, /@media \(max-width: 720px\)[\s\S]*?\.quick-links\s*\{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/u);
+});

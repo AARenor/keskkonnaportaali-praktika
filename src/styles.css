@@ -10,8 +10,8 @@
   --brand-900: #003b86;
   --brand-850: #004495;
   --brand-800: #0057a6;
-  --brand-700: #0075bb;
-  --brand-600: #0089ce;
+  --brand-700: #0073b8;
+  --brand-600: #007dbb;
   --brand-100: #e9f7fc;
   --brand-50: #f4fbfe;
   --cyan: #42b8e5;
@@ -20,7 +20,7 @@
   --line: #c9d5dc;
   --soft: #eef6fa;
   --purple: #9d45b5;
-  --green: #008f4d;
+  --green: #008849;
   --white: #fff;
   --shadow: 0 14px 40px rgba(0, 54, 98, 0.14);
   color: var(--ink);
@@ -39,7 +39,7 @@ html {
 
 body {
   margin: 0;
-  min-width: 320px;
+  min-width: 0;
   min-height: 100vh;
   background: #fff;
   color: var(--ink);
@@ -691,7 +691,7 @@ h3 {
   padding: 4px 9px;
   border-radius: 999px;
   background: #e4f5fb;
-  color: var(--brand-700);
+  color: var(--brand-800);
   font-size: 0.67rem;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -876,7 +876,7 @@ h3 {
   padding: 0 13px;
   background: #f2f6f8;
   border-bottom: 1px solid #d5dfe4;
-  color: #71808a;
+  color: #64727c;
   font-size: 0.72rem;
   font-weight: 600;
 }
@@ -2892,20 +2892,17 @@ h3 {
   }
 
   .quick-bar {
-    height: 48px;
-    overflow: hidden;
+    height: auto;
+    min-height: 48px;
   }
 
   .quick-bar__inner {
     width: 100%;
+    height: auto;
+    min-height: 48px;
     margin: 0;
-    overflow-x: auto;
-    padding: 0 13px;
-    scrollbar-width: none;
-  }
-
-  .quick-bar__inner::-webkit-scrollbar {
-    display: none;
+    overflow-x: visible;
+    padding: 7px 10px;
   }
 
   .quick-tools {
@@ -2913,7 +2910,23 @@ h3 {
   }
 
   .quick-links {
-    font-size: 0.9rem;
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    font-size: 0.76rem;
+    line-height: 1.2;
+    white-space: normal;
+  }
+
+  .quick-links > span {
+    display: none;
+  }
+
+  .quick-links a {
+    min-height: 34px;
+    justify-content: center;
+    text-align: center;
   }
 
   .brand-bar {

@@ -669,7 +669,7 @@ function CurrentContent() {
         <div className="featured-grid">
           {currentCards.map((card) => (
             <article className="featured-card" key={card.title}>
-              <ExternalAnchor href={card.href} className="featured-card__image"><img src={card.image} alt="" /></ExternalAnchor>
+              <ExternalAnchor href={card.href} className="featured-card__image" aria-label={`Ava artikkel: ${card.title}`}><img src={card.image} alt="" /></ExternalAnchor>
               <div className="tag-row">{card.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
               <ExternalAnchor href={card.href}><h3>{card.title}</h3></ExternalAnchor>
               <p className="meta">{card.meta}</p>
@@ -683,7 +683,7 @@ function CurrentContent() {
         <SectionHeading href={`${SOURCE}/et/uudised`}>Hiljutised uudised</SectionHeading>
         {news.map((item) => (
           <article className="news-item" key={item.title}>
-            <ExternalAnchor href={item.href}><img src={item.image} alt="" /></ExternalAnchor>
+            <ExternalAnchor href={item.href} aria-label={`Ava uudis: ${item.title}`}><img src={item.image} alt="" /></ExternalAnchor>
             <div>
               <span className="tag">{item.tag}</span>
               <ExternalAnchor href={item.href}><h3>{item.title} <ExternalLink size={13} /></h3></ExternalAnchor>
@@ -852,7 +852,7 @@ function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRe
         </div>
         <strong>{total.toLocaleString("et-EE")}</strong>
       </div>
-      <div className="search-filters" aria-label="Otsingutulemuste filtrid">
+      <div className="search-filters" aria-label="Otsingutulemuste filtrid" role="group">
         <label>
           <span>Allikas</span>
           <select disabled={!interactive || busy} value={filters.source} onChange={(event) => changeFilter("source", event.target.value)}>

@@ -7,7 +7,11 @@ const options = Object.fromEntries(process.argv.slice(2).map((argument) => {
   const [key, ...rest] = argument.replace(/^--/u, "").split("=");
   return [key, rest.join("=") || true];
 }));
-const datasetText = await readFile(new URL("../evaluation/environment_search_holdout_v1.json", import.meta.url), "utf8");
+const datasetFile = String(options.dataset || "environment_search_holdout_v1.json");
+if (!/^[a-z0-9_-]+\.json$/u.test(datasetFile)) {
+  throw new Error("--dataset must name one JSON file in evaluation/");
+}
+const datasetText = await readFile(new URL(`../evaluation/${datasetFile}`, import.meta.url), "utf8");
 const dataset = JSON.parse(datasetText);
 const now = Date.parse("2026-08-18T00:00:00Z");
 const documents = officialServiceCatalogueDocuments();
@@ -16,7 +20,7 @@ const unknownSourceIds = dataset.cases
   .map((item) => item.topSource)
   .filter((id) => !documentById.has(id));
 if (unknownSourceIds.length) {
-  throw new Error(`Holdout references unknown source IDs: ${[...new Set(unknownSourceIds)].join(", ")}`);
+  throw new Error(`Evaluation dataset references unknown source IDs: ${[...new Set(unknownSourceIds)].join(", ")}`);
 }
 const baseUrl = options["base-url"] ? new URL(String(options["base-url"])) : null;
 if (baseUrl && (!["http:", "https:"].includes(baseUrl.protocol) || baseUrl.username || baseUrl.password)) {
@@ -46,6 +50,7 @@ const mrr = cases.reduce((sum, item) => sum + (item.rank ? 1 / item.rank : 0), 0
 const ndcgAt5 = cases.reduce((sum, item) => (
   sum + (item.rank && item.rank <= 5 ? 1 / Math.log2(item.rank + 1) : 0)
 ), 0) / total;
+const recallAt5 = cases.filter((item) => item.rank && item.rank <= 5).length / total;
 const failures = cases.filter((item) => item.rank !== 1);
 const metrics = (items) => ({
   precisionAt1: round(items.filter((item) => item.rank === 1).length / items.length),
@@ -53,6 +58,7 @@ const metrics = (items) => ({
   ndcgAt5: round(items.reduce((sum, item) => (
     sum + (item.rank && item.rank <= 5 ? 1 / Math.log2(item.rank + 1) : 0)
   ), 0) / items.length),
+  recallAt5: round(items.filter((item) => item.rank && item.rank <= 5).length / items.length),
 });
 
 let live = null;
@@ -121,6 +127,7 @@ const result = {
   precisionAt1: round(precisionAt1),
   mrr: round(mrr),
   ndcgAt5: round(ndcgAt5),
+  recallAt5: round(recallAt5),
   gates: dataset.gates,
   failures,
   live,
@@ -128,12 +135,10 @@ const result = {
 
 console.log(JSON.stringify(result, null, 2));
 
-if (precisionAt1 < dataset.gates.precisionAt1
-  || mrr < dataset.gates.mrr
-  || ndcgAt5 < dataset.gates.ndcgAt5
-  || (live && (live.precisionAt1 < dataset.gates.precisionAt1
-    || live.mrr < dataset.gates.mrr
-    || live.ndcgAt5 < dataset.gates.ndcgAt5
-    || live.failures.length))) {
+const missesGate = (values) => Object.entries(dataset.gates).some(([name, minimum]) => (
+  Number.isFinite(Number(minimum)) && Number(values[name]) < Number(minimum)
+));
+if (missesGate({ precisionAt1, mrr, ndcgAt5, recallAt5 })
+  || (live && (missesGate(live) || live.failures.length))) {
   process.exitCode = 1;
 }
