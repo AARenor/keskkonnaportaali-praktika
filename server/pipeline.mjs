@@ -1,9 +1,10 @@
+import { createHash } from "node:crypto";
 import { readSearchCache, recordSearch } from "./database.mjs";
 import { answerCadastreQuestion } from "./cadastre.mjs";
 import {
   hydrateOfficialDocuments,
 } from "./integrations.mjs";
-import { generateGroundedAnswer } from "./llm.mjs";
+import { generateGroundedAnswer, sanitizeLlmEvidenceText } from "./llm.mjs";
 import {
   canonicalResultUrl,
   evidenceDocumentsFromListing,
@@ -22,7 +23,7 @@ import {
   textHasQueryRoot,
 } from "./search.mjs";
 
-export const SEARCH_RESPONSE_REVISION = "answer-v11-ranked-live-sources";
+export const SEARCH_RESPONSE_REVISION = "answer-v12-content-bound-cache";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 
 function rankPortalDocuments(query, documents) {
@@ -68,6 +69,7 @@ export function directEvidenceExtract(query, document) {
   const passages = [document?.summary, document?.content]
     .filter(Boolean)
     .flatMap(splitTextPassages)
+    .map(sanitizeLlmEvidenceText)
     .map((value) => value.replace(/\s+/gu, " ").trim())
     .filter((value) => value.length >= 35 && value.length <= 520 && hasCompleteSentenceEnding(value));
   return passages
@@ -165,7 +167,19 @@ export async function createPortalDraft(query, {
   return draft;
 }
 
-function cachedSourcesBelongToListing(cached, listing) {
+export function searchListingRevision(listing = {}) {
+  const records = (listing.items || []).map((item) => [
+    canonicalResultUrl(item.url),
+    String(item.title || ""),
+    String(item.summary || ""),
+    String(item.published || ""),
+    String(item.sourceTier || ""),
+    String(item._contentHash || item.content || ""),
+  ]);
+  return createHash("sha256").update(JSON.stringify(records)).digest("hex");
+}
+
+export function cachedSourcesBelongToListing(cached, listing) {
   if (!listing?.items?.length || !cached?.sources?.length) return true;
   const urls = new Set(listing.items.map((item) => canonicalResultUrl(item.url)));
   return cached.sources.every((source) => urls.has(canonicalResultUrl(source.url)));
@@ -192,8 +206,10 @@ async function searchWithinBudget(cleanQuery, {
     && [undefined, "", "all"].includes(filters?.source)
     && [undefined, "", "relevance"].includes(filters?.sort);
   const cacheEnabled = useCache && defaultFilters && isSearchCacheEnabled();
-  if (cacheEnabled) {
-    const cached = await readSearchCache(cleanQuery, SEARCH_RESPONSE_REVISION);
+  const cacheRevision = `${SEARCH_RESPONSE_REVISION}:${searchListingRevision(searchResults)}`;
+  const listingBackedCache = cacheEnabled && Boolean(searchResults?.items?.length);
+  if (listingBackedCache) {
+    const cached = await readSearchCache(cleanQuery, cacheRevision);
     if (cached && cachedSourcesBelongToListing(cached, searchResults)) return cached;
   }
 
@@ -250,13 +266,13 @@ async function searchWithinBudget(cleanQuery, {
   void recordSearch({
     query: cleanQuery,
     response,
-    revision: SEARCH_RESPONSE_REVISION,
+    revision: cacheRevision,
     answerProvider: llmResult.provider,
     answerStatus: llmResult.status,
     documentIds: draft.evidence?.documentIds || [],
     durationMs,
     ttlMinutes,
-    cacheResponse: cacheEnabled && cacheResponse,
+    cacheResponse: listingBackedCache && cacheResponse,
   }).catch(() => undefined);
   return response;
 }

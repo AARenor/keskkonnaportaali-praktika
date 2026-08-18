@@ -1222,7 +1222,10 @@ function publicSearchItem(row, includeContent = false) {
     _publishedAt: row.published_at ? new Date(row.published_at).toISOString().slice(0, 10) : null,
     _relevance: Number(row.relevance || 0),
   };
-  if (includeContent) item.content = boundedText(row.content, 15_000);
+  if (includeContent) {
+    item.content = boundedText(row.content, 15_000);
+    item._contentHash = row.content_hash || "";
+  }
   return item;
 }
 
@@ -1254,7 +1257,7 @@ async function snapshotResults(query, page, pageSize, includeContent) {
   }
   const rows = await databaseQuery(`
     SELECT id, canonical_url, title, summary, content, organization, category,
-           published_at, published_label, topics, source_tier
+           published_at, published_label, topics, source_tier, content_hash
     FROM practice_corpus_documents
     WHERE canonical_url = ANY($1::TEXT[]) AND is_available = TRUE
       AND COALESCE(metadata->>'robots_noindex', 'false') <> 'true'
@@ -1417,7 +1420,7 @@ export async function searchCorpus(query, {
         FROM ranked
       )
       SELECT id, canonical_url, title, summary, content, organization, category,
-             published_at, published_label, topics, source_tier, relevance,
+             published_at, published_label, topics, source_tier, content_hash, relevance,
              COUNT(*) OVER()::INTEGER AS full_count
       FROM bucketed
       ORDER BY ${orderClause}

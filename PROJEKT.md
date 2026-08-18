@@ -16,6 +16,7 @@ Projekt on märgitud praktikaprojektiks ja saadab `noindex` juhise. See ei ole K
 - Avalehe põhiotsing on nähtav kohe nii töölaual kui ka mobiili esimeses vaates. Mobiilipäise otsinguikoon viib fookuse samasse vormi ega loo DOM-i teist otsingukasti.
 - Autocomplete pakub kuni viis sisulist küsimust ning toetab klaviatuuri, hiirt ja puutetundlikku ekraani.
 - Otsingutulemus eristab kaks vaadet samast päringust: väike nummerdatud „Vastuse allikad” tõendikomplekt ja lehekülgede kaupa „Otsingutulemused”. Mõlemad läbivad sama allika-, sisutüübi-, aasta- ja järjestusfiltri; filtri muutmine koostab ka vastuse uuesti.
+- Iga filtriväli on teadlikult ühe valikuga. Eri väljade valikud ühendatakse `AND`-ina (näiteks `official` + „Ametlik juhend” + 2025); sama välja sees mitmikvaliku `OR`-semantikat UI ei paku.
 - Relevantsus on esmane järjestussignaal. Ametlikkus, tõendi täielikkus ja tegelik avaldamiskuupäev täpsustavad võrreldavaid vasteid; tulevikukuupäev ei saa värskusboonust.
 - Vastuse all saab esitada kuni neli jätkuküsimust. Iga voor teeb uue tõendiotsingu; varasem vestlus aitab ainult mõtet täpsustada ega muutu tõendiks.
 - Avalikus kasutajaliideses ega API vastuses ei näidata mudeli, andmebaasi, vektorindeksi, fallback'i või ühenduste tehnilisi olekuid.
@@ -62,7 +63,7 @@ Vastuse ja esimese laia tulemuselehe UI-endpoint on `POST /api/search`, kus küs
 9. Jätkuküsimus teeb uue ühendotsingu ja uue viidatud vastuse. Iseseisev sisuline jätkuküsimus otsitakse eraldi; ainult „aga miks?” laadne elliptiline küsimus pärib juurküsimuse ja viimase vooru otsingukonteksti. Kuni kolme varasema küsimuse tekst võib mudelile mõtet selgitada, kuid ei muutu tõendiks.
 10. 429, timeout, vigane mudelivastus või nõrk tõend ei muutu väljamõeldud vastuseks. Kogu esimese vastuse ja iga jätkuvooru ühine ülempiir on 15 sekundit. Mõõdetud Luna piir on kaks paralleelset mudelikutsungit; ülejäänud otsingud ei jää mudelijärjekorda, vaid tagastavad sama tõendi kontrollitud koondvastuse.
 
-Vahemälu võti sisaldab vastuse- ja retrieval-skeemi revisjoni, seega ei saa vana Terrapointi, eelkirjutatud metsakorpuse või varasema tulemuselepingu vastus pärast deploy'd edasi elada.
+Vahemälu võti sisaldab vastuse- ja retrieval-skeemi revisjoni ning jooksva järjestatud tulemusehulga URL-ide, järjekorra, metaandmete ja sisuversioonide sõrmejälge. Allika uuendamine, eemaldamine või tombstone muudab võtit; lisaks kontrollitakse cache-hit'il, et iga viidatud URL kuulub endiselt nähtavasse tulemusehulka. Päringu osa võtmes on `SEARCH_HASH_SECRET`-iga HMAC-SHA-256, mitte sõnastikuründega proovitav lihtne räsi. Seega ei saa vana Terrapointi, eelkirjutatud metsakorpuse või varasema tulemuselepingu vastus pärast deploy'd ega allikamuutust edasi elada.
 
 ### AI tõendileping ja tagasilükkamise semantika
 
@@ -146,6 +147,8 @@ Avaleht manustab `https://terrapoint.ee/` tervikuna. Praktikaportaali CSP lubab 
 
 Terrapointi desktop-autofookus on top-level aknaga piiratud: iseseisval lehel võib otsing saada fookuse, iframe'is mitte. Vana `/embed/terrapoint` ja piiratud proxy-route'id on alles ainult tagasiühilduvuseks ning üldotsing neid ei kutsu.
 
+Täisrakenduse iframe ei kasuta teadlikult `sandbox` atribuuti, sest Terrapointi kaart, vormid ja selle enda ametlikud API-ühendused vajavad tavapärast rakenduse käitumist. Turvapiir on brauseri cross-origin same-origin policy, hosti kitsas CSP `frame-src https://terrapoint.ee`, range referrer policy ning kaamera, mikrofoni ja geolokatsiooni keelav `Permissions-Policy`. Praktikaserveri kaks vana proxy-route'i aktsepteerivad ainult fikseeritud Terrapointi upstream'i: aadress on pikkuspiiratud ja katastritunnus peab vastama täpsele formaadile; kasutaja ei saa anda serverile suvalist fetch-URL-i. Üldotsingu ja Luna kooditee neid route'e ei kutsu.
+
 ## Kohalik käivitamine
 
 Nõuded: Node.js 24 ja npm.
@@ -178,6 +181,7 @@ Vaikimisi käivituvad veebirakendus ja PostgreSQL. Eksperimentaalse Qdranti kont
 - serverisaladus `OPENCODE_ZEN_API_KEY` või `OPENCODE_GO_API_KEY`;
 - `LLM_MODEL=gpt-5.6-luna`, `LLM_API_STYLE=responses` ja `LLM_BASE_URL=https://opencode.ai/zen/go/v1`;
 - `LLM_ENABLED=true|false` ja `SEARCH_CACHE_ENABLED=true|false`.
+- vähemalt 32 juhusliku baidiga runtime-saladus `SEARCH_HASH_SECRET`; selle puudumisel kasutatakse ainult serveris olemasolevat `DATABASE_URL` saladust.
 - `CORPUS_SYNC_ON_START=true`, `CORPUS_SYNC_INTERVAL_HOURS=24`, `CORPUS_SEED_QUERIES=mets` ja progressiivse täistekstipartii `CORPUS_STARTUP_HYDRATE_LIMIT=200`.
 
 Coolify tokenit, SSH privaatvõtit ega mudelivõtit ei tohi panna reposse, brauserikoodi, dokumentatsiooni või logidesse. Deploy-võti peab olema projektipõhine ja minimaalse õigusega.
@@ -194,7 +198,7 @@ Avaliku timeout-ahela kontroll 18.08.2026: rakendus piirab kogu otsingu 15 sekun
 - LLM-võti ei jõua brauserisse; mudel saab ainult avaliku küsimuse ja valitud avalikud tõendid.
 - Luna töötab välise OpenCode Go teenusena. Payload sisaldab küsimust, piiratud avalikku tõendipakki, väljundskeemi ja jätkuvoorus kuni 520 märki varasemate küsimuste konteksti; kasutaja IP-d, küpsiseid, andmebaasilogi ega kogu korpust sinna ei lisata. OpenCode'i [mudelipõhine privaatsustabel](https://opencode.ai/docs/go/#privacy) märgib Luna sisendi mudelitreeningus mittekasutatavaks, kuid abuse-monitoring'u logid võivad säilida kuni 30 päeva.
 - Ametlikud live-otsingud näevad serveri päringut ja väljuvat IP-d. Terrapointi iframe on brauseri otseühendus: sinna sisestatud andmed lähevad Terrapointile, kuid praktikaportaali üldotsingu päringuid Terrapointile ei saadeta.
-- Otsingulogi ei säilita kasutaja toorpäringut. Ka vahemällu salvestatavast JSON-ist eemaldatakse `query`, aegunud vahemäluread kustutatakse ning varasemad toorpäringud redigeeritakse skeemimigratsiooniga. UI saadab otsingu ja soovitused JSON POST-kehas: toorpäring ei lähe aadressiribale, lehe pealkirja ega püsivasse brauserisalvestusse; back/forward hoiab ainult läbipaistmatut protsessimälu ID-d.
+- Otsingulogi ei säilita kasutaja toorpäringut. Logi ja cache kasutavad võtmega HMAC-SHA-256 sõrmejälge; varasema lihtsa räsi read kustutatakse migratsiooniga. Ka vahemällu salvestatavast JSON-ist eemaldatakse `query`, aegunud vahemäluread kustutatakse ning UI saadab otsingu ja soovitused JSON POST-kehas: toorpäring ei lähe aadressiribale, lehe pealkirja ega püsivasse brauserisalvestusse; back/forward hoiab ainult läbipaistmatut protsessimälu ID-d.
 - Degradeerunud portaali- või ruumivastust ei salvestata tunniajase kvaliteetvastusena, et järgmine päring saaks taastunud allikaid uuesti proovida.
 - PostgreSQL-i transaktsioon kasutab ühte reserveeritud klienti ning SQL on parameeterdatud.
 - Coolify runtime kasutab eraldi kasutajat `practice_user` ja andmebaasi `keskkonnaportaal_practice`; kontrollhetkel olid PostgreSQL-i `log_statement=none` ja `log_min_duration_statement=-1`, seega päringutekste serveri SQL-logisse ei kirjutatud.
@@ -212,6 +216,7 @@ docker compose config
 npm run eval:holdout
 npm run eval:live -- --base-url=https://praktika.arleserver.cfd
 npm run audit:filters -- --base-url=https://praktika.arleserver.cfd
+npm run audit:followups -- --base-url=https://praktika.arleserver.cfd
 npm run audit:grounding -- --base-url=https://praktika.arleserver.cfd
 npm run audit:load -- --base-url=https://praktika.arleserver.cfd
 ```
@@ -229,6 +234,8 @@ Automaattestid kontrollivad muu hulgas:
 - raiemahu/juurdekasvu vastuse aastaid, ühikuid ja piiranguid;
 - mudelivastuse viidete, arvude, ühikute, väitekatvuse, polaarsuse ja tervikliku lauselõpu kontrolli;
 - 15 sekundi globaalse vastusepiiri kontrollitud fallback'i ning vahemälu toorpäringu eemaldamist;
+- võtmega HMAC-sõrmejälge, vana liht-räsi migratsiooni ja allikate liikmelisuse, järjekorra või sisu muutumisel cache'i invalidatsiooni;
+- kolme järjestikuse jätkuküsimuse filtri-, allika- ja viitelepingu püsimist;
 - Terrapointi ning infrastruktuurijargooni puudumist üldotsingu payload'ist ja UI-st;
 - kuni viit sisulist autocomplete-soovitust;
 - Sites-buildi lepingut.
@@ -239,7 +246,7 @@ Brauseri regression peab katma 1440 × 1100 ja 390 × 844 vaated, autocomplete'i
 
 Vaadetes 1440 × 1100 ja 390 × 844 jäi värske avaleht `scrollY === 0` juurde, aktiivne element oli hostdokumendi `BODY`, põhiotsing oli nähtav ja horisontaalset overflow'd polnud. Terrapointi cross-origin iframe laadis päris `terrapoint.ee` rakenduse, selle sisu ja neli sisendit ega võtnud hostilt fookust. UI-päring „jäätmete ringlussevõtu määr Eestis 2023” pani õigeks esimeseks tulemuseks olmejäätmete ringlussevõtu näitaja; peidetud viide 4 laiendas kaheksa allika loendi ja fokusseeris `source-4`. Mobiilil oli submit-nupp nimega, filtrid üheveerulised ja esimene loatulem KOTKAS. Mõlema sessiooni first-party konsoolis oli 0 viga ja 0 hoiatust.
 
-Sama brauserikontroll avastas enne lõppversiooni ühe katkestatud Valitsusportaali snippet'ist pärinenud avalause. Parandus nõuab nüüd nii deterministlikult väljavõttelt kui ka mudeli intro/osa tekstilt lõpetatud lauset ja kontrollib sama omadust live-evalis. Uus relevantsusväljalase tõstab cache'i revisjoni `answer-v11-ranked-live-sources`, et varasema järjestuse vastus ei jääks pärast deploy'd kehtima.
+Sama brauserikontroll avastas enne lõppversiooni ühe katkestatud Valitsusportaali snippet'ist pärinenud avalause. Parandus nõuab nüüd nii deterministlikult väljavõttelt kui ka mudeli intro/osa tekstilt lõpetatud lauset ja kontrollib sama omadust live-evalis. Lõplik cache'i revisjon `answer-v12-content-bound-cache` seob vastuse jooksva järjestatud allikahulga ja sisuversiooniga, et varasema järjestuse või muudetud allika vastus ei jääks pärast deploy'd kehtima.
 
 ## Olulisemad failid
 

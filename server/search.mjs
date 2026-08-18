@@ -1160,12 +1160,17 @@ export function relatedQueries(query, sources) {
 }
 
 export function officialServiceCatalogueDocuments() {
+  // The two SMI entries are legacy deterministic-answer fixtures. Current
+  // forestry evidence must arrive through the live/corpus retrieval path, but
+  // their maintained official URLs remain useful ranked navigation results.
+  const legacyForestryFacts = new Set(["forest-overview", "forest-inventory-publication"]);
   return SEARCH_DOCUMENTS.map(({ answer: _answer, tags, ...document }) => ({
     ...document,
     tags: [...(tags || [])],
     topics: [...(tags || [])],
     sourceTier: "official",
     retrieval: "official-service-directory",
+    _answerEvidenceEligible: !legacyForestryFacts.has(document.id),
   }));
 }
 

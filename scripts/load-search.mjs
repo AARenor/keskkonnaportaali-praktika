@@ -35,6 +35,27 @@ const fixtures = [
   "Kas elektriauto on kogu elutsükli jooksul sisepõlemisautost keskkonnasõbralikum?"
 ];
 
+function citationCount(body) {
+  const citations = new Set([
+    ...(body?.answer?.introCitations || []),
+    ...(body?.answer?.parts || []).flatMap((part) => part.citations || []),
+  ].filter((value) => Number.isInteger(value) && value > 0));
+  return citations.size;
+}
+
+function responseClass(status, body) {
+  if (status === 429) return "rate_limited";
+  if (status !== 200) return "http_error";
+  const eyebrow = String(body?.answer?.eyebrow || "");
+  if (eyebrow === "AI koondvastus") return "ai_ready";
+  if (eyebrow === "Otsing on praegu koormatud") return "capacity_fallback";
+  if (["Otsing võttis liiga kaua", "Osa allikaid ei vastanud", "Allikapõhine kokkuvõte", "Kontrollitud allikaotsing"].includes(eyebrow)) {
+    return "evidence_fallback";
+  }
+  if (eyebrow) return "deterministic_route";
+  return "unknown_success";
+}
+
 async function request(query, index = 0) {
   const startedAt = Date.now();
   try {
@@ -57,6 +78,7 @@ async function request(query, index = 0) {
       body = null;
     }
     return {
+      index,
       status: response.status,
       durationMs: Date.now() - startedAt,
       fallback: [
@@ -66,10 +88,23 @@ async function request(query, index = 0) {
       ].includes(body?.answer?.eyebrow),
       fallbackKind: body?.answer?.eyebrow || null,
       aiReady: body?.answer?.eyebrow === "AI koondvastus",
+      eyebrow: body?.answer?.eyebrow || null,
+      responseClass: responseClass(response.status, body),
+      citationCount: citationCount(body),
+      sourceCount: Array.isArray(body?.sources) ? body.sources.length : 0,
       retryAfter: response.headers.get("retry-after"),
     };
   } catch (error) {
-    return { status: null, durationMs: Date.now() - startedAt, fallback: false, error: error.name };
+    return {
+      index,
+      status: null,
+      durationMs: Date.now() - startedAt,
+      fallback: false,
+      responseClass: "network_error",
+      citationCount: 0,
+      sourceCount: 0,
+      error: error.name,
+    };
   }
 }
 
@@ -86,6 +121,9 @@ const durations = results.map((result) => result.durationMs).sort((left, right) 
 const statusCounts = Object.fromEntries([...new Set(results.map((result) => String(result.status || result.error || "unknown")))]
   .sort()
   .map((status) => [status, results.filter((result) => String(result.status || result.error || "unknown") === status).length]));
+const responseClasses = Object.fromEntries([...new Set(results.map((result) => result.responseClass))]
+  .sort()
+  .map((kind) => [kind, results.filter((result) => result.responseClass === kind).length]));
 const report = {
   baseUrl: baseUrl.origin,
   evaluatedAt: new Date().toISOString(),
@@ -99,6 +137,7 @@ const report = {
     max: durations.at(-1) || null,
   },
   statusCounts,
+  responseClasses,
   fallbackCount: results.filter((result) => result.fallback).length,
   aiReadyCount: results.filter((result) => result.aiReady).length,
   fallbackKinds: Object.fromEntries([...new Set(results.filter((result) => result.fallback).map((result) => result.fallbackKind))]
@@ -107,7 +146,20 @@ const report = {
   timeoutCount: results.filter((result) => result.error === "TimeoutError").length,
   fiveHundredCount: results.filter((result) => Number(result.status) >= 500).length,
   status504Count: results.filter((result) => result.status === 504).length,
-  overLimit: overLimit ? { status: overLimit.status, retryAfter: overLimit.retryAfter } : null,
+  rows: results.map((result) => ({
+    index: result.index + 1,
+    status: result.status,
+    responseClass: result.responseClass,
+    eyebrow: result.eyebrow || null,
+    citationCount: result.citationCount,
+    sourceCount: result.sourceCount,
+    durationMs: result.durationMs,
+  })),
+  overLimit: overLimit ? {
+    status: overLimit.status,
+    responseClass: overLimit.responseClass,
+    retryAfter: overLimit.retryAfter,
+  } : null,
   configuredClientTimeoutMs: timeoutMs,
   configuredRequestRetries: 0,
   spoofedForwardedAddresses: spoofForwarded ? concurrency + Number(testOverLimit) : 0,
@@ -115,6 +167,7 @@ const report = {
 process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 
 const baselineOk = results.every((result) => result.status === 200)
+  && results.every((result) => result.responseClass !== "unknown_success")
   && results.every((result) => expectFallback ? result.fallback : true)
   && (!expectAi || results.some((result) => result.aiReady))
   && report.fiveHundredCount === 0

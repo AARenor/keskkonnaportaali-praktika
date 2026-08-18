@@ -1,8 +1,10 @@
-import { createHash } from "node:crypto";
+import { createHmac } from "node:crypto";
 import pg from "pg";
 
 const { Pool } = pg;
 const databaseUrl = String(process.env.DATABASE_URL || "");
+const searchHashSecret = String(process.env.SEARCH_HASH_SECRET || databaseUrl || "");
+export const SEARCH_HASH_VERSION = "hmac-sha256-v1";
 let pool;
 let schemaPromise;
 
@@ -22,8 +24,9 @@ export function assertSafeDatabaseUrl(value) {
 
 assertSafeDatabaseUrl(databaseUrl);
 
-function queryHash(query, revision = "legacy") {
-  return createHash("sha256")
+export function queryFingerprint(query, revision = "legacy", secret = searchHashSecret) {
+  if (!secret) throw new Error("SEARCH_HASH_SECRET is required when search data is persisted");
+  return createHmac("sha256", String(secret))
     .update(String(revision))
     .update("\0")
     .update(String(query).trim().toLocaleLowerCase("et"))
@@ -43,7 +46,7 @@ export const SEARCH_CACHE_READ_SQL = `
   )
   SELECT response
   FROM practice_search_cache
-  WHERE query_hash = $1 AND expires_at > NOW()
+  WHERE query_hash = $1 AND key_version = 'hmac-sha256-v1' AND expires_at > NOW()
 `;
 
 export const SEARCH_DATA_PURGE_SQL = `
@@ -90,6 +93,7 @@ async function ensureSchema() {
         query_hash TEXT PRIMARY KEY,
         query_text TEXT NOT NULL,
         response JSONB NOT NULL,
+        key_version TEXT NOT NULL DEFAULT 'hmac-sha256-v1',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         expires_at TIMESTAMPTZ NOT NULL
       );
@@ -105,6 +109,12 @@ async function ensureSchema() {
       );
       CREATE INDEX IF NOT EXISTS practice_search_runs_created_at_idx
         ON practice_search_runs (created_at DESC);
+      ALTER TABLE practice_search_cache
+        ADD COLUMN IF NOT EXISTS key_version TEXT NOT NULL DEFAULT 'plain-sha256-v0';
+      DELETE FROM practice_search_cache
+        WHERE key_version <> 'hmac-sha256-v1';
+      DELETE FROM practice_search_runs
+        WHERE COALESCE(provenance->>'hashVersion', '') <> 'hmac-sha256-v1';
       UPDATE practice_search_cache
         SET query_text = '[cache-key]', response = response - 'query'
         WHERE query_text <> '[cache-key]' OR response ? 'query';
@@ -144,7 +154,7 @@ export async function readSearchCache(query, revision) {
   if (!getPool()) return null;
   try {
     await ensureSchema();
-    const result = await pool.query(SEARCH_CACHE_READ_SQL, [queryHash(query, revision)]);
+    const result = await pool.query(SEARCH_CACHE_READ_SQL, [queryFingerprint(query, revision)]);
     const cached = sanitizeCachedResponse(result.rows[0]?.response);
     return cached ? { ...cached, query: String(query || "").replace(/\s+/gu, " ").trim().slice(0, 180) } : null;
   } catch {
@@ -185,9 +195,10 @@ export async function recordSearch({
   try {
     await ensureSchema();
     client = await poolInstance.connect();
-    const hash = queryHash(query, revision);
+    const hash = queryFingerprint(query, revision);
     const provenance = {
       revision,
+      hashVersion: SEARCH_HASH_VERSION,
       answerStatus,
       documentIds: (documentIds || []).map(String).slice(0, 12),
     };
@@ -196,11 +207,12 @@ export async function recordSearch({
     try {
       if (cacheResponse && safeResponse) {
         await client.query(
-          `INSERT INTO practice_search_cache (query_hash, query_text, response, expires_at)
-           VALUES ($1, '[cache-key]', $2::jsonb, NOW() + ($3 * INTERVAL '1 minute'))
+          `INSERT INTO practice_search_cache (query_hash, query_text, response, expires_at, key_version)
+           VALUES ($1, '[cache-key]', $2::jsonb, NOW() + ($3 * INTERVAL '1 minute'), 'hmac-sha256-v1')
            ON CONFLICT (query_hash) DO UPDATE SET
              query_text = '[cache-key]',
              response = EXCLUDED.response,
+             key_version = EXCLUDED.key_version,
              created_at = NOW(),
              expires_at = EXCLUDED.expires_at`,
           [hash, JSON.stringify(safeResponse), Math.max(1, Math.min(Number(ttlMinutes) || 60, 24 * 60))],

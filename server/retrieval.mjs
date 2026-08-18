@@ -123,6 +123,9 @@ function mergeDuplicate(current, candidate) {
     ...preferred,
     summary: preferred.summary || fallback.summary,
     content: richerContent.content || preferred.content || fallback.content,
+    _contentHash: richerContent._contentHash || preferred._contentHash || fallback._contentHash,
+    _answerEvidenceEligible: preferred._answerEvidenceEligible !== false
+      || fallback._answerEvidenceEligible !== false,
     topics: [...new Set([...(preferred.topics || preferred.tags || []), ...(fallback.topics || fallback.tags || [])])].slice(0, 12),
     sourceTier: preferred.sourceTier === "official" || fallback.sourceTier === "official" ? "official" : preferred.sourceTier,
     _publishedAt: preferred._publishedAt || fallback._publishedAt,
@@ -676,7 +679,8 @@ export function publicSearchListing(listing = {}) {
 
 export function evidenceDocumentsFromListing(listing = {}) {
   return (listing.items || [])
-    .filter((item) => ["official", "reviewed"].includes(item.sourceTier))
+    .filter((item) => ["official", "reviewed"].includes(item.sourceTier)
+      && item._answerEvidenceEligible !== false)
     .map((item) => ({
       ...item,
       tags: item.topics || item.tags || [],

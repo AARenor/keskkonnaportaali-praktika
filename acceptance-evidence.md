@@ -15,6 +15,7 @@ Kontrollid:
 - `npm run audit:grounding -- --base-url=https://praktika.arleserver.cfd` kontrollib kümmet esinduslikku maandatud vastust ja kümmet adversariaalset loobumist, viidatud URL-ide HTTP 200 olekut ning väidete sõna- ja arvutuge;
 - `npm run eval:holdout -- --base-url=https://praktika.arleserver.cfd` kontrollib eraldi enne esimest jooksu külmutatud 40 päringu relevantsust nii kataloogi kui ka päris ühendotsingu vastu;
 - `npm run audit:filters -- --base-url=https://praktika.arleserver.cfd` kontrollib allika-, kategooria-, aasta-, järjestuse- ja kombineeritud filtrimaatriksit;
+- `npm run audit:followups -- --base-url=https://praktika.arleserver.cfd` teeb ühe juurpäringu ja kolm järjestikust jätkuküsimust, hoides sama filtrit ning kontrollides igal voorul allikate liikmelisust ja viitenumbreid;
 - `npm run audit:load -- --base-url=https://praktika.arleserver.cfd` kontrollib 20 samaaegset kasutajat ja 21. päringu 429 backpressure'i.
 
 ## Mõõdetud tootmistulemus 18.08.2026
@@ -86,7 +87,7 @@ flowchart LR
   E -. praeguses runtime'is importimata .-> Q
 ```
 
-PostgreSQL on püsiv tööandmebaas. `practice_corpus_documents` hoiab normaliseeritud dokumente, täisteksti, metaandmeid ja `tsvector` indeksit. `practice_search_cache` hoiab versioonitud vastusepuhvrit ilma `query` väljata. `practice_search_runs` hoiab ainult päringu SHA-256 räsi, redigeeritud tekstivälja, kestust ja dokumentide ID-sid. Aegunud vahemäluread ja üle 30 päeva vanad otsingukirjed eemaldatakse käivitumisel ning iga 60 sekundi järel.
+PostgreSQL on püsiv tööandmebaas. `practice_corpus_documents` hoiab normaliseeritud dokumente, täisteksti, metaandmeid ja `tsvector` indeksit. `practice_search_cache` hoiab versioonitud vastusepuhvrit ilma `query` väljata. `practice_search_runs` hoiab ainult serverisaladusega HMAC-SHA-256 päringusõrmejälge, redigeeritud tekstivälja, kestust ja dokumentide ID-sid. Cache'i revisjon sisaldab jooksva järjestatud loendi URL-e, järjekorda, metaandmeid ja sisuversiooni; hit lükatakse tagasi ka siis, kui mõni viidatud URL pole enam loendis. Aegunud vahemäluread ja üle 30 päeva vanad otsingukirjed eemaldatakse käivitumisel ning iga 60 sekundi järel; vana liht-räsi võtmeversiooni read eemaldatakse migratsiooniga.
 
 Korpuse loendurite täpsed definitsioonid:
 
@@ -98,6 +99,12 @@ Korpuse loendurite täpsed definitsioonid:
 - `robotsExcluded`: read, mille päis või HTML märkis `noindex`; neid ei tagastata aktiivse korpusena.
 
 Korduv import on idempotentne: `canonical_url` on unikaalne, lisaks on unikaalne paar `source_key + external_id`, ning UPSERT uuendab sama rida. `last_seen_run` ja `last_seen_at` annavad värskuse; ametlikust sitemapist kadunud read märgitakse `is_available = FALSE`, mitte ei anta uue ID all uuesti välja. Viited kasutavad sama vastuse järjestatud allikaloendi stabiilseid numbreid ja kanoonilisi URL-e.
+
+Värskuse leping on kahekihiline. Taustsünk käivitub startup'il ainult siis, kui viimane edukas jooks on vanem kui `CORPUS_SYNC_INTERVAL_HOURS=24`; see uuendab sitemap'i liikmelisuse ja tombstone'id. Iga esimese 500 tulemuselehe päring teeb lisaks kuni kolm ajapiiratud live-discovery otsingut ametlikes indeksites ja indekseerib uued URL-id kuni 15 minuti deduplikatsiooni-TTL-iga. Kontrollhetkel oli viimane täielik sync lõpetatud `2026-08-17T19:27:40.475Z`, kuid päringuaegne indeks oli värskenenud `2026-08-18T06:44:34.377Z`.
+
+`hydrated` tähendab, et kohalikus reas on puhastatud mittetühi täistekst; `metadataOnly` tähendab pealkirja, URL-i, kokkuvõtet ja teisi kaardivälju ilma püsivalt salvestatud täisleheta. Vastuse top-k dokumente üritatakse päringu ajal uuesti hüdrateerida ametliku HTTPS-lehelt 2 sekundi piiriga. Kui see ei õnnestu, võib järjestus endiselt näidata metadata-kaarti, kuid AI-värav peab leidma samast nähtavast allikast küsimust otseselt katva terviklause; vastasel juhul tagastatakse täpsustus või abstention, mitte puuduvast sisust tuletatud fakt.
+
+Filtrid on ühe valikuga: sama fasseti sees mitmikvalikut ei ole, eri fassetid rakenduvad `AND`-ina. Regressioon `a filter cannot leave a hidden live source cited outside the visible listing` annab olukorra, kus globaalselt tugev reaalajaallikas jääb aastafiltri tõttu välja, ning nõuab, et see ei ilmuks vastuses ega viidetes.
 
 Qdrant on ainult Compose'i `experimental-vector` profiil. `server/qdrant.mjs` kasutab 256-mõõtmelist deterministlikku hash-vektorit; ükski tootmise otsingumoodul seda faili ei impordi. Seetõttu ei nimetata seda semantiliseks põhiotsinguks ega tootmise kuumaks teeks.
 
@@ -112,7 +119,7 @@ Mudeli sisend sisaldab küsimust, ranget JSON skeemi ja kuni kaheksa juba järje
 | Väide | Rakenduskoht | Kontroll |
 |---|---|---|
 | PostgreSQL-i skeem, FTS ja tombstone | `server/corpus.mjs` | `npm test`, `/api/corpus`, SQL risttabel |
-| Päringu redaktsioon ja cache'i säilitus | `server/database.mjs`, `server/pipeline.mjs` | andmebaasi null-loendurid, cache'i unit-testid |
+| Päringu HMAC-redaktsioon ja sisuga seotud cache | `server/database.mjs`, `server/pipeline.mjs` | võtmeversiooni SQL-risttabel, cache'i invalidatsiooni unit-testid |
 | Ühine järjestatud hetktõmmis | `server/retrieval.mjs`, `server/pipeline.mjs` | 24 qrel'i, filtri- ja viitetestid |
 | Luna range JSON ja maandatus | `server/llm.mjs` | adversariaalsed LLM unit-testid, live grounding audit |
 | 15 s globaalne vastusepiir | `server/index.mjs`, `server/pipeline.mjs` | fault-injection ja live load audit |
@@ -128,7 +135,7 @@ Mudeli sisend sisaldab küsimust, ranget JSON skeemi ja kuni kaheksa juba järje
 | GET | `/api/health` | ainult tervis, ei muuda olekut |
 | GET/POST | `/api/search` | ainult otsing; UI kasutab POST-i; 180 märki, 15 s, 20 päringut minutis; kuni 12 täismahus paralleelotsingut, üle selle kontrollitud capacity-fallback |
 | GET/POST | `/api/search/results` | ainult lehitsemine/filtrid; UI kasutab POST-i |
-| POST | `/api/search/follow-up` | ainult vastus; kuni neli varasemat küsimust ja 520 märki konteksti |
+| POST | `/api/search/follow-up` | ainult vastus; kuni neli varasemat küsimust ja 520 märki konteksti; juurpäringu allika-, tüübi-, aasta- ja järjestusfilter rakendatakse igal voorul uuesti |
 | GET | `/api/corpus` | ainult agregeeritud avalikud loendurid |
 | GET/POST | `/api/suggestions` | ainult soovitused; UI kasutab POST-i; 80 märki |
 | GET | `/api/terrapoint/address` | fikseeritud Terrapointi upstream; vaba URL puudub |
