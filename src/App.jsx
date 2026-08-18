@@ -29,6 +29,38 @@ import {
 } from "lucide-react";
 
 const SOURCE = "https://keskkonnaportaal.ee";
+const DEFAULT_SEARCH_FILTERS = { source: "all", category: "", year: null, sort: "relevance" };
+
+function clientSearchFilters(value = {}) {
+  return {
+    source: ["all", "trusted", "official", "reviewed", "supplementary", "other"].includes(value.source) ? value.source : "all",
+    category: String(value.category || "").slice(0, 120),
+    year: Number.isInteger(Number(value.year)) && Number(value.year) >= 1990 ? Number(value.year) : null,
+    sort: value.sort === "newest" ? "newest" : "relevance",
+  };
+}
+
+function filtersFromLocation(search = window.location.search) {
+  const params = new URLSearchParams(search);
+  return clientSearchFilters({
+    source: params.get("source") || "all",
+    category: params.get("category") || "",
+    year: params.get("year"),
+    sort: params.get("sort") || "relevance",
+  });
+}
+
+function searchParameters(query, filters = DEFAULT_SEARCH_FILTERS, page = 1, pageSize = 12) {
+  const applied = clientSearchFilters(filters);
+  const params = new URLSearchParams({ q: query });
+  if (applied.source !== "all") params.set("source", applied.source);
+  if (applied.category) params.set("category", applied.category);
+  if (applied.year) params.set("year", String(applied.year));
+  if (applied.sort !== "relevance") params.set("sort", applied.sort);
+  if (page > 1) params.set("page", String(page));
+  if (pageSize !== 12) params.set("page_size", String(pageSize));
+  return params;
+}
 
 const navItems = [
   { label: "Teemad", menu: "topics" },
@@ -244,6 +276,7 @@ function formatDate() {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+    timeZone: "Europe/Tallinn",
   }).format(new Date());
 }
 
@@ -721,8 +754,8 @@ function Home({ onSearch, busy, searchInputRef }) {
   );
 }
 
-function Citation({ number, onNavigate }) {
-  return <a className="citation" href={`#source-${number}`} onClick={(event) => onNavigate(event, number)} aria-label={`Allikas ${number}`}>{number}</a>;
+function Citation({ number, onNavigate, targetPrefix = "source" }) {
+  return <a className="citation" href={`#${targetPrefix}-${number}`} onClick={(event) => onNavigate(event, number, targetPrefix)} aria-label={`Allikas ${number}`}>{number}</a>;
 }
 
 function sourceTierLabel(value) {
@@ -732,7 +765,7 @@ function sourceTierLabel(value) {
   return "Veebiallikas";
 }
 
-function BroadSearchResults({ listing, busy, error, onPage, headingRef }) {
+function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRef }) {
   if (!listing && !busy) return null;
   const total = Number(listing?.total || 0);
   const distinctTotal = Number(listing?.distinctTotal || total);
@@ -741,6 +774,14 @@ function BroadSearchResults({ listing, busy, error, onPage, headingRef }) {
   const pages = [...new Set([1, current - 1, current, current + 1, pageCount])]
     .filter((page) => page >= 1 && page <= pageCount)
     .sort((left, right) => left - right);
+  const filters = clientSearchFilters(listing?.appliedFilters);
+  const categories = Array.isArray(listing?.facets?.categories) ? listing.facets.categories : [];
+  const years = Array.isArray(listing?.facets?.years) ? listing.facets.years : [];
+  const hasActiveFilters = filters.source !== "all" || filters.category || filters.year || filters.sort !== "relevance";
+  const changeFilter = (key, value) => onFilters({
+    ...filters,
+    [key]: key === "year" ? (value ? Number(value) : null) : value,
+  });
   return (
     <section className="broad-results" aria-labelledby="broad-results-title" aria-busy={busy}>
       <div className="broad-results__heading">
@@ -748,10 +789,44 @@ function BroadSearchResults({ listing, busy, error, onPage, headingRef }) {
           <span className="broad-results__eyebrow">Lai portaaliotsing</span>
           <h2 id="broad-results-title" ref={headingRef} tabIndex={-1}>Otsingutulemused</h2>
           <p>{distinctTotal < total
-            ? `Portaal loendas ${total.toLocaleString("et-EE")} vastet; korduvad URL-id on ühendatud ${distinctTotal.toLocaleString("et-EE")} eri leheks. AI vastuse kontrollitud viited on eraldi ülal.`
-            : "Need on kogu otsingu vasted. AI vastuse kontrollitud viited on eraldi ülal."}</p>
+            ? `Leidsin ${total.toLocaleString("et-EE")} vastet ja ühendasin need ${distinctTotal.toLocaleString("et-EE")} eri leheks. Ülal olev koondvastus kasutab sama filtreeritud tulemuste hulka.`
+            : "Ülal olev koondvastus põhineb sama päringu filtreeritud ja järjestatud tulemustel."}</p>
         </div>
         <strong>{total.toLocaleString("et-EE")}</strong>
+      </div>
+      <div className="search-filters" aria-label="Otsingutulemuste filtrid">
+        <label>
+          <span>Allikas</span>
+          <select value={filters.source} onChange={(event) => changeFilter("source", event.target.value)}>
+            <option value="all">Kõik allikad</option>
+            <option value="trusted">Ametlikud ja kontrollitud</option>
+            <option value="official">Ametlikud</option>
+            <option value="supplementary">Taustallikad</option>
+            <option value="other">Muud veebiallikad</option>
+          </select>
+        </label>
+        <label>
+          <span>Sisutüüp</span>
+          <select value={filters.category} onChange={(event) => changeFilter("category", event.target.value)}>
+            <option value="">Kõik tüübid</option>
+            {categories.map((item) => <option key={item.value} value={item.value}>{item.value} ({item.count})</option>)}
+          </select>
+        </label>
+        <label>
+          <span>Aasta</span>
+          <select value={filters.year || ""} onChange={(event) => changeFilter("year", event.target.value)}>
+            <option value="">Kõik aastad</option>
+            {years.map((item) => <option key={item.value} value={item.value}>{item.value} ({item.count})</option>)}
+          </select>
+        </label>
+        <label>
+          <span>Järjestus</span>
+          <select value={filters.sort} onChange={(event) => changeFilter("sort", event.target.value)}>
+            <option value="relevance">Asjakohasemad enne</option>
+            <option value="newest">Uuemad asjakohased enne</option>
+          </select>
+        </label>
+        {hasActiveFilters ? <button className="filters-reset" onClick={() => onFilters(DEFAULT_SEARCH_FILTERS)} type="button">Lähtesta</button> : null}
       </div>
       {error ? <div className="broad-results__error" role="alert">{error}</div> : null}
       {busy ? <div className="broad-results__loading" role="status"><LoaderCircle className="spin" size={20} /> Laadin tulemusi …</div> : null}
@@ -796,9 +871,14 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
   const [listing, setListing] = useState(result?.searchResults || null);
   const [listingBusy, setListingBusy] = useState(false);
   const [listingError, setListingError] = useState("");
+  const [followUps, setFollowUps] = useState([]);
+  const [followUpValue, setFollowUpValue] = useState("");
+  const [followUpBusy, setFollowUpBusy] = useState(false);
+  const [followUpError, setFollowUpError] = useState("");
   const headingRef = useRef(null);
   const listingHeadingRef = useRef(null);
   const listingRequestRef = useRef({ id: 0, controller: null });
+  const followUpRequestRef = useRef({ id: 0, controller: null });
   const sourcesListId = useId();
   useEffect(() => setShowAllSources(false), [result?.query]);
   useEffect(() => {
@@ -810,12 +890,27 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
     return () => listingRequestRef.current.controller?.abort();
   }, [result?.query, result?.searchResults]);
   useEffect(() => {
+    followUpRequestRef.current.controller?.abort();
+    followUpRequestRef.current = { id: followUpRequestRef.current.id + 1, controller: null };
+    setFollowUps([]);
+    setFollowUpValue("");
+    setFollowUpBusy(false);
+    setFollowUpError("");
+    return () => followUpRequestRef.current.controller?.abort();
+  }, [result?.generatedAt, result?.query]);
+  useEffect(() => {
     if (!busy && hasResult) {
       document.title = `${result.answer.title} | Keskkonnaportaali praktika`;
       headingRef.current?.focus({ preventScroll: true });
     }
   }, [busy, hasResult, result?.answer?.title, result?.query]);
+  useEffect(() => {
+    if (followUpBusy || !followUps.length) return;
+    const latestHeading = document.getElementById(`followup-${followUps.length}-title`);
+    latestHeading?.focus({ preventScroll: true });
+  }, [followUpBusy, followUps.length]);
   const visibleSources = showAllSources ? result?.sources || [] : (result?.sources || []).slice(0, 3);
+  const appliedFilters = clientSearchFilters(listing?.appliedFilters || result?.searchResults?.appliedFilters);
   const loadListingPage = async (page) => {
     listingRequestRef.current.controller?.abort();
     const id = listingRequestRef.current.id + 1;
@@ -824,7 +919,8 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
     setListingBusy(true);
     setListingError("");
     try {
-      const response = await fetch(`/api/search/results?q=${encodeURIComponent(query)}&page=${page}&page_size=${listing?.pageSize || 12}`, { signal: controller.signal });
+      const params = searchParameters(query, appliedFilters, page, listing?.pageSize || 12);
+      const response = await fetch(`/api/search/results?${params}`, { signal: controller.signal });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Tulemusi ei saanud laadida.");
       if (listingRequestRef.current.id !== id) return;
@@ -843,10 +939,10 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
       }
     }
   };
-  const revealCitation = (event, number) => {
+  const revealCitation = (event, number, prefix = "source") => {
     event.preventDefault();
     const reveal = () => {
-      const target = document.getElementById(`source-${number}`);
+      const target = document.getElementById(`${prefix}-${number}`);
       if (!target) return false;
       target.focus({ preventScroll: true });
       target.scrollIntoView({
@@ -855,9 +951,50 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
       });
       return true;
     };
-    if (reveal()) return;
+    if (reveal() || prefix !== "source") return;
     setShowAllSources(true);
     window.requestAnimationFrame(() => window.requestAnimationFrame(reveal));
+  };
+  const applyFilters = (nextFilters) => {
+    listingRequestRef.current.controller?.abort();
+    onSearch(query, { filters: clientSearchFilters(nextFilters) });
+  };
+  const askFollowUp = async (questionValue) => {
+    const cleanQuestion = String(questionValue || followUpValue).replace(/\s+/gu, " ").trim();
+    if (!cleanQuestion || followUpBusy || followUps.length >= 4) return;
+    followUpRequestRef.current.controller?.abort();
+    const id = followUpRequestRef.current.id + 1;
+    const controller = new AbortController();
+    followUpRequestRef.current = { id, controller };
+    setFollowUpBusy(true);
+    setFollowUpError("");
+    setFollowUpValue("");
+    try {
+      const response = await fetch("/api/search/follow-up", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          root_query: result.query || query,
+          question: cleanQuestion,
+          previous_questions: followUps.map((turn) => turn.question),
+          filters: appliedFilters,
+        }),
+        signal: controller.signal,
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Jätkuküsimusele ei saanud vastata.");
+      if (followUpRequestRef.current.id !== id) return;
+      setFollowUps((current) => [...current, { question: cleanQuestion, result: data }].slice(0, 4));
+    } catch (followUpLoadError) {
+      if (followUpLoadError.name === "AbortError" || followUpRequestRef.current.id !== id) return;
+      setFollowUpValue(cleanQuestion);
+      setFollowUpError(followUpLoadError.message || "Jätkuküsimusele ei saanud vastata.");
+    } finally {
+      if (followUpRequestRef.current.id === id) {
+        followUpRequestRef.current = { id, controller: null };
+        setFollowUpBusy(false);
+      }
+    }
   };
   return (
     <main className="search-page" id="main-content">
@@ -899,6 +1036,53 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
                   <p>{result.clarification}</p>
                 </div>
               ) : null}
+              <div className="answer-followup">
+                {followUps.length ? <div className="followup-thread" aria-live="polite">
+                  {followUps.map((turn, turnIndex) => {
+                    const prefix = `followup-${turnIndex + 1}-source`;
+                    return (
+                      <section className="followup-turn" key={`${turn.question}-${turnIndex}`}>
+                        <div className="followup-question"><span>Teie</span><p>{turn.question}</p></div>
+                        <div className="followup-answer">
+                          <span>Koondvastus</span>
+                          <h2 id={`followup-${turnIndex + 1}-title`} tabIndex={-1}>{turn.result.answer.title}</h2>
+                          <p>{turn.result.answer.intro}{" "}{(turn.result.answer.introCitations || []).map((citation) => <Citation key={citation} number={citation} onNavigate={revealCitation} targetPrefix={prefix} />)}</p>
+                          {(turn.result.answer.parts || []).map((part, partIndex) => (
+                            <p key={partIndex}>{part.text}{" "}{(part.citations || []).map((citation) => <Citation key={citation} number={citation} onNavigate={revealCitation} targetPrefix={prefix} />)}</p>
+                          ))}
+                          {turn.result.sources?.length ? <div className="followup-sources" aria-label={`Jätkuvastuse ${turnIndex + 1} allikad`}>
+                            {turn.result.sources.map((source) => (
+                              <ExternalAnchor href={source.url} id={`${prefix}-${source.citation}`} key={source.id}>
+                                <span>{source.citation}</span><span>{source.title}<small>{source.organization}{source.published ? ` · ${source.published}` : ""}</small></span><ExternalLink size={14} />
+                              </ExternalAnchor>
+                            ))}
+                          </div> : null}
+                        </div>
+                      </section>
+                    );
+                  })}
+                </div> : null}
+                <form className="followup-form" onSubmit={(event) => { event.preventDefault(); askFollowUp(); }}>
+                  <label htmlFor="answer-followup-input">Küsi selle vastuse kohta</label>
+                  <div>
+                    <input
+                      autoComplete="off"
+                      disabled={followUpBusy || followUps.length >= 4}
+                      id="answer-followup-input"
+                      maxLength={180}
+                      onChange={(event) => setFollowUpValue(event.target.value)}
+                      placeholder={followUps.length >= 4 ? "Alusta uue otsinguga, et teemat jätkata" : "Näiteks: mida see viimase viie aasta jooksul tähendab?"}
+                      type="text"
+                      value={followUpValue}
+                    />
+                    <button aria-label="Saada jätkuküsimus" disabled={followUpBusy || !followUpValue.trim() || followUps.length >= 4} type="submit">
+                      {followUpBusy ? <LoaderCircle className="spin" size={18} /> : <ArrowRight size={18} />}
+                    </button>
+                  </div>
+                  {followUpError ? <p className="followup-error" role="alert">{followUpError}</p> : null}
+                  {followUpBusy ? <p className="followup-status" role="status">Otsin jätkuküsimusele uued allikad …</p> : null}
+                </form>
+              </div>
             </article>
 
             {result.sources.length ? <section className="sources-section" aria-labelledby="sources-title">
@@ -937,13 +1121,14 @@ function SearchResults({ result, query, busy, error, onSearch, onHome }) {
               error={listingError}
               headingRef={listingHeadingRef}
               listing={listing}
+              onFilters={applyFilters}
               onPage={loadListingPage}
             />
 
             {result.related?.length ? (
               <section className="related-section">
-                <h2>Seotud küsimused</h2>
-                <div>{result.related.map((item) => <button key={item} onClick={() => onSearch(item)} type="button">{item}<ArrowRight size={16} /></button>)}</div>
+                <h2>Küsi veel</h2>
+                <div>{result.related.map((item) => <button disabled={followUpBusy || followUps.length >= 4} key={item} onClick={() => askFollowUp(item)} type="button">{item}<ArrowRight size={16} /></button>)}</div>
               </section>
             ) : null}
           </>
@@ -1078,9 +1263,13 @@ export function App() {
   const searchRequestRef = useRef({ id: 0, controller: null });
   const homeSearchInputRef = useRef(null);
 
-  const performSearch = async (nextQuery, pushState = true) => {
+  const performSearch = async (nextQuery, control = {}) => {
     const clean = String(nextQuery || "").trim();
     if (!clean) return;
+    const options = typeof control === "boolean" ? { pushState: control } : control || {};
+    const pushState = options.pushState !== false;
+    const filters = clientSearchFilters(options.filters || DEFAULT_SEARCH_FILTERS);
+    const params = searchParameters(clean, filters);
     searchRequestRef.current.controller?.abort();
     const requestId = searchRequestRef.current.id + 1;
     const controller = new AbortController();
@@ -1089,10 +1278,10 @@ export function App() {
     setView("search");
     setBusy(true);
     setError("");
-    if (pushState) window.history.pushState({}, "", `/otsi?q=${encodeURIComponent(clean)}`);
+    if (pushState) window.history.pushState({}, "", `/otsi?${params}`);
     window.scrollTo({ top: 0, behavior: pushState ? "smooth" : "auto" });
     try {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(clean)}`, { signal: controller.signal });
+      const response = await fetch(`/api/search?${params}`, { signal: controller.signal });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Otsing ei vastanud.");
       if (searchRequestRef.current.id !== requestId) return;
@@ -1112,14 +1301,16 @@ export function App() {
   useEffect(() => {
     if (isEmbed) return undefined;
     const initial = new URLSearchParams(window.location.search).get("q");
-    if (window.location.pathname.startsWith("/otsi") && initial) performSearch(initial, false);
+    if (window.location.pathname.startsWith("/otsi") && initial) {
+      performSearch(initial, { pushState: false, filters: filtersFromLocation() });
+    }
 
     const onPopState = () => {
       const searchView = window.location.pathname.startsWith("/otsi");
       setView(searchView ? "search" : "home");
       const next = new URLSearchParams(window.location.search).get("q") || "";
       setQuery(next);
-      if (searchView && next) performSearch(next, false);
+      if (searchView && next) performSearch(next, { pushState: false, filters: filtersFromLocation() });
       else {
         searchRequestRef.current.controller?.abort();
         searchRequestRef.current = { id: searchRequestRef.current.id + 1, controller: null };

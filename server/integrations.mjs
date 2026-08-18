@@ -61,7 +61,10 @@ const MAX_CACHE_ENTRIES = 250;
 const MAX_UPSTREAM_BYTES = 2_000_000;
 
 function cleanText(value = "") {
-  return String(value).replace(/\s+/g, " ").trim();
+  return String(value)
+    .replace(/\s+/g, " ")
+    .replace(/([.!?])(?=[A-ZÕÄÖÜŠŽ„“])/gu, "$1 ")
+    .trim();
 }
 
 function sourceId(prefix, value) {
@@ -74,6 +77,53 @@ function cacheResponse(url, body) {
   while (responseCache.size > MAX_CACHE_ENTRIES) {
     responseCache.delete(responseCache.keys().next().value);
   }
+}
+
+export function validatedOfficialUrl(value, base) {
+  const url = new URL(value, base);
+  if (url.protocol !== "https:" || !OFFICIAL_HOSTS.has(url.hostname)) {
+    throw new Error("Upstream URL is outside the official allowlist");
+  }
+  url.username = "";
+  url.password = "";
+  url.hash = "";
+  return url;
+}
+
+async function fetchOfficial(url, options = {}, maximumRedirects = 3) {
+  let current = validatedOfficialUrl(url);
+  for (let redirects = 0; redirects <= maximumRedirects; redirects += 1) {
+    const response = await fetch(current, { ...options, redirect: "manual" });
+    if (![301, 302, 303, 307, 308].includes(response.status)) return response;
+    const location = response.headers.get("location");
+    await response.body?.cancel().catch(() => undefined);
+    if (!location || redirects === maximumRedirects) throw new Error("Too many or invalid upstream redirects");
+    current = validatedOfficialUrl(location, current);
+  }
+  throw new Error("Too many upstream redirects");
+}
+
+export async function readBoundedResponseText(response, maximumBytes = MAX_UPSTREAM_BYTES) {
+  const limit = Math.max(1, Math.min(Number(maximumBytes) || MAX_UPSTREAM_BYTES, MAX_UPSTREAM_BYTES));
+  const declaredSize = Number(response.headers.get("content-length") || 0);
+  if (declaredSize > limit) throw new Error("Upstream response is too large");
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const chunks = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) throw new Error("Upstream response is too large");
+      chunks.push(value);
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => undefined);
+    throw error;
+  }
+  return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8");
 }
 
 async function fetchCached(url, {
@@ -94,20 +144,15 @@ async function fetchCached(url, {
     ? AbortSignal.any([controller.signal, externalSignal])
     : controller.signal;
   try {
-    const response = await fetch(url, {
+    const response = await fetchOfficial(url, {
       headers: {
         Accept: accept || "text/html,application/xhtml+xml",
         "User-Agent": "Keskkonnaportaali-praktika/3.0 (+https://praktika.arleserver.cfd)",
       },
-      redirect: "follow",
       signal,
     });
     if (!response.ok) throw new Error(`Upstream returned ${response.status}`);
-    const finalUrl = new URL(response.url);
-    if (!OFFICIAL_HOSTS.has(finalUrl.hostname)) throw new Error("Upstream redirected outside the official allowlist");
-    const contentLength = Number(response.headers.get("content-length") || 0);
-    if (contentLength > MAX_UPSTREAM_BYTES) throw new Error("Upstream response is too large");
-    const body = (await response.text()).slice(0, MAX_UPSTREAM_BYTES);
+    const body = await readBoundedResponseText(response);
     cacheResponse(url, body);
     return { body, cache: "miss", stale: false };
   } catch (error) {
@@ -338,7 +383,7 @@ export async function searchKeskkonnaportaal(query, limit = 10, options = {}) {
   return { documents, total: total || documents.length, cache, stale, url: url.toString() };
 }
 
-function articleText(body) {
+export function articleText(body) {
   const $ = load(body);
   $("script, style, noscript, nav, header, footer, form, aside, .cookie-consent, .breadcrumb").remove();
   const main = $("main article, main .field--name-body, main .node__content, main").first();

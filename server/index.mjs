@@ -2,13 +2,23 @@ import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  broadSearchResults,
   corpusStats,
   startCorpusSyncIfStale,
 } from "./corpus.mjs";
 import { getForestrySuggestions } from "./forestry.mjs";
 import { getKeskkonnaportaalSuggestions } from "./integrations.mjs";
-import { searchEnvironmentLive } from "./pipeline.mjs";
+import {
+  searchEnvironmentLive,
+  searchTimeoutFallback,
+  settleWithinDeadline,
+} from "./pipeline.mjs";
+import {
+  contextualRetrievalQuery,
+  conversationContext,
+  parsePublicSearchFilters,
+  prepareRankedSearchResults,
+  publicSearchListing,
+} from "./retrieval.mjs";
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -88,19 +98,69 @@ app.get("/api/health", (_request, response) => {
   });
 });
 
+function searchFilters(request) {
+  return parsePublicSearchFilters({
+    source: String(request.query?.source || request.body?.filters?.source || "all"),
+    category: String(request.query?.category || request.body?.filters?.category || ""),
+    year: request.query?.year || request.body?.filters?.year || null,
+    sort: String(request.query?.sort || request.body?.filters?.sort || "relevance"),
+  });
+}
+
+function searchDeadline(startedAt) {
+  const configured = Math.max(1_000, Math.min(Number(process.env.SEARCH_DEADLINE_MS) || 15_000, 15_000));
+  return startedAt + configured;
+}
+
+function emptySearchListing(filters, page = 1, pageSize = 12) {
+  return publicSearchListing({
+    total: 0,
+    page,
+    pageSize,
+    pageCount: 0,
+    hasMore: false,
+    items: [],
+    facets: { sources: [], categories: [], years: [] },
+    appliedFilters: filters,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
 app.get("/api/search", async (request, response) => {
   const query = String(request.query.q || "").trim();
   if (!query) return response.status(400).json({ error: "Sisesta otsingusõna." });
   if (query.length > 180) return response.status(400).json({ error: "Otsing on liiga pikk." });
   try {
+    const startedAt = Date.now();
+    const deadlineAt = searchDeadline(startedAt);
     const page = Math.max(1, Math.min(Number(request.query.page) || 1, 500));
     const pageSize = Math.max(1, Math.min(Number(request.query.page_size) || 12, 50));
-    const [result, searchResults] = await Promise.all([
-      searchEnvironmentLive(query),
-      broadSearchResults(query, { page, pageSize }),
-    ]);
+    const parsedFilters = searchFilters(request);
+    if (!parsedFilters.ok) return response.status(400).json({ error: parsedFilters.error });
+    const filters = parsedFilters.filters;
+    const controller = new AbortController();
+    const payload = await settleWithinDeadline((async () => {
+      const searchResults = await prepareRankedSearchResults(query, {
+        page,
+        pageSize,
+        filters,
+        deadlineAt,
+        signal: controller.signal,
+      });
+      const result = await searchEnvironmentLive(query, {
+        startedAt,
+        deadlineAt,
+        searchResults,
+        filters,
+        signal: controller.signal,
+      });
+      return { ...result, searchResults: publicSearchListing(searchResults) };
+    })(), Math.max(250, deadlineAt - Date.now()), () => ({
+      ...searchTimeoutFallback(query, { assessmentQuery: query }),
+      searchResults: emptySearchListing(filters, page, pageSize),
+    }), controller);
     response.setHeader("Cache-Control", "private, max-age=30, stale-while-revalidate=120");
-    return response.json({ ...result, searchResults });
+    return response.json(payload);
   } catch {
     return response.status(502).json({
       error: "Otsingu andmeallikad ei vastanud. Proovi hetke pärast uuesti.",
@@ -113,11 +173,89 @@ app.get("/api/search/results", async (request, response) => {
   const query = String(request.query.q || "").trim();
   if (!query) return response.status(400).json({ error: "Sisesta otsingusõna." });
   if (query.length > 180) return response.status(400).json({ error: "Otsing on liiga pikk." });
-  const page = Math.max(1, Math.min(Number(request.query.page) || 1, 500));
-  const pageSize = Math.max(1, Math.min(Number(request.query.page_size) || 12, 50));
-  const results = await broadSearchResults(query, { page, pageSize });
-  response.setHeader("Cache-Control", "private, max-age=60, stale-while-revalidate=300");
-  return response.json(results);
+  try {
+    const page = Math.max(1, Math.min(Number(request.query.page) || 1, 500));
+    const pageSize = Math.max(1, Math.min(Number(request.query.page_size) || 12, 50));
+    const startedAt = Date.now();
+    const deadlineAt = searchDeadline(startedAt);
+    const parsedFilters = searchFilters(request);
+    if (!parsedFilters.ok) return response.status(400).json({ error: parsedFilters.error });
+    const filters = parsedFilters.filters;
+    const controller = new AbortController();
+    const results = await settleWithinDeadline(prepareRankedSearchResults(query, {
+      page,
+      pageSize,
+      filters,
+      deadlineAt,
+      signal: controller.signal,
+    }), Math.max(250, deadlineAt - Date.now()), null, controller);
+    if (!results) {
+      return response.status(503).json({
+        error: "Otsingutulemuste laadimine võttis liiga kaua. Proovi uuesti.",
+        retryable: true,
+      });
+    }
+    response.setHeader("Cache-Control", "private, max-age=60, stale-while-revalidate=300");
+    return response.json(publicSearchListing(results));
+  } catch {
+    return response.status(502).json({
+      error: "Otsingutulemuste allikad ei vastanud. Proovi hetke pärast uuesti.",
+      retryable: true,
+    });
+  }
+});
+
+app.post("/api/search/follow-up", async (request, response) => {
+  const rootQuery = String(request.body?.root_query || "").replace(/\s+/gu, " ").trim();
+  const question = String(request.body?.question || "").replace(/\s+/gu, " ").trim();
+  const previousQuestions = Array.isArray(request.body?.previous_questions)
+    ? request.body.previous_questions.map((value) => String(value || "").replace(/\s+/gu, " ").trim()).filter(Boolean)
+    : [];
+  if (!rootQuery || !question) return response.status(400).json({ error: "Sisesta jätkuküsimus." });
+  if (rootQuery.length > 180 || question.length > 180 || previousQuestions.length > 4
+    || previousQuestions.some((value) => value.length > 180)) {
+    return response.status(400).json({ error: "Jätkuküsimuse kontekst on liiga pikk." });
+  }
+  const startedAt = Date.now();
+  const deadlineAt = searchDeadline(startedAt);
+  const parsedFilters = searchFilters(request);
+  if (!parsedFilters.ok) return response.status(400).json({ error: parsedFilters.error });
+  const filters = parsedFilters.filters;
+  const retrievalQuery = contextualRetrievalQuery(rootQuery, question, previousQuestions);
+  try {
+    const controller = new AbortController();
+    const payload = await settleWithinDeadline((async () => {
+      const searchResults = await prepareRankedSearchResults(retrievalQuery, {
+        page: 1,
+        pageSize: 12,
+        filters,
+        deadlineAt,
+        signal: controller.signal,
+      });
+      const result = await searchEnvironmentLive(question, {
+        startedAt,
+        deadlineAt,
+        assessmentQuery: retrievalQuery,
+        retrievalQuery,
+        conversationContext: conversationContext(rootQuery, previousQuestions),
+        searchResults,
+        filters,
+        useCache: false,
+        signal: controller.signal,
+      });
+      return { ...result, searchResults: publicSearchListing(searchResults) };
+    })(), Math.max(250, deadlineAt - Date.now()), () => ({
+      ...searchTimeoutFallback(question, { assessmentQuery: retrievalQuery }),
+      searchResults: emptySearchListing(filters),
+    }), controller);
+    response.setHeader("Cache-Control", "no-store");
+    return response.json(payload);
+  } catch {
+    return response.status(502).json({
+      error: "Jätkuküsimuse allikad ei vastanud. Proovi hetke pärast uuesti.",
+      retryable: true,
+    });
+  }
 });
 
 app.get("/api/corpus", async (_request, response) => {

@@ -2,8 +2,9 @@
 
 Keskkonnaportaali visuaalsel keelel põhinev praktikaprojekt, mille kaks põhiosa on:
 
-- vastus-enne-allikaid otsing koos 21 struktureeritud metsateadmise, Luna tõlgenduse ja nummerdatud viidetega;
-- PostgreSQL-i korpus, mis hoiab 8407 sitemapilehte, portaali otsingukaarte, valitud täistekste ja `mets` snapshot'i 953 kaardiesinemist; UI lehitseb neist kontrollhetke 752 eri URL-i ning ütleb korduse ausalt välja;
+- vastus-enne-allikaid otsing, kus Luna kasutab ainult sama päringu värskeid, filtreeritud ja relevantsuse järgi järjestatud ametlikke tulemusi ning lisab nummerdatud viited;
+- PostgreSQL-i korpus koos portaali sitemapilehtede, otsingukaartide ja valitud täistekstidega; tulemusi täiendavad päringu ajal Keskkonnaameti, Keskkonnaagentuuri ja Kliimaministeeriumi tasuta ametlikud otsinguliidesed;
+- allika-, sisutüübi-, aasta- ja järjestusfiltrid ning kuni neli iga kord uue tõendiotsingu tegevat viidatud jätkuküsimust;
 - portaali sees töötav kogu `terrapoint.ee` rakendus, mis on üldotsingust täielikult eraldatud.
 
 Avalik keskkond: [praktika.arleserver.cfd](https://praktika.arleserver.cfd)

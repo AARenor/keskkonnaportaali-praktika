@@ -17,3 +17,9 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 - An embedded application must never autofocus or move the host page on initial load. Verify a fresh desktop load remains at `scrollY === 0` and the iframe is not the active element.
 - Autocomplete must stay above adjacent content, show at most five useful questions, remain viewport-bounded, and support Arrow Up/Down, Enter, Escape, mouse, and touch.
 - A generic query such as `mets` must return a genuine source-grounded synthesis, not a list of copied search-result excerpts.
+- AI answer evidence must come from the same current, filtered and relevance-ranked result set shown to the user; the legacy reviewed forestry corpus may support tests or definitions, but must not bypass live retrieval for a primary answer.
+- Search ordering is relevance-first. Authority, completeness and freshness refine comparable results; a newer but off-topic page must not outrank a directly relevant source.
+- A multi-term result must match the subject intent, not merely a place name or one incidental word. Current weather and air-quality intents lead to their official live services instead of historical articles.
+- AI eligibility requires one actual title/summary/full-text passage to cover the question; manually assigned tags alone never authorize a factual answer. If the model fails, a cited current-source extract may be shown instead of an old prewritten answer.
+- Search results expose stable source, content-type, year and sort filters. Changing a filter invalidates and rebuilds the answer from the filtered evidence.
+- The answer typography stays restrained and visually coherent with the result list, and the answer supports bounded, cited inline follow-up questions that re-run retrieval for every turn.

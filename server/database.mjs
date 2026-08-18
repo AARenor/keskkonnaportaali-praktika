@@ -133,7 +133,7 @@ export async function recordSearch({
   query,
   response,
   revision,
-  answerProvider = "reviewed-knowledge",
+  answerProvider = "deterministic-current-evidence",
   answerStatus = "ready",
   documentIds = [],
   durationMs,

@@ -5,10 +5,12 @@ import { assertSafeDatabaseUrl, sanitizeCachedResponse } from "../server/databas
 import {
   buildBoundedEvidence,
   buildLlmRequest,
+  assertAnswerAddressesQuery,
   extractLlmText,
   parseLlmJson,
   resolveLlmApiStyle,
   resolveLlmFallback,
+  resolveLlmAttempts,
   resolveLlmTarget,
   resolveLlmTimeout,
   resolveMaxTokens,
@@ -17,13 +19,21 @@ import {
 } from "../server/llm.mjs";
 import {
   createPortalDraft,
+  directEvidenceExtract,
   isSearchCacheEnabled,
   mergeRelatedQuestions,
   publicResponse,
+  searchEnvironmentLive,
+  searchTimeoutFallback,
   settleWithinDeadline,
   shouldGenerateGroundedAnswer,
 } from "../server/pipeline.mjs";
-import { assessSearchQuery, composeScopeResponse, composeSearchResponse } from "../server/search.mjs";
+import {
+  assessSearchQuery,
+  composeScopeResponse,
+  composeSearchResponse,
+  officialServiceCatalogueDocuments,
+} from "../server/search.mjs";
 import { localEmbedding } from "../server/qdrant.mjs";
 
 test("PostgreSQL guard accepts a dedicated database and rejects Chatwoot", () => {
@@ -44,6 +54,54 @@ test("local Qdrant embedding is deterministic and normalized", () => {
   assert.deepEqual(first, second);
   const magnitude = Math.sqrt(first.reduce((sum, value) => sum + value * value, 0));
   assert.ok(Math.abs(magnitude - 1) < 1e-9);
+});
+
+test("answer evidence does not displace the most relevant search result", async () => {
+  const query = "jäätmete ringlussevõtu määr Eestis 2023";
+  const service = officialServiceCatalogueDocuments()
+    .find((document) => document.id === "municipal-waste-recycling");
+  const numericEvidence = {
+    id: "official-2023-rate",
+    title: "Jäätmereform",
+    url: "https://kliimaministeerium.ee/jaatmereform",
+    summary: "Olmejäätmete ringlussevõtt 2023. aastal oli 38%.",
+    organization: "Kliimaministeerium",
+    type: "Ametlik ülevaade",
+    published: "2026",
+    sourceTier: "official",
+    topics: ["jäätmed", "ringlussevõtt"],
+  };
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    searchResults: { total: 2, items: [numericEvidence, service] },
+  });
+  assert.equal(draft.sources[0].id, "municipal-waste-recycling");
+  assert.match(draft.answer.intro, /38%/u);
+  assert.deepEqual(draft.answer.introCitations, [2]);
+});
+
+test("LLM intent validation distinguishes a rate from a regulation", () => {
+  const query = "jäätmete ringlussevõtu määr 2023";
+  assert.throws(
+    () => assertAnswerAddressesQuery(
+      "Jäätmete ringlussevõtt 2023 toimub määruse 1013/2006 alusel.",
+      query,
+    ),
+    /does not answer the requested intent/u,
+  );
+  assert.equal(
+    assertAnswerAddressesQuery("Jäätmete ringlussevõtu määr 2023. aastal oli 38%.", query),
+    true,
+  );
+});
+
+test("direct fallback prefers a numeric rate over a regulation reference", () => {
+  const excerpt = directEvidenceExtract("jäätmete ringlussevõtu määr 2023", {
+    summary: "Jäätmete vedu toimus 2023. aastal määruse 1013/2006 alusel.",
+    content: "Olmejäätmete ringlussevõtu määr oli 2023. aastal 38%.",
+  });
+  assert.match(excerpt, /38%/u);
+  assert.doesNotMatch(excerpt, /1013/u);
 });
 
 test("LLM JSON parser repairs common truncated punctuation without executing content", () => {
@@ -72,6 +130,8 @@ test("legacy exhausted free-model configuration migrates to the bounded Go targe
   assert.equal(resolveMaxTokens("gpt-5.6-luna"), 1_600);
   assert.equal(resolveLlmTimeout("gpt-5.6-luna"), 14_500);
   assert.equal(resolveLlmFallback("https://opencode.ai/zen/go/v1", "gpt-5.6-luna"), "");
+  assert.deepEqual(resolveLlmAttempts("gpt-5.6-luna", "", 14_000), ["gpt-5.6-luna", "gpt-5.6-luna"]);
+  assert.deepEqual(resolveLlmAttempts("gpt-5.6-luna", "", 8_000), ["gpt-5.6-luna"]);
 });
 
 test("Luna uses the Responses API with strict structured output", () => {
@@ -206,6 +266,39 @@ test("LLM validation rejects invented and cross-cited measurements", () => {
   }, polarityDraft, "Kas metsamaa on kaitstud?"), /reverses the polarity/);
 });
 
+test("a requested year's direct measurement stays ahead of grounded side statistics", () => {
+  const query = "Eesti kasvuhoonegaaside heide 2022";
+  const directIntro = "Kasvuhoonegaaside inventuurist selgus, et Eesti kasvuhoonegaaside heitkogus 2022. aastal oli 14,3 miljonit tonni CO2 ekvivalenti.";
+  const draft = {
+    evidence: { kind: "ranked-search-results", answerable: true },
+    answer: {
+      title: "Eesti kasvuhoonegaaside heide 2022",
+      intro: directIntro,
+      introCitations: [1],
+      parts: [],
+      note: "",
+    },
+    sources: [{
+      citation: 1,
+      title: "Kasvuhoonegaaside heide väheneb visalt",
+      content: `${directIntro} Energeetikasektori osakaal oli 63,9% ja selle heide 2,6 miljonit tonni.`,
+    }],
+  };
+
+  const answer = validateGroundedAnswer({
+    intro: "Energeetikasektori osakaal oli 63,9% ja selle heide 2,6 miljonit tonni.",
+    intro_citations: [1],
+    parts: [{
+      text: "Energeetikasektori osakaal oli 63,9%.",
+      citations: [1],
+    }],
+  }, draft, query);
+
+  assert.equal(answer.intro, directIntro);
+  assert.deepEqual(answer.introCitations, [1]);
+  assert.match(answer.parts.map((part) => part.text).join(" "), /63,9%/u);
+});
+
 test("single-source model output can recover an omitted citation only after grounding", () => {
   const draft = {
     answer: {
@@ -250,7 +343,7 @@ test("a generated answer cannot drop a reviewed acronym definition", () => {
     }],
   };
   const answer = validateGroundedAnswer({
-    intro: "SMI järgi muutub metsade vanusjaotus.",
+    intro: "SMI järgi hinnatakse metsade vanusjaotust.",
     intro_citations: [1],
     parts: [{ text: "Vanusjaotust hinnatakse proovitükkidega.", citations: [1] }],
   }, draft, "Kuidas vanust hinnatakse?");
@@ -282,15 +375,188 @@ test("grounding accepts ordinary Estonian inflection without weakening citation 
   assert.deepEqual(answer.introCitations, [1]);
 });
 
-test("reviewed official-source fallback is an answer with a citation, not a generic failure", async () => {
+test("a grounded part is promoted when the generated introduction is rejected", () => {
+  const draft = {
+    evidence: { kind: "ranked-search-results", answerable: true },
+    answer: {
+      title: "Kas metsad muutuvad nooremaks?",
+      intro: "Koondvastust ei saanud koostada.",
+      introCitations: [],
+      parts: [],
+      note: "Kontrolli algallikat.",
+    },
+    sources: [{
+      citation: 1,
+      title: "SMI metsa vanuseline jaotus",
+      content: "Suurenenud on nii vanade kui ka noorte metsade pindala. See ei tähenda, et kogu mets muutuks nooremaks.",
+    }],
+  };
+  const answer = validateGroundedAnswer({
+    intro: "Kõik Eesti metsad on nüüd noored.",
+    intro_citations: [1],
+    parts: [{
+      text: "Suurenenud on nii vanade kui ka noorte metsade pindala; see ei tähenda, et kogu mets muutuks nooremaks.",
+      citations: [1],
+    }],
+  }, draft, "Kas metsad muutuvad nooremaks?");
+  assert.match(answer.intro, /nii vanade kui ka noorte/iu);
+  assert.deepEqual(answer.introCitations, [1]);
+  assert.deepEqual(answer.parts, []);
+});
+
+test("answer draft is built from the supplied current ranked result set", async () => {
   const draft = await createPortalDraft("Kas Eestis tohib vanu rehve põletada?", {
     deadlineAt: Date.now() + 500,
     signal: new AbortController().signal,
+    searchResults: {
+      total: 1,
+      items: [{
+        id: "current-waste-guidance",
+        title: "Jäätmete põletamine lõkkes",
+        organization: "Keskkonnaamet",
+        type: "Ametlik juhis",
+        published: "17.08.2026",
+        url: "https://keskkonnaamet.ee/uudised/jaatmete-poletamine",
+        tags: ["rehvid", "põletamine"],
+        topics: ["rehvid", "põletamine"],
+        sourceTier: "official",
+        summary: "Vanu rehve ja muid jäätmeid ei tohi lõkkes põletada.",
+        content: "Keskkonnaameti juhise järgi ei tohi vanu rehve ega muid jäätmeid lõkkes põletada.",
+      }],
+    },
   });
-  assert.equal(draft.answer.eyebrow, "Kontrollitud koondvastus");
-  assert.match(draft.answer.intro, /ei kuulu lõkkesse|ei tohi/u);
+  assert.equal(draft.answer.eyebrow, "Allikapõhine kokkuvõte");
+  assert.equal(draft.answer.intro, "Vanu rehve ja muid jäätmeid ei tohi lõkkes põletada.");
   assert.deepEqual(draft.answer.introCitations, [1]);
-  assert.equal(draft.sources[0].id, "waste-burning-guidance");
+  assert.equal(draft.sources[0].id, "current-waste-guidance");
+  assert.deepEqual(draft.evidence.documentIds, ["current-waste-guidance"]);
+  assert.equal(draft.evidence.kind, "ranked-search-results");
+});
+
+test("a grounded side fact cannot replace the requested forest-age conclusion", () => {
+  assert.throws(
+    () => assertAnswerAddressesQuery(
+      "Eesti metsamaa kogupindala püsis 2,3 miljoni hektari tasemel.",
+      "Kas meie metsad muutuvad nooremaks?",
+    ),
+    /does not (?:answer the requested intent|state the requested younger-forest direction)/u,
+  );
+  assert.equal(
+    assertAnswerAddressesQuery(
+      "Ühesuunalist noorenemist ei näidata: suurenenud on nii noorte kui ka vanade metsade pindala.",
+      "Kas meie metsad muutuvad nooremaks?",
+    ),
+    true,
+  );
+  assert.equal(
+    assertAnswerAddressesQuery(
+      "Natura alal tuleb ehitamise piirangud enne tegevust Keskkonnaametiga üle kontrollida.",
+      "Natura 2000 piirangud ehitamisel",
+    ),
+    true,
+  );
+  assert.throws(
+    () => assertAnswerAddressesQuery(
+      "Sama allika järgi on see vanuselise jaotuse muutus seotud uuendusraiete mõju ja küpsete metsade ressursi akumuleerumisega.",
+      "Kas meie metsad muutuvad nooremaks?",
+    ),
+    /younger-forest direction/u,
+  );
+  assert.throws(
+    () => assertAnswerAddressesQuery(
+      "Metsade vanuseline jaotus on ajas muutunud.",
+      "Mida tähendab keskealiste metsade osakaalu vähenemine?",
+    ),
+    /middle-aged forest share direction/u,
+  );
+});
+
+test("Luna cannot bypass the directly matched current source in its introduction", () => {
+  const query = "Kas meie metsad muutuvad nooremaks?";
+  const draft = composeSearchResponse(query, [{
+    id: "direct-age-trend",
+    title: "Statistilise metsainventuuri tulemused",
+    organization: "Keskkonnaagentuur",
+    url: "https://keskkonnaagentuur.ee/uudised/smi",
+    summary: "Suurenenud on nii vanade kui ka noorte metsade pindala, samas on keskealiste metsade osakaal vähenenud.",
+    sourceTier: "official",
+  }, {
+    id: "side-age-fact",
+    title: "Kasvuhoonegaaside inventuur",
+    organization: "Kliimaministeerium",
+    url: "https://kliimaministeerium.ee/uudised/khg",
+    summary: "Metsade vanuselises struktuuris suurenes väga noore metsa pindala.",
+    sourceTier: "official",
+  }], { answerable: true, evidenceKind: "ranked-search-results" });
+  draft.answer.intro = draft.sources[0].summary;
+  draft.answer.introCitations = [1];
+  assert.throws(() => validateGroundedAnswer({
+    intro: "Väga noore metsa pindala suurenes, mistõttu on metsade vanuseline struktuur muutunud.",
+    intro_citations: [2],
+    parts: [],
+    related_questions: [],
+  }, draft, query), /bypasses the directly matched current source/u);
+  assert.throws(() => validateGroundedAnswer({
+    intro: "Eesti metsamaa pindala püsis samal tasemel.",
+    intro_citations: [1],
+    parts: [{
+      text: "Väga noore metsa pindala suurenes ja metsade vanuseline struktuur muutus.",
+      citations: [2],
+    }],
+    related_questions: [],
+  }, draft, query), /LLM introduction/u);
+});
+
+test("a filter cannot leave a hidden live source cited outside the visible listing", async () => {
+  const startedAt = Date.now();
+  const result = await searchEnvironmentLive("praegune õhukvaliteet Tallinnas", {
+    startedAt,
+    deadlineAt: startedAt + 1_000,
+    filters: { source: "official", year: 2025, sort: "relevance" },
+    searchResults: {
+      total: 1,
+      items: [{
+        id: "air-2025",
+        title: "Tallinna õhukvaliteedi 2025. aasta ülevaade",
+        organization: "Keskkonnaagentuur",
+        type: "Ülevaade",
+        published: "01.12.2025",
+        url: "https://keskkonnaagentuur.ee/uudised/tallinna-ohukvaliteet-2025",
+        summary: "2025. aasta ülevaade kirjeldab Tallinna välisõhu kvaliteeti.",
+        sourceTier: "official",
+        topics: ["õhukvaliteet", "Tallinn"],
+      }],
+    },
+  });
+  assert.equal(result.sources.some((source) => /ohuseire\.ee/u.test(source.url)), false);
+  assert.match(result.clarification, /filtrid välistavad/u);
+});
+
+test("current evidence fallback selects the observed age direction, not a nearby side metric", () => {
+  const extract = directEvidenceExtract("Kas meie metsad muutuvad nooremaks?", {
+    summary: "Metsamaa kogupindala püsib 2,3 miljoni hektari tasemel.",
+    content: "Metsade vanuselises jaotuses toimusid olulised muutused. Suurenenud on nii vanade kui ka noorte metsade pindala, samas on keskealiste metsade osakaal vähenenud.",
+  });
+  assert.equal(extract, "Suurenenud on nii vanade kui ka noorte metsade pindala, samas on keskealiste metsade osakaal vähenenud.");
+});
+
+test("current evidence fallback keeps the requested year", () => {
+  const extract = directEvidenceExtract("Eesti kasvuhoonegaaside heide 2022", {
+    summary: "Kasvuhoonegaaside heide vähenes 2021. aastal.",
+    content: "Eesti kasvuhoonegaaside heide oli 2022. aastal 14,3 miljonit tonni CO2 ekvivalenti.",
+  });
+  assert.equal(extract, "Eesti kasvuhoonegaaside heide oli 2022. aastal 14,3 miljonit tonni CO2 ekvivalenti.");
+});
+
+test("environmental-impact fallback prefers concrete mitigation over procedural consent", () => {
+  const extract = directEvidenceExtract("kaevandamise keskkonnamõju Ida-Virumaal", {
+    summary: "Ida-Virumaale plaanitavale kaevandusele andsid nõusoleku komisjon ja vallavalitsused.",
+    content: "Kaevandamise keskkonnamõjude ennetamiseks jälgitakse põhja- ja pinnavee seisundit ning tagatakse alternatiivne joogivesi.",
+  });
+  assert.equal(
+    extract,
+    "Kaevandamise keskkonnamõjude ennetamiseks jälgitakse põhja- ja pinnavee seisundit ning tagatakse alternatiivne joogivesi.",
+  );
 });
 
 test("hydrated source text stays internal and public output uses an allowlist", () => {
@@ -328,6 +594,14 @@ test("global deadline returns a controlled fallback and aborts remaining work", 
   assert.equal(controller.signal.aborted, true);
 });
 
+test("deadline fallback never turns a timeout into an absence claim", () => {
+  const result = searchTimeoutFallback("kiirgusseire tulemused Eestis");
+  assert.equal(result.answer.eyebrow, "Otsing võttis liiga kaua");
+  assert.match(result.answer.intro, /ei tähenda, et otsitud andmeid ei ole/iu);
+  assert.deepEqual(result.answer.introCitations, []);
+  assert.deepEqual(result.answer.parts, []);
+});
+
 test("cached responses never retain raw query text", () => {
   assert.deepEqual(sanitizeCachedResponse({ query: "minu aadress", total: 1, sources: [] }), { total: 1, sources: [] });
   assert.equal(isSearchCacheEnabled("false"), false);
@@ -337,7 +611,7 @@ test("cached responses never retain raw query text", () => {
 test("LLM is eligible only for a strong portal evidence contract", () => {
   assert.equal(shouldGenerateGroundedAnswer({
     sources: [{ id: "official" }],
-    evidence: { kind: "portal-discovery", answerable: true },
+    evidence: { kind: "ranked-search-results", answerable: true },
   }), true);
   assert.equal(shouldGenerateGroundedAnswer({
     sources: [{ id: "reviewed" }],
@@ -346,12 +620,12 @@ test("LLM is eligible only for a strong portal evidence contract", () => {
   assert.equal(shouldGenerateGroundedAnswer({
     sources: [{ id: "reviewed-forestry" }],
     evidence: { kind: "reviewed-forestry-knowledge", answerable: true },
-  }), true);
+  }), false);
   for (const draft of [
     composeScopeResponse("miks kassid nurruvad", assessSearchQuery("miks kassid nurruvad")),
     composeScopeResponse("vesi", assessSearchQuery("vesi")),
     { sources: [{ id: "weak" }], evidence: { kind: "insufficient-evidence", answerable: false } },
-    { sources: [], evidence: { kind: "portal-discovery", answerable: true } },
+    { sources: [], evidence: { kind: "ranked-search-results", answerable: true } },
   ]) assert.equal(shouldGenerateGroundedAnswer(draft), false);
 });
 

@@ -164,7 +164,7 @@ const SEARCH_DOCUMENTS = [
     url: "https://kotkas.envir.ee/",
     tags: ["luba", "keskkonnaluba", "taotlemine", "ettevõte", "KMH", "menetlus", "aruandlus", "KOTKAS"],
     summary:
-      "KOTKASes esitatakse keskkonnaloa taotlusi ning avaldatakse keskkonnalubade, keskkonnamõju hindamiste ja muude menetluste infot.",
+      "KOTKAS on keskkonnalubade ametlik infosüsteem: seal saab esitada taotluse ning kontrollida konkreetse keskkonnaloa menetluse staatust ja avalikke dokumente.",
     answer:
       "Konkreetse loa või menetluse ametlikku seisu kontrolli KOTKASest; portaali otsing aitab leida tausta, kuid menetlusandmete allikaks on infosüsteem ise.",
   },
@@ -177,7 +177,7 @@ const SEARCH_DOCUMENTS = [
     url: "https://keskkonnaportaal.ee/et/avaandmed/keskkonnaseire-infosusteemi-andmestikud",
     tags: ["KESE", "keskkonnaseire", "seirejaam", "mõõtmine", "vesi", "õhk", "elusloodus", "API"],
     summary:
-      "KESE koondab riikliku keskkonnaseire ja seirega seotud uuringute andmeid. Avalikud levitused on kirjeldatud Keskkonnaportaalis ning masinloetavad tulemused on saadaval JSON-teenustena.",
+      "KESE koondab riikliku keskkonnaseire mõõtmistulemused ja seirega seotud uuringute andmed. Avalikud levitused on kirjeldatud Keskkonnaportaalis ning masinloetavad tulemused on saadaval JSON-teenustena.",
     answer:
       "Seiretulemuse tõlgendamisel täpsusta seireprogramm, mõõtekoht, näitaja ja aeg; KESE üksik mõõtmine ei pruugi olla veekogumi, piirkonna või kogu Eesti seisundihinnang.",
   },
@@ -281,7 +281,7 @@ const SEARCH_DOCUMENTS = [
     url: "https://keskkonnaamet.ee/uudised/jaatmete-lokkes-poletamine-kahjustab-keskkonda-ja-tervist",
     tags: ["jäätmed", "prügi", "rehv", "põletamine", "lõke", "keelatud", "Keskkonnaamet"],
     summary:
-      "Keskkonnaameti juhis selgitab, et olmejäätmeid ei tohi lõkkes põletada ning jäätmed tuleb koguda liigiti ja anda üle selleks ette nähtud käitluskohta.",
+      "Keskkonnaameti juhis selgitab, et rehve ja muid olmejäätmeid ei tohi lõkkes põletada ning jäätmed tuleb koguda liigiti ja anda üle selleks ette nähtud käitluskohta.",
     answer:
       "Rehvid ja muud jäätmed ei kuulu lõkkesse. Konkreetse olukorra korral järgi kohaliku omavalitsuse jäätmehoolduse nõudeid ning anna jäätmed üle nõuetekohasesse kogumiskohta.",
   },
@@ -304,12 +304,54 @@ const SEARCH_DOCUMENTS = [
     organization: "Kliimaministeerium",
     type: "Valdkonna juhend",
     published: "jooksev",
-    url: "https://kliimaministeerium.ee/elurikkus-keskkonnakaitse/keskkonnakorraldus/keskkonnamoju-hindamine",
+    url: "https://www.kliimaministeerium.ee/elurikkus-keskkonnakaitse/moju-hindamine-keskkonnale",
     tags: ["KMH", "KSH", "keskkonnamõju", "hindamine", "menetlus", "arendustegevus", "planeering"],
     summary:
       "Kliimaministeeriumi juhend kirjeldab keskkonnamõju hindamise ja strateegilise hindamise rolli otsustusprotsessis ning seost loa või planeeringu menetlusega.",
     answer:
       "Selleks et leida konkreetse projekti KMH või KSH, täpsusta projekti, asukohta või menetluse nime ning kontrolli menetluse ametlikku seisu KOTKASest või planeeringu avalikustajalt.",
+  },
+  {
+    id: "mining-impact-guidance",
+    title: "Kaevandamise keskkonnamõjud ja nende leevendamine",
+    organization: "Keskkonnaamet",
+    type: "Ametlik juhend",
+    published: "jooksev",
+    url: "https://keskkonnaamet.ee/kasiraamat-kohaliku-omavalitsuse-keskkonnaspetsialistile/loa-andmisest-keeldumine",
+    tags: [
+      "kaevandamine", "keskkonnamõju", "peamised mõjud", "leevendusmeetmed", "Ida-Virumaa",
+      "joogivesi", "põhjavesi", "müra", "tolm", "vibratsioon", "transport",
+    ],
+    summary:
+      "Keskkonnaameti kaevandamisjuhend nimetab peamiste keskkonnamõjude ja kohalike riskidena joogivee muutusi, müra ja tolmu, vibratsiooni ning karjäärimasinate transpordihäiringut. Leevendusmeetmed valitakse eelhinnangu või KMH põhjal ja seatakse vajaduse korral loa tingimuseks; mõju ulatus sõltub konkreetsest kaevandusest.",
+    answer:
+      "Kaevandamise riske ei saa hinnata ainult maakonna nime järgi. Kontrolli konkreetse kaevanduse eelhinnangut või KMH-d ja loa tingimusi, kus määratakse vajalikud vee-, müra-, tolmu-, vibratsiooni- ja transpordihäiringu leevendusmeetmed.",
+  },
+  {
+    id: "ida-viru-groundwater",
+    title: "Ida-Viru põlevkivibasseini põhjavee seisund",
+    organization: "Kliimaministeerium",
+    type: "Ametlik seisundiülevaade",
+    published: "jooksev",
+    url: "https://kliimaministeerium.ee/merendus-veekeskkond/veekasutamine-ja-kaitse/pohjavesi",
+    tags: ["Ida-Virumaa", "põlevkivi", "kaevandamine", "põhjavesi", "veekõrvaldus", "jääkreostus", "suletud kaevandus"],
+    summary:
+      "Kliimaministeeriumi ülevaate järgi on Ordoviitsiumi Ida-Viru põlevkivibasseini põhjaveekogum halvas koguselises seisundis peamiselt kaevanduste veekõrvalduse tõttu. Ida-Virumaa põhjavee halba seisundit põhjustavad ka põlevkivi kaevandamine, jääkreostus ja suletud kaevanduste veega täitumine.",
+    answer:
+      "Ida-Virumaa kaevandamismõju hindamisel tuleb eraldi kontrollida põhjavee koguselist ja keemilist seisundit ning konkreetse loa veeärastuse, seire ja järelhoolduse tingimusi.",
+  },
+  {
+    id: "mined-land-restoration",
+    title: "Kaevandatud maa korrastamiskohustus",
+    organization: "Keskkonnaamet",
+    type: "Ametlik juhend",
+    published: "jooksev",
+    url: "https://keskkonnaamet.ee/keskkonnakasutus-kiirgus/maapou/korrastamiskohustus",
+    tags: ["kaevandamine", "kaevandatud maa", "korrastamine", "leevendusmeede", "järelhooldus", "maastik"],
+    summary:
+      "Kaevandatud maa tuleb enne kaevandamisloa lõppemist Keskkonnaameti tingimuste ja heakskiidetud korrastamisprojekti järgi korrastada, et vähendada keskkonnamõju ning anda ala uuesti kasutusse.",
+    answer:
+      "Korrastamine on kaevandamise järel kohustuslik leevendus: projekti tingimused annab Keskkonnaamet ning loa omaja peab maa enne loa lõppu nõuetekohaselt korrastama.",
   },
   {
     id: "waste-reporting-data",
@@ -346,7 +388,7 @@ const SEARCH_DOCUMENTS = [
     url: "https://www.tallinn.ee/et/keskkond/tallinna-linna-murakaart-2022",
     tags: ["müra", "müraseire", "Tallinn", "mürakaart", "Lden", "Lnight", "liiklusmüra", "tööstusmüra"],
     summary:
-      "Tallinna ametlikud strateegilised ja siseriiklikud mürakaardid näitavad liiklus-, tööstus- ja summaarset müra. 2022. aastal avaldatud kaart kirjeldab 2019. aasta pikaajalist müraolukorda.",
+      "Tallinna müra seire üldpildi jaoks näitavad ametlikud strateegilised ja siseriiklikud mürakaardid liiklus-, tööstus- ja summaarset müra. 2022. aastal avaldatud kaart kirjeldab 2019. aasta pikaajalist müraolukorda, mitte hetkeolukorda.",
     answer:
       "Tallinna üldise müraolukorra vaatamiseks kasuta päeva, õhtu ja öö mürakaarte. Need ei kirjelda piisava täpsusega lokaalset või ajutist mürahäiringut ning üksikobjekt vajab eraldi mõõtmist või modelleerimist.",
   },
@@ -359,7 +401,7 @@ const SEARCH_DOCUMENTS = [
     url: "https://register.keskkonnaportaal.ee/register",
     tags: ["jäätmed", "jäätmekäitluskoht", "jäätmekäitluskohad", "kaart", "KOTKAS", "Pärnumaa", "maakond"],
     summary:
-      "Keskkonnaportaali kaardirakenduses saab kuvada kehtivaid ja arhiveeritud jäätmekäitluskohti ning liikuda objekti infopäringust KOTKASe menetlusandmetesse.",
+      "Pärnumaa jäätmekäitluskohtade leidmiseks saab Keskkonnaportaali kaardirakenduses valida jäätmekäitluskohtade kihi ja piirata kaardi maakonnale. Vaade sisaldab kehtivaid ning arhiveeritud kohti ja seost KOTKASe menetlusandmetega.",
     answer:
       "Piirkonna jäätmekäitluskohtade leidmiseks ava Andmed ja kaart, vali jäätmekäitluskohtade kiht ning piira kaart soovitud maakonnale. Enne jäätmete viimist kontrolli objekti kehtivust ja vastuvõetavaid jäätmeliike KOTKASest või käitlejalt.",
   },
@@ -372,7 +414,7 @@ const SEARCH_DOCUMENTS = [
     url: "https://www.keskkonnaamet.ee/keskkonnakasutus-kiirgus/kiirgus/kiirgusseire-ja-kriisireguleerimine",
     tags: ["kiirgus", "kiirgusseire", "radioaktiivsus", "gammakiirgus", "seiretulemused", "tulemused", "varajane hoiatus", "nSv/h"],
     summary:
-      "Keskkonnaamet korraldab riiklikku kiirgusseiret ja varajase hoiatamise süsteemi. Üle Eesti mõõdab 15 automaatjaama reaalajas summaarset õhu gammakiirguse doosikiirust.",
+      "Keskkonnaameti Eesti kiirgusseire tulemuste leht koondab riikliku seire aastaaruanded ja varajase hoiatamise süsteemi. Üle Eesti mõõdab 15 automaatjaama reaalajas summaarset õhu gammakiirguse doosikiirust.",
     answer:
       "Kiirgusolukorra hindamisel vaata mõõtekohta, aega, ühikut ja tavapärast taustataset. Üksik mõõteväärtus ei tõenda iseseisvalt kiirgusõnnetust; ebatavalisest olukorrast annab ametlikult teada Keskkonnaamet.",
   },
@@ -385,9 +427,122 @@ const SEARCH_DOCUMENTS = [
     url: "https://www.eea.europa.eu/en/topics/in-depth/electric-vehicles",
     tags: ["elektriauto", "elektrisõiduk", "keskkonnamõju", "elutsükkel", "aku", "kasvuhoonegaas", "õhusaaste", "transport"],
     summary:
-      "Euroopa Keskkonnaagentuuri elutsükli ülevaate järgi tekitab tüüpiline elektriauto Euroopas elutsükli jooksul vähem kasvuhoonegaase, õhusaastet ja müra kui võrreldav bensiini- või diiselauto, kuigi tootmisfaasi mõju on tavaliselt suurem.",
+      "Euroopa Keskkonnaagentuuri elutsükli keskkonnamõju ülevaate järgi tekitab tüüpiline elektriauto Euroopas elutsükli jooksul vähem kasvuhoonegaase, õhusaastet ja müra kui võrreldav bensiini- või diiselauto, kuigi tootmisfaasi mõju on tavaliselt suurem.",
     answer:
       "Elektriauto mõju ei piirdu summutitoruga: arvesse tuleb võtta aku ja auto tootmist, elektri tootmisviisi, sõiduki suurust, läbisõitu ning taaskasutust. Euroopa tüüpilises elutsüklis korvab väiksem kasutusfaasi mõju üldjuhul suurema tootmismõju.",
+  },
+  {
+    id: "soil-monitoring-results",
+    title: "Mullaseire tulemuste ülevaade",
+    organization: "Keskkonnaagentuur",
+    type: "Riikliku seire ülevaade",
+    published: "jooksev",
+    url: "https://keskkonnaportaal.ee/et/mullaseire-tulemuste-ulevaade",
+    tags: ["muld", "mullaseire", "seiretulemused", "raskmetallid", "taimekaitsevahendid", "KESE"],
+    summary:
+      "Keskkonnaportaali püsileht koondab riikliku mullaseire eesmärgi, viimased tulemused ja seosed KESE detailsete seireandmetega.",
+  },
+  {
+    id: "historical-weather-data",
+    title: "Ajaloolised ilmaandmed mõõtejaamade kaupa",
+    organization: "Keskkonnaagentuur",
+    type: "Ametlikud mõõteandmed",
+    published: "jooksev",
+    url: "https://www.ilmateenistus.ee/kliima/ajaloolised-ilmaandmed/",
+    tags: ["ajalooline", "ilm", "temperatuur", "sademed", "tuul", "Tartu", "Tõravere", "2020", "mõõtejaam"],
+    summary:
+      "Keskkonnaagentuuri ajalooliste ilmaandmete lehelt saab jaamade, sealhulgas Tartu–Tõravere, 2020. aasta tunniandmeid õhutemperatuuri, sademete, õhurõhu, niiskuse ja tuule kohta alla laadida.",
+  },
+  {
+    id: "precipitation-change",
+    title: "Sademete summa muutus Eestis",
+    organization: "Keskkonnaagentuur",
+    type: "Keskkonnanäitaja",
+    published: "06.05.2026",
+    url: "https://keskkonnaportaal.ee/et/sademete-summa-muutus",
+    tags: [
+      "kliimamuutus", "sademed", "sademete summa", "normperiood", "tugev sadu", "prognoos",
+      "talv", "sügis", "september", "sajusem",
+    ],
+    summary:
+      "Keskkonnaportaali näitaja kirjeldab kliimamuutuse mõõdetud mõju Eesti sademetele: 1991–2020 keskmine kogusumma oli umbes 6% suurem kui 1961–1990 ja 21% suurem kui 1931–1960. Talved on muutunud sajusemaks, sügised ja eriti september kuivemaks ning väga tugevate sadudega päevi on mõnevõrra rohkem; tulevikuprognoos on mõõdetud muutustest eraldi.",
+  },
+  {
+    id: "historical-hydrology-data",
+    title: "Sisevete ajaloolised hüdroloogilised seireandmed",
+    organization: "Keskkonnaagentuur",
+    type: "Ametlikud seireandmed",
+    published: "jooksev",
+    url: "https://www.ilmateenistus.ee/siseveed/ajaloolised-vaatlusandmed/",
+    tags: ["hüdroloogia", "sisevesi", "Emajõgi", "seireandmed", "veetase", "vooluhulk", "veetemperatuur", "CSV", "2025"],
+    summary:
+      "Keskkonnaagentuuri ajalooliste hüdroloogiliste seireandmete vaates saab valida Emajõe hüdromeetriajaama ja 2025. aasta näitaja ning laadida veetaseme, vooluhulga või veetemperatuuri ööpäevased andmed CSV-na alla.",
+  },
+  {
+    id: "wind-farm-assessment-guide",
+    title: "Tuuleparkide keskkonnamõju hindamise juhend",
+    organization: "Kliimaministeerium",
+    type: "Ametlik juhend",
+    published: "06.03.2025",
+    url: "https://kliimaministeerium.ee/uudised/uus-juhend-aitab-uhtlustada-tuuleparkide-keskkonnamojude-hindamist",
+    tags: ["keskkonnamõju", "KMH", "tuulepark", "tuuleenergia", "müra", "infraheli", "vibratsioon", "varjutamine"],
+    summary:
+      "Kliimaministeeriumi juhend koondab tuuleparkide müra, madalsagedusliku heli, vibratsiooni ja varjutamise hindamise ning leevendus- ja seiremeetmete põhimõtted.",
+  },
+  {
+    id: "greenhouse-gas-inventory",
+    title: "Kasvuhoonegaasid Eestis",
+    organization: "Kliimaministeerium",
+    type: "Ametlik inventuuriülevaade",
+    published: "jooksev",
+    url: "https://kliimaministeerium.ee/rohereform-kliima/kliimapoliitika/kasvuhoonegaaside-heitkogused",
+    tags: ["kasvuhoonegaasid", "KHG", "heide", "inventuur", "CO2 ekvivalent", "1990–2024", "sektorid"],
+    summary:
+      "Kliimaministeeriumi püsileht koondab Eesti iga-aastase kasvuhoonegaaside inventuuri, aegridade selgitused, sektorite jaotuse ning allalaaditavad aruanded.",
+  },
+  {
+    id: "municipal-waste-recycling",
+    title: "Olmejäätmete ringlussevõtt",
+    organization: "Keskkonnaportaal",
+    type: "Keskkonnanäitaja",
+    published: "jooksev",
+    url: "https://keskkonnaportaal.ee/et/olmejaatmete-ringlussevott",
+    tags: ["jäätmed", "olmejäätmed", "ringlussevõtt", "ringlussevõtu määr", "protsent", "sihttase", "aasta"],
+    summary:
+      "Keskkonnaportaali näitaja koondab olmejäätmete ringlussevõtu määra, võrdluse Euroopa Liiduga ning 2025. ja 2030. aasta sihttasemed.",
+  },
+  {
+    id: "protected-area-construction",
+    title: "Planeerimine ja ehitamine kaitstavatel aladel",
+    organization: "Keskkonnaamet",
+    type: "Ametlik juhend",
+    published: "jooksev",
+    url: "https://keskkonnaamet.ee/elusloodus-looduskaitse/tegevused-kaitstavatel-aladel/planeerimine-ja-ehitamine",
+    tags: ["Natura 2000", "kaitseala", "piirang", "ehitamine", "planeerimine", "Keskkonnaameti nõusolek"],
+    summary:
+      "Keskkonnaameti juhend selgitab kaitstaval alal planeerimise ja ehitamise piiranguid, eelneva nõusoleku vajadust ning seost Natura hindamisega.",
+  },
+  {
+    id: "groundwater-status",
+    title: "Põhjavee seisund",
+    organization: "Keskkonnaportaal",
+    type: "Keskkonnanäitaja ja aruanded",
+    published: "02.04.2024",
+    url: "https://keskkonnaportaal.ee/teemad/vesi/pohjavesi/pohjavee-seisund",
+    tags: ["põhjavesi", "põhjaveekogum", "seisund", "Harju", "keemiline seisund", "koguseline seisund", "seire"],
+    summary:
+      "Keskkonnaportaali püsileht koondab põhjaveekogumite keemilise ja koguselise seisundi hinnangud, kaardiloo ning kogumipõhised aruanded, sealhulgas Siluri–Ordoviitsiumi Harju kogumi materjali.",
+  },
+  {
+    id: "marine-strategy-status",
+    title: "Eesti merestrateegia: Läänemere seisundihinnang 2024",
+    organization: "Kliimaministeerium",
+    type: "Ametlik seisundihinnang",
+    published: "jooksev",
+    url: "https://kliimaministeerium.ee/keskkonnakasutus/merestrateegia",
+    tags: ["meri", "Läänemeri", "merestrateegia", "seisund", "2024", "eutrofeerumine", "seire"],
+    summary:
+      "Kliimaministeeriumi merestrateegia leht koondab Läänemere Eesti mereala 2024. aasta seisundihinnangu, indikaatorid, aruanded ja järgmiste meetmete dokumendid.",
   },
 ];
 
@@ -403,18 +558,26 @@ export function normalize(value = "") {
     .toLocaleLowerCase("et")
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")
+    .replace(/%/gu, " protsent ")
     .replace(/[^a-z0-9äöõüšž]+/gi, " ")
     .trim();
 }
 
+export function splitTextPassages(value = "") {
+  return String(value || "")
+    .split(/(?:\n+|(?<=[.!?])\s+(?=[„“”"']*(?:\p{Lu}|\p{N}))|\s*[…;•]\s*)/u)
+    .map((passage) => passage.trim())
+    .filter(Boolean);
+}
+
 const STOP_WORDS = new Set([
+  "aga",
   "andmed",
   "andmete",
   "eesti",
   "eestis",
   "kohta",
-  "seisund",
-  "seisundi",
+  "korraga",
   "vaata",
   "mis",
   "kuidas",
@@ -426,8 +589,32 @@ const STOP_WORDS = new Set([
   "räägi",
   "raagi",
   "mulle",
+  "meie",
+  "nii",
+  "mina",
+  "sina",
+  "tema",
+  "nad",
   "kohta",
   "praegu",
+  "praegune",
+  "praegused",
+  "hetke",
+  "hetkel",
+  "täna",
+  "tana",
+  "homme",
+  "homne",
+  "ülehomme",
+  "ulehomme",
+  "reaalajas",
+  "värske",
+  "värsked",
+  "uusim",
+  "see",
+  "seda",
+  "selle",
+  "siis",
   "tahan",
   "soovin",
   "vana",
@@ -435,14 +622,15 @@ const STOP_WORDS = new Set([
   "mida",
   "tahendab",
   "kui",
+  "suur",
+  "suured",
+  "suurus",
+  "taies",
   "palju",
   "oli",
   "on",
   "aasta",
   "aastal",
-  "voib",
-  "tohib",
-  "lubatud",
 ]);
 
 const DISCOVERY_STOP_WORDS = new Set([
@@ -458,6 +646,9 @@ const DISCOVERY_STOP_WORDS = new Set([
   "praegused",
   "selgita",
   "teada",
+  "voib",
+  "tohib",
+  "lubatud",
 ]);
 
 function discoveryTerm(word) {
@@ -486,30 +677,72 @@ export function buildDiscoveryQuery(query) {
   return [...new Set(terms)].slice(0, 7).join(" ");
 }
 
+export function buildDiscoveryQueries(query, limit = 3) {
+  const base = buildDiscoveryQuery(query);
+  if (!base) return [];
+  const words = base.match(/[\p{L}\p{N}:-]+/gu) || [];
+  const roots = queryTerms(query);
+  const expanded = [];
+  if (roots.includes("mets") && roots.some((root) => ["noor", "vanus", "muutus"].includes(root))) {
+    expanded.push("mets vanus");
+  }
+  if (roots.includes("raie") && roots.includes("tulevik")) {
+    expanded.push("raiuda tulevikus");
+  }
+  if (roots.includes("mets") && roots.includes("seire")) {
+    expanded.push("metsaseire");
+  }
+  const focused = words
+    .filter((word) => word.length >= 4 && !["eesti", "eestis", "andmed", "kohta"].includes(normalize(word)))
+    .sort((left, right) => {
+      const generic = (value) => /^(?:mets\w*|keskkond\w*|andm\w*)$/iu.test(normalize(value));
+      return Number(generic(left)) - Number(generic(right)) || right.length - left.length;
+    });
+  return [...new Set([base, ...expanded, ...focused])]
+    .slice(0, Math.max(1, Math.min(Number(limit) || 3, 3)));
+}
+
 function topicRoot(word) {
+  if (word.startsWith("keskkonnaandm")) return "andmed";
+  if (word.startsWith("kasvuhoonegaas") || word === "khg") return "kasvuhoonegaas";
   if (word.startsWith("mets")) return "mets";
+  if (word.startsWith("rai")) return "raie";
+  if (word.startsWith("noor")) return "noor";
+  if (word.startsWith("vanus") || word.startsWith("vanamets") || word.startsWith("keskeal")) return "vanus";
+  if (word.startsWith("osakaal")) return "osakaal";
+  if (word.startsWith("muut") || word.startsWith("vahen") || word.startsWith("kahan") || word.startsWith("langen")) return "muutus";
+  if (word.startsWith("kasv")) return "kasv";
+  if (word.startsWith("tulemus")) return "tulemus";
+  if (word.startsWith("tulevik")) return "tulevik";
   if (word.startsWith("kliim")) return "kliima";
   if (word.startsWith("jaatmekaitluskoh")) return "jaatmekaitluskoht";
   if (word.startsWith("jaat")) return "jaat";
+  if (word.startsWith("ringlussevot")) return "ringlussevott";
+  if (word === "maar" || word.startsWith("protsent")) return "maar";
+  if (word.startsWith("prugil")) return "jaatmekaitluskoht";
   if (word.startsWith("prugi")) return "prugi";
-  if (word.startsWith("rehv")) return "rehv";
+  if (word.startsWith("rehv") || word.startsWith("autorehv")) return "rehv";
   if (word.startsWith("polet")) return "polet";
+  if (["tohib", "voib", "lubatud", "keelatud"].includes(word)) return "lubatavus";
   if (word.startsWith("ohukval")) return "ohukvaliteet";
   if (word === "ohk" || word.startsWith("valisoh")) return "ohk";
   if (word.startsWith("saast")) return "saaste";
   if (word.startsWith("heit")) return "heide";
   if (word.startsWith("looduskait")) return "looduskaitse";
   if (word.startsWith("elurikk")) return "elurikkus";
-  if (word.startsWith("elupaik")) return "elupaik";
+  if (word.startsWith("elupaik") || word.startsWith("elupaig")) return "elupaik";
   if (word.startsWith("kaitseal")) return "kaitseala";
+  if (word.startsWith("liig")) return "liik";
   if (word.startsWith("pohjave")) return "pohjavesi";
+  if (word.startsWith("laanemer")) return "laanemeri";
   if (word.startsWith("hudro")) return "vesi";
+  if (word.startsWith("emajog") || word.startsWith("emajoe")) return "emajogi";
   if (word.startsWith("jarv")) return "jarv";
   if (word.startsWith("jog")) return "jogi";
   if (word === "vee" || word.startsWith("veek")) return "vesi";
   if (word.startsWith("mer")) return "meri";
   if (word.startsWith("temperatuur")) return "temperatuur";
-  if (word.startsWith("sadem")) return "sademed";
+  if (word.startsWith("sadem") || word.startsWith("saju")) return "sademed";
   if (word.startsWith("prognoos")) return "prognoos";
   if (word.startsWith("ilmaprognoos")) return "prognoos";
   if (word.startsWith("hoiatus")) return "hoiatus";
@@ -517,10 +750,17 @@ function topicRoot(word) {
   if (word.startsWith("katastr")) return "kataster";
   if (word.startsWith("kinnist")) return "kinnistu";
   if (word.startsWith("keskkonnalub") || word.startsWith("keskkonnalo")) return "keskkonnaluba";
+  if (word.startsWith("taotl") || word.startsWith("taotle")) return "taotlemine";
+  if (word.startsWith("ettevot")) return "ettevote";
+  if (word.startsWith("ehita") || word.startsWith("ehitus")) return "ehitamine";
+  if (word.startsWith("seisund") || word.startsWith("hinnang")) return "seisund";
   if (word.startsWith("keskkonnamoj")) return "keskkonnamoju";
+  if (word.startsWith("tuulepar")) return "tuulepark";
   if (word.startsWith("seir")) return "seire";
   if (word.startsWith("keskkonnaseir")) return "seire";
+  if (word.startsWith("moot")) return "mootmine";
   if (word.startsWith("elektriaut")) return "elektriauto";
+  if (word.startsWith("elutsuk")) return "elutsukkel";
   if (word.startsWith("energi")) return "energia";
   if (word.startsWith("transpor")) return "transport";
   if (word.startsWith("maavar")) return "maavara";
@@ -529,6 +769,7 @@ function topicRoot(word) {
   if (word.startsWith("mura")) return "mura";
   if (word.startsWith("kiirg")) return "kiirgus";
   if (word.startsWith("piirang")) return "piirang";
+  if (word.startsWith("harju")) return "harjumaa";
   if (word.startsWith("tallinn")) return "tallinn";
   if (word.startsWith("tartu")) return "tartu";
   if (word.endsWith("maal") && word.length >= 7) return word.slice(0, -1);
@@ -539,18 +780,74 @@ export function queryTerms(query) {
   return [...new Set(normalize(query)
     .split(/\s+/u)
     .filter((word) => word.length >= 3 && !STOP_WORDS.has(word) && !/^\d+$/u.test(word))
-    .map(topicRoot))];
+    .flatMap((word) => word.startsWith("metsastat")
+      ? [topicRoot(word), "statistika"]
+      : [topicRoot(word)]))];
+}
+
+export function queryRootVariants(root) {
+  if (root === "raie") return ["rai"];
+  if (root === "noor") return ["noor", "vanus", "vanuse", "vanem", "keskeal"];
+  if (root === "vanus") return ["vanus", "vana", "noor", "keskeal"];
+  if (root === "muutus") return ["muut", "trend", "suuren", "vahen", "kahan", "lang", "pusi"];
+  if (root === "kasv") return ["kasv", "suuren"];
+  if (root === "kasvuhoonegaas") return ["kasvuhoonegaas", "khg"];
+  if (root === "kaevandus") return ["kaevand"];
+  if (root === "heide") return ["heide", "heit"];
+  if (root === "ringlussevott") return ["ringlussevot", "taaskasut"];
+  if (root === "lubatavus") return ["ei tohi", "tohib", "lubat", "keelat"];
+  if (root === "elutsukkel") return ["elutsuk"];
+  if (root === "maar") return ["maar", "osakaal", "protsent", "tase"];
+  if (root === "taotlemine") return ["taotl", "taotle"];
+  if (root === "ettevote") return ["ettevot"];
+  if (root === "ehitamine") return ["ehit"];
+  if (root === "seisund") return ["seisund", "hinnang", "klass"];
+  if (root === "keskkonnamoju") return ["keskkonnamoj", "keskkonna moju", "moju keskkonn", "keskkonnahairing"];
+  if (root === "laanemeri") return ["laanemer"];
+  if (root === "meri") return ["meri", "mere"];
+  if (root === "sademed") return ["sadem", "saju"];
+  if (root === "pohjavesi") return ["pohjave"];
+  if (root === "vesi") return ["vesi", "vee", "veek", "hudro"];
+  if (root === "emajogi") return ["emajog", "emajoe"];
+  if (root === "ajalooline") return ["ajalool"];
+  if (root === "mootmine") return ["mootm", "tulemus"];
+  if (root === "harjumaa") return ["harjumaa", "harju"];
+  if (root === "liik") return ["liik", "liig"];
+  if (root === "kaitseala") return ["kaitseal"];
+  if (root === "elupaik") return ["elupaik", "elupaig"];
+  if (root === "statistika") return ["statist", "smi", "inventuur"];
+  if (root === "tulemus") return ["tulemus"];
+  if (root === "tulevik") return ["tulevik", "prognoos", "lahiaast"];
+  if (root === "andmed") return ["andme", "avaand"];
+  if (root === "ohukvaliteet") return ["ohukvaliteet", "ohu kvaliteet", "valisoh"];
+  if (root === "jaat") return ["jaat", "prugi"];
+  return [root];
+}
+
+export function textHasQueryRoot(value, root) {
+  const text = normalize(value);
+  if (root === "maar") {
+    // "määr" (rate) and "määrus" (regulation) are different intents in Estonian.
+    // A plain substring match would make legal-regulation pages look like numeric indicators.
+    return /\b(?:maar(?!us)\w*|osakaal\w*|protsent\w*|tase\w*)\b/u.test(text);
+  }
+  return queryRootVariants(root).some((variant) => text.includes(variant));
 }
 
 const DOMAIN_ROOTS = new Set([
-  "mets", "kliima", "ilm", "prognoos", "hoiatus", "temperatuur", "sademed", "tuul",
-  "vesi", "jarv", "jogi", "meri", "pohjavesi", "ohk", "ohukvaliteet", "saaste", "heide",
-  "jaat", "jaatmekaitluskoht", "prugi", "rehv", "polet", "ringmajandus", "looduskaitse", "elurikkus", "elupaik",
+  "mets", "raie", "kliima", "ilm", "prognoos", "hoiatus", "temperatuur", "sademed", "tuul",
+  "vesi", "jarv", "jogi", "meri", "laanemeri", "pohjavesi", "ohk", "ohukvaliteet", "saaste", "heide", "kasvuhoonegaas",
+  "jaat", "jaatmekaitluskoht", "prugi", "rehv", "polet", "ringmajandus", "ringlussevott", "looduskaitse", "elurikkus", "elupaik",
   "kaitseala", "natura", "liik", "seire", "keskkond", "keskkonnaportaal", "keskkonnaluba",
+  "tuulepark",
   "keskkonnamoju", "kotkas", "kmh", "ksh", "kataster", "kinnistu", "metsaregister",
   "elektriauto", "energia", "transport", "kütus", "kytus", "maavara", "kaevandus", "muld",
   "mura", "kiirgus", "climate", "forest", "water", "weather", "pollution", "waste",
   "biodiversity", "nature", "air", "andmed",
+]);
+const ADMIN_CONTEXT_ROOTS = new Set([
+  "tallinn", "tartu", "parnu", "parnumaa", "narva", "viljandi", "rakvere", "voru",
+  "kuressaare", "haapsalu", "johvi", "harjumaa", "ida", "virumaa",
 ]);
 const AMBIGUOUS_ROOTS = new Set([
   "vesi", "jarv", "ohk", "ohukvaliteet", "saaste", "jaat", "looduskaitse", "elurikkus",
@@ -634,7 +931,7 @@ export function assessSearchQuery(query) {
       kind: "needs-clarification",
       topic: "kataster",
       reason: "missing-cadastre-number",
-      clarification: "Lisa katastritunnus kujul 12345:678:9012. Aadressi järgi kinnistu leidmiseks kasuta allpool Terrapointi otsingut.",
+      clarification: "Lisa katastritunnus kujul 12345:678:9012. Aadressi järgi üksuse leidmiseks kasuta ametlikku kaardi- või aadressiotsingut.",
     };
   }
   const weatherLocationPattern = /\b(?:tallinn|tartu|parnu|narva|viljandi|rakvere|voru|kuressaare|haapsalu|johvi)\w*/u;
@@ -652,6 +949,17 @@ export function assessSearchQuery(query) {
       clarification: weatherLocationPattern.test(normalized)
         ? null
         : "Lisa asukoht, et avada õige piirkonna prognoos.",
+    };
+  }
+  const explicitlyCurrentAir = /\b(?:praegu|praegune|hetkel|hetke|reaalajas|tana|värske|varske)\b/u.test(normalized);
+  if (roots.some((root) => ["ohk", "ohukvaliteet", "saaste"].includes(root)) && explicitlyCurrentAir) {
+    return {
+      kind: "live-air",
+      topic: "ohukvaliteet",
+      reason: "time-sensitive-air-quality",
+      clarification: /\b(?:tallinn|tartu|parnu|narva|kohtla|viljandi|saaremaa)\w*/u.test(normalized)
+        ? null
+        : "Lisa asukoht või lähim seirejaam ja soovitud saasteaine.",
     };
   }
   if (roots.length <= 1 && AMBIGUOUS_ROOTS.has(topic)) {
@@ -690,13 +998,13 @@ export function scoreDocument(document, query) {
 
   for (const word of [...new Set(words)]) {
     if (word.length < 2) continue;
-    if (fields.title.includes(word)) score += 7;
-    if (fields.tags.includes(word)) score += 5;
-    if (fields.summary.includes(word)) score += 2;
-    if (fields.excerpt.includes(word)) score += 2;
-    if (fields.content.includes(word)) score += 1;
-    if (fields.organization.includes(word)) score += 1;
-    if (fields.answer.includes(word)) score += 3;
+    if (textHasQueryRoot(fields.title, word)) score += 7;
+    if (textHasQueryRoot(fields.tags, word)) score += 5;
+    if (textHasQueryRoot(fields.summary, word)) score += 2;
+    if (textHasQueryRoot(fields.excerpt, word)) score += 2;
+    if (textHasQueryRoot(fields.content, word)) score += 1;
+    if (textHasQueryRoot(fields.organization, word)) score += 1;
+    if (textHasQueryRoot(fields.answer, word)) score += 3;
   }
 
   return score;
@@ -717,22 +1025,25 @@ function documentRoots(document) {
 function evidencePassages(document) {
   return [
     document.title,
+    [...(document.tags || []), ...(document.topics || [])].join(" "),
     document.summary,
     document.excerpt,
     document.answer,
     document.content,
   ]
     .filter(Boolean)
-    .flatMap((value) => String(value).split(/(?:\n+|(?<=[.!?])\s+|\s*…\s*)/u))
-    .map((value) => value.trim())
-    .filter(Boolean);
+    .flatMap(splitTextPassages);
+}
+
+function passageMatchesTerms(passage, terms) {
+  return terms.filter((term) => textHasQueryRoot(passage, term));
 }
 
 export function assessEvidence(query, documents = []) {
   const terms = queryTerms(query);
   const requiredDomainTerms = terms.filter((term) => rootIsDomain(term)
     && !["andmed", "keskkond", "seire"].includes(term));
-  const candidates = (documents || []).slice(0, 5);
+  const candidates = (documents || []).slice(0, 8);
   const topScore = Number(candidates[0]?.score || 0);
   const matched = new Set();
   const perDocument = [];
@@ -755,18 +1066,22 @@ export function assessEvidence(query, documents = []) {
   const requiredMatches = Math.min(2, Math.max(1, terms.length));
   const directDocument = perDocument.find((match, index) => {
     const document = candidates[index];
-    const requestedYearPassage = years.length === 0 || evidencePassages(document).some((passage) => {
+    const passageTerms = terms.filter((term) => !ADMIN_CONTEXT_ROOTS.has(term));
+    const requiredPassageMatches = passageTerms.length <= 3
+      ? passageTerms.length
+      : Math.ceil(passageTerms.length * 0.75);
+    const directPassage = evidencePassages(document).some((passage) => {
       const passageText = normalize(passage);
-      const passageRoots = new Set(queryTerms(passage));
-      const passageMatches = terms.filter((term) => passageRoots.has(term));
+      const passageMatches = passageMatchesTerms(passage, terms);
+      const requiredMatches = passageMatches.filter((term) => passageTerms.includes(term));
       return years.every((year) => passageText.includes(year))
-        && passageMatches.length >= requiredMatches
-        && passageMatches.length / terms.length >= 0.45;
+        && requiredDomainTerms.every((term) => passageMatches.includes(term))
+        && requiredMatches.length >= requiredPassageMatches;
     });
     return match.matchedTerms.length >= requiredMatches
       && match.coverage >= 0.45
       && requiredDomainTerms.every((term) => match.matchedTerms.includes(term))
-      && requestedYearPassage;
+      && directPassage;
   });
   const yearsCovered = years.length === 0 || Boolean(directDocument);
   const strong = candidates.length > 0
@@ -792,10 +1107,22 @@ export function relatedQueries(query, sources) {
   return [...new Set(tags)].slice(0, 3).map((tag) => `${tag} andmed Eestis`);
 }
 
+export function officialServiceCatalogueDocuments() {
+  return SEARCH_DOCUMENTS.map(({ answer: _answer, tags, ...document }) => ({
+    ...document,
+    tags: [...(tags || [])],
+    topics: [...(tags || [])],
+    sourceTier: "official",
+    retrieval: "official-service-directory",
+  }));
+}
+
 export function rankDocuments(query, documents = SEARCH_DOCUMENTS) {
+  const primaryTopic = assessSearchQuery(query).topic;
   return documents
     .map((document) => ({ ...document, score: scoreDocument(document, query) }))
-    .filter((document) => document.score > 0)
+    .filter((document) => document.score > 0
+      && (!primaryTopic || documentRoots(document).has(primaryTopic)))
     .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title, "et"));
 }
 
@@ -869,6 +1196,27 @@ export function composeScopeResponse(query, assessment) {
       },
       sources,
       related: ["Eesti ilmahoiatused", "ajalooline temperatuur", "sademed mõõtejaamades"],
+      clarification: assessment.clarification,
+      evidence: { kind: "official-live-routing", documentIds: sources.map((source) => source.id) },
+    };
+  }
+
+  if (assessment.kind === "live-air") {
+    const sources = responseSources(["air-quality-live"]);
+    return {
+      query: cleanQuery,
+      total: sources.length,
+      generatedAt: new Date().toISOString(),
+      answer: {
+        eyebrow: "Ajakohane õhuseire",
+        title: "Hetke õhukvaliteet tuleb võtta lähimast seirejaamast",
+        intro: "Ava Eesti välisõhu kvaliteedi reaalajavaade, vali lähim seirejaam ja saasteaine ning kontrolli näidu keskmistamisaega. Ühe jaama hetkeline näit ei kirjelda automaatselt kogu linna ega pikaajalist õhukvaliteeti.",
+        introCitations: [1],
+        parts: [],
+        note: "Seireandmed muutuvad ajas; tervise- või tegevusotsuse puhul kontrolli allika viimast uuendust.",
+      },
+      sources,
+      related: ["Tallinna õhukvaliteedi pikaajaline trend", "PM2.5 mõõtmised", "Eesti välisõhu seirejaamad"],
       clarification: assessment.clarification,
       evidence: { kind: "official-live-routing", documentIds: sources.map((source) => source.id) },
     };

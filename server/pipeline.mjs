@@ -1,50 +1,80 @@
 import { readSearchCache, recordSearch } from "./database.mjs";
 import { answerCadastreQuestion } from "./cadastre.mjs";
-import { searchCorpusEvidence } from "./corpus.mjs";
-import {
-  answerForestryQuestion,
-  FORESTRY_KB_REVISION,
-} from "./forestry.mjs";
 import {
   hydrateOfficialDocuments,
-  searchOfficialSites,
-  searchKeskkonnaportaal,
 } from "./integrations.mjs";
 import { generateGroundedAnswer } from "./llm.mjs";
 import {
-  SEARCH_DOCUMENTS,
+  canonicalResultUrl,
+  evidenceDocumentsFromListing,
+  prepareRankedSearchResults,
+  rankSearchCandidates,
+} from "./retrieval.mjs";
+import {
   assessEvidence,
   assessSearchQuery,
-  buildDiscoveryQuery,
   composeScopeResponse,
   composeSearchResponse,
-  rankDocuments,
-  scoreDocument,
+  normalize,
+  queryTerms,
+  splitTextPassages,
+  textHasQueryRoot,
 } from "./search.mjs";
 
-export const SEARCH_RESPONSE_REVISION = `answer-v5-luna-${FORESTRY_KB_REVISION}`;
+export const SEARCH_RESPONSE_REVISION = "answer-v9-ranked-evidence";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 
-function deduplicate(documents) {
-  const seen = new Map();
-  for (const document of documents) {
-    const key = String(document.url || document.id).replace(/\/+$/, "").toLocaleLowerCase("et");
-    if (!seen.has(key)) seen.set(key, document);
-  }
-  return [...seen.values()];
+function rankPortalDocuments(query, documents) {
+  return rankSearchCandidates(query, documents).map((document) => ({
+    ...document,
+    score: document._ranking.score,
+  }));
 }
 
-function rankPortalDocuments(query, documents) {
-  return rankDocuments(query, documents)
-    .map((document) => ({
-      ...document,
-      score: scoreDocument(document, query)
-        + (document.retrieval === "curated-guide" ? 2 : 0)
-        + (document.retrieval === "local-corpus" ? 5 : 0)
-        + (document.retrieval === "live-discovery" ? 3 : 0)
-        + (document.retrieval === "official-federated-search" ? 4 : 0),
+function passageQueryCoverage(query, passage) {
+  const roots = queryTerms(query);
+  if (!roots.length) return 0;
+  return roots.filter((root) => textHasQueryRoot(passage, root)).length / roots.length;
+}
+
+function passageDirectness(query, passage) {
+  const roots = queryTerms(query);
+  const text = normalize(passage);
+  const years = normalize(query).match(/\b(?:19|20)\d{2}\b/gu) || [];
+  const yearScore = years.length ? (years.every((year) => text.includes(year)) ? 20 : -20) : 0;
+  if (roots.includes("keskkonnamoju")) {
+    const subjectRoots = roots.filter((root) => !["keskkonnamoju", "ida", "virumaa"].includes(root));
+    const hasSubject = subjectRoots.some((root) => textHasQueryRoot(text, root));
+    const hasImpact = textHasQueryRoot(text, "keskkonnamoju");
+    const concreteImpact = /\b(?:pohjave|pinnave|joogive|mura|lohket|tolm|hairing|leevend|enneta|taaskasut|aherain|eluslood|maastik|kahju)\w*/u.test(text);
+    const procedureOnly = /\b(?:nousolek|komisjon|vallavalits|ministeerium|avalik rahvakoosolek)\w*/u.test(text)
+      && !concreteImpact;
+    return yearScore
+      + (hasSubject && hasImpact ? 20 : 0)
+      + (concreteImpact ? 12 : 0)
+      - (procedureOnly ? 18 : 0);
+  }
+  if (roots.some((root) => ["muutus", "kasv"].includes(root))
+    && roots.some((root) => ["noor", "vanus"].includes(root))) {
+    const hasForestAge = text.includes("mets") && /\b(?:noor|vanus|vana)\w*/u.test(text);
+    const hasDirection = /\b(?:suuren|vahen|lang|kahan|pusi)\w*/u.test(text);
+    return yearScore + (hasForestAge && hasDirection ? 20 : 0);
+  }
+  return yearScore;
+}
+
+export function directEvidenceExtract(query, document) {
+  const passages = [document?.summary, document?.content]
+    .filter(Boolean)
+    .flatMap(splitTextPassages)
+    .map((value) => value.replace(/\s+/gu, " ").trim())
+    .filter((value) => value.length >= 35 && value.length <= 520);
+  return passages
+    .map((passage, index) => ({
+      passage: passage.replace(/^[„“”"']+|[„“”"']+$/gu, "").trim(),
+      score: passageQueryCoverage(query, passage) * 20 + passageDirectness(query, passage) - index * 0.001,
     }))
-    .sort((left, right) => right.score - left.score || left.title.localeCompare(right.title, "et"));
+    .sort((left, right) => right.score - left.score)[0]?.passage?.slice(0, 520) || "";
 }
 
 export function publicResponse(draft) {
@@ -61,27 +91,6 @@ function remainingBudget(deadlineAt, reserveMs = 0) {
   return Math.max(0, deadlineAt - Date.now() - reserveMs);
 }
 
-function reviewedSourceDraft(query, ordered, quality) {
-  const draft = composeSearchResponse(query, ordered, {
-    answerable: true,
-    evidenceKind: "reviewed-official-source",
-    limit: 6,
-    quality,
-    total: ordered.length,
-  });
-  const directSource = draft.sources.find((source) => source.id === quality.directDocumentId);
-  if (!directSource?.answer) return draft;
-  draft.answer = {
-    eyebrow: "Kontrollitud koondvastus",
-    title: draft.answer.title,
-    intro: directSource.answer,
-    introCitations: [directSource.citation],
-    parts: [],
-    note: "Vastus põhineb kuvatud ametlikul allikal. Õigusliku või asukohapõhise otsuse puhul kontrolli alati algallikat.",
-  };
-  return draft;
-}
-
 export function isSearchCacheEnabled(value = process.env.SEARCH_CACHE_ENABLED) {
   return String(value ?? "true").toLocaleLowerCase("et") !== "false";
 }
@@ -89,7 +98,7 @@ export function isSearchCacheEnabled(value = process.env.SEARCH_CACHE_ENABLED) {
 export function shouldGenerateGroundedAnswer(draft) {
   return Boolean(
     draft?.sources?.length
-    && ["portal-discovery", "reviewed-official-source", "reviewed-forestry-knowledge"].includes(draft?.evidence?.kind)
+    && ["ranked-search-results", "reviewed-official-source"].includes(draft?.evidence?.kind)
     && draft?.evidence?.answerable === true,
   );
 }
@@ -107,90 +116,120 @@ export function mergeRelatedQuestions(generated = [], reviewed = [], limit = 6) 
     .slice(0, Math.max(1, Math.min(Number(limit) || 6, 6)));
 }
 
-export async function createPortalDraft(query, { deadlineAt, signal }) {
-  const reviewed = rankPortalDocuments(
-    query,
-    SEARCH_DOCUMENTS.map((document) => ({ ...document, retrieval: "curated-guide" })),
-  );
-  const reviewedQuality = assessEvidence(query, reviewed);
-  if (reviewedQuality.strong) {
-    const direct = reviewed.find((document) => document.id === reviewedQuality.directDocumentId);
-    const ordered = direct ? [direct] : reviewed;
-    return reviewedSourceDraft(query, ordered, reviewedQuality);
-  }
-
-  const discoveryQuery = buildDiscoveryQuery(query) || query;
-  const discoveryTimeout = Math.max(250, Math.min(3_000, remainingBudget(deadlineAt, 8_000)));
-  const [corpusResult, portalResult, officialResult] = await Promise.allSettled([
-    searchCorpusEvidence(query, 16),
-    searchKeskkonnaportaal(discoveryQuery, 10, { timeoutMs: discoveryTimeout, signal }),
-    searchOfficialSites(discoveryQuery, 5, { timeoutMs: discoveryTimeout, signal }),
-  ]);
-  const corpus = corpusResult.status === "fulfilled"
-    ? corpusResult.value
-    : { documents: [], total: 0 };
-  const portal = portalResult.status === "fulfilled"
-    ? portalResult.value
-    : { documents: [], total: 0 };
-  const official = officialResult.status === "fulfilled"
-    ? officialResult.value
-    : { documents: [], total: 0, services: [] };
-
-  const candidates = deduplicate([
-    ...corpus.documents,
-    ...portal.documents,
-    ...official.documents,
-    ...SEARCH_DOCUMENTS.map((document) => ({ ...document, retrieval: "curated-guide" })),
-  ]);
-  const ranked = rankPortalDocuments(query, candidates);
+export async function createPortalDraft(query, {
+  deadlineAt,
+  signal,
+  retrievalQuery = query,
+  searchResults,
+} = {}) {
+  const listing = searchResults || await prepareRankedSearchResults(retrievalQuery, {
+    page: 1,
+    pageSize: 12,
+    deadlineAt,
+    signal,
+  });
+  const candidates = evidenceDocumentsFromListing(listing);
+  const ranked = rankPortalDocuments(retrievalQuery, candidates);
   const hydrationBudget = remainingBudget(deadlineAt, 7_000);
   const hydrated = hydrationBudget >= 500
-    ? await hydrateOfficialDocuments(ranked.slice(0, 4), 4, {
+    ? await hydrateOfficialDocuments(ranked.slice(0, 8), 8, {
       timeoutMs: Math.min(2_000, hydrationBudget),
       signal,
     })
-    : ranked.slice(0, 4);
-  const reranked = rankPortalDocuments(query, hydrated);
-  const quality = assessEvidence(query, reranked);
+    : ranked.slice(0, 8);
+  const reranked = rankPortalDocuments(retrievalQuery, hydrated);
+  const quality = assessEvidence(retrievalQuery, reranked);
   const direct = quality.strong
     ? reranked.find((document) => document.id === quality.directDocumentId)
     : null;
-  const responseDocuments = direct
-    ? [direct, ...reranked.filter((document) => document.id !== direct.id)]
-    : reviewed;
-  return composeSearchResponse(query, responseDocuments, {
+  const directCitation = direct
+    ? reranked.findIndex((document) => document.id === direct.id) + 1
+    : 0;
+  const draft = composeSearchResponse(query, reranked, {
     answerable: quality.strong,
     clarification: quality.strong
       ? null
       : "Leitud allikad ei kata küsimust piisavalt täpselt. Lisa konkreetne objekt, näitaja, piirkond või aasta.",
-    evidenceKind: quality.strong ? "portal-discovery" : "insufficient-evidence",
+    evidenceKind: quality.strong ? "ranked-search-results" : "insufficient-evidence",
     limit: 8,
     quality,
-    total: corpus.total || portal.total + official.total || reranked.length,
+    total: Number(listing.total || reranked.length),
   });
+  const directExtract = direct ? directEvidenceExtract(retrievalQuery, direct) : "";
+  if (directExtract) {
+    draft.answer.eyebrow = "Allikapõhine kokkuvõte";
+    draft.answer.intro = directExtract;
+    draft.answer.introCitations = [directCitation];
+  }
+  return draft;
 }
 
-async function searchWithinBudget(cleanQuery, { startedAt, deadlineAt, signal }) {
-  const cacheEnabled = isSearchCacheEnabled();
+function cachedSourcesBelongToListing(cached, listing) {
+  if (!listing?.items?.length || !cached?.sources?.length) return true;
+  const urls = new Set(listing.items.map((item) => canonicalResultUrl(item.url)));
+  return cached.sources.every((source) => urls.has(canonicalResultUrl(source.url)));
+}
+
+function draftSourcesBelongToListing(draft, listing) {
+  if (!draft?.sources?.length) return true;
+  const urls = new Set((listing?.items || []).map((item) => canonicalResultUrl(item.url)));
+  return draft.sources.every((source) => urls.has(canonicalResultUrl(source.url)));
+}
+
+async function searchWithinBudget(cleanQuery, {
+  startedAt,
+  deadlineAt,
+  signal,
+  assessmentQuery = cleanQuery,
+  retrievalQuery = cleanQuery,
+  searchResults,
+  filters = {},
+  conversationContext = "",
+  useCache = true,
+}) {
+  const defaultFilters = !filters?.category && !filters?.year
+    && [undefined, "", "all"].includes(filters?.source)
+    && [undefined, "", "relevance"].includes(filters?.sort);
+  const cacheEnabled = useCache && defaultFilters && isSearchCacheEnabled();
   if (cacheEnabled) {
     const cached = await readSearchCache(cleanQuery, SEARCH_RESPONSE_REVISION);
-    if (cached) return cached;
+    if (cached && cachedSourcesBelongToListing(cached, searchResults)) return cached;
   }
 
-  const assessment = assessSearchQuery(cleanQuery);
+  const assessment = assessSearchQuery(assessmentQuery);
   let draft;
   if (assessment.kind !== "answerable") {
     draft = composeScopeResponse(cleanQuery, assessment);
+    if (searchResults && !draftSourcesBelongToListing(draft, searchResults)) {
+      const filteredDocuments = rankPortalDocuments(retrievalQuery, evidenceDocumentsFromListing(searchResults));
+      draft = composeSearchResponse(cleanQuery, filteredDocuments, {
+        answerable: false,
+        clarification: defaultFilters
+          ? "Selle küsimuse jaoks vajalikku reaalaja- või registriallikat ei leitud nähtavast tulemusehulgast. Täpsusta päringut või proovi uuesti."
+          : "Valitud filtrid välistavad selle küsimuse jaoks vajaliku reaalaja- või registriallika. Lähtesta filter või vali sobiv ametlik sisutüüp.",
+        evidenceKind: "filtered-scope-exclusion",
+        limit: 6,
+        total: Number(searchResults.total || filteredDocuments.length),
+      });
+    }
   } else {
     const cadastreDraft = await answerCadastreQuestion(cleanQuery);
-    const forestryDraft = cadastreDraft ? null : answerForestryQuestion(cleanQuery);
-    draft = cadastreDraft || forestryDraft || await createPortalDraft(cleanQuery, { deadlineAt, signal });
+    draft = cadastreDraft || await createPortalDraft(cleanQuery, {
+      deadlineAt,
+      signal,
+      retrievalQuery,
+      searchResults,
+    });
   }
   const canGenerate = shouldGenerateGroundedAnswer(draft);
   const llmBudget = remainingBudget(deadlineAt, 300);
   const llmResult = canGenerate && llmBudget >= 500
-    ? await generateGroundedAnswer(cleanQuery, draft, { timeoutMs: llmBudget, signal })
-    : { answer: null, status: "not-applicable", provider: "reviewed-knowledge" };
+    ? await generateGroundedAnswer(cleanQuery, draft, {
+      timeoutMs: llmBudget,
+      signal,
+      conversationContext,
+    })
+    : { answer: null, status: "not-applicable", provider: "deterministic-current-evidence" };
 
   if (llmResult.answer) draft.answer = llmResult.answer;
   if (llmResult.related?.length) draft.related = mergeRelatedQuestions(llmResult.related, draft.related, 6);
@@ -201,12 +240,11 @@ async function searchWithinBudget(cleanQuery, { startedAt, deadlineAt, signal })
   const spatialDegraded = evidenceKind === "official-spatial-snapshot"
     && Object.values(draft.evidence?.states || {}).some((state) => state === "unavailable");
   const cacheResponse = llmResult.status === "ready"
-    || evidenceKind === "reviewed-forestry-knowledge"
     || evidenceKind === "safe-abstention"
     || evidenceKind === "needs-clarification"
     || evidenceKind === "official-live-routing"
     || (evidenceKind === "official-spatial-snapshot" && !spatialDegraded);
-  const ttlMinutes = evidenceKind === "official-live-routing" ? 5 : 60;
+  const ttlMinutes = evidenceKind === "official-live-routing" ? 5 : 20;
 
   void recordSearch({
     query: cleanQuery,
@@ -222,10 +260,12 @@ async function searchWithinBudget(cleanQuery, { startedAt, deadlineAt, signal })
   return response;
 }
 
-function timeoutFallback(cleanQuery) {
-  const assessment = assessSearchQuery(cleanQuery);
+export function searchTimeoutFallback(cleanQuery, { assessmentQuery = cleanQuery, searchResults } = {}) {
+  const assessment = assessSearchQuery(assessmentQuery);
   if (assessment.kind !== "answerable") return publicResponse(composeScopeResponse(cleanQuery, assessment));
-  const ranked = rankDocuments(cleanQuery, SEARCH_DOCUMENTS);
+  const ranked = searchResults?.items?.length
+    ? rankPortalDocuments(assessmentQuery, evidenceDocumentsFromListing(searchResults))
+    : [];
   const quality = assessEvidence(cleanQuery, ranked);
   const draft = composeSearchResponse(cleanQuery, ranked, {
     answerable: false,
@@ -234,7 +274,13 @@ function timeoutFallback(cleanQuery) {
     limit: 6,
     quality,
   });
-  draft.answer.note = "Värskete allikate laadimine ei jõudnud vastuse ajapiiri sisse. Kuvatud koond põhineb kontrollitud põhiallikatel; täpsema tulemuse saamiseks proovi otsingut uuesti.";
+  draft.answer.eyebrow = "Otsing võttis liiga kaua";
+  draft.answer.intro = "Värskete allikate laadimine ei jõudnud vastuse ajapiiri sisse. See ei tähenda, et otsitud andmeid ei ole.";
+  draft.answer.introCitations = [];
+  draft.answer.parts = [];
+  draft.answer.note = ranked.length
+    ? "Juba leitud ametlikud allikad on kuvatud allpool, kuid neist ei koostatud ajapiiri järel uut faktivastust. Proovi otsingut uuesti."
+    : "Proovi otsingut uuesti või lisa täpsem objekt, näitaja, piirkond või aasta.";
   return publicResponse(draft);
 }
 
@@ -253,17 +299,28 @@ export async function settleWithinDeadline(operation, timeoutMs, fallback, contr
   }
 }
 
-export async function searchEnvironmentLive(query) {
-  const startedAt = Date.now();
+export async function searchEnvironmentLive(query, options = {}) {
+  const startedAt = Number(options.startedAt) || Date.now();
   const cleanQuery = String(query ?? "").replace(/\s+/g, " ").trim().slice(0, 180);
   if (!cleanQuery) return composeSearchResponse("", [], { limit: 3, total: 0 });
 
-  const deadlineMs = Math.max(1_000, Math.min(Number(process.env.SEARCH_DEADLINE_MS) || DEFAULT_SEARCH_DEADLINE_MS, 15_000));
+  const configuredDeadlineMs = Math.max(1_000, Math.min(Number(process.env.SEARCH_DEADLINE_MS) || DEFAULT_SEARCH_DEADLINE_MS, 15_000));
+  const absoluteDeadline = Number(options.deadlineAt) || startedAt + configuredDeadlineMs;
+  const deadlineMs = Math.max(250, Math.min(configuredDeadlineMs, absoluteDeadline - Date.now()));
   const controller = new AbortController();
+  const signal = options.signal && typeof AbortSignal.any === "function"
+    ? AbortSignal.any([controller.signal, options.signal])
+    : controller.signal;
   const operation = searchWithinBudget(cleanQuery, {
     startedAt,
-    deadlineAt: startedAt + deadlineMs,
-    signal: controller.signal,
-  }).catch(() => timeoutFallback(cleanQuery));
-  return settleWithinDeadline(operation, deadlineMs, () => timeoutFallback(cleanQuery), controller);
+    deadlineAt: absoluteDeadline,
+    signal,
+    assessmentQuery: options.assessmentQuery || cleanQuery,
+    retrievalQuery: options.retrievalQuery || cleanQuery,
+    searchResults: options.searchResults,
+    filters: options.filters || {},
+    conversationContext: options.conversationContext || "",
+    useCache: options.useCache !== false,
+  }).catch(() => searchTimeoutFallback(cleanQuery, options));
+  return settleWithinDeadline(operation, deadlineMs, () => searchTimeoutFallback(cleanQuery, options), controller);
 }

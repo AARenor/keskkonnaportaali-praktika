@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { load } from "cheerio";
 import {
   databaseEnabled,
@@ -54,9 +53,11 @@ const WIKIPEDIA_TITLES = [
 ];
 const QUERY_STOPWORDS = new Set([
   "aga", "ei", "eesti", "eestis", "ehk", "et", "ja", "kas", "kui", "kuidas", "kus", "meie",
-  "miks", "mis", "mida", "millal", "milline", "ning", "on", "oma", "palun", "praegu", "see",
-  "seda", "selle", "siis", "või", "ule", "üle", "uks", "üks",
+  "miks", "mis", "mida", "millal", "milline", "ning", "on", "oma", "palun", "praegu", "praegune", "praegused", "hetke", "hetkel",
+  "täna", "tana", "homme", "homne", "ülehomme", "ulehomme", "reaalajas", "see",
+  "seda", "selle", "siis", "suur", "suured", "suurus", "uusim", "uusimad", "värske", "värsked", "või", "ule", "üle", "uks", "üks",
 ]);
+const SEARCH_FILTER_SOURCES = new Set(["all", "trusted", "official", "reviewed", "supplementary", "other"]);
 let corpusSchemaPromise;
 let backgroundSyncPromise;
 let portalRobotsPromise;
@@ -78,14 +79,104 @@ export function normalizeCorpusQuery(value = "") {
   return cleanText(value).normalize("NFKC").toLocaleLowerCase("et").slice(0, 180);
 }
 
-export function corpusQueryTerms(value = "") {
+function corpusTermRoot(term) {
+  if (/^kasvuhoonegaas/iu.test(term)) return "kasvuhoonegaas";
+  if (/^mets/iu.test(term)) return "mets";
+  if (/^(?:rai|raie|raium|raiemaht)/iu.test(term)) return "rai";
+  if (/^noor/iu.test(term)) return "noor";
+  if (/^(?:vana|vanus|vanem)/iu.test(term)) return "vanus";
+  if (/^muut/iu.test(term)) return "muut";
+  if (/^tulevik/iu.test(term)) return "tulevik";
+  if (/^kasv/iu.test(term)) return "kasv";
+  if (/^põhjave/iu.test(term)) return "põhjave";
+  if (/^läänemer/iu.test(term)) return "läänemer";
+  if (/^mer/iu.test(term)) return "mer";
+  if (/^hei[dt]/iu.test(term)) return "heide";
+  if (/^ringlussevõt/iu.test(term)) return "ringlussevõt";
+  if (/^(?:tohib|lubat|keelat)$/iu.test(term)) return "lubatav";
+  if (/^võib$/iu.test(term)) return "lubatav";
+  if (/^autorehv/iu.test(term)) return "rehv";
+  if (/^elutsük/iu.test(term)) return "elutsük";
+  if (/^sadem/iu.test(term)) return "sadem";
+  if (/^ajalool/iu.test(term)) return "ajalool";
+  if (/^emajõ/iu.test(term)) return "emajõ";
+  if (/^keskkonnalo/iu.test(term)) return "keskkonnalo";
+  if (/^(?:taotl|taotle)/iu.test(term)) return "taotl";
+  if (/^ettevõt/iu.test(term)) return "ettevõt";
+  if (/^ehit/iu.test(term)) return "ehit";
+  if (/^(?:liik|liig)/iu.test(term)) return "liik";
+  if (/^(?:elupaik|elupaig)/iu.test(term)) return "elupaik";
+  if (/^lang/iu.test(term)) return "lang";
+  if (/^vähen/iu.test(term)) return "vähen";
+  if (/^suuren/iu.test(term)) return "suuren";
+  if (/^seir/iu.test(term)) return "seir";
+  if (/^mõõt/iu.test(term)) return "mõõt";
+  if (/^kait/iu.test(term)) return "kait";
+  if (/maal$/iu.test(term) && term.length >= 7) return term.slice(0, -1);
+  return term;
+}
+
+export function corpusRankingTerms(value = "") {
   return [...new Set((normalizeCorpusQuery(value).match(/[0-9a-zõäöüšž]+/giu) || [])
-    .filter((term) => term.length >= 2 && !QUERY_STOPWORDS.has(term)))]
+    .filter((term) => term.length >= 2 && !QUERY_STOPWORDS.has(term))
+    .flatMap((term) => /^metsastat/iu.test(term)
+      ? [corpusTermRoot(term), "statist"]
+      : [corpusTermRoot(term)]))]
     .slice(0, 10);
 }
 
+function corpusTermVariants(term) {
+  if (term === "noor") return [term, "vanus"];
+  if (term === "vanus") return [term, "noor", "vana"];
+  if (term === "muut") return [term, "trend"];
+  if (term === "rai") return [term, "raiemaht", "raiuda"];
+  if (term === "kasv") return [term, "suuren"];
+  if (term === "heide") return ["heit", "heid"];
+  if (term === "lubatav") return ["tohi", "lubat", "keelat"];
+  if (term === "rehv") return ["rehv", "autorehv"];
+  if (term === "sadem") return ["sadem", "saju"];
+  if (term === "emajõ") return ["emajõ", "emajõe"];
+  if (term === "mõõt") return ["mõõt", "tulemus"];
+  if (term === "liik") return ["liik", "liig"];
+  if (term === "elupaik") return ["elupaik", "elupaig"];
+  if (["lang", "vähen"].includes(term)) return [term, "vähen", "kahan"];
+  return [term];
+}
+
+export function corpusQueryTerms(value = "") {
+  const terms = corpusRankingTerms(value);
+  const expanded = terms.flatMap(corpusTermVariants);
+  return [...new Set(expanded)].slice(0, 14);
+}
+
 export function buildPrefixTsQuery(value = "") {
-  return corpusQueryTerms(value).map((term) => `${term}:*`).join(" | ");
+  return corpusRankingTerms(value).map((term) => {
+    const group = corpusTermVariants(term).map((variant) => `${variant}:*`);
+    return group.length === 1 ? group[0] : `(${group.join(" | ")})`;
+  }).join(" & ");
+}
+
+export function normalizeSearchFilters(value = {}) {
+  const source = SEARCH_FILTER_SOURCES.has(String(value.source || "all")) ? String(value.source || "all") : "all";
+  const category = cleanText(value.category).slice(0, 120);
+  const requestedYear = Number(value.year);
+  const maximumYear = new Date().getUTCFullYear() + 1;
+  const year = Number.isInteger(requestedYear) && requestedYear >= 1990 && requestedYear <= maximumYear
+    ? requestedYear
+    : null;
+  const sort = value.sort === "newest" ? "newest" : "relevance";
+  return { source, category, year, sort };
+}
+
+export function sourceTiersForFilter(source = "all") {
+  if (source === "trusted") return ["official", "reviewed"];
+  if (["official", "reviewed", "supplementary", "other"].includes(source)) return [source];
+  return [];
+}
+
+export function queryNeedsFreshness(value = "") {
+  const query = normalizeCorpusQuery(value);
+  return /\b(?:praeg\w*|hetke\w*|uusim\w*|viimati|värske\w*|tänavu|tulevik\w*|trend\w*|muutu\w*|20(?:2[5-9]|[3-9]\d))\b/iu.test(query);
 }
 
 export function summarizeUrlOccurrences(values = []) {
@@ -419,6 +510,19 @@ async function ensureCorpusSchema() {
         SET published_label = ''
         WHERE lower(trim(published_label)) = 'null';
 
+        -- The first prototype copied its reviewed forestry answer corpus into
+        -- the general search index with a privileged tier. Keep the official
+        -- URLs discoverable, but remove the prewritten answer text and the
+        -- ranking privilege; fresh portal/live metadata can now replace it.
+        UPDATE practice_corpus_documents
+        SET source_key = 'legacy-official-url',
+            content = '',
+            source_tier = 'official',
+            metadata_quality = 1,
+            metadata = jsonb_build_object('source_kind', 'legacy-official-url'),
+            content_hash = md5(canonical_url)
+        WHERE source_key = 'reviewed-forestry';
+
         CREATE OR REPLACE FUNCTION practice_corpus_vector_update()
         RETURNS TRIGGER LANGUAGE plpgsql AS $$
         BEGIN
@@ -615,6 +719,42 @@ async function upsertDocuments(client, rawDocuments, runId) {
   return indexed;
 }
 
+export async function indexOfficialDiscoveryDocuments(rawDocuments = []) {
+  if (!databaseEnabled()) return { status: "disabled", indexed: 0 };
+  const documents = rawDocuments.flatMap((document) => {
+    let url;
+    try {
+      url = new URL(document.url);
+    } catch {
+      return [];
+    }
+    if (url.protocol !== "https:" || !OFFICIAL_HOSTS.has(url.hostname)) return [];
+    return [{
+      sourceKey: "official-live-search",
+      externalId: hash(url.toString()).slice(0, 24),
+      url: url.toString(),
+      title: document.title,
+      summary: document.summary,
+      content: document.content,
+      category: document.type,
+      organization: document.organization,
+      publishedAt: parsePortalDate(document.published),
+      publishedLabel: document.published,
+      topics: document.tags || document.topics || [],
+      sourceTier: "official",
+      quality: 4,
+      metadata: { source_kind: "official-live-search", placeholder: false },
+    }];
+  });
+  if (!documents.length) return { status: "empty", indexed: 0 };
+  try {
+    const indexed = await withDatabaseClient((client) => upsertDocuments(client, documents, null));
+    return { status: "ready", indexed: Number(indexed || 0) };
+  } catch {
+    return { status: "degraded", indexed: 0 };
+  }
+}
+
 async function fetchText(url, { timeoutMs = 15_000, retries = 2, accept = "text/html,application/xhtml+xml,application/xml,text/xml" } = {}) {
   let lastError;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -752,43 +892,6 @@ async function crawlPortalSitemap({ delayMs = 120 } = {}) {
     if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
   return { documents, pages };
-}
-
-function reviewedKnowledgeDocuments() {
-  const sources = JSON.parse(readFileSync(new URL("./knowledge/forestry/sources.json", import.meta.url), "utf8")).sources || [];
-  const documents = JSON.parse(readFileSync(new URL("./knowledge/forestry/documents.json", import.meta.url), "utf8")).documents || [];
-  const textBySource = new Map();
-  for (const document of documents) {
-    const text = [
-      document.title,
-      ...(document.question_aliases || []),
-      document.answer?.summary,
-      document.answer?.methodology,
-      ...(document.answer?.limitations || []),
-    ].filter(Boolean).join(" ");
-    for (const reference of document.sources || []) {
-      const current = textBySource.get(reference.source_id) || [];
-      current.push(text);
-      textBySource.set(reference.source_id, current);
-    }
-  }
-  return sources.map((source) => normalizeDocument({
-    sourceKey: "reviewed-forestry",
-    externalId: source.id,
-    url: source.url,
-    title: source.title,
-    summary: source.notes,
-    content: [...new Set(textBySource.get(source.id) || [])].join(" "),
-    category: source.source_type,
-    organization: source.publisher,
-    publishedAt: source.published_at,
-    publishedLabel: source.data_year ? String(source.data_year) : source.updated_at,
-    modifiedAt: source.updated_at,
-    topics: ["Mets", "kontrollitud teadmus"],
-    sourceTier: "reviewed",
-    quality: 5,
-    metadata: { source_kind: "reviewed-forestry", review_status: source.review_status },
-  })).filter(Boolean);
 }
 
 async function wikipediaDocuments() {
@@ -981,7 +1084,6 @@ export async function syncPortalCorpus({
       catalogTotal: 0,
       seedQueries: {},
       wikipedia: 0,
-      reviewed: 0,
       unavailableMarked: 0,
     };
     try {
@@ -997,11 +1099,6 @@ export async function syncPortalCorpus({
       totals.discovered += sitemapDocuments.length;
       totals.indexed += await upsertDocuments(client, sitemapDocuments, runId);
       onProgress?.({ stage: "sitemap", discovered: sitemapDocuments.length, indexed: totals.indexed });
-
-      const reviewed = reviewedKnowledgeDocuments();
-      details.reviewed = reviewed.length;
-      totals.discovered += reviewed.length;
-      totals.indexed += await upsertDocuments(client, reviewed, runId);
 
       let catalogUrls = [];
       if (includeCatalog) {
@@ -1122,6 +1219,8 @@ function publicSearchItem(row, includeContent = false) {
     published: formatPublished(row),
     topics: row.topics || [],
     sourceTier: row.source_tier,
+    _publishedAt: row.published_at ? new Date(row.published_at).toISOString().slice(0, 10) : null,
+    _relevance: Number(row.relevance || 0),
   };
   if (includeContent) item.content = boundedText(row.content, 15_000);
   return item;
@@ -1183,16 +1282,37 @@ export async function searchCorpus(query, {
   pageSize = DEFAULT_PAGE_SIZE,
   includeContent = false,
   preferSnapshot = true,
+  filters = {},
+  resultOffset = null,
+  excludeUrls = [],
 } = {}) {
   const normalized = normalizeCorpusQuery(query);
   const safePage = Math.max(1, Math.min(Number(page) || 1, 500));
   const safePageSize = Math.max(1, Math.min(Number(pageSize) || DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE));
+  const safeOffset = Number.isFinite(Number(resultOffset))
+    ? Math.max(0, Math.min(Number(resultOffset), 1_000_000))
+    : (safePage - 1) * safePageSize;
+  const safeExcludedUrls = [...new Set((Array.isArray(excludeUrls) ? excludeUrls : [])
+    .map((value) => String(value || "").trim())
+    .filter((value) => /^https:\/\//u.test(value)))]
+    .slice(0, 100);
+  const appliedFilters = normalizeSearchFilters(filters);
   if (!normalized || !databaseEnabled()) {
-    return { status: databaseEnabled() ? "empty" : "disabled", mode: "local-index", total: 0, page: safePage, pageSize: safePageSize, items: [] };
+    return {
+      status: databaseEnabled() ? "empty" : "disabled",
+      mode: "local-index",
+      total: 0,
+      page: safePage,
+      pageSize: safePageSize,
+      items: [],
+      facets: { sources: [], categories: [], years: [] },
+      appliedFilters,
+    };
   }
   try {
     await ensureCorpusSchema();
-    if (preferSnapshot) {
+    const hasFilters = appliedFilters.source !== "all" || appliedFilters.category || appliedFilters.year || appliedFilters.sort !== "relevance";
+    if (preferSnapshot && !hasFilters) {
       const snapshot = await snapshotResults(normalized, safePage, safePageSize, includeContent);
       if (snapshot) {
         const pageableTotal = snapshot.distinctTotal || snapshot.total;
@@ -1200,26 +1320,112 @@ export async function searchCorpus(query, {
           ...snapshot,
           pageCount: Math.ceil(pageableTotal / safePageSize),
           hasMore: safePage * safePageSize < pageableTotal,
+          facets: { sources: [], categories: [], years: [] },
+          appliedFilters,
         };
       }
     }
     const prefixQuery = buildPrefixTsQuery(normalized);
-    if (!prefixQuery) return { status: "empty", mode: "local-index", total: 0, page: safePage, pageSize: safePageSize, items: [] };
-    const result = await databaseQuery(`
+    if (!prefixQuery) return {
+      status: "empty",
+      mode: "local-index",
+      total: 0,
+      page: safePage,
+      pageSize: safePageSize,
+      items: [],
+      facets: { sources: [], categories: [], years: [] },
+      appliedFilters,
+    };
+    const rankTerms = corpusRankingTerms(normalized);
+    const sourceTiers = sourceTiersForFilter(appliedFilters.source);
+    const freshnessIntent = queryNeedsFreshness(normalized);
+    const orderClause = appliedFilters.sort === "newest"
+      ? "relevance_bucket DESC, published_at DESC NULLS LAST, relevance DESC, id ASC"
+      : "relevance DESC, published_at DESC NULLS LAST, id ASC";
+    const parameters = [
+      normalized,
+      prefixQuery,
+      rankTerms,
+      sourceTiers,
+      appliedFilters.category || null,
+      appliedFilters.year,
+      freshnessIntent,
+      safePageSize,
+      safeOffset,
+      safeExcludedUrls,
+    ];
+    const [result, facetResult] = await Promise.all([databaseQuery(`
       WITH parameters AS (
         SELECT
           websearch_to_tsquery('simple', public.unaccent($1)) AS web_query,
-          to_tsquery('simple', $2) AS prefix_query,
-          lower($1) AS raw_query
+          to_tsquery('simple', public.unaccent($2)) AS prefix_query,
+          lower($1) AS raw_query,
+          $3::TEXT[] AS rank_terms,
+          $7::BOOLEAN AS freshness_intent
       ), ranked AS (
         SELECT document.*,
           (
-            ts_rank_cd(ARRAY[0.08, 0.2, 0.6, 1.0], document.search_vector, parameters.prefix_query, 32) * 5.0
+            ts_rank_cd(ARRAY[0.08, 0.2, 0.6, 1.0], document.search_vector, parameters.prefix_query, 32) * 6.0
             + ts_rank_cd(ARRAY[0.08, 0.2, 0.6, 1.0], document.search_vector, parameters.web_query, 32) * 2.0
-            + similarity(lower(document.title), parameters.raw_query) * 2.5
-            + CASE WHEN lower(document.title) LIKE '%' || parameters.raw_query || '%' THEN 1.5 ELSE 0 END
-            + CASE document.source_tier WHEN 'reviewed' THEN 0.35 WHEN 'official' THEN 0.2 ELSE 0 END
+            + GREATEST(
+                similarity(public.unaccent(lower(document.title)), public.unaccent(parameters.raw_query)),
+                word_similarity(public.unaccent(parameters.raw_query), public.unaccent(lower(document.title)))
+              ) * 4.0
+            + CASE WHEN public.unaccent(lower(document.title)) LIKE '%' || public.unaccent(parameters.raw_query) || '%' THEN 3.0 ELSE 0 END
+            + COALESCE((
+                SELECT COUNT(*)::DOUBLE PRECISION * 2.4
+                FROM unnest(parameters.rank_terms) AS term
+                WHERE public.unaccent(lower(document.title)) LIKE '%' || public.unaccent(term) || '%'
+              ), 0)
+            + COALESCE((
+                SELECT COUNT(*)::DOUBLE PRECISION * 0.9
+                FROM unnest(parameters.rank_terms) AS term
+                WHERE public.unaccent(lower(document.summary)) LIKE '%' || public.unaccent(term) || '%'
+              ), 0)
+            + CASE document.source_tier WHEN 'official' THEN 0.45 WHEN 'reviewed' THEN 0.3 WHEN 'supplementary' THEN 0.05 ELSE 0 END
+            + CASE WHEN document.content <> '' THEN 0.3 ELSE 0 END
+            + CASE WHEN COALESCE(document.metadata->>'placeholder', 'false') = 'true' THEN -0.75 ELSE 0 END
+            + CASE
+                WHEN document.published_at > CURRENT_DATE THEN -0.5
+                WHEN document.published_at IS NULL THEN 0
+                WHEN parameters.freshness_intent THEN GREATEST(0, 1.0 - ((CURRENT_DATE - document.published_at)::DOUBLE PRECISION / 2190.0)) * 1.6
+                ELSE GREATEST(0, 1.0 - ((CURRENT_DATE - document.published_at)::DOUBLE PRECISION / 3650.0)) * 0.35
+              END
           ) AS relevance
+        FROM practice_corpus_documents document, parameters
+        WHERE document.is_available = TRUE
+          AND COALESCE(document.metadata->>'robots_noindex', 'false') <> 'true'
+          AND (cardinality($4::TEXT[]) = 0 OR document.source_tier = ANY($4::TEXT[]))
+          AND ($5::TEXT IS NULL OR document.category = $5::TEXT)
+          AND ($6::INTEGER IS NULL OR EXTRACT(YEAR FROM document.published_at)::INTEGER = $6::INTEGER)
+          AND (
+            cardinality($10::TEXT[]) = 0
+            OR regexp_replace(document.canonical_url, '^https://www[.]', 'https://') <> ALL($10::TEXT[])
+          )
+          AND (
+            document.search_vector @@ parameters.prefix_query
+            OR document.search_vector @@ parameters.web_query
+            OR lower(document.title) % parameters.raw_query
+            OR lower(document.title) LIKE '%' || parameters.raw_query || '%'
+          )
+      ), bucketed AS (
+        SELECT ranked.*, FLOOR(GREATEST(relevance, 0) / 5.0) AS relevance_bucket
+        FROM ranked
+      )
+      SELECT id, canonical_url, title, summary, content, organization, category,
+             published_at, published_label, topics, source_tier, relevance,
+             COUNT(*) OVER()::INTEGER AS full_count
+      FROM bucketed
+      ORDER BY ${orderClause}
+      LIMIT $8 OFFSET $9
+    `, parameters), databaseQuery(`
+      WITH parameters AS (
+        SELECT
+          websearch_to_tsquery('simple', public.unaccent($1)) AS web_query,
+          to_tsquery('simple', public.unaccent($2)) AS prefix_query,
+          lower($1) AS raw_query
+      ), matched AS (
+        SELECT document.source_tier, document.category, document.published_at
         FROM practice_corpus_documents document, parameters
         WHERE document.is_available = TRUE
           AND COALESCE(document.metadata->>'robots_noindex', 'false') <> 'true'
@@ -1230,15 +1436,25 @@ export async function searchCorpus(query, {
             OR lower(document.title) LIKE '%' || parameters.raw_query || '%'
           )
       )
-      SELECT id, canonical_url, title, summary, content, organization, category,
-             published_at, published_label, topics, source_tier, relevance,
-             COUNT(*) OVER()::INTEGER AS full_count
-      FROM ranked
-      ORDER BY relevance DESC, published_at DESC NULLS LAST, id ASC
-      LIMIT $3 OFFSET $4
-    `, [normalized, prefixQuery, safePageSize, (safePage - 1) * safePageSize]);
+      SELECT
+        COALESCE((SELECT jsonb_agg(to_jsonb(item)) FROM (
+          SELECT source_tier AS value, COUNT(*)::INTEGER AS count
+          FROM matched GROUP BY source_tier ORDER BY count DESC, source_tier ASC
+        ) item), '[]'::JSONB) AS sources,
+        COALESCE((SELECT jsonb_agg(to_jsonb(item)) FROM (
+          SELECT category AS value, COUNT(*)::INTEGER AS count
+          FROM matched WHERE category <> '' GROUP BY category ORDER BY count DESC, category ASC LIMIT 18
+        ) item), '[]'::JSONB) AS categories,
+        COALESCE((SELECT jsonb_agg(to_jsonb(item)) FROM (
+          SELECT EXTRACT(YEAR FROM published_at)::INTEGER AS value, COUNT(*)::INTEGER AS count
+          FROM matched
+          WHERE published_at IS NOT NULL AND published_at <= CURRENT_DATE
+          GROUP BY EXTRACT(YEAR FROM published_at) ORDER BY value DESC LIMIT 12
+        ) item), '[]'::JSONB) AS years
+    `, [normalized, prefixQuery])]);
     const rows = result?.rows || [];
     const total = Number(rows[0]?.full_count || 0);
+    const facetRow = facetResult?.rows?.[0] || {};
     return {
       status: "ready",
       mode: "local-index",
@@ -1248,17 +1464,34 @@ export async function searchCorpus(query, {
       pageCount: Math.ceil(total / safePageSize),
       hasMore: safePage * safePageSize < total,
       items: rows.map((row) => publicSearchItem(row, includeContent)),
+      facets: {
+        sources: Array.isArray(facetRow.sources) ? facetRow.sources : [],
+        categories: Array.isArray(facetRow.categories) ? facetRow.categories : [],
+        years: Array.isArray(facetRow.years) ? facetRow.years : [],
+      },
+      appliedFilters,
     };
   } catch {
-    return { status: "degraded", mode: "local-index", total: 0, page: safePage, pageSize: safePageSize, items: [] };
+    return {
+      status: "degraded",
+      mode: "local-index",
+      total: 0,
+      page: safePage,
+      pageSize: safePageSize,
+      items: [],
+      facets: { sources: [], categories: [], years: [] },
+      appliedFilters,
+    };
   }
 }
 
-export async function searchCorpusEvidence(query, limit = 12) {
+export async function searchCorpusEvidence(query, limit = 12, { filters = {} } = {}) {
   const result = await searchCorpus(query, {
     page: 1,
     pageSize: Math.max(1, Math.min(Number(limit) || 12, 20)),
     includeContent: true,
+    preferSnapshot: false,
+    filters,
   });
   return {
     status: result.status,

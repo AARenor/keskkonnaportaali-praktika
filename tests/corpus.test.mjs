@@ -97,8 +97,24 @@ test("sitemap parser canonicalizes portal URLs and keeps modification time", () 
 });
 
 test("PostgreSQL prefix query drops conversational stop words", () => {
-  assert.equal(buildPrefixTsQuery("Kas meie metsad muutuvad nooremaks?"), "metsad:* | muutuvad:* | nooremaks:*");
+  assert.equal(buildPrefixTsQuery("Kas meie metsad muutuvad nooremaks?"), "mets:* & (muut:* | trend:*) & (noor:* | vanus:*)");
   assert.equal(buildPrefixTsQuery("Kas see on Eestis?"), "");
+  assert.equal(
+    buildPrefixTsQuery("Eesti kasvuhoonegaaside heide 2022"),
+    "kasvuhoonegaas:* & (heit:* | heid:*) & 2022:*",
+  );
+  assert.equal(
+    buildPrefixTsQuery("põhjavee seisund Harjumaal 2024"),
+    "põhjave:* & seisund:* & harjumaa:* & 2024:*",
+  );
+  assert.equal(
+    buildPrefixTsQuery("metsastatistika vanuseline jaotus"),
+    "mets:* & statist:* & (vanus:* | noor:* | vana:*) & jaotus:*",
+  );
+  assert.equal(
+    buildPrefixTsQuery("kaitsealuse liigi elupaiga andmed"),
+    "kait:* & (liik:* | liig:*) & (elupaik:* | elupaig:*) & andmed:*",
+  );
 });
 
 test("readable page extraction removes navigation, forms and scripts", () => {
@@ -162,7 +178,10 @@ test("answer endpoint and broad result pagination remain separate contracts", as
     readFile(new URL("../server/corpus.mjs", import.meta.url), "utf8"),
   ]);
   assert.match(server, /app\.get\("\/api\/search\/results"/u);
-  assert.match(server, /broadSearchResults/u);
+  assert.match(server, /prepareRankedSearchResults/u);
+  assert.match(server, /publicSearchListing/u);
+  assert.match(server, /app\.post\("\/api\/search\/follow-up"/u);
+  assert.match(server, /settleWithinDeadline/u);
   assert.match(app, /Lai portaaliotsing/u);
   assert.match(app, /Otsingutulemused/u);
   assert.match(app, /Vastuse allikad/u);
