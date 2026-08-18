@@ -182,7 +182,7 @@ Coolify tokenit, SSH privaatvõtit ega mudelivõtit ei tohi panna reposse, braus
 
 Coolify API-token ja GitHubi SSH deploy-võti on ainult haldus- ja juurutusvahendid. Veebikonteiner ei loe kumbagi runtime'is; otsing kasutab eraldi serverisaladust `OPENCODE_ZEN_API_KEY` või `OPENCODE_GO_API_KEY`. Seetõttu ei muuda haldusvõtmete rotatsioon sama image'i otsingu-, allika- ega AI-käitumist, kuid pärast rotatsiooni tuleb kinnitada, et Coolify saab endiselt repot lugeda ja juurutada.
 
-Avaliku timeout-ahela kontroll 17.08.2026: rakendus piirab kogu otsingu 15 sekundiga ja fault-injection'i automaattest tõendab, et lõppematu operatsioon katkestatakse ning asendatakse deterministliku vastusega. Jooksva Coolify proxy Traefik 3.6.9 konfiguratsioon ei määra `responseHeaderTimeout` ega response `writeTimeout` väärtust üle; binaari tegelikud vaikeväärtused olid mõlemal `0`, mille Traefik ise kirjeldab kui timeout'i puudumist. Domeeni ees oleva Cloudflare'i [ametlik 524 dokumentatsioon](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-524/) määrab vaikimisi Proxy Read Timeout'iks 125 sekundit. Seega on rakenduse halvim vastusepiir 15 s väiksem kui avaliku edge'i 125 s piir ning Traefik ei katkesta vastuse ootamist enne rakenduse fallback'i.
+Avaliku timeout-ahela kontroll 18.08.2026: rakendus piirab kogu otsingu 15 sekundiga ja fault-injection'i automaattest tõendab, et lõppematu operatsioon katkestatakse ning asendatakse deterministliku vastusega. Jooksva Coolify proxy Traefik 3.6.9 konfiguratsioon ei määra `responseHeaderTimeout` ega response `writeTimeout` väärtust üle; binaari tegelikud vaikeväärtused olid mõlemal `0`, mille Traefik ise kirjeldab kui timeout'i puudumist. Domeeni ees oleva Cloudflare'i [ametlik 524 dokumentatsioon](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-524/) määrab vaikimisi Proxy Read Timeout'iks 125 sekundit. Seega on rakenduse halvim vastusepiir 15 s väiksem kui avaliku edge'i 125 s piir ning Traefik ei katkesta vastuse ootamist enne rakenduse fallback'i.
 
 ## Turve ja privaatsus
 
@@ -220,7 +220,7 @@ Automaattestid kontrollivad muu hulgas:
 - külmutatud v2 hindamiskomplekti 30/30 vastatava päringu õiget intent-vastust ja Recall@3 väärtust 100%;
 - `mets` päris sünteesi, täpset FAQ vastust ja turvalist abstention'it;
 - raiemahu/juurdekasvu vastuse aastaid, ühikuid ja piiranguid;
-- mudelivastuse viidete, arvude, ühikute, väitekatvuse ja polaarsuse kontrolli;
+- mudelivastuse viidete, arvude, ühikute, väitekatvuse, polaarsuse ja tervikliku lauselõpu kontrolli;
 - 15 sekundi globaalse vastusepiiri kontrollitud fallback'i ning vahemälu toorpäringu eemaldamist;
 - Terrapointi ning infrastruktuurijargooni puudumist üldotsingu payload'ist ja UI-st;
 - kuni viit sisulist autocomplete-soovitust;
@@ -228,7 +228,11 @@ Automaattestid kontrollivad muu hulgas:
 
 Brauseri regression peab katma 1440 × 1100 ja 390 × 844 vaated, autocomplete'i kihistuse, klaviatuurikäitumise, mobiili esimest vaadet, kompaktset otsingulehte, allikate avamist, horisontaalse overflow puudumist ning avaliku iframe'i fookuse/scroll'i kontrolli.
 
-17.08.2026 avalik vastuvõtutest tehti puhta Playwrighti sessiooniga otse aadressil `https://praktika.arleserver.cfd`, mitte localhostis. Vaadetes 390 × 844 ja 1440 × 1100 fokusseeris päise nupp ainsa portaaliotsingu. Päring „Kas Eestis tohib vanu rehve põletada?” sisestati ja esitati UI kaudu; leht renderdas viidatud „AI koondvastuse”, tulemuse pealkiri sai fookuse ning viide avas õige Keskkonnaameti allikakaardi. Päring „Kuidas valida kassile toitu?” renderdas ilma allikateta ulatuse selgituse ega koostanud juhuslikku vastust. Terrapointi iframe'is olid nähtavad selle otsing, kaart ja juhtnupud. Mõlemas vaates puudusid horisontaalne overflow ja brauserikonsooli vead; viite 4 avamine laiendas viiest allikast koosneva loendi ja fokusseeris `source-4` elemendi.
+18.08.2026 avalik vastuvõtutest tehti commit'il `ee42516` puhaste Playwrighti sessioonidega otse aadressil `https://praktika.arleserver.cfd`, mitte localhostis. HTTPS tagastas 200, HTTP suunati 308-ga HTTPS-i, sertifikaat kattis `*.arleserver.cfd` ning healthcheck oli roheline. Külm live-eval sai 19/19 päringul oodatud esimese allika ja 1026/1026 avaliku lepingu, viite, filtratsiooni ning lause-tervikluse kontrolli; p50 oli 10,450 s ja p95/maksimum 14,136 s, 504 vastuseid oli 0.
+
+Vaadetes 1440 × 1100 ja 390 × 844 jäi värske avaleht `scrollY === 0` juurde, aktiivne element oli hostdokumendi `BODY`, põhiotsing oli nähtav ja horisontaalset overflow'd polnud. Terrapointi cross-origin iframe laadis päris `terrapoint.ee` rakenduse, selle sisu ja neli sisendit ega võtnud hostilt fookust. UI-päring „jäätmete ringlussevõtu määr Eestis 2023” pani õigeks esimeseks tulemuseks olmejäätmete ringlussevõtu näitaja; peidetud viide 4 laiendas kaheksa allika loendi ja fokusseeris `source-4`. Mobiilil oli submit-nupp nimega, filtrid üheveerulised ja esimene loatulem KOTKAS. Mõlema sessiooni first-party konsoolis oli 0 viga ja 0 hoiatust.
+
+Sama brauserikontroll avastas enne lõppversiooni ühe katkestatud Valitsusportaali snippet'ist pärinenud avalause. Parandus nõuab nüüd nii deterministlikult väljavõttelt kui ka mudeli intro/osa tekstilt lõpetatud lauset, lisab kaks regressioonitesti, tõstab cache'i revisiooni `answer-v10-complete-sentences` ning kontrollib sama omadust live-evalis. Pärast uut deploy'd lõppes sama 38% vastus terviklikult ja kogu avalik komplekt läbis korduskontrolli.
 
 ## Olulisemad failid
 

@@ -46,11 +46,11 @@ Parandus: tulemuste lehel on kompaktne brand/search header, sisuline H1, otsene 
 
 ### P1 — `mets` ei olnud päris vastus
 
-Varasem fallback kopeeris kolm esimest Keskkonnaportaali otsingukaardi teksti. Parandus kasutab läbi vaadatud metsateadmiste baasi ja sünteesib eraldi metsamaa pindala, selle näitaja piirid ja ametlike arvude erinevuse põhjused. Igal sisulisel osal on viide kuvatud ametlikule allikale.
+Varasem fallback kopeeris kolm esimest Keskkonnaportaali otsingukaardi teksti. Parandus valib tõendid samast värskest, filtreeritud ja relevantsuse järgi järjestatud tulemusehulgast, mida kasutaja näeb. Läbi vaadatud metsateadmiste baasi kasutatakse regressiooni- ja võrdluskorpusena, kuid see ei saa runtime'is värskest otsingust mööda minna. Igal avaldatud sisulisel osal on viide kuvatud ametlikule allikale.
 
 ### P1 — väike tõendipakk näis kogu otsingutulemuste hulgana
 
-AI vastuse viis kontrollitud tõendiallikat ja portaali lai tulemuste hulk olid varem ühes mõttelises loendis. Nüüd on „Vastuse allikad” ja „Otsingutulemused” eraldi. `mets` vaates kuvatakse portaali 953 kaardiesinemist ning selgitatakse, et need koonduvad 752 eri URL-iks. Lai loend lehitseb 12 eri URL-i kaupa 63 lehel ega käivita lehevahetusel AI vastust uuesti.
+AI vastuse väike tõendialamhulk ja portaali lai tulemuste hulk olid varem ühes mõttelises loendis. Nüüd on „Vastuse allikad” ja „Otsingutulemused” eraldi. Lai loend lehitseb 12 kanoniseeritud URL-i kaupa ega käivita lehevahetusel AI vastust uuesti. Tulemuste koguarv arvutatakse jooksvalt PostgreSQL-i ning live-allikate hetkeseisust; seda ei hoita kasutajaliideses konstandina.
 
 ### P1 — peidetud allika viide ei töötanud
 
@@ -88,23 +88,15 @@ Paarisvõrdluste ja interaktsioonitestide järgi ei jäänud lokaalsesse buildi 
 
 ## Avaliku deploy vastuvõtukontroll
 
-Coolify kaudu juurutatud commit `40b97e4` kontrolliti 17.08.2026 aadressil `https://praktika.arleserver.cfd` puhta Chrome'i brauseriseansiga. Avaliku deploy tulemused:
+Coolify kaudu juurutatud commit `ee42516` kontrolliti 18.08.2026 aadressil `https://praktika.arleserver.cfd` puhaste Chrome'i brauseriseanssidega. Avaliku deploy tulemused:
 
-- värske 1440 × 1100 desktop-load oli 2,5 sekundi järel `scrollY === 0`, aktiivne element oli hostdokumendi `BODY`, nähtav oli täpselt üks põhiotsing ja iframe ei saanud fookust;
-- `https://terrapoint.ee/` laadis cross-origin iframe'is päris Terrapointi pealkirja, sisu, neli sisendit ja 21 juhtnuppu;
-- desktopi autocomplete näitas viit sisulist valikut; `mets` renderdas Luna „AI koondvastuse”, viis vastuseallikat, kuus jätkuküsimust ja 12 laia tulemust;
-- `mets` tulemuse selgitus näitas korraga portaali 953 esinemist, 752 eri URL-i ja 63 lehte. Teisele lehele liikumine laadis 12 uut kirjet ning viis fookuse tulemuste H2-le;
-- vastuse viide 4 avas loendi kolmelt allikalt viiele ning viis fookuse elemendile `source-4`;
-- 390 × 844 vaates olid põhiotsing ja nimega submit-nupp esimeses vaates nähtavad. Päise otsingunupp fokusseeris sama ainsa sisendi, mitte teise vormi;
-- mobiilis vastas küsimus „Kas meie metsad muutuvad nooremaks?” kohe, et tervikpilt ei ole lihtsalt noorenemine, selgitas SMI-d, näitas viit allikat ja kuut jätkuküsimust. Viide 5 avas kõik allikad ja fokusseeris `source-5`;
-- desktopis ega mobiilis polnud horisontaalset overflow'd; first-party konsoolivigu, hoiatusi ja 504 vastuseid oli 0;
-- avalik API tagastas `mets` snapshot'i `953 / 752 / 63`, kõik kasutatud viited lahendusid kuvatud allikatele ning vastus ei sisaldanud sisemisi cache'i, mudelipakkuja, andmebaasi, score'i või vektorindeksi välju.
-- eraldi cache-miss päring renderdas „AI koondvastuse” ning sama serverijooks salvestus sisemiselt olekuga `ready`, pakkujaga `opencode-go/gpt-5.6-luna`, viie allika ja 4435 ms kestusega; salvestatud `query_text` oli `[redacted]`;
-- sünteetiline privaatsusmarker esines pärast avalikku päringut rakenduse, Coolify proxy, Coolify ja PostgreSQL-i konteinerilogides 0 korda, vastusecache'is 0 korda ning jooksulogis 0 korda;
-- 181-märgine päring tagastas HTTP 400. Seejärel tehtud 25 sisutühjast odavast kontrollpäringust tagastasid 19 HTTP 400 ja viimased 6 HTTP 429, mis tõendas minutipõhist otsingupiiri ilma mudelit käivitamata; `page_size=999` piirati 50 kirjeni;
-- renderduskoodis ei ole `953`, `752` või `63` konstandina: server loeb `upstream_total`, `distinct_url_count` ja URL-järjestuse snapshot'ist ning arvutab lehekülgede arvu eri URL-ide hulga ja küsitud lehesuuruse põhjal.
-
-Selle deploy kuvatõmmised: `output/playwright/59-luna-public-search-desktop.png`, `60-luna-public-home-mobile.png` ja `61-luna-public-age-mobile.png`.
+- värske 1440 × 1100 desktop-load ja 390 × 844 mobiililaadimine jäid `scrollY === 0` juurde, aktiivne element oli hostdokumendi `BODY`, nähtav oli üks põhiotsing ja horisontaalset overflow'd ei tekkinud;
+- `https://terrapoint.ee/` laadis cross-origin iframe'is päris Terrapointi pealkirja, sisu ja neli sisendit; iframe ei saanud hostdokumendi fookust;
+- „jäätmete ringlussevõtu määr Eestis 2023” asetas näitaja lehe esimeseks, vastas tervikliku 38% lausega ning peidetud viide 4 laiendas kaheksa allika loendi ja fokusseeris `source-4`;
+- „keskkonnaloa taotlemine ettevõttele” asetas mobiilis esimeseks KOTKASe; neli filtrit muutusid ühel veerul loetavaks ning ükski ikoonnupp ei jäänud nimeta;
+- first-party konsoolivigu ja hoiatusi oli mõlemas sessioonis 0;
+- avalik live-eval sai 19/19 oodatud esikohta ja 1026/1026 API-lepingu, viite, filtri, paginationi, privaatsusvälja ning lõpetatud lause kontrolli. p50 oli 10,450 s, p95/maksimum 14,136 s ja 504 vastuseid oli 0;
+- brauserikontrollis leitud katkine otsingusnippet põhjustas enne lõppdeploy'd pooliku avalause. Cache'i revisioon `answer-v10-complete-sentences`, kaks uut regressioonitesti ja live-evali lauselõpukontroll välistavad sama vea kordumise.
 
 final local result: passed
 final public result: passed

@@ -36,4 +36,5 @@ npm test
 npm run build
 npm run test:sites
 docker compose config
+npm run eval:live -- --base-url=https://praktika.arleserver.cfd
 ```
