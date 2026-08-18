@@ -21,6 +21,11 @@ import {
   publicSearchListing,
 } from "./retrieval.mjs";
 import { requestRateLimitAddress } from "./security.mjs";
+import {
+  configuredSearchConcurrency,
+  JSON_SEARCH_DEADLINE_CEILING_MS,
+  searchDeadline,
+} from "./request-budget.mjs";
 import { publicDeploymentRevision } from "./version.mjs";
 
 const app = express();
@@ -33,7 +38,7 @@ const cache = new Map();
 const requestWindows = new Map();
 const MAX_RATE_LIMIT_KEYS = 2_000;
 const MAX_PROXY_CACHE_ENTRIES = 250;
-const MAX_ACTIVE_SEARCHES = Math.max(1, Math.min(Number(process.env.SEARCH_MAX_CONCURRENCY) || 12, 20));
+const MAX_ACTIVE_SEARCHES = configuredSearchConcurrency();
 let activeSearches = 0;
 
 void purgeExpiredSearchData();
@@ -129,11 +134,6 @@ function searchPage(request, name, fallback, maximum) {
   return Math.max(1, Math.min(Number(request.body?.[name] ?? request.query?.[name]) || fallback, maximum));
 }
 
-function searchDeadline(startedAt) {
-  const configured = Math.max(1_000, Math.min(Number(process.env.SEARCH_DEADLINE_MS) || 15_000, 15_000));
-  return startedAt + configured;
-}
-
 function emptySearchListing(filters, page = 1, pageSize = 12) {
   return publicSearchListing({
     total: 0,
@@ -168,7 +168,10 @@ async function handleSearch(request, response) {
   activeSearches += 1;
   try {
     const startedAt = Date.now();
-    const deadlineAt = searchDeadline(startedAt);
+    // The legacy all-at-once JSON route must leave enough transport margin for
+    // clients and reverse proxies. The browser uses the progressive stream,
+    // which keeps the full configured answer budget and emits results first.
+    const deadlineAt = searchDeadline(startedAt, JSON_SEARCH_DEADLINE_CEILING_MS);
     const controller = new AbortController();
     const payload = await settleWithinDeadline((async () => {
       const searchResults = await prepareRankedSearchResults(query, {

@@ -53,6 +53,12 @@ import {
 } from "../server/search.mjs";
 import { localEmbedding } from "../server/qdrant.mjs";
 import { requestRateLimitAddress } from "../server/security.mjs";
+import {
+  configuredSearchBudgetMs,
+  configuredSearchConcurrency,
+  JSON_SEARCH_DEADLINE_CEILING_MS,
+  searchDeadline,
+} from "../server/request-budget.mjs";
 import { publicDeploymentRevision } from "../server/version.mjs";
 import { safeExternalHref } from "../src/url-safety.js";
 import { suggestionsForValue } from "../src/search-suggestions.js";
@@ -74,6 +80,16 @@ test("the public deployment marker accepts only an exact Git revision", () => {
   assert.equal(publicDeploymentRevision(revision), revision);
   assert.equal(publicDeploymentRevision("0123456"), "development");
   assert.equal(publicDeploymentRevision("<script>alert(1)</script>"), "development");
+});
+
+test("the all-at-once search keeps transport margin under load", () => {
+  assert.equal(configuredSearchConcurrency(undefined), 8);
+  assert.equal(configuredSearchConcurrency("12"), 12);
+  assert.equal(configuredSearchConcurrency("99"), 20);
+  assert.equal(configuredSearchBudgetMs("15000", JSON_SEARCH_DEADLINE_CEILING_MS), 12_000);
+  assert.equal(configuredSearchBudgetMs("9000", JSON_SEARCH_DEADLINE_CEILING_MS), 9_000);
+  assert.equal(configuredSearchBudgetMs("100", JSON_SEARCH_DEADLINE_CEILING_MS), 1_000);
+  assert.equal(searchDeadline(50_000, JSON_SEARCH_DEADLINE_CEILING_MS, "15000"), 62_000);
 });
 
 test("local Qdrant embedding is deterministic and normalized", () => {

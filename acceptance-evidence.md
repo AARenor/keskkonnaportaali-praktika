@@ -168,7 +168,7 @@ Mudeli sisend sisaldab küsimust, ranget JSON skeemi ja kuni kaheksa juba järje
 | Ühine järjestatud hetktõmmis | `server/retrieval.mjs`, `server/pipeline.mjs` | 24 qrel'i, filtri- ja viitetestid |
 | Tüübikindel ametlik arvunäitaja | `server/indicators.mjs`, `server/integrations.mjs` | CSV-fixtuuri unit-testid ja live grounding-audit |
 | Luna range JSON ja maandatus | `server/llm.mjs` | adversariaalsed LLM unit-testid, live grounding audit |
-| 15 s globaalne vastusepiir | `server/index.mjs`, `server/pipeline.mjs` | fault-injection ja live load audit |
+| Progressiivse voo 15 s ja kõik-korraga liidese 12 s vastusepiir | `server/index.mjs`, `server/request-budget.mjs`, `server/pipeline.mjs` | fault-injection ja live load audit |
 | Terrapointi täisrakendus | `src/App.jsx`, CSP `frame-src` | desktopi/mobiili Playwrighti teekond |
 | POST-põhine privaatne UI-otsing | `src/App.jsx`, `server/index.mjs` | brauseri request-list, nonce test |
 | Qdrant pole tootmise otsinguteel | `server/qdrant.mjs`, `compose.yaml` | impordigraafi kontroll, profiilide Compose validation |
@@ -179,7 +179,7 @@ Mudeli sisend sisaldab küsimust, ranget JSON skeemi ja kuni kaheksa juba järje
 | Meetod | Tee | Mõju ja piir |
 |---|---|---|
 | GET | `/api/health` | ainult tervis, ei muuda olekut |
-| GET/POST | `/api/search` | ainult otsing; UI kasutab POST-i; 180 märki, 15 s, 20 päringut minutis; kuni 12 täismahus paralleelotsingut, üle selle kontrollitud capacity-fallback |
+| GET/POST | `/api/search` | ainult otsing; UI kasutab progressiivset streami; 180 märki, kõik-korraga vastusel 12 s, 20 päringut minutis; kuni 8 täismahus paralleelotsingut, üle selle kontrollitud capacity-fallback |
 | GET/POST | `/api/search/results` | ainult lehitsemine/filtrid; UI kasutab POST-i |
 | POST | `/api/search/follow-up` | ainult vastus; kuni neli varasemat küsimust ja 520 märki konteksti; juurpäringu allika-, tüübi-, aasta- ja järjestusfilter rakendatakse igal voorul uuesti |
 | GET | `/api/corpus` | ainult agregeeritud avalikud loendurid |
