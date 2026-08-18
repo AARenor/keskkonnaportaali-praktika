@@ -227,14 +227,16 @@ Automaattestid kontrollivad muu hulgas:
 - 16 allikaga regressioonikorpuse, 21 dokumendi, 18 FAQ teema ja 12 väärarusaama sisemise tervikluse;
 - eraldiseisva tulemuste lehitsemise, korpuse parserid ja ametlike URL-aliaste deduplikatsiooni;
 - fraasi- ja lõigukattega relevantsusjärjestuse, tegeliku avaldamisaja, tulevikukuupäeva karistuse ning allika-, tüübi- ja aastafiltrite jõustamise;
-- 43 allikaga üldkataloog ning 59 päringuga külmutatud keskkonnaotsingu routing-komplekt;
+- 45 allikaga üldkataloog ning 59 päringuga külmutatud keskkonnaotsingu routing-komplekt;
 - eraldi enne esimest jooksu külmutatud 40 päringuga holdout'i P@1, MRR ja nDCG@5 väravad ning sama komplekti URL-põhise live-kontrolli;
 - 24/24 teenusepäringu õige esimese allika nii deterministlikus järjestajas kui ka külma PostgreSQL-i vahemäluga päris HTTP-voos;
 - külmutatud v2 hindamiskomplekti 30/30 vastatava päringu õiget intent-vastust ja Recall@3 väärtust 100%;
 - `mets` päris sünteesi, täpset FAQ vastust ja turvalist abstention'it;
 - raiemahu/juurdekasvu vastuse aastaid, ühikuid ja piiranguid;
 - mudelivastuse viidete, arvude, ühikute, väitekatvuse, polaarsuse ja tervikliku lauselõpu kontrolli;
+- arvuliste ja võrdlevate väidete täpset tõendilauset, sealhulgas üksuse, aasta-väärtuse paari, mõõtühiku ja võrdluse osapoolte vahetamise keeldu;
 - 15 sekundi globaalse vastusepiiri kontrollitud fallback'i ning vahemälu toorpäringu eemaldamist;
+- deadline'i järel katastri-cache'i ja PostgreSQL-i tehingu rollback'i ning vana otsingu/autocomplete'i hilise vastuse blokeerimist;
 - võtmega HMAC-sõrmejälge, vana liht-räsi migratsiooni ja allikate liikmelisuse, järjekorra või sisu muutumisel cache'i invalidatsiooni;
 - kolme järjestikuse jätkuküsimuse filtri-, allika- ja viitelepingu püsimist;
 - Terrapointi ning infrastruktuurijargooni puudumist üldotsingu payload'ist ja UI-st;
@@ -243,11 +245,11 @@ Automaattestid kontrollivad muu hulgas:
 
 Brauseri regression peab katma 1440 × 1100 ja 390 × 844 vaated, autocomplete'i kihistuse, klaviatuurikäitumise, mobiili esimest vaadet, kompaktset otsingulehte, allikate avamist, horisontaalse overflow puudumist ning avaliku iframe'i fookuse/scroll'i kontrolli.
 
-18.08.2026 viimane avalik vastuvõtutest tehti commit'i `f082af86f3ef4aaae6715884bdcf96e17608279d` vastu puhaste Playwrighti sessioonidega otse aadressil `https://praktika.arleserver.cfd`, mitte localhostis. Coolify deployment `qb0095el8pczl1g2n8vubzd7` lõpetas edukalt; image'i tag sisaldas sama täispikka commit'i, healthcheck oli roheline ja restartide arv 0. Live-eval sai 24/24 päringul oodatud esimese allika ja 1270/1270 avaliku lepingu kontrolli; eraldi 40-päringulise holdout'i P@1, MRR ja nDCG@5 olid nii lokaalselt kui live'is 1,0. Grounding-audit läbis 10/10 esinduslikku vastust, 10/10 adversariaalset loobumist, 17 väidet ja 24 allikaavamist. Ükski kontroll ei andnud 504.
+18.08.2026 viimane koodiväljalase oli commit `392687311f073bb43bd109df40afa6461c23bebe`, Coolify deployment `hvs6wvgz3g8ea7aq1jx4p5f6`. Avalik `/api/health` tagastas sama täispika revisjoni; konteiner oli `healthy`, restartide arv 0 ja kasutaja `node`. Live-eval sai 24/24 päringul oodatud esimese allika ja 1242/1242 avaliku lepingu kontrolli. Grounding-audit läbis 10/10 esinduslikku vastust, 10/10 adversariaalset loobumist, 14 väidet ja 17 allikaavamist. Filtrimaatriks läbis 210/210 ja juur + kolm jätkuküsimust 36/36 kontrolli. Ükski neist kontrollidest ei andnud 504.
 
-20 samaaegset päringut andsid 20 HTTP 200 vastust: 1 valideeritud AI-vastus, 11 allikapõhist fallback'i ja 8 selgelt märgitud capacity-fallback'i; timeout'e, 5xx-e ja 504-sid oli 0. Pöörlevad `X-Forwarded-For` väärtused ei möödunud piirangust ning 21. päring sai 429 + `Retry-After: 60`. Eraldi rikketest katkestas korraga DB, live-allikad ja AI: 5/5 päringut andsid kontrollitud HTTP 200 fallback'i, maksimum 1,728 s ja restartide arv 0.
+20 samaaegset päringut andsid 20 HTTP 200 vastust: 11 allikapõhist fallback'i, 1 deterministlik marsruutvastus ja 8 selgelt märgitud capacity-fallback'i; timeout'e, 5xx-e ja 504-sid oli 0. P50 oli 8748 ms, p95 15 169 ms ja maksimum 15 333 ms. Pöörlevad `X-Forwarded-For` väärtused ei möödunud piirangust ning 21. päring sai 429 + `Retry-After: 60`. Eraldi täielikult võrguühenduseta 1 s rikketest andis 5/5 kontrollitud HTTP 200 vastust, maksimum 639 ms.
 
-Vaadetes 1440 × 1000 ja 390 × 844 jäi värske avaleht `scrollY === 0` juurde, aktiivne element oli hostdokumendi `BODY`, põhiotsing oli nähtav ja horisontaalset overflow'd polnud. Terrapointi cross-origin iframe laadis päris `terrapoint.ee` rakenduse ega võtnud hostilt fookust. UI-päring „jäätmete ringlussevõtu määr Eestis 2023” kuvas 37,9% ja EL-i 47,9%, seadis sama ametliku näitaja nii vastuse esimeseks viiteks kui ka laiotsingu esimeseks tulemuseks, fokusseeris tulemuse H1 ning keris viiteklõpsul olemasoleva `source-1` kaardini. Mõlema sessiooni first-party konsoolis oli 0 viga ja 0 hoiatust.
+Vaadetes 1440 × 1000 ja 390 × 844 jäi värske avaleht `scrollY === 0` juurde, aktiivne element oli hostdokumendi `BODY`, põhiotsing oli nähtav ja horisontaalset overflow'd polnud. Terrapointi cross-origin iframe laadis päris `terrapoint.ee` rakenduse ega võtnud hostilt fookust. UI-päring „jäätmete ringlussevõtu määr Eestis 2023” kuvas 37,9% ja EL-i 47,9%, seadis sama ametliku näitaja nii vastuse esimeseks viiteks kui ka laiotsingu esimeseks tulemuseks, fokusseeris tulemuse H1 ning keris viiteklõpsul olemasoleva `source-1` kaardini. Deterministlik race-test tõendas lisaks, et 15,2 s hiline vana otsing ei muuda uuema vastuse pealkirja ega allika-DOM-i ning B→A järjekorras saabunud autocomplete'i vastustest jääb nähtavale ainult B. First-party konsoolis oli 0 viga ja 0 hoiatust.
 
 Cache'i revisjon `answer-v13-structured-indicators` seob vastuse jooksva järjestatud allikahulga, täpse andmelokaatori ja sisuversiooniga, et varasema järjestuse või muudetud allika vastus ei jääks pärast deploy'd kehtima.
 
