@@ -1084,7 +1084,9 @@ export function assessSearchQuery(query) {
   }
   const topic = domainRoots[0] || "mets";
   if (forestryIntent?.kind === "municipality-forest-area"
-    && /\b(?:minu\s+koduvall\w*|koduvall\w*)\b/u.test(normalized)) {
+    && (/\b(?:minu|mu|meie|oma|selles|siin)\b[\s\S]{0,35}\b(?:vald|valla|vallas)\w*\b/u.test(normalized)
+      || /\bkoduvall\w*\b/u.test(normalized)
+      || /^(?:kui\s+palju\s+)?mets\w*\s+(?:on\s+)?vallas$/u.test(normalized))) {
     return {
       kind: "needs-clarification",
       topic: "mets",
@@ -1100,9 +1102,10 @@ export function assessSearchQuery(query) {
       clarification: "Palun nimeta konkreetne järv või veekogumi kood ning ütle, kas soovid ökoloogilist, keemilist või suplusvee seisundit.",
     };
   }
+  const propertyHowTo = forestryIntent?.kind === "property-forest-data"
+    && /\b(?:kust|kus|millises|kuidas|leida|vaadata|kontrollida|otsida|otsing|jargi|sisesta|avada|kasuta)\b/u.test(normalized);
   if (!CADASTRE_PATTERN.test(cleanQuery)
-    && !(forestryIntent?.kind === "property-forest-data"
-      && /\b(?:kust|kus|millises|kuidas\s+vaadata|leida)\b/u.test(normalized))
+    && !propertyHowTo
     && /(?:katastritunnus|katastri\s*(?:number|andmed)|kinnistu\s*(?:andmed|piirang|mets)|minu\s+kinnistu)/iu.test(normalized)) {
     return {
       kind: "needs-clarification",
@@ -1331,12 +1334,13 @@ const OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     title: "Keskkonnaülevaade – mets",
     organization: "Keskkonnaagentuur / Keskkonnaportaal",
     type: "Keskkonnaülevaade",
-    published: "jooksev",
+    published: "17.06.2026",
     url: "https://keskkonnaportaal.ee/et/keskkonnaulevaade/keskkonnaulevaade-mets",
     tags: ["mets", "metsade seisund", "kahjustused", "elurikkus", "kliimarisk", "trend"],
-    summary: "Metsa seisundi tervikpildi jaoks käsitleb Keskkonnaülevaade eraldi metsa pindala, tagavara, vanuselist struktuuri, kahjustusi, elurikkust ja kaitset.",
-    content: "Metsa püsimist ja seisundit ei kirjelda üks näitaja. Keskkonnaülevaade käsitleb eraldi metsa pindala, tagavara ja vanuselist struktuuri ning metsade kahjustusi, elurikkust, kaitset ja kliimaga seotud riske. Kliimamuutuse mõjud ei ole ühesuunalised: põuad, soojemad talved, haigustekitajad ja kahjurid võivad juurdekasvu vähendada ning puid kahjustada. Kuuse-kooreüraski kahe põlvkonna sagedam esinemine on üks jälgitav mõju. Raiemahu mõju sõltub metsa asukohast, vanusest, koosseisust, elupaikadest, mullast ja veerežiimist, mistõttu väide, et kõik lageraied on alati ühesuguse keskkonnamõjuga, ei ole mõõdetav üksikfakt. Ülevaate järgi on raiemaht viimasel kümnendil püsinud ligikaudu 10–12 miljoni m³ tasemel, kuid pikaajalise võrdluse jaoks tuleb kasutada sama definitsiooni ja metoodikaga aegrida. Viimase aasta hinnang ja viie aasta keskmine ei näita iseenesest, kas praegu raiutakse rohkem kui täpselt 20 aastat tagasi; vastuseks on vaja sama metoodikaga 20-aastast aegrida.",
-    locator: "Metsade seisund, kliimamuutuse mõjud, kahjustused, elurikkus, kaitse ja raiemahu pikaajaline kontekst.",
+    summary: "Keskkonnaülevaade käsitleb metsa pindala, tagavara, vanuselist struktuuri, kahjustusi, elurikkust, kaitset ja kliimariski eraldi näitajatena ning eristab metsamaad metsaga kaetud pindalast.",
+    content: "Metsa püsimist ja seisundit ei kirjelda üks näitaja. Keskkonnaülevaate järgi moodustas metsamaa 51,8% Eesti pindalast, kuid metsaga kaetud pindala ehk puistute pindala 47,1%; need on eri näitajad. 2024. aasta ruumianalüüsi järgi oli kaitse all 28,4% Eesti metsadest ja rangelt kaitstav 16,8% metsamaast; neid õigusliku kaitse näitajaid ei tohi samastada SMI majanduskategooriatega. Ülevaade käsitleb eraldi metsa pindala, tagavara ja vanuselist struktuuri ning metsade kahjustusi, elurikkust, kaitset ja kliimaga seotud riske. Kliimamuutuse mõjud ei ole ühesuunalised: põuad, soojemad talved, haigustekitajad ja kahjurid võivad juurdekasvu vähendada ning puid kahjustada. Kuuse-kooreüraski kahjustuskollete laienemist hinnati 2019.–2024. aastal ligikaudu 22 500 hektarile. Raiemahu mõju sõltub metsa asukohast, vanusest, koosseisust, elupaikadest, mullast ja veerežiimist, mistõttu väide, et kõik lageraied on alati ühesuguse keskkonnamõjuga, ei ole mõõdetav üksikfakt. Ülevaate järgi on raiemaht viimasel kümnendil püsinud ligikaudu 10–12 miljoni m³ tasemel, kuid pikaajalise võrdluse jaoks tuleb kasutada sama definitsiooni ja metoodikaga aegrida. Viimase aasta hinnang ja viie aasta keskmine ei näita iseenesest, kas praegu raiutakse rohkem kui täpselt 20 aastat tagasi. Vastuseks on vaja sama metoodikaga 20-aastast aegrida.",
+    locator: "Metsamaa ja metsaga kaetud pindala, kaitse näitajad, vanuseline struktuur, kliimamõjud, kahjustused, elurikkus ning raiemahu pikaajaline kontekst.",
+    _publishedAt: "2026-06-17",
   },
   {
     id: "metsainfo-hetkeseis",

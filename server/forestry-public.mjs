@@ -100,11 +100,95 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     locator: "Avalikud ruumiandmeteenused, WMS/WFS kihid ning piiratud andmete kasutustingimused.",
     _forestryIntentKinds: ["municipality-forest-area", "old-forest-protection", "property-forest-data"],
   },
+  {
+    id: "forest-smi-2025-presentation",
+    title: "Statistilise metsainventuuri 2025. aasta tulemused",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Metsastatistika esitlus",
+    published: "18.08.2026",
+    url: "https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI%20tulemused%202025/SMI%202025%20ettekanne.pdf",
+    tags: ["mets", "SMI", "proovitükid", "metoodika", "tagavara", "juurdekasv", "raiemaht", "puuliigid", "vanusjaotus"],
+    summary: "SMI 2025 aastahinnang põhineb ligikaudu 28 000 proovitükil ja viie mõõtmisaasta andmetel; üks proovitükk esindab keskmiselt 156,2 hektarit.",
+    content: "SMI 2025 aastahinnang koondab ligikaudu 28 000 proovitükki ja viie aasta mõõtmised ning üks proovitükk esindab keskmiselt 156,2 hektarit. Valikuuringu tulemused üldistatakse kogu Eestile ning hinnangutega kaasneb valimist tulenev statistiline viga. 2025. aastal muudeti puude kõrguse, tagavara, alla 8 cm puude mahu, juurdekasvu, suremuse ja netojuurdekasvu arvutusmetoodikat; esitlus hoiatab, et seetõttu muutuvad kõik mahuhinnangud ja eri metoodikaga avaldatud arve ei tohi käsitleda täiesti võrreldavana. Uue metoodikaga oli metsamaa pindala 2 360,2 tuhat hektarit ehk 52,1% Eesti pindalast ning kasvava metsa tagavara 466 miljonit m³. Metsamaast oli 20,2% mittemajandatav, 10,4% majanduspiiranguga ja 69,4% majandusmets. Enamuspuuliigi järgi moodustasid mänd 29%, kuusk 19% ja kask 30% metsamaa pindalast. Nii noorte kui ka vanade metsade pindala suurenes, puistute keskmine vanus oli 55 aastat ning 2025. aasta raiemahu eksperthinnang 11,0 miljonit m³.",
+    locator: "SMI 2025 tulemuste esitlus: valimi maht ja üldistamine, metoodikamuutus, pindala, tagavara, majanduskategooriad, puuliigid, vanusjaotus ja raiemaht.",
+    _publishedAt: "2026-08-18",
+    _forestryIntentKinds: ["smi-method-comparison", "forest-stock-uncertainty", "sample-size-and-precision", "increment-method", "stock-versus-harvestable", "protected-forest-share", "forest-age-trend", "pine-versus-spruce", "harvest-over-time"],
+  },
+  {
+    id: "forest-smi-methodology-20-years",
+    title: "Statistiline mets – 20 aastat statistilist metsainventeerimist Eestis",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Metoodikaväljaanne",
+    published: "2021",
+    url: "https://keskkonnaportaal.ee/sites/default/files/2021-12/Statistiline%20mets%20-%2020%20aastat%20statistilist%20metsainventeerimist%20Eestis.pdf",
+    tags: ["mets", "SMI", "valikuuring", "proovitükk", "juhuslik viga", "usaldusvahemik", "püsiproovitükk"],
+    summary: "Metoodikaväljaanne selgitab, kuidas proovitükkide valimilt üldistatakse hinnangud kogu metsavaru kohta ning kuidas esitatakse juhuslik viga ja usaldusvahemik.",
+    content: "Statistiline metsainventuur kasutab süstemaatiliselt üle Eesti paiknevaid proovitükke, et teha valimi põhjal üldistusi kogu üldkogumi kohta. Hinnang on kavandatud nihketa, kuid valikuuringuga kaasneb alati juhuslik viga, mida kirjeldatakse standardvea või usaldusvahemikuga. Püsiproovitükke mõõdetakse uuesti viie aasta järel, mis võimaldab hinnata muutusi ja juurdekasvu. Valimi täpsus ei sõltu ainult proovitükkide arvust, vaid ka valikukavast, tunnuse varieeruvusest, mõõtmiskvaliteedist ja sellest, millise piirkonna või alarühma kohta hinnangut soovitakse. Üleriigiline SMI ei asenda üksiku kinnistu lausmetsakorralduslikku inventuuri.",
+    locator: "Lk 11–12 ja metoodikapeatükid: valim ja üldkogum, nihketa hinnang, juhuslik viga, usaldusvahemik ning püsiproovitükkide kordusmõõtmine.",
+    _publishedAt: "2021-12-01",
+    _forestryIntentKinds: ["smi-method-comparison", "forest-stock-uncertainty", "sample-size-and-precision", "increment-method", "why-forest-numbers-differ"],
+  },
+  {
+    id: "forest-rmk-data-methods",
+    title: "Kuidas kogutakse metsaandmeid?",
+    organization: "Riigimetsa Majandamise Keskus",
+    type: "Ametlik selgitus",
+    published: "18.07.2023",
+    url: "https://rmk.ee/uudised/metsamees/kuidas-kogutakse-metsaandmeid/",
+    tags: ["mets", "metsaandmed", "RMK", "SMI", "Metsaregister", "takseerimine", "kaugseire"],
+    summary: "RMK selgitus eristab kaugseiret, metsa majandamiseks tehtavat lauselist takseerimist ja kogu Eesti kohta üldistatavat SMI valikuuringut.",
+    content: "Metsaandmeid kogutakse eri eesmärkidel kaugseire, lausmetsakorraldusliku takseerimise ja statistilise metsainventuuri abil. Lauseline takseerimine kirjeldab metsaeraldisi majandamiskava jaoks: silmamõõdulist hinnangut täpsustatakse mõõtmistega. SMI mõõdab proovitükkide valimit ning annab kogu Eesti kohta statistilise hinnangu koos tõenäosusliku veaga, mitte üksiku eraldise majandamisandmeid. Metsaregistri inventeerimisandmed katavad ligikaudu kolmveerandi metsamaast ja võivad olla kuni kümme aastat vanad. Sama aasta arv võib eri aruannetes muutuda ka siis, kui varasemad aastad arvutatakse uue metoodikaga ümber; seetõttu tuleb võrdluses kontrollida allikat, andmeaastat, definitsiooni ja arvutusviisi.",
+    locator: "Kaugseire, lauseline takseerimine ja SMI; Metsaregistri katvus ja andmete vanus; metoodikamuutuse mõju avaldatud arvudele.",
+    _publishedAt: "2023-07-18",
+    _forestryIntentKinds: ["rmk-versus-smi", "why-forest-numbers-differ", "smi-method-comparison", "forest-data-sources"],
+  },
+  {
+    id: "forest-yearbook-2023-fellings",
+    title: "Aastaraamat Mets 2023",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Statistika aastaraamat",
+    published: "2025",
+    url: "https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/Mets%202023.pdf",
+    tags: ["mets", "SMI", "raiemaht", "lageraie", "aegrida", "2013–2022", "2002", "2022"],
+    summary: "Aastaraamatu tabeli 3.2.2.1 SMI aastahinnangute järgi oli lageraie pindala 2013.–2022. aastal kokku 311,7 tuhat hektarit; see on kümne avaldatud aastahinnangu aritmeetiline summa.",
+    content: "Aastaraamatu Mets 2023 tabelis 3.2.2.1 on SMI lageraie pindala aastahinnangud 2013.–2022. aasta kohta vastavalt 28,7; 29,7; 31,6; 32,4; 35,6; 34,6; 29,7; 29,7; 27,1 ja 32,6 tuhat hektarit. Nende kümne avaldatud aastahinnangu aritmeetiline summa on 311,7 tuhat hektarit; üksikute aastate hinnangud jäid 27,1 ja 35,6 tuhande hektari vahele. Summa ei ole eraldi aastaraamatu näitaja ega kirjelda tingimata igal aastal uut teineteisega kattumatut maa-ala. Sama aastaraamatu SMI raiemahu tabelis on 2002. aasta hinnang 10,157 ja 2022. aasta hinnang 12,077 miljonit m³ ehk 2022. aasta väärtus oli umbes 1,92 miljonit m³ ehk 18,9% suurem; kahe otspunkti võrdlus ei tähenda ühtlast kasvutrendi nende vahel. Aastaraamat märgib, et eri andmeallikate ja meetoditega koostatud raiestatistika read ei ole alati üks-ühele võrreldavad.",
+    locator: "Tabel 3.2.2.1, lk 131: lageraie pindala 2013–2022; raiemahu tabel, lk 133: SMI 2002 ja 2022; metoodikamärkused lk 128.",
+    _publishedAt: "2025-06-01",
+    _forestryIntentKinds: ["clearcut-over-time", "harvest-over-time"],
+  },
+  {
+    id: "forest-climate-adaptation-report",
+    title: "Kliimamuutused ohustavad tuleviku Eesti metsa kasvamist ja tervist",
+    organization: "Keskkonnaagentuur",
+    type: "Ametliku uuringu kokkuvõte",
+    published: "20.02.2020",
+    url: "https://keskkonnaagentuur.ee/uudised/raport-kliimamuutused-ohustavad-tuleviku-eesti-metsa-kasvamist-ja-tervist",
+    tags: ["mets", "kliimamuutus", "põud", "metsakahjustused", "elurikkus", "kohanemine", "seire"],
+    summary: "Keskkonnaagentuuri tellitud kohanemisuuring käsitleb kliimamuutuse mõju Eesti metsade kasvule ja tervisele ning soovitab vastupanuvõime parandamiseks mitmekesisust, seiret ja kohanemismeetmeid.",
+    content: "Soojenemine võib kasvuperioodi pikendada, kuid sagedamad põuad, tormid, liigniiskus, haigused ja kahjurid võivad metsa kasvu pidurdada ning puude tervist halvendada. Mõju sõltub puuliigist, kasvukohast, metsa vanusest ja häiringute koosmõjust, mistõttu ei saa kogu Eesti metsa kohta anda ühesuunalist prognoosi. Uuring rõhutab puuliigilise ja geneetilise mitmekesisuse, sobiva uuendamise, kahjustuste seire ning riskidega arvestava metsamajanduse rolli metsade vastupanu- ja kohanemisvõime parandamisel.",
+    locator: "Keskkonnaagentuuri tellitud kliimamuutustega kohanemise uuringu kokkuvõte: kasv, tervis, kahjustusriskid, mitmekesisus ja seire.",
+    _publishedAt: "2020-02-20",
+    _forestryIntentKinds: ["climate-impact", "clearcut-value-judgement"],
+  },
+  {
+    id: "forest-register-workflow",
+    title: "Kuidas töötab metsaregister?",
+    organization: "Keskkonnaamet",
+    type: "Ametlik käsiraamat",
+    published: "15.01.2025",
+    url: "https://www.keskkonnaamet.ee/kasiraamat-kohaliku-omavalitsuse-keskkonnaspetsialistile/kuidas-tootab-metsaregister",
+    tags: ["mets", "Metsaregister", "Metsaportaal", "metsateatis", "kaitseala", "menetlus", "kinnistu"],
+    summary: "Keskkonnaameti käsiraamat selgitab Metsaregistri avalikku ja ametkondlikku vaadet ning metsateatise kontrolli, sealhulgas kaitstava ala piirangute käsitsi hindamist.",
+    content: "Metsaregistri avalikus vaates saab otsida maaüksust, vaadata metsaeraldiste inventeerimisandmeid ja metsateatisi; ametkondlik vaade sisaldab menetlemiseks rohkem infot. Metsateatis kirjeldab kavandatavat raiet või olulist metsakahjustust ning Keskkonnaamet kontrollib kavandatud tegevuse vastavust nõuetele. Kaitstava ala või muu piirangu korral vaadatakse teatis käsitsi üle ning menetlus võib lõppeda lubamise, tingimuste seadmise või keelamisega. Raiet lubav metsateatis kehtib üldjuhul 24 kuud, kuid teatise registreerimine ei tõenda, et raie on looduses tehtud. Konkreetse kinnistu kohta tuleb kontrollida nii kehtivaid inventeerimisandmeid, teatisi kui ka ruumilisi kaitsepiiranguid.",
+    locator: "Metsaregistri avalik ja ametkondlik vaade; metsateatise automaat- ja käsitsi kontroll; kaitsepiirangud ning menetluse tulemus.",
+    _publishedAt: "2025-01-15",
+    _forestryIntentKinds: ["forest-notice", "property-forest-data", "logging-in-protected-areas", "old-forest-protection"],
+  },
 ];
 
 const INTENTS = {
   "smi-method-comparison": {
-    serviceDocumentIds: ["smi", "forest-area"],
+    serviceDocumentIds: ["smi", "forest-smi-2025-presentation", "forest-smi-methodology-20-years", "forest-rmk-data-methods"],
     discoveryQueries: ["SMI metoodika valikuuring proovitükid", "SMI statistiline viga lausmetsakorraldus"],
     evidenceGroups: [
       ["valikuuring", "proovitükk"],
@@ -113,6 +197,7 @@ const INTENTS = {
       ["üksiku kinnistu", "lausmetsakorraldus", "täielik ülelugemine"],
       ["üle hinnatud", "ulehinn", "ei tõenda"],
     ],
+    minimumSupportingDocuments: 2,
   },
   "forest-harvest-balance": {
     serviceDocumentIds: ["forest-balance-kaur-methodology"],
@@ -125,7 +210,7 @@ const INTENTS = {
     ],
   },
   "stock-versus-harvestable": {
-    serviceDocumentIds: ["forest-area", "forest-law", "protected-forest-share"],
+    serviceDocumentIds: ["forest-area", "forest-smi-2025-presentation", "forest-law", "protected-forest-share"],
     discoveryQueries: ["metsa tagavara raiutav puidukogus", "metsamaa tagavara majanduspiirang"],
     evidenceGroups: [
       ["tagavara"],
@@ -133,9 +218,10 @@ const INTENTS = {
       ["mitte automaatselt", "ei ole aastane raiemaht", "raiutav puidukogus"],
       ["mittemajandatav", "majanduspiirang", "õiguslik piirang"],
     ],
+    minimumSupportingDocuments: 2,
   },
   "forest-stock-uncertainty": {
-    serviceDocumentIds: ["smi", "forest-area"],
+    serviceDocumentIds: ["smi", "forest-area", "forest-smi-2025-presentation", "forest-smi-methodology-20-years"],
     discoveryQueries: ["SMI metsade tagavara hinnang suhteline viga", "metsa tagavara statistiline hinnang"],
     evidenceGroups: [
       ["tagavara"],
@@ -143,9 +229,10 @@ const INTENTS = {
       ["statistiline viga", "suhteline viga", "koos veaga"],
       ["vaieldamatu number", "mitte üks kindel"],
     ],
+    minimumSupportingDocuments: 2,
   },
   "rmk-versus-smi": {
-    serviceDocumentIds: ["metsainfo-hetkeseis", "smi"],
+    serviceDocumentIds: ["forest-rmk-data-methods", "metsainfo-hetkeseis", "smi", "forest-smi-2025-presentation"],
     discoveryQueries: ["RMK metsade olem SMI", "RMK takseerandmed statistiline metsainventuur"],
     evidenceGroups: [
       ["rmk hallatavate", "rmk metsade"],
@@ -156,7 +243,7 @@ const INTENTS = {
     minimumSupportingDocuments: 2,
   },
   "why-forest-numbers-differ": {
-    serviceDocumentIds: ["smi-metsaregister", "metsainfo-hetkeseis", "smi"],
+    serviceDocumentIds: ["forest-rmk-data-methods", "smi-metsaregister", "metsainfo-hetkeseis", "smi", "forest-smi-methodology-20-years"],
     discoveryQueries: ["metsaandmed erinevad numbrid metoodika", "SMI Metsaregister RMK katvus"],
     evidenceGroups: [
       ["eri allikad", "mitmel viisil", "erinev katvus"],
@@ -167,7 +254,7 @@ const INTENTS = {
     minimumSupportingDocuments: 2,
   },
   "forest-covered-area": {
-    serviceDocumentIds: ["forest-area", "smi"],
+    serviceDocumentIds: ["forest-area", "forest-condition-review"],
     discoveryQueries: ["SMI metsaga kaetud pindala puistud", "metsamaa ja puistute pindala"],
     evidenceGroups: [
       ["metsaga kaetud", "puistute pindala"],
@@ -176,28 +263,31 @@ const INTENTS = {
       ["51,8%", "2 350,6"],
       ["eri näitajad", "ei ole sama"],
     ],
+    minimumSupportingDocuments: 2,
   },
   "sample-size-and-precision": {
-    serviceDocumentIds: ["smi", "forest-area"],
+    serviceDocumentIds: ["forest-smi-2025-presentation", "forest-smi-methodology-20-years", "smi", "forest-area"],
     discoveryQueries: ["SMI valimi täpsus suhteline viga", "statistiline metsainventuur valikukava"],
     evidenceGroups: [
-      ["valimi suurus"],
-      ["valikukava", "esinduslikkus", "proovitükk"],
+      ["valimi suurus", "28 000 proovitük"],
+      ["valikukava", "esinduslikkus", "proovitükk", "üldistatakse"],
       ["statistiline viga", "suhteline viga"],
     ],
+    minimumSupportingDocuments: 2,
   },
   "increment-method": {
-    serviceDocumentIds: ["forest-area", "smi", "forest-balance-kaur-methodology"],
+    serviceDocumentIds: ["forest-smi-2025-presentation", "forest-smi-methodology-20-years", "forest-area", "smi", "forest-balance-kaur-methodology"],
     discoveryQueries: ["SMI juurdekasvu arvutamine mudel", "metsa juurdekasv proovitükid"],
     evidenceGroups: [
       ["juurdekasv"],
-      ["mudel", "arvutatud hinnang"],
+      ["mudel", "arvutatud hinnang", "kordusmõõtm"],
       ["proovitükk", "smi"],
-      ["tihumeetrit", "tm/ha"],
+      ["metoodikat", "metoodikaga", "tihumeetrit", "tm/ha"],
     ],
+    minimumSupportingDocuments: 2,
   },
   "protected-forest-share": {
-    serviceDocumentIds: ["protected-forest-share"],
+    serviceDocumentIds: ["protected-forest-share", "forest-condition-review", "forest-smi-2025-presentation"],
     discoveryQueries: ["kaitsealuse metsamaa osakaal 2024", "rangelt kaitstav metsamaa osakaal"],
     evidenceGroups: [
       ["28,4%"],
@@ -205,9 +295,10 @@ const INTENTS = {
       ["kaitse all", "rangelt kaitstav"],
       ["õigusliku kaitse", "ruumianalüüsi"],
     ],
+    minimumSupportingDocuments: 2,
   },
   "climate-impact": {
-    serviceDocumentIds: ["forest-condition-review", "forest-stock-stable"],
+    serviceDocumentIds: ["forest-condition-review", "forest-climate-adaptation-report"],
     discoveryQueries: ["kliimamuutuse mõju Eesti metsadele", "põud ürask mets kliimamuutus"],
     evidenceGroups: [
       ["kliimamuutus"],
@@ -215,9 +306,10 @@ const INTENTS = {
       ["ürask"],
       ["juurdekasv", "kahjust"],
     ],
+    minimumSupportingDocuments: 2,
   },
   "forest-notice": {
-    serviceDocumentIds: ["forest-notice-guidance", "metsainfo-hetkeseis", "forest-law"],
+    serviceDocumentIds: ["forest-notice-guidance", "forest-register-workflow", "metsainfo-hetkeseis", "forest-law"],
     discoveryQueries: ["metsateatis Keskkonnaamet", "metsateatis kavandatav raie metsakahjustus"],
     evidenceGroups: [
       ["metsateatis"],
@@ -225,29 +317,32 @@ const INTENTS = {
       ["metsakahjustus"],
       ["ei tõenda", "ei ole kõiki", "looduses juba tehtud"],
     ],
+    minimumSupportingDocuments: 2,
   },
   "property-forest-data": {
-    serviceDocumentIds: ["forest-notice-guidance", "metsaregister", "forest-spatial-data"],
+    serviceDocumentIds: ["forest-register-workflow", "forest-notice-guidance", "metsaregister", "forest-spatial-data"],
     discoveryQueries: ["Metsaportaal kinnistu metsaandmed", "Metsaregister katastritunnus eraldised"],
     evidenceGroups: [
       ["metsaregister", "metsaportaal"],
       ["kinnistu"],
       ["inventeerimisandmed", "eraldis"],
     ],
+    minimumSupportingDocuments: 2,
   },
   "harvest-over-time": {
-    serviceDocumentIds: ["forest-condition-review", "forest-stock-stable"],
+    serviceDocumentIds: ["forest-yearbook-2023-fellings", "forest-smi-2025-presentation", "forest-condition-review", "forest-stock-stable", "forest-balance-kaur-methodology"],
     discoveryQueries: ["raiemaht 20 aastat SMI aegrida", "Eesti raiemaht pikaajaline trend"],
     evidenceGroups: [
       ["raiemaht"],
-      ["20 aasta", "pikaajaline"],
-      ["10–12", "10-12", "aegrida", "sama metoodika"],
-      ["ei näita", "ei saa", "vaja"],
+      ["2002"],
+      ["10,157"],
+      ["12,077"],
+      ["ei tähenda ühtlast", "võrreldavad"],
     ],
     minimumSupportingDocuments: 2,
   },
   "forest-age-trend": {
-    serviceDocumentIds: ["forest-stock-stable", "forest-smi-2024-summary", "forest-condition-review"],
+    serviceDocumentIds: ["forest-smi-2025-presentation", "forest-stock-stable", "forest-smi-2024-summary", "forest-condition-review"],
     discoveryQueries: ["Eesti metsade vanusjaotus noored vanad", "SMI noorte ja vanade metsade pindala"],
     evidenceGroups: [
       ["noorte"],
@@ -255,37 +350,42 @@ const INTENTS = {
       ["suuren", "kasv"],
       ["vanuseline", "vanusjaotus"],
     ],
+    minimumSupportingDocuments: 2,
   },
   "clearcut-over-time": {
-    serviceDocumentIds: ["forest-smi-2024-summary", "forest-area"],
+    serviceDocumentIds: ["forest-yearbook-2023-fellings", "forest-smi-2024-summary", "forest-area"],
     discoveryQueries: ["SMI lageraie pindala aegrida", "lageraie pindala kümme aastat"],
     evidenceGroups: [
       ["lageraie"],
-      ["32,6", "32,0"],
-      ["viie raiehooaja", "viie aasta"],
-      ["kümnega korrutada", "kümneaastane"],
+      ["2013.–2022", "2013–2022", "kümne avaldatud"],
+      ["311,7"],
+      ["aritmeetiline summa"],
+      ["ei ole eraldi", "ei tohi lihtsalt", "ei kirjelda tingimata"],
     ],
+    minimumSupportingDocuments: 2,
   },
   "pine-versus-spruce": {
-    serviceDocumentIds: ["forest-area", "forest-stock-stable"],
+    serviceDocumentIds: ["forest-smi-2025-presentation", "forest-area", "forest-stock-stable"],
     discoveryQueries: ["SMI mänd kuusk pindala tagavara", "männikud kuusikud Eestis"],
     evidenceGroups: [
       ["mänd", "männi"],
       ["kuusk", "kuuse"],
-      ["695,3", "0,70 miljonit"],
-      ["431,8", "18,4%"],
+      ["695,3", "29%", "29,6%"],
+      ["431,8", "19%", "18,4%"],
       ["suurem", "domineer"],
     ],
+    minimumSupportingDocuments: 2,
   },
   "logging-in-protected-areas": {
-    serviceDocumentIds: ["nature-conservation-law", "metsainfo-hetkeseis", "forest-law"],
+    serviceDocumentIds: ["nature-conservation-law", "forest-register-workflow", "metsainfo-hetkeseis", "forest-law"],
     discoveryQueries: ["raie kaitsealal vöönd kaitse-eeskiri", "metsateatis kaitsealal"],
     evidenceGroups: [
       ["kaitseal"],
       ["vöönd", "sihtkaitsevöönd", "piiranguvöönd"],
       ["erinevad keelud", "sõltub", "kaitse-eeskiri"],
-      ["registreeritud", "läbi viidud raietööde kohta andmed puuduvad"],
+      ["registreeritud", "registreerimine", "läbi viidud raietööde kohta andmed puuduvad", "käsitsi üle"],
     ],
+    minimumSupportingDocuments: 3,
   },
   "municipality-forest-area": {
     serviceDocumentIds: ["forest-spatial-data", "metsaregister"],
@@ -298,7 +398,7 @@ const INTENTS = {
     ],
   },
   "clearcut-value-judgement": {
-    serviceDocumentIds: ["forest-law", "forest-condition-review", "nature-conservation-law"],
+    serviceDocumentIds: ["forest-condition-review", "forest-law", "nature-conservation-law", "forest-climate-adaptation-report"],
     discoveryQueries: ["lageraie keskkonnamõju metsaseadus", "lageraie mõju elurikkus veerežiim"],
     evidenceGroups: [
       ["lageraie", "raie"],
@@ -309,7 +409,7 @@ const INTENTS = {
     minimumSupportingDocuments: 2,
   },
   "old-forest-protection": {
-    serviceDocumentIds: ["nature-conservation-law", "forest-spatial-data", "metsaregister"],
+    serviceDocumentIds: ["nature-conservation-law", "forest-register-workflow", "forest-spatial-data", "metsaregister"],
     discoveryQueries: ["vana mets kaitse all puistu vanus", "EELIS vana mets kaitserežiim"],
     evidenceGroups: [
       ["kõrge vanus", "puistu vanus"],
@@ -317,6 +417,7 @@ const INTENTS = {
       ["kaitstav loodusobjekt", "liigi elupaik", "natura"],
       ["eelise", "metsaregistri", "ruumiandmed"],
     ],
+    minimumSupportingDocuments: 2,
   },
 };
 
@@ -342,6 +443,55 @@ function resolved(kind) {
   };
 }
 
+function editDistanceAtMostOne(left, right) {
+  if (left === right) return true;
+  if (Math.abs(left.length - right.length) > 1) return false;
+  let leftIndex = 0;
+  let rightIndex = 0;
+  let edits = 0;
+  while (leftIndex < left.length && rightIndex < right.length) {
+    if (left[leftIndex] === right[rightIndex]) {
+      leftIndex += 1;
+      rightIndex += 1;
+      continue;
+    }
+    edits += 1;
+    if (edits > 1) return false;
+    if (left.length > right.length) leftIndex += 1;
+    else if (right.length > left.length) rightIndex += 1;
+    else {
+      leftIndex += 1;
+      rightIndex += 1;
+    }
+  }
+  return edits + Number(leftIndex < left.length || rightIndex < right.length) <= 1;
+}
+
+function tokenHasStem(token, stem, fuzzy = false) {
+  if (token.startsWith(stem)) return true;
+  if (!fuzzy || stem.length < 6 || token.length < stem.length - 1) return false;
+  const shortest = Math.max(1, stem.length - 1);
+  const longest = Math.min(token.length, stem.length + 1);
+  for (let length = shortest; length <= longest; length += 1) {
+    if (editDistanceAtMostOne(token.slice(0, length), stem)) return true;
+  }
+  return false;
+}
+
+function hasStem(tokens, stems, fuzzy = false) {
+  return tokens.some((token) => stems.some((stem) => tokenHasStem(token, stem, fuzzy)));
+}
+
+function forestDataSourcesIntent() {
+  return {
+    kind: "forest-data-sources",
+    discoveryQueries: ["metsaregister SMI andmed", "statistiline metsainventuur metsaandmed"],
+    serviceDocumentIds: ["smi-metsaregister", "smi", "forest-rmk-data-methods", "metsainfo-hetkeseis", "metsaregister"],
+    evidenceGroups: [],
+    minimumSupportingDocuments: 1,
+  };
+}
+
 function isForestDepletionIntent(text) {
   if (/\b(?:roni\w*|matk\w*|majakivi|randrahn\w*|kivi\w*|mae\w*)\b/u.test(text)) return false;
   const forest = "(?:eesti\\s+)?mets(?:a|ad|ade|as|ast|aga|amaal|amaa)?";
@@ -355,72 +505,88 @@ function isForestDepletionIntent(text) {
 export function resolvePublicForestryIntent(query) {
   const text = normalize(query);
   if (!text) return null;
-  const hasForest = /\b(?:mets\w*|smi|rmk|puist\w*|tagavara|juurdekasv|lagerai\w*|metsateatis\w*|metsaregis\w*|mand\w*|kuus\w*)\b/u.test(text);
-  const hasHarvest = /\b(?:rai\w*|raie\w*|raiut\w*|puidu eemaldam\w*|puiduvaru\w*)\b/u.test(text);
-  const hasIncrement = /\b(?:juurde\s+kasv\w*|juurdekasv\w*|netojuurdekasv\w*)\b/u.test(text);
+  const tokens = text.split(" ").filter(Boolean);
+  const hasSmi = hasStem(tokens, ["smi"]);
+  const hasRegistry = hasStem(tokens, ["metsaregis"], true);
+  const hasNotice = hasStem(tokens, ["metsateat"], true);
+  const hasClearcut = hasStem(tokens, ["lagerai"], true);
+  const hasStock = hasStem(tokens, ["tagavara", "metsavaru", "puiduvaru"], true);
+  const hasHarvest = hasStem(tokens, ["rai", "varum", "eemaldam", "metsatoo"])
+    || /\bpuidu\s+(?:eemaldam|varum)\w*/u.test(text);
+  const hasIncrement = hasStem(tokens, ["juurdekasv", "netojuurdekasv"], true)
+    || /\bjuurde\s+kasv\w*\b/u.test(text)
+    || /\b(?:mets|puist)\w*(?:\s+\w+){0,2}\s+kasv\w*\s+juurde\b/u.test(text);
+  const hasProtection = /\b(?:kaitse\s+all|kaitstud|kaitseal\w*|kaitstava\w*|kaitsereziim\w*|kaitsevoond\w*|sihtkaitsevoond\w*|piiranguvoond\w*|natura)\b/u.test(text);
+  const hasForest = hasStem(tokens, [
+    "mets", "puist", "tagavara", "metsavaru", "puiduvaru", "juurdekasv", "netojuurdekasv",
+    "lagerai", "metsateat", "metsaregis", "takseer", "mand", "kuusk",
+  ], true) || hasSmi || hasStem(tokens, ["rmk"]);
 
-  if (hasForest && /\b(?:koduvall\w*|valla\s+mets\w*|mets\w*\s+(?:minu\s+)?vallas)\b/u.test(text)) {
+  if (hasForest && /\b(?:koduvall\w*|valla\s+mets\w*|mets\w*(?:\s+\w+){0,3}\s+vallas|vallas(?:\s+\w+){0,3}\s+mets\w*)\b/u.test(text)) {
     return resolved("municipality-forest-area");
   }
-  if (hasForest && /\b(?:kinnistu|katastriuksus|katastritunnus|maatukk)\w*\b/u.test(text)
-    && /\b(?:metsaandm\w*|metsaeraldis\w*|puistu\w*|metsaregis\w*|kust\s+lei\w*)\b/u.test(text)) {
+  if (hasForest && /\b(?:kinnistu|katastriuksus|katastritunnus|maatukk|maauksus)\w*\b/u.test(text)
+    && (hasRegistry || /\b(?:metsaandm\w*|metsaeraldis\w*|puistu\w*|kust\s+lei\w*|andm\w*\s+vaat\w*)\b/u.test(text))) {
     return resolved("property-forest-data");
   }
-  if (/\bmetsateatis\w*\b/u.test(text)) return resolved("forest-notice");
-  if (/\brmk\b/u.test(text) && /\bsmi\b/u.test(text)) return resolved("rmk-versus-smi");
-  if (/\bsmi\b/u.test(text) && /\b(?:lausmetsakorrald\w*|ulehinn\w*|valikuuring\w*|proovitukk\w*)\b/u.test(text)) {
+  if (hasStem(tokens, ["rmk"]) && hasSmi) return resolved("rmk-versus-smi");
+  if (hasSmi && (hasRegistry || hasStem(tokens, ["registr"]))) return forestDataSourcesIntent();
+  if (hasSmi && /\b(?:metsa|metsandus|metsainventeerimis)andm\w*\b/u.test(text)
+    && /\b(?:vahe|erinev\w*|vordl\w*|kumb|sama|klap\w*|katt\w*|vastuolu)\b/u.test(text)) {
+    return forestDataSourcesIntent();
+  }
+  const mentionsSample = hasStem(tokens, ["valim", "proovitukk", "vaatlus"], true);
+  if (mentionsSample
+    && /\b(?:suurem|rohkem|mitu|palju|arv|suurus|taps\w*|vea\w*|piis\w*|esindus\w*)\b/u.test(text)) {
+    return resolved("sample-size-and-precision");
+  }
+  if (hasSmi && (mentionsSample
+    || hasStem(tokens, ["lausmetsakorrald", "ulehinn", "metoodik", "takseer", "inventuur"], true)
+    || /\b(?:moodet\w*|koostat\w*|tootab|tehakse)\b/u.test(text))) {
     return resolved("smi-method-comparison");
   }
-  if (/\bsmi\b/u.test(text) && /\bmetsaregis\w*\b/u.test(text)) return {
-    kind: "forest-data-sources",
-    discoveryQueries: ["metsaregister SMI andmed", "statistiline metsainventuur metsaandmed"],
-    serviceDocumentIds: ["smi-metsaregister", "smi", "metsainfo-hetkeseis", "metsaregister"],
-    evidenceGroups: [],
-    minimumSupportingDocuments: 1,
-  };
-  if (/\bsmi\b/u.test(text) && /\b(?:metsa|metsandus|metsainventeerimis)andm\w*\b/u.test(text)
-    && /\b(?:vahe|erinev\w*|vordl\w*|kumb|sama|klap\w*|katt\w*|vastuolu)\b/u.test(text)) return {
-    kind: "forest-data-sources",
-    discoveryQueries: ["metsaregister SMI andmed", "statistiline metsainventuur metsaandmed"],
-    serviceDocumentIds: ["smi-metsaregister", "smi", "metsainfo-hetkeseis", "metsaregister"],
-    evidenceGroups: [],
-    minimumSupportingDocuments: 1,
-  };
-  if (/\btagavara\w*\b/u.test(text)
-    && /\b(?:uks|kindel|vaieldamatu|tapselt)\b[\s\S]{0,40}\bnumb\w*\b/u.test(text)) {
+  if (hasStock && (/\b(?:uks|kindel|vaieldamatu|tapselt|tapne)\b[\s\S]{0,50}\b(?:numb\w*|arv\w*|hinnang\w*)\b/u.test(text)
+    || /\b(?:ebakindl\w*|veapiir\w*|usaldusvahem\w*|tapsus\w*|tapne|hinnangu\s+viga)\b/u.test(text))) {
     return resolved("forest-stock-uncertainty");
   }
-  if (/\b(?:eri|erinev\w*)\s+allik\w*[\s\S]{0,40}\b(?:erinev\w*|teistsugus\w*)\s+numb\w*\b/u.test(text)) {
+  if ((hasForest || /\beri\s+allik\w*/u.test(text))
+    && /\b(?:erinev\w*|eri|lahknev\w*|klapi\w*|muut\w*)\b/u.test(text)
+    && /\b(?:allik\w*|numb\w*|arv\w*|statistik\w*|andm\w*|metsaandm\w*|metsandusandm\w*|aruann\w*)\b/u.test(text)) {
     return resolved("why-forest-numbers-differ");
   }
-  if (/\btagavara\w*\b/u.test(text)
-    && /\b(?:raiutav\w*|kattesaadav\w*|ules\s+votta|kasutada\s+saab|puidukogus\w*)\b/u.test(text)) {
+  if (hasStock && /\b(?:raiutav\w*|raiemaht\w*|kattesaadav\w*|kasutatav\w*|ules\s+votta|kasutada\s+saab|puidukogus\w*|maha\s+rai\w*|koik\s+rai\w*)\b/u.test(text)) {
     return resolved("stock-versus-harvestable");
   }
-  if (/\b(?:suurem|rohkem)\s+(?:valim\w*|vaatlus\w*)\b/u.test(text)
-    || /\bvalimi\s+(?:suurus|tap\w*)\b/u.test(text)) return resolved("sample-size-and-precision");
-  if (hasHarvest && /\b(?:20|kakskummend)\s+aasta\w*\b/u.test(text) && !hasIncrement) {
+  if (hasHarvest && !hasIncrement && (/\b(?:20|kakskummend)\s+aasta\w*\b/u.test(text)
+    || /\bkahe\s+kumnendi\w*\b/u.test(text)
+    || (/\b2002\b/u.test(text) && /\b(?:vordl\w*|vorr\w*|rohkem|vahem|muut\w*|2022|2023|2024|2025)\b/u.test(text)))) {
     return resolved("harvest-over-time");
   }
-  if (/\blagerai\w*\b/u.test(text) && /\b(?:10|kumne)\s+aasta\w*\b/u.test(text)) {
+  if (hasClearcut && (/\b(?:10|kumme|kumne)\s*(?:a|aasta\w*)\b/u.test(text)
+    || /\b(?:kumnend\w*|aastakumn\w*|2013\s*2022)\b/u.test(text))) {
     return resolved("clearcut-over-time");
   }
-  if (/\blagerai\w*\b/u.test(text) && /\b(?:koik|alati|keskkonnavast\w*|halb\w*)\b/u.test(text)) {
+  if (hasClearcut && /\b(?:koik|alati|keskkonnavast\w*|keskkonn\w*|halb\w*|moju\w*|kahju\w*|elurikk\w*|loodus\w*|keskkond\w*)\b/u.test(text)) {
     return resolved("clearcut-value-judgement");
   }
   if (/\b(?:vana|vanad|vanem)\s+mets\w*\b/u.test(text)
-    && /\b(?:automaat\w*|kaitse\w*|kaitsestaatus\w*)\b/u.test(text)) return resolved("old-forest-protection");
-  if (/\bkaitseal\w*\b/u.test(text) && hasHarvest) return resolved("logging-in-protected-areas");
+    && /\b(?:automaat\w*|kaitse\w*|kaitst\w*|kaitsestaatus\w*|tohib\w*|rai\w*)\b/u.test(text)) return resolved("old-forest-protection");
+  if (/\bpuistu\w*[\s\S]{0,35}\b(?:korge\s+vanus|vana)\b/u.test(text)
+    && /\b(?:kaitse\w*|kaitst\w*|kaitsestaatus\w*|tohib\w*|rai\w*)\b/u.test(text)) return resolved("old-forest-protection");
   if (hasForest && /\b(?:kaitse\s+all|kaitstud|kaitsealuse|rangelt\s+kaitstav|mittemajandatav)\b/u.test(text)
-    && /\b(?:kui\s+suur|kui\s+palju|osa|osakaal|protsent)\b/u.test(text)) return resolved("protected-forest-share");
-  if (/\b(?:mand|manni|mannid|mannik\w*)\b/u.test(text) && /\b(?:kuusk|kuuse|kuused|kuusik\w*)\b/u.test(text)) {
+    && /\b(?:kui\s+suur|kui\s+palju|mitu|osa|osakaal|protsent\w*)\b/u.test(text)) return resolved("protected-forest-share");
+  if (hasProtection && (hasHarvest || hasNotice)) return resolved("logging-in-protected-areas");
+  if (hasNotice) return resolved("forest-notice");
+  if (hasStem(tokens, ["mand", "mann", "mannik"], true) && hasStem(tokens, ["kuusk", "kuus", "kuusik"], true)) {
     return resolved("pine-versus-spruce");
   }
-  if (hasForest && /\b(?:noorem\w*|vanusjaot\w*|vanuselis\w*|keskealis\w*)\b/u.test(text)) {
+  if (hasForest && /\b(?:noor\w*|vana\w*|vanusjaot\w*|vanuselis\w*|keskealis\w*|keskmine\s+vanus)\b/u.test(text)
+    && (/\b(?:muutu\w*|suuren\w*|vahen\w*|rohkem|vahem|trend\w*|jaotus\w*|keskmine|kas)\b/u.test(text)
+      || /\bvanusjaot\w*\b/u.test(text))) {
     return resolved("forest-age-trend");
   }
-  if (hasForest && /\bkliim\w*\b/u.test(text)) return resolved("climate-impact");
-  if (hasIncrement && /\b(?:kuidas|arvuta\w*|mudel\w*|tekib|moodet\w*)\b/u.test(text) && !hasHarvest) {
+  if (hasForest && /\b(?:kliim\w*|pou\w*|kuivus\w*|soojen\w*|urask\w*)\b/u.test(text)) return resolved("climate-impact");
+  if (hasIncrement && /\b(?:kuidas|arvuta\w*|mudel\w*|tekib|moodet\w*|hinnat\w*|metoodik\w*)\b/u.test(text) && !hasHarvest) {
     return resolved("increment-method");
   }
   // Harvest-versus-increment questions already have a dedicated structured
@@ -428,7 +594,11 @@ export function resolvePublicForestryIntent(query) {
   // retain priority over this directory's explanatory fallback extract.
   if (hasHarvest && hasIncrement) return null;
 
-  const depletion = hasForest && isForestDepletionIntent(text);
+  const depletion = hasForest && (isForestDepletionIntent(text)
+    || /\bvarsti\b[\s\S]{0,25}\b(?:pole|ei\s+ole)\b[\s\S]{0,25}\bmetsa\b/u.test(text)
+    || /\b(?:pole|ei\s+ole)\b[\s\S]{0,35}\benam\s+metsa\b/u.test(text)
+    || /\b(?:varsti|lopuks)\b[\s\S]{0,45}\bmetsa\b[\s\S]{0,25}\b(?:pole|ei\s+ole|jaagi)\b/u.test(text)
+    || /\bmets\w*\b[\s\S]{0,35}\b(?:kaob|havib|jaab)\w*\b[\s\S]{0,20}\b(?:ara|vahem)\b/u.test(text));
   if (depletion) return {
     kind: "forest-depletion",
     discoveryQueries: ["metsa tagavara stabiilne SMI", "Eesti metsamaa pindala SMI", "Eesti metsade seisund trendid"],
@@ -437,7 +607,8 @@ export function resolvePublicForestryIntent(query) {
     minimumSupportingDocuments: 1,
   };
 
-  if (hasForest && /\b(?:metsaga\s+kaetud|kaetud\s+metsaga|puistute\s+pindala|metsaga\s+metsamaa)\b/u.test(text)) {
+  if (hasForest && (/\b(?:metsaga\s+kaetud|kaetud\s+metsaga|puistute\s+pindala|metsaga\s+metsamaa)\b/u.test(text)
+    || /\b(?:mitu|kui\s+suur)\s+(?:protsenti|osa)\s+eesti\w*\b[\s\S]{0,30}\bmets\w*\b/u.test(text))) {
     return resolved("forest-covered-area");
   }
   if (hasForest && /\bmetsasus\w*\b/u.test(text)

@@ -131,7 +131,10 @@ function forestHarvestComparisonIntent(query) {
   const text = normalize(query);
   if (/\b(?:bruto|kogu|tais)(?:\s+\w+){0,3}\s*juurdekasv\w*\b/u.test(text)) return null;
   const harvestMatch = text.match(/\b(?:rai\w*|puidu ?varum\w*|puidu ?eemaldam\w*|eemaldam\w*)/u);
-  const incrementMatch = text.match(/\b(?:neto ?juurde ?kasv\w*|juurde ?kasv\w*)/u);
+  const incrementMatch = text.match(/\b(?:neto ?juurde ?kasv\w*|juurde ?kasv\w*)/u)
+    || text.match(/\b(?:mets|puist)\w*(?:\s+\w+){0,2}\s+kasv\w*\s+juurde\b/u)
+    || text.match(/\b(?:mets|puist)\w*(?:\s+\w+){0,2}\s+kasv\w*\b/u)
+    || text.match(/\bkasv\w*\s+juurde\b/u);
   if (!harvestMatch || !incrementMatch) return null;
   const causal = /\b(?:mojuta|pohjusta|tagajarg|miks)\w*/u.test(text);
   if (causal) return null;

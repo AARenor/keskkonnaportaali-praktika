@@ -16,6 +16,12 @@ import {
   forestHarvestBalanceDocumentsFromJson,
   isForestHarvestBalanceQuery,
 } from "../server/indicators.mjs";
+import {
+  FORESTRY_BALANCE_VARIANTS,
+  FORESTRY_NEGATIVE_COLLISIONS,
+  FORESTRY_VARIANT_GROUPS,
+  MUNICIPALITY_CLARIFICATION_VARIANTS,
+} from "./fixtures/forestry-query-matrix.mjs";
 
 const NOW = Date.parse("2026-08-19T12:00:00Z");
 
@@ -41,9 +47,9 @@ const DETERMINISTIC_CASES = [
   ["Kuidas mõjutab kliimamuutus metsi?", "climate-impact", /põuad[\s\S]*kuuse-kooreüraski/iu],
   ["Mis on metsateatis?", "forest-notice", /kavandatav\w* raiet?[\s\S]*ei tõenda/iu],
   ["Kas Eestis saab mets otsa?", "forest-depletion", /ei viita[^.]*otsa saamas/iu],
-  ["Kas praegu raiutakse rohkem kui 20 aastat tagasi?", "harvest-over-time", /vaja sama metoodikaga 20-aastast aegrida/iu],
+  ["Kas praegu raiutakse rohkem kui 20 aastat tagasi?", "harvest-over-time", /2002\. aasta hinnang 10,157[\s\S]*2022\. aasta hinnang 12,077[\s\S]*18,9% suurem[\s\S]*ei tähenda ühtlast kasvutrendi/iu],
   ["Kas meie metsad muutuvad nooremaks?", "forest-age-trend", /suurenes nii noorte kui ka vanade metsade pindala/iu],
-  ["Kui palju lageraiet on viimase 10 aasta jooksul tehtud?", "clearcut-over-time", /32,6 tuhat hektarit[\s\S]*ei tohi[^.]*kümnega korrutada/iu],
+  ["Kui palju lageraiet on viimase 10 aasta jooksul tehtud?", "clearcut-over-time", /aritmeetiline summa[\s\S]*311,7 tuhat hektarit[\s\S]*2013[.–]+2022/iu],
   ["Kas kuusk või mänd domineerib Eestis?", "pine-versus-spruce", /695,3[\s\S]*431,8[\s\S]*Mänd oli kuusest suurem/iu],
   ["Kas kaitsealadel raiutakse?", "logging-in-protected-areas", /sihtkaitsevööndis[\s\S]*piiranguvööndis[\s\S]*registreeritud raied ei tõenda/iu],
 ];
@@ -99,11 +105,55 @@ test("the 26 source-directory forestry routes render explanatory, visibly cited 
     });
     assert.equal(draft.evidence.answerable, true, query);
     assert.match(answerText(draft), expectedAnswer, query);
+    const wordCount = answerText(draft).trim().split(/\s+/u).length;
+    assert.ok(wordCount >= 60, `${query}: answer has only ${wordCount} words`);
+    assert.ok(wordCount <= 220, `${query}: answer has ${wordCount} words`);
 
     const citations = usedCitations(draft);
     const sourcesByCitation = new Map(draft.sources.map((source) => [source.citation, source]));
-    assert.ok(citations.size >= 1, `${query}: answer has no citation`);
+    assert.ok(citations.size >= 2, `${query}: answer should synthesize at least two official sources`);
     assert.ok([...citations].every((citation) => sourcesByCitation.get(citation)?.sourceTier === "official"), query);
+    assert.ok(draft.answer.parts.every((part) => /[.!?]$/u.test(part.text.trim())), `${query}: truncated answer part`);
+  }
+});
+
+test("88 varied forestry keyword formulations preserve the intended route and strong visible evidence", () => {
+  const directory = officialServiceCatalogueDocuments();
+  const entries = Object.entries(FORESTRY_VARIANT_GROUPS);
+  assert.equal(entries.reduce((total, [, queries]) => total + queries.length, 0), 88);
+
+  for (const [expectedIntent, queries] of entries) {
+    for (const query of queries) {
+      assert.equal(assessSearchQuery(query).kind, "answerable", query);
+      assert.equal(forestEvidenceIntent(query)?.kind, expectedIntent, query);
+      const visible = rankPublicSearchCandidates(query, directory, {
+        intentDocuments: directory,
+        now: NOW,
+      }).slice(0, 12);
+      const plan = selectAnswerEvidence(query, visible);
+      assert.equal(plan?.kind, expectedIntent, query);
+      assert.equal(plan?.strong, true, query);
+      assert.deepEqual(plan?.missingEvidenceGroups || [], [], query);
+      assert.ok(visible.slice(0, 3).some((source) => source.id === plan?.directDocumentId), `${query}: direct source is not near the top`);
+      assert.ok(visible.every((source) => source.sourceTier === "official"), `${query}: non-official source entered the controlled matrix`);
+    }
+  }
+});
+
+test("balance paraphrases, missing municipalities and negative collisions keep distinct behavior", () => {
+  for (const query of FORESTRY_BALANCE_VARIANTS) {
+    assert.equal(assessSearchQuery(query).kind, "answerable", query);
+    assert.equal(isForestHarvestBalanceQuery(query), true, query);
+  }
+  for (const query of MUNICIPALITY_CLARIFICATION_VARIANTS) {
+    assert.equal(forestEvidenceIntent(query)?.kind, "municipality-forest-area", query);
+    const assessment = assessSearchQuery(query);
+    assert.equal(assessment.kind, "needs-clarification", query);
+    assert.equal(assessment.reason, "missing-municipality", query);
+  }
+  for (const query of FORESTRY_NEGATIVE_COLLISIONS) {
+    assert.equal(forestEvidenceIntent(query), null, query);
+    assert.equal(isForestHarvestBalanceQuery(query), false, query);
   }
 });
 

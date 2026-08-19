@@ -864,7 +864,7 @@ export function buildLlmRequest({
     intentDirective,
     "Iga faktiline väide vajab evidence citation numbrit. Ära viita allikale, mis väidet ei toeta.",
     "Conversation context aitab ainult jätkuküsimuse mõtet täpsustada: see ei ole tõend. Iga väide peab tulema käesoleva päringu evidence'ist.",
-    `Tagasta struktureeritud JSON. ${singleSource ? "Ühe allika korral peab intro olema kuni 90 sõna ja parts tühi massiiv." : "Intro olgu 2–5 lauset; kui evidence toetab eraldiseisvaid selgitusi, lisa 3–5 lühikest parts-osa, kuid ära täida osi tõendita."}`,
+    `Tagasta struktureeritud JSON. ${singleSource ? "Ühe allika korral kirjuta 3–5 sisukat lauset, üldjuhul 70–130 sõna, ja jäta parts tühjaks." : "Kirjuta 2–4-lauseline otsene intro ning 2–4 lühikest parts-osa; kogu vastuse siht on üldjuhul 100–190 sõna."} Pikkus peab tulema uuest viidatud selgitusest, piirangust või praktilisest kontrollsammust; kui evidence seda ei toeta, vasta lühemalt ja ära lisa täidet.`,
     "Paku kuni kuus seotud küsimust ainult tõendites esinevate teemade põhjal.",
   ].join(" ");
   const user = JSON.stringify({

@@ -476,6 +476,7 @@ export function selectAnswerEvidence(query, documents = []) {
     return {
       kind: intent.kind,
       strong,
+      evidenceGroups: intent.evidenceGroups.map((group) => [...group]),
       directDocumentId: direct?.document?.id || null,
       passages: direct?.passages || [],
       supportingDocumentIds: supporting.map((candidate) => candidate.document.id),
@@ -912,7 +913,11 @@ function ensureForestryIntentCandidates(query, ranked = [], available = []) {
   const requiredIds = forestryIntentServiceDocumentIds(query);
   if (!requiredIds.length) return ranked;
   const rankedAvailable = rankSearchCandidates(query, available);
-  const byId = new Map([...ranked, ...rankedAvailable].map((document) => [document.id, document]));
+  // Intent recognition may succeed on a synonym or a one-edit typo that the
+  // lexical ranker gives no score. Keep the reviewed required records
+  // reachable from the complete directory, then let passage-level evidence
+  // validation decide whether they may support an answer.
+  const byId = new Map([...available, ...rankedAvailable, ...ranked].map((document) => [document.id, document]));
   const required = requiredIds.map((id) => byId.get(id)).filter(Boolean);
   if (!required.length) return ranked;
 

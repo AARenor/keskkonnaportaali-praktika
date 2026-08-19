@@ -28,7 +28,7 @@ import {
   textHasQueryRoot,
 } from "./search.mjs";
 
-export const SEARCH_RESPONSE_REVISION = "answer-v20-complete-forestry-intents";
+export const SEARCH_RESPONSE_REVISION = "answer-v21-researched-forestry-answers";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 
 function rankPortalDocuments(query, documents) {
@@ -283,12 +283,12 @@ function composeForestDataSourcesFallback(query, plannedEvidence, sources = [], 
   return {
     eyebrow: "Allikapõhine kokkuvõte",
     title: String(previousAnswer.title || query).trim().slice(0, 180),
-    intro: "Metsaandmed on mitmel viisil kogutavate metsandusandmete katusmõiste; SMI ei ole metsaandmete sünonüüm. SMI on üleriigiline proovitükkidel põhinev statistiline valikuuring Eesti metsade seisundi ja muutuste hindamiseks, mitte üksiku kinnistu inventeerimisandmete esitamiseks. Metsaregister koondab kinnistu- ja metsaeraldisepõhiseid inventeerimisandmeid ning metsateatisi.",
+    intro: "Metsaandmed on mitmel viisil kogutavate metsandusandmete katusmõiste; SMI ei ole metsaandmete sünonüüm. SMI on üleriigiline proovitükkidel põhinev statistiline valikuuring Eesti metsade seisundi ja muutuste hindamiseks, mitte üksiku kinnistu inventeerimisandmete esitamiseks. Metsaregister koondab kinnistu- ja metsaeraldisepõhiseid inventeerimisandmeid ning metsateatisi. Nende arvud ei pea kattuma, sest allikatel on erinev eesmärk, katvus ja ajaseis; enne võrdlemist tuleb ühtlustada definitsioon, andmeaasta ja üldkogum.",
     introCitations,
     parts: [
       {
         title: "Metsaandmed",
-        text: "Metsaandmed hõlmavad eri kogumisviise ja andmeallikaid; SMI on neist üks, mitte kogu mõiste.",
+        text: "Metsaandmed hõlmavad eri kogumisviise ja andmeallikaid; SMI on neist üks, mitte kogu mõiste ega Metsaregistri teine nimi.",
         citations: comparisonCitations,
       },
       {
@@ -298,7 +298,7 @@ function composeForestDataSourcesFallback(query, plannedEvidence, sources = [], 
       },
       {
         title: "Metsaregistri roll",
-        text: "Metsaregistri andmed on kinnistu- ja metsaeraldisepõhised inventeerimisandmed koos metsateatistega.",
+        text: "Metsaregister koondab kinnistu- ja metsaeraldisepõhiseid inventeerimisandmeid ning metsateatisi.",
         citations: registryCitations,
       },
     ],
@@ -327,18 +327,17 @@ function composeForestDepletionFallback(query, plannedEvidence, sources = [], pr
     passages.findIndex((candidate) => normalize(candidate) === normalize(passage)) === index
   ));
   const measurementText = measurementPassages.join(" ");
-  const measurementCitations = uniqueCitations([area, status]);
   const contextCitations = uniqueCitations([context]);
   return {
     eyebrow: "Allikapõhine kokkuvõte",
     title: String(previousAnswer.title || query).trim().slice(0, 180),
-    intro: `Leitud ametlikud näitajad ei viita sellele, et Eesti mets oleks otsa saamas. ${measurementText} Need mõõtmised kirjeldavad konkreetset andmeaastat, mitte kindlat tulevikuprognoosi. ${contextPassage}`,
+    intro: `Leitud ametlikud näitajad ei viita sellele, et Eesti mets oleks otsa saamas. ${measurementText} Need mõõtmised kirjeldavad konkreetset andmeaastat, mitte kindlat tulevikuprognoosi. Metsa ökoloogilist seisundit tuleb hinnata eraldi kahjustuste, elurikkuse, kaitse ja kliimariskide kõrval.`,
     introCitations: uniqueCitations([status, area, context]),
     parts: [
       {
         title: "Praegune seis",
-        text: measurementText,
-        citations: measurementCitations,
+        text: "Metsamaa pindala ja puidu tagavara on eri mõõdikud. Need kirjeldavad mõõdetud hetkeseisu ega anna üksinda kindlat prognoosi metsa tuleviku või ökoloogilise seisundi kohta.",
+        citations: uniqueCitations([area, status, context]),
       },
       {
         title: "Seisundi tervikpilt",
@@ -350,6 +349,31 @@ function composeForestDepletionFallback(query, plannedEvidence, sources = [], pr
   };
 }
 
+function passageTokenSet(value) {
+  return new Set(normalize(value).split(" ").filter((token) => token.length >= 4));
+}
+
+function passagesAreNearDuplicates(left, right) {
+  const normalizedLeft = normalize(left);
+  const normalizedRight = normalize(right);
+  if (!normalizedLeft || !normalizedRight) return false;
+  if (normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)) return true;
+  const leftTokens = passageTokenSet(left);
+  const rightTokens = passageTokenSet(right);
+  const smaller = Math.min(leftTokens.size, rightTokens.size);
+  if (smaller < 5) return false;
+  const shared = [...leftTokens].filter((token) => rightTokens.has(token)).length;
+  return shared / smaller >= 0.72;
+}
+
+function distinctPassages(passages = []) {
+  const distinct = [];
+  for (const passage of passages) {
+    if (!distinct.some((candidate) => passagesAreNearDuplicates(candidate, passage))) distinct.push(passage);
+  }
+  return distinct;
+}
+
 // Generic forestry intents use only passages that were selected from the
 // same visible official result set. This keeps a useful deterministic answer
 // when Luna is unavailable without importing the legacy prewritten forestry
@@ -359,11 +383,13 @@ function composeOfficialForestryEvidenceFallback(query, plannedEvidence, sources
     || !plannedEvidence?.passagesByDocument
     || ["forest-area", "forest-depletion", "forest-data-sources"].includes(plannedEvidence.kind)) return null;
   const byId = new Map((sources || []).map((source) => [source.id, source]));
+  const queryRoots = queryTerms(query);
+  const evidenceTerms = (plannedEvidence.evidenceGroups || []).flatMap((group) => group).map(normalize).filter(Boolean);
   const bundles = (plannedEvidence.supportingDocumentIds || []).flatMap((documentId) => {
     const source = byId.get(documentId);
     const citation = sourceCitation(source);
     if (!source || source.sourceTier !== "official" || !citation) return [];
-    const passages = (plannedEvidence.passagesByDocument[documentId] || [])
+    const selectedPassages = (plannedEvidence.passagesByDocument[documentId] || [])
       .map(sanitizeLlmEvidenceText)
       .map((value) => value.replace(/\s+/gu, " ").trim())
       .filter((value) => value.length >= 25)
@@ -371,10 +397,28 @@ function composeOfficialForestryEvidenceFallback(query, plannedEvidence, sources
         const complete = hasCompleteSentenceEnding(value) ? value : `${value}.`;
         return `${complete.charAt(0).toLocaleUpperCase("et")}${complete.slice(1)}`;
       });
-    const unique = [...new Map(passages.map((passage) => [normalize(passage), passage])).values()];
+    const selectedKeys = new Set(selectedPassages.map(normalize));
+    const selectedLength = selectedPassages.join(" ").length;
+    const supplementaryLimit = selectedLength < 240 ? 2 : selectedLength < 480 ? 1 : 0;
+    const supplementary = safeSourcePassages(source)
+      .filter((passage) => !selectedKeys.has(normalize(passage)))
+      .filter((passage) => !(/\blagerai\w*|keskkonnamoju\w*/u.test(normalize(passage))
+        && !/\blagerai\w*|keskkonnamoju\w*/u.test(normalize(query))))
+      .map((passage, index) => ({
+        passage,
+        index,
+        score: queryRoots.filter((root) => textHasQueryRoot(passage, root)).length * 18
+          + evidenceTerms.filter((term) => normalize(passage).includes(term)).length * 8
+          + (/\d/u.test(passage) && /\b(?:kui|mitu|palju|protsent|aasta)\w*\b/u.test(normalize(query)) ? 8 : 0),
+      }))
+      .filter((candidate) => candidate.score > 0)
+      .sort((left, right) => right.score - left.score || left.index - right.index)
+      .slice(0, supplementaryLimit)
+      .map((candidate) => candidate.passage);
+    const unique = distinctPassages([...selectedPassages, ...supplementary]);
     const text = unique.reduce((result, passage) => {
       const joined = [result, passage].filter(Boolean).join(" ");
-      return joined.length <= 760 ? joined : result;
+      return joined.length <= 680 ? joined : result;
     }, "");
     return text ? [{ source, citation, text }] : [];
   });
