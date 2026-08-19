@@ -130,18 +130,17 @@ export function municipalWasteIndicatorFromCsv(query, csv) {
 function forestHarvestComparisonIntent(query) {
   const text = normalize(query);
   if (/\b(?:bruto|kogu|tais)(?:\s+\w+){0,3}\s*juurdekasv\w*\b/u.test(text)) return null;
-  const harvest = /\b(?:raie ?maht|raie|puidu ?varum|puidu ?eemaldam|eemaldam)\w*/u.test(text);
-  const increment = /\b(?:neto ?juurdekasv|juurdekasv)\w*/u.test(text);
-  if (!harvest || !increment) return null;
+  const harvestMatch = text.match(/\b(?:rai\w*|puidu ?varum\w*|puidu ?eemaldam\w*|eemaldam\w*)/u);
+  const incrementMatch = text.match(/\b(?:neto ?juurde ?kasv\w*|juurde ?kasv\w*)/u);
+  if (!harvestMatch || !incrementMatch) return null;
   const causal = /\b(?:mojuta|pohjusta|tagajarg|miks)\w*/u.test(text);
   if (causal) return null;
   const greater = /\b(?:ulet|suurem|korgem|rohkem)\w*/u.test(text);
   const lower = /\b(?:alla|vaiksem|madalam|vahem)\w*/u.test(text);
   const neutralComparison = /\b(?:vordle|vordlus|suhe|tasakaal|versus|vs)\w*\b/u.test(text)
     || /\braie\w*\s+(?:ja|ning)\s+(?:neto\s*)?juurdekasv\w*\b/u.test(text);
-  const harvestIndex = Math.min(...[text.indexOf("raie"), text.indexOf("eemaldam"), text.indexOf("varum")]
-    .filter((index) => index >= 0));
-  const incrementIndex = text.indexOf("juurdekasv");
+  const harvestIndex = harvestMatch.index;
+  const incrementIndex = incrementMatch.index;
   const harvestFirst = harvestIndex <= incrementIndex;
   if (greater) return harvestFirst ? "removals-greater" : "removals-lower";
   if (lower) return harvestFirst ? "removals-lower" : "removals-greater";

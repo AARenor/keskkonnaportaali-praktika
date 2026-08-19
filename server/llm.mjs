@@ -516,6 +516,7 @@ export function assertAnswerAddressesQuery(text, query, label = "answer") {
     if (!mentionsSmi || !mentionsDataSource || saysEquivalent || !hasSmiRole || !hasOtherDataRole) {
       throw new Error(`LLM ${label} does not distinguish the requested forestry data sources`);
     }
+    return true;
   }
   if (answerIntent?.kind === "forest-depletion") {
     const addressesDepletion = /\b(?:otsa\s+(?:saam\w*|saada|saavat)|saaks\s+(?:(?:peagi|lahiajal)\s+)?otsa|kadum\w*|kao\w*|havi\w*)\b/u.test(answer);

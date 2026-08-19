@@ -385,11 +385,55 @@ function forestDataSourcesEvidence(document) {
   };
 }
 
+function genericForestryEvidence(intent, document) {
+  const requiredIds = new Set(intent?.serviceDocumentIds || []);
+  const groups = Array.isArray(intent?.evidenceGroups) ? intent.evidenceGroups : [];
+  if (!requiredIds.has(document?.id) || !groups.length) {
+    return { satisfies: false, score: 0, passages: [], roles: [], matchedGroupIndexes: [] };
+  }
+  const passages = evidenceSourcePassages(document);
+  const normalizedGroups = groups.map((group) => (group || []).map(normalize).filter(Boolean));
+  const passageMatches = passages.map((passage) => {
+    const text = normalize(passage);
+    const matchedGroupIndexes = normalizedGroups
+      .map((alternatives, index) => alternatives.some((alternative) => text.includes(alternative)) ? index : -1)
+      .filter((index) => index >= 0);
+    return { passage, matchedGroupIndexes };
+  });
+  const matchedGroupIndexes = [...new Set(passageMatches.flatMap((item) => item.matchedGroupIndexes))];
+  const uncoveredGroups = new Set(matchedGroupIndexes);
+  const selectedMatches = [];
+  while (uncoveredGroups.size && selectedMatches.length < 4) {
+    const next = passageMatches
+      .map((item, index) => ({
+        item,
+        index,
+        adds: item.matchedGroupIndexes.filter((groupIndex) => uncoveredGroups.has(groupIndex)).length,
+      }))
+      .filter((candidate) => candidate.adds > 0 && !selectedMatches.includes(candidate.item))
+      .sort((left, right) => right.adds - left.adds
+        || right.item.matchedGroupIndexes.length - left.item.matchedGroupIndexes.length
+        || left.index - right.index)[0];
+    if (!next) break;
+    selectedMatches.push(next.item);
+    for (const groupIndex of next.item.matchedGroupIndexes) uncoveredGroups.delete(groupIndex);
+  }
+  const selectedPassages = selectedMatches.map((item) => item.passage);
+  const coverage = matchedGroupIndexes.length / Math.max(1, normalizedGroups.length);
+  return {
+    satisfies: matchedGroupIndexes.length === normalizedGroups.length,
+    score: matchedGroupIndexes.length * 32 + coverage * 40 + (matchedGroupIndexes.length ? 18 : 0),
+    passages: selectedPassages,
+    roles: [],
+    matchedGroupIndexes,
+  };
+}
+
 function intentEvidenceForDocument(intent, document) {
   if (intent?.kind === "forest-area") return forestAreaEvidence(document);
   if (intent?.kind === "forest-depletion") return forestDepletionEvidence(document);
   if (intent?.kind === "forest-data-sources") return forestDataSourcesEvidence(document);
-  return { satisfies: false, score: 0, passages: [], roles: [] };
+  return genericForestryEvidence(intent, document);
 }
 
 // This is deliberately a semantic contract rather than a prewritten answer:
@@ -398,6 +442,51 @@ function intentEvidenceForDocument(intent, document) {
 export function selectAnswerEvidence(query, documents = []) {
   const intent = forestEvidenceIntent(query);
   if (!intent) return null;
+  if (!["forest-area", "forest-depletion", "forest-data-sources"].includes(intent.kind)) {
+    const candidates = (documents || [])
+      .map((document, index) => ({ document, index, ...genericForestryEvidence(intent, document) }))
+      .filter((candidate) => candidate.score > 0)
+      .sort((left, right) => right.score - left.score || left.index - right.index);
+    const requiredGroupCount = intent.evidenceGroups?.length || 0;
+    const uncovered = new Set(Array.from({ length: requiredGroupCount }, (_value, index) => index));
+    const supporting = [];
+    while (uncovered.size) {
+      const next = candidates
+        .filter((candidate) => !supporting.includes(candidate))
+        .map((candidate) => ({
+          candidate,
+          adds: candidate.matchedGroupIndexes.filter((index) => uncovered.has(index)).length,
+        }))
+        .sort((left, right) => right.adds - left.adds
+          || right.candidate.score - left.candidate.score
+          || left.candidate.index - right.candidate.index)[0];
+      if (!next?.adds) break;
+      supporting.push(next.candidate);
+      for (const index of next.candidate.matchedGroupIndexes) uncovered.delete(index);
+    }
+    const minimumSupportingDocuments = Math.max(1, Number(intent.minimumSupportingDocuments) || 1);
+    for (const candidate of candidates) {
+      if (supporting.length >= minimumSupportingDocuments) break;
+      if (!supporting.includes(candidate)) supporting.push(candidate);
+    }
+    const strong = requiredGroupCount > 0
+      && uncovered.size === 0
+      && supporting.length >= minimumSupportingDocuments;
+    const direct = supporting[0] || candidates[0] || null;
+    return {
+      kind: intent.kind,
+      strong,
+      directDocumentId: direct?.document?.id || null,
+      passages: direct?.passages || [],
+      supportingDocumentIds: supporting.map((candidate) => candidate.document.id),
+      passagesByDocument: Object.fromEntries(supporting.map((candidate) => [
+        candidate.document.id,
+        candidate.passages,
+      ])),
+      evidenceRoles: null,
+      missingEvidenceGroups: [...uncovered],
+    };
+  }
   const queryYear = requestedQueryYear(query);
   const candidates = (documents || [])
     .map((document, index) => {
@@ -744,6 +833,11 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
   const servicePriority = serviceIntentPriority(query, roots, document);
   const forestryIntent = forestEvidenceIntent(query);
   const intentEvidence = intentEvidenceForDocument(forestryIntent, document);
+  const restrictedForestryKinds = Array.isArray(document?._forestryIntentKinds)
+    ? document._forestryIntentKinds
+    : [];
+  const forestryRestrictionMatched = !restrictedForestryKinds.length
+    || restrictedForestryKinds.includes(forestryIntent?.kind);
   const primaryTopic = assessSearchQuery(query).topic;
   const primaryIntentMatched = !primaryTopic
     || fieldHasRoot(searchableText, primaryTopic)
@@ -766,10 +860,14 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
     - (futureDated ? 0.6 : 0);
   return {
     score,
-    matched: primaryIntentMatched
+    matched: forestryRestrictionMatched
+      && primaryIntentMatched
       && semanticIntentMatched
       && (semantic > 0 || coveredRoots > 0 || sqlSignal > 0 || liveService > 0 || cadastreService),
     servicePriority,
+    // A merely related passage must not outrank a complete direct
+    // measurement. Composite forestry plans still receive every required
+    // directory source in ensureForestryIntentCandidates below.
     answerEvidencePriority: intentEvidence.satisfies ? 6 : 0,
     relevanceBucket: Math.floor(Math.max(score, 0) / 6),
     publishedAt: publishedAt || 0,

@@ -28,7 +28,7 @@ import {
   textHasQueryRoot,
 } from "./search.mjs";
 
-export const SEARCH_RESPONSE_REVISION = "answer-v19-forest-depletion-grounding";
+export const SEARCH_RESPONSE_REVISION = "answer-v20-complete-forestry-intents";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 
 function rankPortalDocuments(query, documents) {
@@ -350,6 +350,50 @@ function composeForestDepletionFallback(query, plannedEvidence, sources = [], pr
   };
 }
 
+// Generic forestry intents use only passages that were selected from the
+// same visible official result set. This keeps a useful deterministic answer
+// when Luna is unavailable without importing the legacy prewritten forestry
+// corpus or turning manually assigned tags into factual evidence.
+function composeOfficialForestryEvidenceFallback(query, plannedEvidence, sources = [], previousAnswer = {}) {
+  if (!plannedEvidence?.strong
+    || !plannedEvidence?.passagesByDocument
+    || ["forest-area", "forest-depletion", "forest-data-sources"].includes(plannedEvidence.kind)) return null;
+  const byId = new Map((sources || []).map((source) => [source.id, source]));
+  const bundles = (plannedEvidence.supportingDocumentIds || []).flatMap((documentId) => {
+    const source = byId.get(documentId);
+    const citation = sourceCitation(source);
+    if (!source || source.sourceTier !== "official" || !citation) return [];
+    const passages = (plannedEvidence.passagesByDocument[documentId] || [])
+      .map(sanitizeLlmEvidenceText)
+      .map((value) => value.replace(/\s+/gu, " ").trim())
+      .filter((value) => value.length >= 25)
+      .map((value) => {
+        const complete = hasCompleteSentenceEnding(value) ? value : `${value}.`;
+        return `${complete.charAt(0).toLocaleUpperCase("et")}${complete.slice(1)}`;
+      });
+    const unique = [...new Map(passages.map((passage) => [normalize(passage), passage])).values()];
+    const text = unique.reduce((result, passage) => {
+      const joined = [result, passage].filter(Boolean).join(" ");
+      return joined.length <= 760 ? joined : result;
+    }, "");
+    return text ? [{ source, citation, text }] : [];
+  });
+  if (!bundles.length) return null;
+  const [lead, ...supporting] = bundles;
+  return {
+    eyebrow: "Allikapõhine kokkuvõte",
+    title: String(previousAnswer.title || query).trim().slice(0, 180),
+    intro: lead.text,
+    introCitations: [lead.citation],
+    parts: supporting.slice(0, 3).map((bundle) => ({
+      title: String(bundle.source.title || "Täiendav ametlik selgitus").trim().slice(0, 140),
+      text: bundle.text,
+      citations: [bundle.citation],
+    })),
+    note: String(previousAnswer.note || "").trim().slice(0, 700),
+  };
+}
+
 export function publicResponse(draft) {
   const { evidence: _evidence, ...response } = draft;
   return {
@@ -459,6 +503,9 @@ export async function createPortalDraft(query, {
   const forestDepletionFallback = !forestBalance && !forestDataSourcesFallback
     ? composeForestDepletionFallback(query, plannedEvidence, draft.sources, draft.answer)
     : null;
+  const officialForestryFallback = !forestBalance && !forestDataSourcesFallback && !forestDepletionFallback
+    ? composeOfficialForestryEvidenceFallback(query, plannedEvidence, draft.sources, draft.answer)
+    : null;
   const directExtract = !forestBalance && direct
     ? directEvidenceExtract(retrievalQuery, direct, plannedEvidence)
     : "";
@@ -471,6 +518,9 @@ export async function createPortalDraft(query, {
   } else if (forestDepletionFallback) {
     draft.answer = forestDepletionFallback;
     draft.evidence.syntheticFallback = "forest-depletion";
+  } else if (officialForestryFallback) {
+    draft.answer = officialForestryFallback;
+    draft.evidence.syntheticFallback = "official-forestry-evidence";
   } else if (directExtract) {
     draft.answer.eyebrow = "Allikapõhine kokkuvõte";
     draft.answer.intro = directExtract;
