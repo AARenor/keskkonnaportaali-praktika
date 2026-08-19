@@ -28,7 +28,7 @@ import {
   textHasQueryRoot,
 } from "./search.mjs";
 
-export const SEARCH_RESPONSE_REVISION = "answer-v18-luna-budgeted-forestry";
+export const SEARCH_RESPONSE_REVISION = "answer-v19-forest-depletion-grounding";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 
 function rankPortalDocuments(query, documents) {
@@ -212,6 +212,54 @@ function uniqueCitations(sources = []) {
   return [...new Set(sources.map(sourceCitation).filter(Boolean))];
 }
 
+function safeSourcePassages(source = {}) {
+  return [source.summary, source.content]
+    .filter(Boolean)
+    .flatMap((value) => splitTextPassages(sanitizeLlmEvidenceText(value)))
+    .map((value) => value.replace(/\s+/gu, " ").trim())
+    .filter((value) => value.length >= 20 && hasCompleteSentenceEnding(value));
+}
+
+function forestAreaMeasurementPassage(source) {
+  return safeSourcePassages(source).find((passage) => {
+    const text = normalize(passage);
+    const measuredText = passage.normalize("NFKC").toLocaleLowerCase("et");
+    const hasYear = /\b(?:19|20)\d{2}\b/u.test(text);
+    const hasArea = /\bmetsamaa\w*[\s\S]{0,80}\bpindala\w*/u.test(text)
+      || /\bmetsamaa\s+oli\b/u.test(text);
+    const hasMeasuredArea = /\b\d+(?:[.,]\d+)?\s*(?:(?:miljon\w*|tuhat)\s+)?(?:ha\b|hektar\w*)/u.test(measuredText);
+    return hasYear && hasArea && hasMeasuredArea;
+  }) || "";
+}
+
+function stableForestStockPassage(source) {
+  return safeSourcePassages(source).find((passage) => {
+    const text = normalize(passage);
+    const measuredText = passage.normalize("NFKC").toLocaleLowerCase("et");
+    const hasYear = /\b(?:19|20)\d{2}\b/u.test(text);
+    const hasStock = /\b(?:kasvava\s+metsa\s+tagavara|metsa\s+tagavara|metsavaru)\w*/u.test(text);
+    const hasStableDirection = /\b(?:stabiil\w*|pusi\w*|muutumat\w*)/u.test(text);
+    const hasMeasuredVolume = /\b\d+(?:[.,]\d+)?\s*(?:miljon\w*\s+)?(?:tm\b|tihumeet\w*|m[³3]\b|kuupmeet\w*)/u.test(measuredText);
+    return hasYear && hasStock && hasStableDirection && hasMeasuredVolume;
+  }) || "";
+}
+
+function forestConditionPassage(source) {
+  return safeSourcePassages(source).find((passage) => {
+    const text = normalize(passage);
+    const dimensions = [
+      /\bpindala\w*/u,
+      /\btagavara\w*/u,
+      /\bvanus\w*|vanuselis\w*/u,
+      /\bkahjust\w*/u,
+      /\belurikk\w*/u,
+      /\bkaits\w*/u,
+      /\bkliima\w*|risk\w*/u,
+    ].filter((pattern) => pattern.test(text)).length;
+    return /\bmets\w*/u.test(text) && dimensions >= 3;
+  }) || "";
+}
+
 // This is a constrained degraded-mode answer, not a hidden knowledge-base
 // answer. It is composed only when the visible official result set contains a
 // strong direct comparison plus independent SMI-method and registry-role
@@ -252,6 +300,50 @@ function composeForestDataSourcesFallback(query, plannedEvidence, sources = [], 
         title: "Metsaregistri roll",
         text: "Metsaregistri andmed on kinnistu- ja metsaeraldisepõhised inventeerimisandmed koos metsateatistega.",
         citations: registryCitations,
+      },
+    ],
+    note: String(previousAnswer.note || "").trim().slice(0, 700),
+  };
+}
+
+// A broad "will forest run out" question needs a short synthesis, not a
+// literal hit for the word "otsa". This degraded answer is unlocked only by
+// visible official evidence with three roles: present stock direction,
+// current forest-area measurement and the multi-indicator condition context.
+function composeForestDepletionFallback(query, plannedEvidence, sources = [], previousAnswer = {}) {
+  if (plannedEvidence?.kind !== "forest-depletion" || !plannedEvidence?.strong) return null;
+  const visibleOfficial = sources.filter((source) => source?.sourceTier === "official" && sourceCitation(source));
+  const byId = new Map(visibleOfficial.map((source) => [source.id, source]));
+  const status = byId.get(plannedEvidence.evidenceRoles?.status);
+  const area = byId.get(plannedEvidence.evidenceRoles?.area);
+  const context = byId.get(plannedEvidence.evidenceRoles?.context);
+  if (!status || !area || !context || new Set([status.id, area.id, context.id]).size < 2) return null;
+
+  const areaPassage = forestAreaMeasurementPassage(area);
+  const stockPassage = stableForestStockPassage(status);
+  const contextPassage = forestConditionPassage(context);
+  if (!areaPassage || !stockPassage || !contextPassage) return null;
+  const measurementPassages = [areaPassage, stockPassage].filter((passage, index, passages) => (
+    passages.findIndex((candidate) => normalize(candidate) === normalize(passage)) === index
+  ));
+  const measurementText = measurementPassages.join(" ");
+  const measurementCitations = uniqueCitations([area, status]);
+  const contextCitations = uniqueCitations([context]);
+  return {
+    eyebrow: "Allikapõhine kokkuvõte",
+    title: String(previousAnswer.title || query).trim().slice(0, 180),
+    intro: `Leitud ametlikud näitajad ei viita sellele, et Eesti mets oleks otsa saamas. ${measurementText} Need mõõtmised kirjeldavad konkreetset andmeaastat, mitte kindlat tulevikuprognoosi. ${contextPassage}`,
+    introCitations: uniqueCitations([status, area, context]),
+    parts: [
+      {
+        title: "Praegune seis",
+        text: measurementText,
+        citations: measurementCitations,
+      },
+      {
+        title: "Seisundi tervikpilt",
+        text: contextPassage,
+        citations: contextCitations,
       },
     ],
     note: String(previousAnswer.note || "").trim().slice(0, 700),
@@ -364,6 +456,9 @@ export async function createPortalDraft(query, {
   const forestDataSourcesFallback = !forestBalance
     ? composeForestDataSourcesFallback(query, plannedEvidence, draft.sources, draft.answer)
     : null;
+  const forestDepletionFallback = !forestBalance && !forestDataSourcesFallback
+    ? composeForestDepletionFallback(query, plannedEvidence, draft.sources, draft.answer)
+    : null;
   const directExtract = !forestBalance && direct
     ? directEvidenceExtract(retrievalQuery, direct, plannedEvidence)
     : "";
@@ -373,6 +468,9 @@ export async function createPortalDraft(query, {
     // source. Do not feed it back to Luna as if it were independently
     // reviewed evidence; Luna must ground any replacement in the sources.
     draft.evidence.syntheticFallback = "forest-data-sources";
+  } else if (forestDepletionFallback) {
+    draft.answer = forestDepletionFallback;
+    draft.evidence.syntheticFallback = "forest-depletion";
   } else if (directExtract) {
     draft.answer.eyebrow = "Allikapõhine kokkuvõte";
     draft.answer.intro = directExtract;

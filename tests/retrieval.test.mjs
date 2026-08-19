@@ -21,6 +21,7 @@ import {
   assessEvidence,
   assessSearchQuery,
   buildDiscoveryQueries,
+  forestEvidenceIntent,
   officialServiceCatalogueDocuments,
   queryTerms,
 } from "../server/search.mjs";
@@ -99,6 +100,71 @@ test("official discovery expands Estonian intent without keeping pronouns as ran
     queryTerms("metsastatistika vanuseline jaotus"),
     ["mets", "statistika", "vanus", "jaotus"],
   );
+});
+
+test("forest depletion intent expands the idiom instead of searching the literal word otsa", () => {
+  const query = "kas eestis saab mets otsa";
+  assert.deepEqual(queryTerms(query), ["mets", "kadumine"]);
+  assert.deepEqual(buildDiscoveryQueries(query), [
+    "metsa tagavara stabiilne SMI",
+    "Eesti metsamaa pindala SMI",
+    "Eesti metsade seisund trendid",
+  ]);
+  assert.equal(forestEvidenceIntent(query)?.kind, "forest-depletion");
+  for (const variant of [
+    "Kas Eesti mets võib lähiajal otsa saada?",
+    "Kas Eesti mets võib tulevikus otsa saada?",
+    "Kas saab Eestis mets otsa?",
+    "Kas võib Eestis mets lähiajal otsa saada?",
+    "Kas Eesti metsad on kadumas?",
+    "Kas Eesti mets võib täiesti ära kaduda?",
+  ]) {
+    assert.equal(forestEvidenceIntent(variant)?.kind, "forest-depletion", variant);
+    assert.deepEqual(queryTerms(variant), ["mets", "kadumine"], variant);
+    assert.deepEqual(buildDiscoveryQueries(variant), [
+      "metsa tagavara stabiilne SMI",
+      "Eesti metsamaa pindala SMI",
+      "Eesti metsade seisund trendid",
+    ], variant);
+  }
+  assert.equal(forestEvidenceIntent("Kas Majakivi otsa saab ronida metsas?"), null);
+  assert.equal(forestEvidenceIntent("Kas metsas saab Majakivi otsa ronida?"), null);
+  assert.equal(forestEvidenceIntent("Kas metsas saab kivi otsa ronida?"), null);
+  assert.equal(forestEvidenceIntent("Loodusretk metsas ja Majakivi otsa ronimine"), null);
+});
+
+test("Majakivi hiking text and tag-only semantic claims cannot outrank depletion evidence", () => {
+  const query = "kas eestis saab mets otsa";
+  const hiking = official({
+    id: "majakivi-hike",
+    title: "Loodusretk Majakivi ja Pikanõmme metsades ning Aardla rabas",
+    summary: "Matka alustame Virve küla lähistelt ning liigume palumetsas Majakivi juurde, kuhu kogu grupp saab soovi korral otsa ronima.",
+    content: "Seejärel liigume üle Aabla raba Pikanõmme luitele.",
+  });
+  const tagOnly = official({
+    id: "tag-only-depletion",
+    title: "Majakivi matkarada",
+    summary: "Grupp liigub metsas rändrahnuni ja ronib selle otsa.",
+    content: "Matk lõpeb vaatetorni juures.",
+    topics: ["mets", "metsa kadumine", "SMI", "tagavara"],
+  });
+  const ranked = rankSearchCandidates(query, [hiking, tagOnly, ...officialServiceCatalogueDocuments()], { now: NOW });
+  assert.deepEqual(ranked.slice(0, 3).map((document) => document.id), [
+    "forest-stock-stable",
+    "forest-area",
+    "forest-condition-review",
+  ]);
+  assert.equal(ranked.some((document) => document.id === hiking.id), false);
+  assert.equal(ranked.some((document) => document.id === tagOnly.id), false);
+
+  const evidence = selectAnswerEvidence(query, ranked);
+  assert.equal(evidence.strong, true);
+  assert.deepEqual(evidence.evidenceRoles, {
+    status: "forest-stock-stable",
+    area: "forest-stock-stable",
+    context: "forest-condition-review",
+  });
+  assert.equal(new Set(evidence.supportingDocumentIds).size, 2);
 });
 
 test("public filters reject invalid values instead of silently dropping them", () => {
@@ -202,7 +268,7 @@ test("maintained task pages stay above incidental live articles with overlapping
     official({ id: "assessment-handbook", title: "KMH/KSH programmi ja aruande menetlus", summary: "Käsiraamat kirjeldab KMH ja KSH menetlust." }),
   ];
   const cases = [
-    ["Kui palju metsa Eestis on ja kuidas seda mõõdetakse?", "forest-area"],
+    ["Kui palju metsa Eestis on ja kuidas seda mõõdetakse?", "forest-stock-stable"],
     ["Veekogumi seisund ja seireproovide tulemused ei ole sama asi", "water-monitoring"],
     ["Eesti gammakiirguse automaatjaamade seiretulemused", "radiation-monitoring"],
     ["Kust näeb Pärnu õhu PM2.5 hetkeseisu?", "air-quality-live"],
@@ -244,8 +310,8 @@ test("forestry answer planning rejects access-control noise and prefers the newe
   const areaRanked = rankSearchCandidates(areaQuery, [...services, currentArea], {
     now: Date.parse("2026-08-19T12:00:00Z"),
   });
-  assert.deepEqual(areaRanked.slice(0, 2).map((document) => document.id).sort(), ["forest-area", "smi-2025-current-area"]);
-  assert.equal(selectAnswerEvidence(areaQuery, areaRanked)?.directDocumentId, "smi-2025-current-area");
+  assert.deepEqual(areaRanked.slice(0, 2).map((document) => document.id).sort(), ["forest-area", "forest-stock-stable"]);
+  assert.equal(selectAnswerEvidence(areaQuery, areaRanked)?.directDocumentId, "forest-stock-stable");
 });
 
 test("public forestry comparison ranking keeps the official source above a supplementary broad match", () => {
@@ -313,7 +379,7 @@ test("public forestry comparison ranking keeps the official source above a suppl
     now,
     intentDocuments: services,
   });
-  assert.equal(areaVisible[0].id, "smi-2025-current-public-area");
+  assert.equal(areaVisible[0].id, "forest-stock-stable");
   assert.ok(areaVisible.some((document) => document.id === "forest-area"));
 
   // An explicit data year must outrank a newer measurement for a different

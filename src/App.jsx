@@ -11,7 +11,6 @@ import {
   CloudSun,
   ExternalLink,
   Facebook,
-  FileText,
   Globe2,
   Instagram,
   Layers3,
@@ -800,20 +799,25 @@ function citationSourceLabel(source) {
   return organization || "Allikas";
 }
 
-function Citation({ number, onNavigate, sources = [], targetPrefix = "source" }) {
+function Citation({ number, sources = [] }) {
   const source = sources.find((candidate) => Number(candidate.citation) === Number(number));
   const label = citationSourceLabel(source);
+  const sourceTitle = source?.title || label;
   return (
-    <a
-      aria-label={`Allikas ${number}: ${source?.title || label}`}
+    <ExternalAnchor
+      aria-label={`Allikas ${number}: ${sourceTitle}${safeExternalHref(source?.url) ? " (avaneb uuel vahelehel)" : ""}`}
       className="citation"
-      href={`#${targetPrefix}-${number}`}
-      onClick={(event) => onNavigate(event, number, targetPrefix)}
+      href={source?.url}
       title={source ? `${source.title} — ${source.organization}` : `Allikas ${number}`}
     >
       <span>{number}</span><span>{label}</span>
-    </a>
+    </ExternalAnchor>
   );
+}
+
+function isRedundantAnswerNote(note) {
+  return String(note || "").replace(/\s+/gu, " ").trim()
+    === "Vastuses kasutatakse ainult kuvatud ametlikke allikaid. Õigusliku või asukohapõhise otsuse puhul kontrolli alati algallikat.";
 }
 
 function sourceTierLabel(value) {
@@ -821,19 +825,6 @@ function sourceTierLabel(value) {
   if (value === "official") return "Ametlik";
   if (value === "supplementary") return "Taustallikas";
   return "Veebiallikas";
-}
-
-function EvidenceLocatorLink({ compact = false, source }) {
-  const locator = safeExternalHref(source?.locator);
-  const primaryUrl = safeExternalHref(source?.url);
-  if (!locator || locator === primaryUrl) return null;
-  return (
-    <ExternalAnchor className={compact ? "evidence-locator evidence-locator--compact" : "evidence-locator"} href={locator}>
-      <FileText size={compact ? 12 : 14} />
-      <span>Ava andmetabel</span>
-      <ExternalLink size={compact ? 11 : 13} />
-    </ExternalAnchor>
-  );
 }
 
 function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRef, interactive = true }) {
@@ -953,7 +944,6 @@ function SearchLoadingSkeleton({ resultsReady = false }) {
 
 function SearchResults({ result, query, busy, error, onSearch, onHome, previewListing }) {
   const hasResult = Boolean(result?.answer);
-  const [showAllSources, setShowAllSources] = useState(false);
   const [listing, setListing] = useState(result?.searchResults || previewListing || null);
   const [listingBusy, setListingBusy] = useState(false);
   const [listingError, setListingError] = useState("");
@@ -967,8 +957,6 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
   const followUpInputRef = useRef(null);
   const listingRequestRef = useRef({ id: 0, controller: null });
   const followUpRequestRef = useRef({ id: 0, controller: null });
-  const sourcesListId = useId();
-  useEffect(() => setShowAllSources(false), [result?.query]);
   useEffect(() => {
     listingRequestRef.current.controller?.abort();
     listingRequestRef.current = { id: listingRequestRef.current.id + 1, controller: null };
@@ -998,7 +986,6 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
     const latestHeading = document.getElementById(`followup-${followUps.length}-title`);
     latestHeading?.focus({ preventScroll: true });
   }, [followUpBusy, followUps.length]);
-  const visibleSources = showAllSources ? result?.sources || [] : (result?.sources || []).slice(0, 3);
   const appliedFilters = clientSearchFilters(listing?.appliedFilters || result?.searchResults?.appliedFilters);
   const loadListingPage = async (page) => {
     listingRequestRef.current.controller?.abort();
@@ -1031,22 +1018,6 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
         setListingBusy(false);
       }
     }
-  };
-  const revealCitation = (event, number, prefix = "source") => {
-    event.preventDefault();
-    const reveal = () => {
-      const target = document.getElementById(`${prefix}-${number}`);
-      if (!target) return false;
-      target.focus({ preventScroll: true });
-      target.scrollIntoView({
-        block: "start",
-        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-      });
-      return true;
-    };
-    if (reveal() || prefix !== "source") return;
-    setShowAllSources(true);
-    window.requestAnimationFrame(() => window.requestAnimationFrame(reveal));
   };
   const applyFilters = (nextFilters) => {
     listingRequestRef.current.controller?.abort();
@@ -1114,17 +1085,17 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
               <h1 ref={headingRef} tabIndex={-1}>{result.answer.title}</h1>
               <p className="answer-intro">
                 {result.answer.intro}{" "}
-                {(result.answer.introCitations || []).map((citation) => <Citation key={citation} number={citation} onNavigate={revealCitation} sources={result.sources} />)}
+                {(result.answer.introCitations || []).map((citation) => <Citation key={citation} number={citation} sources={result.sources} />)}
               </p>
               <div className="answer-parts">
                 {(result.answer.parts || []).map((part, index) => (
                   <section key={index}>
                     {part.title ? <h2>{part.title}</h2> : null}
-                    <p>{part.text} {(part.citations || []).map((citation) => <Citation key={citation} number={citation} onNavigate={revealCitation} sources={result.sources} />)}</p>
+                    <p>{part.text} {(part.citations || []).map((citation) => <Citation key={citation} number={citation} sources={result.sources} />)}</p>
                   </section>
                 ))}
               </div>
-              {result.answer.note ? <div className="answer-note"><ShieldCheck size={18} /><p>{result.answer.note}</p></div> : null}
+              {result.answer.note && !isRedundantAnswerNote(result.answer.note) ? <div className="answer-note"><ShieldCheck size={18} /><p>{result.answer.note}</p></div> : null}
               {result.clarification ? (
                 <div className="answer-clarification">
                   <strong>Täpsusta soovi korral</strong>
@@ -1134,27 +1105,16 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
               <div className="answer-followup">
                 {followUps.length || pendingFollowUpQuestion ? <div className="followup-thread">
                   {followUps.map((turn, turnIndex) => {
-                    const prefix = `followup-${turnIndex + 1}-source`;
                     return (
                       <section className="followup-turn" key={`${turn.question}-${turnIndex}`}>
                         <div className="followup-question"><span>Teie</span><p>{turn.question}</p></div>
                         <div className="followup-answer">
                           <span>Koondvastus</span>
                           <h2 id={`followup-${turnIndex + 1}-title`} tabIndex={-1}>{turn.result.answer.title}</h2>
-                          <p>{turn.result.answer.intro}{" "}{(turn.result.answer.introCitations || []).map((citation) => <Citation key={citation} number={citation} onNavigate={revealCitation} sources={turn.result.sources} targetPrefix={prefix} />)}</p>
+                          <p>{turn.result.answer.intro}{" "}{(turn.result.answer.introCitations || []).map((citation) => <Citation key={citation} number={citation} sources={turn.result.sources} />)}</p>
                           {(turn.result.answer.parts || []).map((part, partIndex) => (
-                            <p key={partIndex}>{part.text}{" "}{(part.citations || []).map((citation) => <Citation key={citation} number={citation} onNavigate={revealCitation} sources={turn.result.sources} targetPrefix={prefix} />)}</p>
+                            <p key={partIndex}>{part.text}{" "}{(part.citations || []).map((citation) => <Citation key={citation} number={citation} sources={turn.result.sources} />)}</p>
                           ))}
-                          {turn.result.sources?.length ? <div className="followup-sources" aria-label={`Jätkuvastuse ${turnIndex + 1} allikad`}>
-                            {turn.result.sources.map((source) => (
-                              <div className="followup-source-item" key={source.id}>
-                                <ExternalAnchor className="followup-source-primary" href={source.url} id={`${prefix}-${source.citation}`}>
-                                  <span>{source.citation}</span><span>{source.title}<small>{source.organization}{source.published ? ` · ${source.published}` : ""}</small></span><ExternalLink size={14} />
-                                </ExternalAnchor>
-                                <EvidenceLocatorLink compact source={source} />
-                              </div>
-                            ))}
-                          </div> : null}
                         </div>
                       </section>
                     );
@@ -1204,41 +1164,6 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
               onFilters={applyFilters}
               onPage={loadListingPage}
             />
-
-            {result.sources.length ? <section className="sources-section" aria-labelledby="sources-title">
-              <div className="sources-title-row">
-                <h2 id="sources-title">Vastuses viidatud allikad</h2>
-                <span>{result.sources.length}</span>
-              </div>
-              <p className="sources-section__hint">Vastuse tekstis olev viide näitab allika nime. Siin saad avada algallika ja kontrollida täielikku konteksti.</p>
-              <div className="sources-list" id={sourcesListId}>
-                {visibleSources.map((source) => (
-                  <div className="source-entry" key={source.id}>
-                    <ExternalAnchor className="source-row" href={source.url} id={`source-${source.citation}`}>
-                      <span className="source-number">{source.citation}</span>
-                      <div className="source-card__body">
-                        <div className="source-meta"><span className={`source-tier source-tier--${source.sourceTier || "official"}`}>{sourceTierLabel(source.sourceTier || "official")}</span><span>{source.organization}</span><span>{source.published}</span></div>
-                        <h3>{source.title}<ExternalLink size={15} /></h3>
-                        <p>{source.summary}</p>
-                      </div>
-                    </ExternalAnchor>
-                    <EvidenceLocatorLink source={source} />
-                  </div>
-                ))}
-              </div>
-              {result.sources.length > 3 ? (
-                <button
-                  aria-controls={sourcesListId}
-                  aria-expanded={showAllSources}
-                  className="sources-toggle"
-                  onClick={() => setShowAllSources((current) => !current)}
-                  type="button"
-                >
-                  {showAllSources ? "Näita vähem" : `Kõik viidatud allikad (${result.sources.length})`}
-                  <ChevronDown className={showAllSources ? "rotated" : ""} size={17} />
-                </button>
-              ) : null}
-            </section> : null}
 
             {result.related?.length ? (
               <section className="related-section">

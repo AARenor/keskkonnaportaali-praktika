@@ -745,6 +745,17 @@ export function buildDiscoveryQuery(query) {
   return [...new Set(terms)].slice(0, 7).join(" ");
 }
 
+function isForestDepletionQuestion(value) {
+  const text = normalize(String(value || "").normalize("NFKC"));
+  if (/\b(?:roni\w*|matk\w*|majakivi|randrahn\w*|kivi\w*|mae\w*)\b/u.test(text)) return false;
+  const forest = "(?:eesti\\s+)?mets(?:a|ad|ade|as|ast|aga|amaal|amaa)?";
+  const modal = "(?:saab|saavad|voib|voivad|voiks|voiksid)";
+  const disappearing = "(?:kaob|kaovad|kadumas|kaduda|havib|havivad|havimas|havida|loppeb|lopevad|loppeda)";
+  const bareShortQuestion = /^mets\w*\s+otsa$/u.test(text)
+    || /^kas\s+mets\w*\s+otsa$/u.test(text);
+  return bareShortQuestion || new RegExp(`(?:\\b${forest}(?:\\s+\\w+){0,3}\\s+${modal}(?:\\s+\\w+){0,3}\\s+otsa(?:\\s+saada)?\\b|\\b${forest}(?:\\s+\\w+){0,3}\\s+otsa\\s+${modal}\\b|\\b${modal}\\s+${forest}(?:\\s+\\w+){0,3}\\s+otsa(?:\\s+saada)?\\b|\\b${modal}\\s+eestis\\s+${forest}(?:\\s+\\w+){0,3}\\s+otsa(?:\\s+saada)?\\b|\\b${forest}(?:\\s+\\w+){0,3}\\s+(?:on\\s+)?(?:ara\\s+)?${disappearing}\\b|\\b${forest}(?:\\s+\\w+){0,3}\\s+${modal}(?:\\s+\\w+){0,3}\\s+(?:ara\\s+)?${disappearing}\\b|\\b(?:metsa|metsade)\\s+(?:kadum|havim)\\w*\\b|\\b(?:enam|varsti)\\s+(?:\\w+\\s+){0,2}metsa\\s+(?:ei\\s+ole|pole)\\b)`, "u").test(text);
+}
+
 // Some short forestry questions lose their actual information need during
 // stemming: "Kui palju metsa?" used to become only "mets" and
 // "SMI ja metsaandmed" did not retain that it is a comparison of data
@@ -759,6 +770,17 @@ export function forestEvidenceIntent(query) {
   const hasForestRegister = /\bmetsaregis\w*/u.test(text);
   const hasComparison = /\b(?:vahe|erinev\w*|vordl\w*|kumb|sama|klap\w*|vastuolu)\b/u.test(text);
   const hasAreaQuestion = /\b(?:kui palju|mitu|kui suur\w*|metsamaa|metsasuse|pindala|osakaal|hektar\w*)\b/u.test(text);
+
+  if (hasForest && isForestDepletionQuestion(text)) {
+    return {
+      kind: "forest-depletion",
+      discoveryQueries: [
+        "metsa tagavara stabiilne SMI",
+        "Eesti metsamaa pindala SMI",
+        "Eesti metsade seisund trendid",
+      ],
+    };
+  }
 
   if (hasForest && hasSmi && (hasForestRegister || (hasForestData && hasComparison))) {
     return {
@@ -913,7 +935,8 @@ function topicRoot(word) {
 }
 
 export function queryTerms(query) {
-  return [...new Set(normalize(query)
+  const normalizedQuery = normalize(query);
+  const roots = [...new Set(normalizedQuery
     .split(/\s+/u)
     .filter((word) => word.length >= 3 && !STOP_WORDS.has(word) && !/^\d+$/u.test(word))
     .flatMap((word) => {
@@ -926,6 +949,11 @@ export function queryTerms(query) {
       if (word.startsWith("pm2")) return ["pm25", "ohukvaliteet"];
       return [topicRoot(word)];
     }))];
+  if (!isForestDepletionQuestion(normalizedQuery)) return roots;
+  // "Otsa" is an idiomatic depletion predicate here, not a useful literal
+  // retrieval token. Mapping it to the concept prevents climbing/trail pages
+  // such as "Majakivi otsa ronima" from receiving full query coverage.
+  return ["mets", "kadumine"];
 }
 
 export function queryRootVariants(root) {
@@ -963,6 +991,7 @@ export function queryRootVariants(root) {
   if (root === "statistika") return ["statist", "smi", "inventuur"];
   if (root === "tulemus") return ["tulemus"];
   if (root === "tulevik") return ["tulevik", "prognoos", "lahiaast"];
+  if (root === "kadumine") return ["kadum", "kaob", "kaovad", "havim", "havib", "havivad", "otsa saam", "enam metsa pole"];
   if (root === "andmed") return ["andme", "avaand"];
   if (root === "metsaregister") return ["metsaregis", "metsaressursi arvestuse"];
   if (root === "avaandmed") return ["avaand"];
@@ -1295,6 +1324,30 @@ const OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     locator: "SMI 2024, lk 3 ja 7: Eesti üldpindala jaotus, metsamaa ning metsaga kaetud pindala.",
   },
   {
+    id: "forest-stock-stable",
+    title: "SMI: metsade tagavara on stabiilne",
+    organization: "Keskkonnaagentuur",
+    type: "Metsastatistika",
+    published: "18.08.2026",
+    url: "https://keskkonnaagentuur.ee/uudised/smi-metsatagavara-stabiilne",
+    tags: ["mets", "SMI", "tagavara", "metsade seisund", "trend", "vanusjaotus"],
+    summary: "SMI 2025 järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast ning kasvava metsa tagavara püsis stabiilsena 466 miljoni m³ juures.",
+    content: "Keskkonnaagentuuri SMI 2025 tulemuste järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast. Kasvava metsa tagavara püsis stabiilsena 466 miljoni m³ juures. Metsamaa pindala, puistute vanuseline struktuur ja kasvava metsa tagavara kirjeldavad eri tahke.",
+    locator: "SMI 2025 põhinäitajad: metsamaa pindala ja osakaal ning kasvava metsa stabiilne tagavara.",
+  },
+  {
+    id: "forest-condition-review",
+    title: "Keskkonnaülevaade – mets",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Keskkonnaülevaade",
+    published: "jooksev",
+    url: "https://keskkonnaportaal.ee/et/keskkonnaulevaade/keskkonnaulevaade-mets",
+    tags: ["mets", "metsade seisund", "kahjustused", "elurikkus", "kliimarisk", "trend"],
+    summary: "Metsa seisundi tervikpildi jaoks käsitleb Keskkonnaülevaade eraldi metsa pindala, tagavara, vanuselist struktuuri, kahjustusi, elurikkust ja kaitset.",
+    content: "Metsa püsimist ja seisundit ei kirjelda üks näitaja. Keskkonnaülevaade käsitleb eraldi metsa pindala, tagavara ja vanuselist struktuuri ning metsade kahjustusi, elurikkust, kaitset ja kliimaga seotud riske.",
+    locator: "Metsade seisundit, kahjustusi, elurikkust, kaitset ja kliimaga seotud riske käsitlevad näitajad.",
+  },
+  {
     id: "metsainfo-hetkeseis",
     title: "Metsainfo hetkeseis",
     organization: "Keskkonnaagentuur / Keskkonnaportaal",
@@ -1335,6 +1388,9 @@ const OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
 export function forestryIntentServiceDocumentIds(query) {
   const intent = forestEvidenceIntent(query);
   if (intent?.kind === "forest-area") return ["forest-area", "smi"];
+  if (intent?.kind === "forest-depletion") {
+    return ["forest-stock-stable", "forest-area", "forest-condition-review", "smi"];
+  }
   if (intent?.kind === "forest-data-sources") {
     return ["smi-metsaregister", "smi", "metsainfo-hetkeseis", "metsaregister"];
   }
@@ -1397,7 +1453,7 @@ export function composeSearchResponse(query, rankedDocuments, options = {}) {
         : "Täpset ja piisavalt asjakohast ametlikku tõendit ei leitud. Ma ei asenda puuduvat tõendit üldteadmise ega juhusliku artikliga.",
       introCitations: [],
       parts: [],
-      note: "Vastuses kasutatakse ainult kuvatud ametlikke allikaid. Õigusliku või asukohapõhise otsuse puhul kontrolli alati algallikat.",
+      note: "",
     },
     sources: chosen.map(({ score: _score, semanticScore: _semanticScore, combinedScore: _combinedScore, tags, ...source }) => ({
       ...source,

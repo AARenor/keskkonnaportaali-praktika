@@ -389,6 +389,149 @@ test("degraded SMI comparison fallback gives visible-source roles instead of a c
   assert.equal(validatedReplacement.intro, validLunaReplacement);
 });
 
+test("forest depletion answer uses three visible evidence roles and never cites the Majakivi phrase match", async () => {
+  const query = "kas eestis saab mets otsa";
+  const sourceIds = new Set(["forest-stock-stable", "forest-area", "forest-condition-review"]);
+  const officialSources = officialServiceCatalogueDocuments().filter((source) => sourceIds.has(source.id));
+  const majakivi = {
+    id: "majakivi-hike",
+    title: "Loodusretk Majakivi ja Pikanõmme metsades ning Aardla rabas",
+    organization: "Keskkonnaamet",
+    type: "Uudis",
+    published: "2025",
+    url: "https://keskkonnaamet.ee/loodusretk-majakivi-ja-pikanomme-metsades-ning-aardla-rabas",
+    sourceTier: "official",
+    topics: ["mets", "loodusretk"],
+    summary: "Matka alustame Virve küla lähistelt ning liigume palumetsas Majakivi juurde, kuhu kogu grupp saab soovi korral otsa ronima.",
+  };
+  const visibleListing = [...officialSources, majakivi];
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    searchResults: { total: visibleListing.length, items: visibleListing },
+  });
+
+  assert.equal(draft.evidence.answerable, true);
+  assert.equal(draft.evidence.syntheticFallback, "forest-depletion");
+  assert.deepEqual(draft.evidence.quality.supportingDocumentIds, [
+    "forest-stock-stable",
+    "forest-condition-review",
+  ]);
+  assert.deepEqual(draft.sources.map((source) => source.id), [
+    "forest-stock-stable",
+    "forest-area",
+    "forest-condition-review",
+  ]);
+  assert.equal(draft.sources.some((source) => source.id === majakivi.id), false);
+  assert.match(draft.answer.intro, /ei viita sellele, et Eesti mets oleks otsa saamas/iu);
+  assert.match(draft.answer.intro, /2,36 miljonit hektarit.*52,1%.*stabiilsena 466 miljoni m³/iu);
+  assert.match(draft.answer.intro, /mitte kindlat tulevikuprognoosi/iu);
+  assert.doesNotMatch(draft.answer.intro, /raiemaht/iu);
+  assert.doesNotMatch(draft.answer.parts.map((part) => part.text).join(" "), /raiemaht/iu);
+  assert.equal(draft.answer.note, "");
+
+  const visibleCitations = new Set(draft.sources.map((source) => source.citation));
+  const usedCitations = new Set([
+    ...draft.answer.introCitations,
+    ...draft.answer.parts.flatMap((part) => part.citations),
+  ]);
+  assert.equal(usedCitations.size, 2);
+  assert.ok([...usedCitations].every((citation) => visibleCitations.has(citation)));
+  assert.equal(draftMatchesListingAndFilters(draft, { items: visibleListing }), true);
+
+  const request = buildLlmRequest({
+    selectedModel: "gpt-5.6-luna",
+    query,
+    evidence: buildBoundedEvidence(draft, query),
+    singleSource: false,
+  });
+  const systemPrompt = request.body.input[0].content[0].text;
+  assert.match(systemPrompt, /praegused andmed ei toeta peatse kadumise järeldust/iu);
+  assert.match(systemPrompt, /Sünteesi vastus oma sõnadega/iu);
+  assert.match(systemPrompt, /nii neid arve toetavat statistikaallikat kui ka tervikpilti toetavat seisundiallikat/iu);
+  assert.match(systemPrompt, /Ignoreeri matkaradu, ronimist/iu);
+
+  const modelIntro = "Praegused ametlikud SMI näitajad ei viita sellele, et Eesti mets oleks otsa saamas. Metsa püsimist ja seisundit ei kirjelda üks näitaja: metsamaa pindala, tagavara ja vanuseline struktuur on eri tahud.";
+  const modelAnswer = validateGroundedAnswer({
+    intro: modelIntro,
+    intro_citations: [1, 3],
+    parts: [],
+    related_questions: [],
+  }, draft, query);
+  assert.equal(modelAnswer.intro, modelIntro);
+
+  const providerIntro = "Praegused andmed ei toeta järeldust, et Eesti mets võiks peagi otsa saada. Metsa püsimist ja seisundit ei kirjelda üks näitaja: metsamaa pindala, tagavara ja vanuseline struktuur on eri tahud.";
+  const providerAnswer = validateGroundedAnswer({
+    intro: providerIntro,
+    intro_citations: [1, 3],
+    parts: [],
+    related_questions: [],
+  }, draft, query);
+  assert.equal(providerAnswer.intro, providerIntro);
+
+  for (const boundedForm of [
+    "Praegused andmed ei toeta väidet, et Eesti mets olevat lähiajal otsa saavat.",
+    "Praegused andmed ei toeta järeldust, et Eesti mets saaks peagi otsa.",
+  ]) {
+    assert.doesNotThrow(() => validateGroundedAnswer({
+      intro: `${boundedForm} Metsa püsimist ja seisundit ei kirjelda üks näitaja: metsamaa pindala, tagavara ja vanuseline struktuur on eri tahud.`,
+      intro_citations: [1, 3],
+      parts: [],
+      related_questions: [],
+    }, draft, query));
+  }
+
+  assert.throws(() => validateGroundedAnswer({
+    intro: "Eesti mets ei saa kunagi otsa.",
+    intro_citations: [1],
+    parts: [],
+    related_questions: [],
+  }, draft, query));
+
+  for (const falseTrend of ["langes", "suurenes"]) {
+    assert.throws(() => validateGroundedAnswer({
+      intro: `Praegused ametlikud näitajad ei viita sellele, et Eesti mets oleks otsa saamas. SMI 2025 järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast ning kasvava metsa tagavara ${falseTrend} 466 miljoni m³ juurde. Metsa püsimist ja seisundit ei kirjelda üks näitaja: metsamaa pindala, tagavara ja vanuseline struktuur on eri tahud.`,
+      intro_citations: [1, 3],
+      parts: [],
+      related_questions: [],
+    }, draft, query), /polarity/iu);
+  }
+});
+
+test("forest depletion fallback fails closed when visible measurement tuples contradict the reviewed values", async () => {
+  const query = "kas eestis saab mets otsa";
+  const visibleListing = [{
+    id: "different-status",
+    title: "SMI 2023 metsaseis",
+    organization: "Amet",
+    type: "Statistika",
+    published: "2023",
+    url: "https://example.test/status",
+    sourceTier: "official",
+    summary: "SMI 2023 järgi oli Eesti metsamaa pindala 1,00 miljonit hektarit ehk 25% Eesti pindalast ning kasvava metsa tagavara vähenes 100 miljoni m³ juurde.",
+    content: "SMI 2023 järgi oli metsamaa pindala 1,00 miljonit hektarit. Kasvava metsa tagavara vähenes 100 miljoni m³ juurde.",
+  }, {
+    id: "different-context",
+    title: "Metsa seisundi näitajad",
+    organization: "Amet",
+    type: "Ülevaade",
+    published: "2023",
+    url: "https://example.test/context",
+    sourceTier: "official",
+    summary: "Metsa seisundit kirjeldavad pindala, tagavara, vanuseline struktuur, kahjustused, elurikkus ja kaitse.",
+    content: "Metsa seisund hõlmab pindala, tagavara, vanuselist struktuuri, kahjustusi, elurikkust ja kaitset.",
+  }];
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    searchResults: { total: visibleListing.length, items: visibleListing },
+  });
+
+  assert.equal(draft.evidence.quality.strong, true);
+  assert.equal(draft.evidence.syntheticFallback, undefined);
+  assert.match(draft.answer.intro, /SMI 2023/iu);
+  assert.doesNotMatch(draft.answer.intro, /SMI 2025|2,36|52,1|466|stabiil/iu);
+  assert.ok(draft.answer.introCitations.every((citation) => draft.sources.some((source) => source.citation === citation)));
+});
+
 test("coarse forestry role words cannot unlock the detailed deterministic comparison fallback", async () => {
   const query = "Mis vahe on SMI ja metsaandmed?";
   const weakSources = [{
@@ -858,6 +1001,84 @@ test("LLM validation binds each measurement to the correct entity, year, unit an
     intro_citations: [1],
     parts: [],
   }, draft, query), /(?:reverses the polarity|sensitive numeric)/u);
+});
+
+test("the same calendar year may add or omit only the grammatical aasta marker", () => {
+  const query = "Kui palju metsa on Eestis?";
+  const draftFor = (intro) => ({
+    evidence: { kind: "ranked-search-results", answerable: true },
+    answer: {
+      title: query,
+      intro,
+      introCitations: [1],
+      parts: [],
+      note: "",
+    },
+    sources: [{ citation: 1, title: "SMI 2025", content: intro }],
+  });
+  const withoutMarker = "SMI 2025 järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast.";
+  const withMarker = "2025. aasta andmetel oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast.";
+
+  assert.doesNotThrow(() => validateGroundedAnswer({
+    intro: withMarker,
+    intro_citations: [1],
+    parts: [],
+  }, draftFor(withoutMarker), query));
+  assert.doesNotThrow(() => validateGroundedAnswer({
+    intro: withoutMarker,
+    intro_citations: [1],
+    parts: [],
+  }, draftFor(withMarker), query));
+
+  const depletionQuery = "kas eestis saab mets otsa";
+  const depletionEvidence = [
+    "SMI 2025 järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast ning kasvava metsa tagavara püsis stabiilsena 466 miljoni m³ juures.",
+    "2025. aastal oli metsamaa pindala 2,36 miljonit hektarit, millel kasvas 466 miljonit m³ puitu.",
+    "Mittemajandatava metsamaa pindala oli 2025. aastal 476 000 ha.",
+    "Suurima pindalaga on kaasikud (0,71 miljonit ha) ja männikud (0,70 miljonit ha).",
+    "Okaspuu enamusega metsade pindala oli 1,13 miljonit hektarit ja tagavara 247 miljonit m³.",
+  ].join(" ");
+  const depletionDraft = {
+    evidence: { kind: "ranked-search-results", answerable: true },
+    answer: {
+      title: depletionQuery,
+      intro: depletionEvidence,
+      introCitations: [1],
+      parts: [],
+      note: "",
+    },
+    sources: [{
+      citation: 1,
+      title: "SMI: metsade tagavara on stabiilne",
+      content: depletionEvidence,
+    }, {
+      citation: 2,
+      title: "Keskkonnaülevaade – mets",
+      content: "Metsa püsimist ja seisundit ei kirjelda üks näitaja. Tervikpilt hõlmab pindala, tagavara, vanuselist struktuuri, kahjustusi, elurikkust, kaitset ja kliimariske.",
+    }],
+  };
+  const lunaRestatement = "Praegused ametlikud näitajad ei viita sellele, et Eesti mets oleks otsa saamas. SMI 2025. aasta andmetel oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast ning kasvava metsa tagavara püsis stabiilsena 466 miljoni m³ juures. Tervikpilt hõlmab pindala, tagavara, vanuselist struktuuri, kahjustusi, elurikkust, kaitset ja kliimariske.";
+  assert.doesNotThrow(() => validateGroundedAnswer({
+    intro: lunaRestatement,
+    intro_citations: [1, 2],
+    parts: [],
+  }, depletionDraft, depletionQuery));
+  assert.throws(() => validateGroundedAnswer({
+    intro: lunaRestatement,
+    intro_citations: [1],
+    parts: [],
+  }, depletionDraft, depletionQuery), /not sufficiently supported/u);
+
+  assert.throws(() => validateGroundedAnswer({
+    intro: "2024. aasta andmetel oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast.",
+    intro_citations: [1],
+    parts: [],
+  }, draftFor(withoutMarker), query), /(?:ungrounded numeric claim|sensitive numeric)/u);
+  assert.throws(() => validateGroundedAnswer({
+    intro: "2025. aasta andmetel oli Eesti metsamaa pindala 2,36 miljonit tonni ehk 52,1% Eesti pindalast.",
+    intro_citations: [1],
+    parts: [],
+  }, draftFor(withoutMarker), query), /(?:ungrounded numeric claim|sensitive numeric)/u);
 });
 
 test("sensitive claim validation rejects compact table swaps, year-pair swaps, mass changes and comparator argument swaps", () => {
@@ -1491,13 +1712,12 @@ test("public page uses the complete Terrapoint application and permits only its 
   assert.match(server, /frame-src 'self' https:\/\/www\.openstreetmap\.org https:\/\/terrapoint\.ee/);
 });
 
-test("structured evidence exposes its exact data-table locator in root and follow-up sources", async () => {
+test("answer citations link directly to their source instead of duplicating a source list", async () => {
   const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
-  assert.match(app, /function EvidenceLocatorLink/u);
-  assert.match(app, /href=\{locator\}/u);
-  assert.match(app, /Ava andmetabel/u);
-  assert.match(app, /<EvidenceLocatorLink compact source=\{source\} \/>/u);
-  assert.match(app, /<EvidenceLocatorLink source=\{source\} \/>/u);
+  const citation = app.match(/function Citation[\s\S]*?function sourceTierLabel/u)?.[0] || "";
+  assert.match(citation, /<ExternalAnchor/u);
+  assert.match(citation, /href=\{source\?\.url\}/u);
+  assert.doesNotMatch(app, /function EvidenceLocatorLink|Ava andmetabel/u);
 });
 
 test("search keeps privacy conditions in the footer instead of crowding either form", async () => {
@@ -1519,11 +1739,14 @@ test("search keeps privacy conditions in the footer instead of crowding either f
   assert.match(privacy, /kuni 50 otsingu teksti ainult avatud lehe protsessimälus/u);
 });
 
-test("citation targets remain focusable after evidence locator links are added", async () => {
+test("inline citations use safe external source links instead of internal anchors", async () => {
   const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
-  assert.match(app, /<ExternalAnchor className="followup-source-primary" href=\{source\.url\} id=\{`\$\{prefix\}-\$\{source\.citation\}`\}>/u);
-  assert.match(app, /<ExternalAnchor className="source-row" href=\{source\.url\} id=\{`source-\$\{source\.citation\}`\}>/u);
-  assert.doesNotMatch(app, /<div className="(?:followup-source-item|source-entry)" id=/u);
+  const citation = app.match(/function Citation[\s\S]*?function sourceTierLabel/u)?.[0] || "";
+  assert.match(citation, /<ExternalAnchor/u);
+  assert.match(citation, /href=\{source\?\.url\}/u);
+  assert.match(citation, /safeExternalHref\(source\?\.url\)/u);
+  assert.doesNotMatch(citation, /href=\{`#\$\{targetPrefix\}/u);
+  assert.doesNotMatch(app, /Vastuses viidatud allikad|sources-section|followup-sources/u);
 });
 
 test("unknown API paths never fall through to the SPA HTML shell", async () => {

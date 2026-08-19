@@ -11,7 +11,7 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 ## Durable product decisions
 
 - Keep the primary natural-language search visible in the first mobile viewport, before the gateway tiles.
-- Search results should feel compact and Google-like: direct answer first, inline numbered citations, three compact sources by default, then related questions.
+- Search results should feel compact and Google-like: direct answer first, inline numbered links to the cited originals, the broad relevance-ranked result list, then related questions.
 - Never expose provider names, model names, vector stores, databases, fallback labels, connection states, or other infrastructure jargon in the public UI or public API response.
 - Terrapoint belongs only in its dedicated full-app iframe section. Do not use Terrapoint branding, provider metadata, redirects, or results in the general Keskkonnaportaal search.
 - An embedded application must never autofocus or move the host page on initial load. Verify a fresh desktop load remains at `scrollY === 0` and the iframe is not the active element.
@@ -23,3 +23,6 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 - AI eligibility requires one actual title/summary/full-text passage to cover the question; manually assigned tags alone never authorize a factual answer. If the model fails, a cited current-source extract may be shown instead of an old prewritten answer.
 - Search results expose stable source, content-type, year and sort filters. Changing a filter invalidates and rebuilds the answer from the filtered evidence.
 - The answer typography stays restrained and visually coherent with the result list, and the answer supports bounded, cited inline follow-up questions that re-run retrieval for every turn.
+- Inline answer citations open the cited HTTPS source directly in a new tab. Do not route citation clicks to a duplicate in-page source-card section.
+- Do not render a separate "Vastuses viidatud allikad" section or the generic "Vastuses kasutatakse ainult kuvatud ametlikke allikaid" disclaimer under every answer; keep the broad ranked results and inline source links as the compact verification path.
+- Broad conceptual questions may be synthesized in the model's own words, but a coincidental keyword match never authorizes evidence. Retrieve several intent-relevant official sources, give the model enough bounded full-text context, and require every material factual claim to remain grounded in those visible sources.

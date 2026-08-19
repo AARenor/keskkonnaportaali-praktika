@@ -312,6 +312,47 @@ function forestAreaEvidence(document) {
   };
 }
 
+function forestDepletionEvidence(document) {
+  const passages = evidenceSourcePassages(document);
+  const statusPassage = passages.find((passage) => {
+    const text = normalize(passage);
+    const hasForestStock = /\b(?:kasvava\s+metsa\s+tagavara|metsa\s+tagavara|metsavaru)\w*/u.test(text);
+    const hasMeasuredDirection = /\b(?:stabiil\w*|pusi\w*|suuren\w*|vahen\w*|kahan\w*|lang\w*)\b/u.test(text);
+    return hasForestStock && hasMeasuredDirection;
+  });
+  const area = forestAreaEvidence(document);
+  const contextPassage = passages.find((passage) => {
+    const text = normalize(passage);
+    const dimensions = [
+      /\bpindala\w*/u,
+      /\btagavara\w*/u,
+      /\bvanus\w*|vanuselis\w*/u,
+      /\bkahjust\w*/u,
+      /\belurikk\w*/u,
+      /\bkaits\w*/u,
+      /\bkliima\w*|risk\w*/u,
+    ].filter((pattern) => pattern.test(text)).length;
+    return /\bmets\w*/u.test(text) && dimensions >= 3;
+  });
+  const roles = [
+    statusPassage ? "status" : null,
+    area.satisfies ? "area" : null,
+    contextPassage ? "context" : null,
+  ].filter(Boolean);
+  return {
+    satisfies: roles.length > 0,
+    score: (statusPassage ? 100 : 0)
+      + (area.satisfies ? 70 : 0)
+      + (contextPassage ? 55 : 0),
+    passages: uniquePassages([
+      statusPassage,
+      ...(area.passages || []),
+      contextPassage,
+    ].filter(Boolean), 3),
+    roles,
+  };
+}
+
 function forestDataSourcesEvidence(document) {
   const text = evidenceSourceText(document);
   const hasSmi = /\b(?:smi|statistilise\s+metsainvent\w*)/iu.test(text);
@@ -346,8 +387,9 @@ function forestDataSourcesEvidence(document) {
 
 function intentEvidenceForDocument(intent, document) {
   if (intent?.kind === "forest-area") return forestAreaEvidence(document);
+  if (intent?.kind === "forest-depletion") return forestDepletionEvidence(document);
   if (intent?.kind === "forest-data-sources") return forestDataSourcesEvidence(document);
-  return { satisfies: false, score: 0, passages: [] };
+  return { satisfies: false, score: 0, passages: [], roles: [] };
 }
 
 // This is deliberately a semantic contract rather than a prewritten answer:
@@ -380,16 +422,42 @@ export function selectAnswerEvidence(query, documents = []) {
         : right.publishedAt - left.publishedAt || right.score - left.score)
       : right.score - left.score || right.publishedAt - left.publishedAt)
       || left.index - right.index);
-  const direct = candidates.find((candidate) => candidate.satisfies);
+  const depletionStatusId = intent.kind === "forest-depletion"
+    ? candidates.find((candidate) => candidate.roles?.includes("status"))?.document?.id || null
+    : null;
+  const depletionAreaId = intent.kind === "forest-depletion"
+    ? candidates.find((candidate) => candidate.roles?.includes("area"))?.document?.id || null
+    : null;
+  const depletionContextId = intent.kind === "forest-depletion"
+    ? candidates.find((candidate) => candidate.roles?.includes("context")
+      && ![depletionStatusId, depletionAreaId].includes(candidate.document.id))?.document?.id || null
+    : null;
+  const evidenceRoles = intent.kind === "forest-depletion" ? {
+    status: depletionStatusId,
+    area: depletionAreaId,
+    context: depletionContextId,
+  } : null;
+  const direct = intent.kind === "forest-depletion"
+    ? candidates.find((candidate) => candidate.document.id === evidenceRoles.status)
+    : candidates.find((candidate) => candidate.satisfies);
+  const strong = intent.kind === "forest-depletion"
+    ? Boolean(direct
+      && evidenceRoles.area
+      && evidenceRoles.context
+      && new Set(Object.values(evidenceRoles).filter(Boolean)).size >= 2)
+    : Boolean(direct);
   return {
     kind: intent.kind,
-    strong: Boolean(direct),
+    strong,
     directDocumentId: direct?.document?.id || null,
     passages: direct?.passages || [],
-    supportingDocumentIds: candidates
-      .filter((candidate) => candidate.satisfies)
-      .slice(0, 3)
-      .map((candidate) => candidate.document.id),
+    supportingDocumentIds: intent.kind === "forest-depletion"
+      ? [...new Set(Object.values(evidenceRoles).filter(Boolean))]
+      : candidates
+        .filter((candidate) => candidate.satisfies)
+        .slice(0, 3)
+        .map((candidate) => candidate.document.id),
+    evidenceRoles,
   };
 }
 
@@ -674,11 +742,13 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
   const liveService = liveServiceIntentScore(query, roots, document);
   const cadastreService = CADASTRE_PATTERN.test(query) && CADASTRE_SERVICE_IDS.has(document.id);
   const servicePriority = serviceIntentPriority(query, roots, document);
-  const intentEvidence = intentEvidenceForDocument(forestEvidenceIntent(query), document);
+  const forestryIntent = forestEvidenceIntent(query);
+  const intentEvidence = intentEvidenceForDocument(forestryIntent, document);
   const primaryTopic = assessSearchQuery(query).topic;
   const primaryIntentMatched = !primaryTopic
     || fieldHasRoot(searchableText, primaryTopic)
     || liveService > 0;
+  const semanticIntentMatched = forestryIntent?.kind !== "forest-depletion" || intentEvidence.score > 0;
   const score = semantic
     + coverageScore
     + ageIntentScore(document, roots, now)
@@ -696,7 +766,9 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
     - (futureDated ? 0.6 : 0);
   return {
     score,
-    matched: primaryIntentMatched && (semantic > 0 || coveredRoots > 0 || sqlSignal > 0 || liveService > 0 || cadastreService),
+    matched: primaryIntentMatched
+      && semanticIntentMatched
+      && (semantic > 0 || coveredRoots > 0 || sqlSignal > 0 || liveService > 0 || cadastreService),
     servicePriority,
     answerEvidencePriority: intentEvidence.satisfies ? 6 : 0,
     relevanceBucket: Math.floor(Math.max(score, 0) / 6),
