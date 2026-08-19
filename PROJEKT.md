@@ -175,7 +175,7 @@ Vaikimisi käivituvad veebirakendus ja PostgreSQL. Eksperimentaalse Qdranti kont
 
 - build pack: **Dockerfile**;
 - sisemine port: `3000`;
-- Coolify konteineri readiness health check: `/api/health/container-readiness` iga sekundi järel, timeout 2 s ja üks ebaõnnestumine; avalik minimaalne olek jääb `/api/health`;
+- Coolify konteineri readiness health check: `/api/health/container-readiness` iga sekundi järel, timeout 2 s ja kolm järjestikust ebaõnnestumist; avalik minimaalne olek jääb `/api/health`. Kolme katse aken väldib ühe lühikese event-loop'i viivituse tõttu ainsa terve backendi eemaldamist, kuid viiesekundiline shutdown-drain jätab rolling deploy'l endiselt aega vana konteiner enne sulgemist marsruudist eemaldada;
 - domeen: `https://praktika.arleserver.cfd`;
 - `PUBLIC_ORIGIN=https://praktika.arleserver.cfd`;
 - projektile eraldatud `DATABASE_URL`;
@@ -226,11 +226,20 @@ npm run audit:load -- --base-url=https://praktika.arleserver.cfd
 npm run audit:load-results -- --base-url=https://praktika.arleserver.cfd
 ```
 
-`audit:load-results` kontrollib eraldi tulemuste endpoint'i jagatud koormuspiiri. Tootmise
-`SEARCH_MAX_CONCURRENCY=8` korral peavad 20 korraga alustatud päringust kaheksa tegema
-täismahus töö ning 12 saama kontrollitud `429` capacity-vastuse koos `Retry-After: 2`
-päisega; sama rate-limit akna 21. päring peab saama `429` ja `Retry-After: 60`.
-Timeout, 5xx või teistsugune jaotus ebaõnnestab auditi.
+`audit:load-results` kontrollib eraldi tulemuste endpoint'i jagatud koormuspiiri ja
+portaalilehe kättesaadavust. Avalikus Cloudflare'i ees olevas tootmises on 20 samaaegse
+päringu täpne 8/12 jaotus ainult vaatlusnäitaja: edge võib päringud origin'ini ajastada
+mitmes laines, kuid iga vastus peab olema kas valmis tulemuste `200` või kontrollitud
+capacity-`429` koos `Retry-After: 2` päisega. Otsese origin'i kontrollis saab lisada
+`--strict-capacity=true`; siis peab `SEARCH_MAX_CONCURRENCY=8` korral jaotus olema täpselt
+8 valmis tulemust ja 12 capacity-vastust.
+
+Koormuspuhangu järel tehtav 21. päring on teadlikult **rate-limit'i proov**, mitte aktiivse
+otsingukonkurentsi mõõtmine: see peab saama `429` ja `Retry-After: 60`. Audit teeb puhangu
+ajal ning vaikimisi veel 10 sekundi järel cache-busted `GET /` ja `GET /api/health` proove;
+kumbki ei tohi anda 5xx ega ületada 2,5 sekundit. Aega saab lokaalses kiirtestis muuta
+valikuga `--availability-tail-ms=0`. Timeout, 5xx, vale tulemuseendpoint'i vastuseklass või
+rate-limit'i päise puudumine ebaõnnestab auditi.
 
 Automaattestid kontrollivad muu hulgas:
 

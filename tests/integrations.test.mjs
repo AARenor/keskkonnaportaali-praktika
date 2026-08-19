@@ -2,10 +2,42 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   articleText,
+  createAbortableConcurrencyGate,
   fetchOfficialJsonDataset,
   readBoundedResponseText,
   validatedOfficialUrl,
 } from "../server/integrations.mjs";
+
+test("official discovery concurrency gate limits work and removes an aborted queued request", async () => {
+  const gate = createAbortableConcurrencyGate(2);
+  let active = 0;
+  let maximumActive = 0;
+  const completed = [];
+  const tasks = Array.from({ length: 5 }, (_, index) => gate.run(async () => {
+    active += 1;
+    maximumActive = Math.max(maximumActive, active);
+    await new Promise((resolve) => setTimeout(resolve, 8));
+    completed.push(index);
+    active -= 1;
+    return index;
+  }));
+  assert.deepEqual(await Promise.all(tasks), [0, 1, 2, 3, 4]);
+  assert.equal(maximumActive, 2);
+  assert.deepEqual(gate.stats(), { active: 0, queued: 0, limit: 2 });
+
+  const abortGate = createAbortableConcurrencyGate(1);
+  let release;
+  const blocker = abortGate.run(() => new Promise((resolve) => {
+    release = resolve;
+  }));
+  const controller = new AbortController();
+  const queued = abortGate.run(() => "must not run", { signal: controller.signal });
+  controller.abort();
+  await assert.rejects(queued, (error) => error?.name === "AbortError");
+  assert.deepEqual(abortGate.stats(), { active: 1, queued: 0, limit: 1 });
+  release("done");
+  assert.equal(await blocker, "done");
+});
 
 test("an already aborted official request never returns a fresh or stale cache entry", async () => {
   const originalFetch = globalThis.fetch;

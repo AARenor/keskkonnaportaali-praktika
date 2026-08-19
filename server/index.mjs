@@ -377,6 +377,8 @@ async function handleSearchResults(request, response) {
       signal: controller.signal,
     }), Math.max(250, deadlineAt - Date.now()), null, controller);
     if (!results) {
+      response.setHeader("Cache-Control", "no-store");
+      response.setHeader("Retry-After", "2");
       return response.status(503).json({
         error: "Otsingutulemuste laadimine võttis liiga kaua. Proovi uuesti.",
         retryable: true,
@@ -385,6 +387,8 @@ async function handleSearchResults(request, response) {
     response.setHeader("Cache-Control", "no-store");
     return response.json(publicSearchListing(results));
   } catch {
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("Retry-After", "2");
     return response.status(502).json({
       error: "Otsingutulemuste allikad ei vastanud. Proovi hetke pärast uuesti.",
       retryable: true,

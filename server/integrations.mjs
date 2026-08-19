@@ -63,6 +63,77 @@ const VPORTAL_CA = [
 const responseCache = new Map();
 const MAX_CACHE_ENTRIES = 250;
 const MAX_UPSTREAM_BYTES = 2_000_000;
+const MAX_CONCURRENT_OFFICIAL_DISCOVERIES = 2;
+const MAX_DISCOVERY_DOCUMENT_TEXT = 7_500;
+const MAX_DISCOVERY_MARKUP = 48_000;
+
+export function createAbortableConcurrencyGate(maximum = 1) {
+  const limit = Math.max(1, Math.min(Number(maximum) || 1, 20));
+  const queued = [];
+  let active = 0;
+
+  const abortError = (signal) => signal?.reason instanceof Error
+    ? signal.reason
+    : new DOMException("The operation was aborted", "AbortError");
+
+  const drain = () => {
+    while (active < limit && queued.length) {
+      const entry = queued.shift();
+      if (entry.signal?.aborted) {
+        entry.detachAbort();
+        entry.reject(abortError(entry.signal));
+        continue;
+      }
+      active += 1;
+      entry.detachAbort();
+      Promise.resolve()
+        .then(entry.operation)
+        .then(entry.resolve, entry.reject)
+        .finally(() => {
+          active -= 1;
+          drain();
+        });
+    }
+  };
+
+  return {
+    run(operation, { signal } = {}) {
+      if (typeof operation !== "function") {
+        return Promise.reject(new TypeError("A concurrency-gated operation must be a function"));
+      }
+      if (signal?.aborted) return Promise.reject(abortError(signal));
+      return new Promise((resolve, reject) => {
+        const entry = {
+          operation,
+          signal,
+          resolve,
+          reject,
+          detachAbort: () => undefined,
+        };
+        const onAbort = () => {
+          const index = queued.indexOf(entry);
+          if (index < 0) return;
+          queued.splice(index, 1);
+          entry.detachAbort();
+          reject(abortError(signal));
+        };
+        entry.detachAbort = () => signal?.removeEventListener("abort", onAbort);
+        signal?.addEventListener("abort", onAbort, { once: true });
+        queued.push(entry);
+        drain();
+      });
+    },
+    stats() {
+      return { active, queued: queued.length, limit };
+    },
+  };
+}
+
+// Kaheksa kasutajaotsingut võivad muidu korraga käivitada kuni 72 ametliku
+// indeksi päringut. Kaks samaaegset otsingulaiendust hoiavad väliste päringute,
+// JSON-i ja HTML-i puhastamise töö piisavalt väikese, et tervise- ja staatilised
+// lehed ei jääks koormuspiigi ajal Node'i event loop'i taha ootama.
+const officialDiscoveryGate = createAbortableConcurrencyGate(MAX_CONCURRENT_OFFICIAL_DISCOVERIES);
 
 function cleanText(value = "") {
   return String(value)
@@ -205,11 +276,32 @@ function officialPortalUrl(value) {
   }
 }
 
-function stripMarkup(value = "") {
-  if (!value) return "";
-  const $ = load(`<main>${String(value)}</main>`);
+function stripMarkup(value = "", maximumInputChars = MAX_DISCOVERY_MARKUP) {
+  const input = String(value || "").slice(0, Math.max(1, Number(maximumInputChars) || MAX_DISCOVERY_MARKUP));
+  if (!input) return "";
+  const $ = load(`<main>${input}</main>`);
   $("script, style, noscript").remove();
   return cleanText($("main").text());
+}
+
+function boundedVportalContent(fragments = []) {
+  let content = "";
+  for (const fragment of fragments) {
+    if (content.length >= MAX_DISCOVERY_DOCUMENT_TEXT) break;
+    const remaining = MAX_DISCOVERY_DOCUMENT_TEXT - content.length;
+    // Kuna lõppvastusse jõuab niigi kõige rohkem 7500 puhast tähemärki,
+    // ei tohi üks ametliku otsingu ebatavaliselt suur HTML-väli kogu event
+    // loop'i enne seda piiri ära kasutada.
+    const rawLimit = Math.max(4_000, Math.min(MAX_DISCOVERY_MARKUP, remaining * 6));
+    const cleaned = stripMarkup(fragment, rawLimit).slice(0, remaining);
+    if (!cleaned) continue;
+    content = `${content}${content ? "\n" : ""}${cleaned}`.slice(0, MAX_DISCOVERY_DOCUMENT_TEXT);
+  }
+  return content;
+}
+
+function yieldToEventLoop() {
+  return new Promise((resolve) => setImmediate(resolve));
 }
 
 function officialDate(value) {
@@ -309,27 +401,28 @@ async function searchVportalSite(site, query, limit, options) {
   url.searchParams.set("langcode", "et");
   url.searchParams.set("limit", String(limit));
   const { payload, cache, stale } = await fetchVportalJson(url, site.origin, options);
-  const documents = payload.response.docs.flatMap((item) => {
+  const documents = [];
+  const items = payload.response.docs.slice(0, Math.max(1, Math.min(Number(limit) || 5, 6)));
+  for (const item of items) {
+    throwIfRequestAborted(options.signal);
     let sourceUrl;
     try {
       sourceUrl = new URL(item.uri, site.baseUrl);
     } catch {
-      return [];
+      continue;
     }
-    if (sourceUrl.protocol !== "https:" || !OFFICIAL_HOSTS.has(sourceUrl.hostname)) return [];
+    if (sourceUrl.protocol !== "https:" || !OFFICIAL_HOSTS.has(sourceUrl.hostname)) continue;
     sourceUrl.hash = "";
-    const highlighted = stripMarkup(item.highlighted).slice(0, 900);
-    const lead = stripMarkup(item.lead_text).slice(0, 900);
-    const fullContent = Array.isArray(item.content)
-      ? item.content.map(stripMarkup).filter(Boolean).join("\n").slice(0, 7_500)
-      : "";
+    const highlighted = stripMarkup(item.highlighted, 12_000).slice(0, 900);
+    const lead = stripMarkup(item.lead_text, 12_000).slice(0, 900);
+    const fullContent = boundedVportalContent(Array.isArray(item.content) ? item.content : []);
     const firstContent = fullContent.slice(0, 900);
     const summary = cleanText([lead, highlighted].filter(Boolean).join(" ")).slice(0, 1_200)
       || firstContent
       || `${item.title} – ${site.organization} ametlik otsingutulemus.`;
     const title = cleanText(item.title);
-    if (!title || !summary) return [];
-    return [{
+    if (!title || !summary) continue;
+    documents.push({
       id: sourceId(`vp-${site.index}`, sourceUrl.toString()),
       title,
       organization: site.organization,
@@ -343,8 +436,12 @@ async function searchVportalSite(site, query, limit, options) {
       sourceSystem: `${site.organization} otsing`,
       retrieval: "official-federated-search",
       stale,
-    }];
-  });
+    });
+    // Cheerio puhastab HTML-i sünkroonselt. Väljastame kontrolli iga dokumendi
+    // järel, et avaleht ja tervisekontroll ei jääks korraga saabunud
+    // ametlike otsinguvastuste taha ootama.
+    await yieldToEventLoop();
+  }
   return {
     documents,
     total: Number(payload.response.numFound || documents.length),
@@ -355,16 +452,18 @@ async function searchVportalSite(site, query, limit, options) {
 }
 
 export async function searchOfficialSites(query, limit = 5, options = {}) {
-  const boundedLimit = Math.max(1, Math.min(Number(limit) || 5, 6));
-  const results = await Promise.allSettled(
-    VPORTAL_SITES.map((site) => searchVportalSite(site, query, boundedLimit, options)),
-  );
-  const available = results.filter((result) => result.status === "fulfilled").map((result) => result.value);
-  return {
-    documents: available.flatMap((result) => result.documents),
-    total: available.reduce((sum, result) => sum + result.total, 0),
-    services: available.map((result) => ({ service: result.service, cache: result.cache, stale: result.stale })),
-  };
+  return officialDiscoveryGate.run(async () => {
+    const boundedLimit = Math.max(1, Math.min(Number(limit) || 5, 6));
+    const results = await Promise.allSettled(
+      VPORTAL_SITES.map((site) => searchVportalSite(site, query, boundedLimit, options)),
+    );
+    const available = results.filter((result) => result.status === "fulfilled").map((result) => result.value);
+    return {
+      documents: available.flatMap((result) => result.documents),
+      total: available.reduce((sum, result) => sum + result.total, 0),
+      services: available.map((result) => ({ service: result.service, cache: result.cache, stale: result.stale })),
+    };
+  }, { signal: options.signal });
 }
 
 export async function searchKeskkonnaportaal(query, limit = 10, options = {}) {

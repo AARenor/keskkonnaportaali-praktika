@@ -19,6 +19,17 @@ const expectFallback = String(options["expect-fallback"] || "false").toLowerCase
 const expectAi = String(options["expect-ai"] || "false").toLowerCase() === "true";
 const testOverLimit = String(options["test-over-limit"] || "true").toLowerCase() !== "false";
 const spoofForwarded = String(options["spoof-forwarded"] || "false").toLowerCase() === "true";
+const strictCapacity = String(options["strict-capacity"]
+  ?? (["localhost", "127.0.0.1", "[::1]"].includes(baseUrl.hostname) ? "true" : "false")).toLowerCase() !== "false";
+const availabilityProbe = String(options["availability-probe"] || "true").toLowerCase() !== "false";
+const requestedAvailabilityTailMs = Number(options["availability-tail-ms"] ?? 10_000);
+const availabilityTailMs = Math.max(0, Math.min(
+  Number.isFinite(requestedAvailabilityTailMs) ? requestedAvailabilityTailMs : 10_000,
+  30_000,
+));
+const AVAILABILITY_TIMEOUT_MS = 2_500;
+const ROOT_PROBE_INTERVAL_MS = 250;
+const HEALTH_PROBE_INTERVAL_MS = 2_000;
 const fixtures = [
   "Kas Eestis tohib vanu rehve põletada?",
   "Natura 2000 piirangud ehitamisel",
@@ -65,6 +76,23 @@ function responseClass(status, body, retryAfter) {
   return "unknown_success";
 }
 
+function bodyCategory(contentType, body) {
+  const text = String(body || "").trim();
+  if (!text) return "empty";
+  if (String(contentType || "").toLowerCase().includes("json")) {
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed?.error) return "json-error";
+      if (parsed?.status) return "json-status";
+      return "json";
+    } catch {
+      return "invalid-json";
+    }
+  }
+  if (String(contentType || "").toLowerCase().includes("html") || /^<!doctype html|^<html/iu.test(text)) return "html";
+  return "text";
+}
+
 async function request(query, index = 0) {
   const startedAt = Date.now();
   try {
@@ -80,9 +108,11 @@ async function request(query, index = 0) {
       body: JSON.stringify({ q: query }),
       signal: AbortSignal.timeout(timeoutMs),
     });
+    const contentType = response.headers.get("content-type");
+    const rawBody = await response.text();
     let body = null;
     try {
-      body = await response.json();
+      body = JSON.parse(rawBody);
     } catch {
       body = null;
     }
@@ -104,6 +134,8 @@ async function request(query, index = 0) {
       sourceCount: Array.isArray(body?.sources) ? body.sources.length : 0,
       itemCount: Array.isArray(body?.items) ? body.items.length : 0,
       retryAfter,
+      contentType,
+      bodyCategory: bodyCategory(contentType, rawBody),
     };
   } catch (error) {
     return {
@@ -119,15 +151,92 @@ async function request(query, index = 0) {
   }
 }
 
+function cacheBustedUrl(pathname, sequence) {
+  const url = new URL(pathname, baseUrl);
+  url.searchParams.set("_load_audit", `${Date.now().toString(36)}-${sequence}`);
+  return url;
+}
+
+async function availabilityRequest(kind, pathname, sequence) {
+  const startedAt = Date.now();
+  try {
+    const response = await fetch(cacheBustedUrl(pathname, sequence), {
+      headers: {
+        Accept: kind === "root" ? "text/html" : "application/json",
+        "Cache-Control": "no-store",
+        Pragma: "no-cache",
+        "User-Agent": "Keskkonnaportaali-praktika-load-audit/1.0",
+      },
+      cache: "no-store",
+      signal: AbortSignal.timeout(AVAILABILITY_TIMEOUT_MS),
+    });
+    const contentType = response.headers.get("content-type");
+    const rawBody = await response.text();
+    return {
+      kind,
+      status: response.status,
+      durationMs: Date.now() - startedAt,
+      contentType,
+      bodyCategory: bodyCategory(contentType, rawBody),
+    };
+  } catch (error) {
+    return {
+      kind,
+      status: null,
+      durationMs: Date.now() - startedAt,
+      error: String(error?.name || "network_error").slice(0, 80),
+      contentType: null,
+      bodyCategory: "unavailable",
+    };
+  }
+}
+
+function startAvailabilityAudit() {
+  const records = [];
+  const pending = new Set();
+  const activeKinds = new Set();
+  let sequence = 0;
+  let stopped = false;
+  const collect = (kind, pathname) => {
+    if (stopped || activeKinds.has(kind)) return;
+    activeKinds.add(kind);
+    const task = availabilityRequest(kind, pathname, sequence += 1)
+      .then((record) => records.push(record))
+      .finally(() => {
+        activeKinds.delete(kind);
+        pending.delete(task);
+      });
+    pending.add(task);
+  };
+  collect("root", "/");
+  collect("health", "/api/health");
+  const rootTimer = setInterval(() => collect("root", "/"), ROOT_PROBE_INTERVAL_MS);
+  const healthTimer = setInterval(() => collect("health", "/api/health"), HEALTH_PROBE_INTERVAL_MS);
+  return {
+    async stop() {
+      stopped = true;
+      clearInterval(rootTimer);
+      clearInterval(healthTimer);
+      await Promise.allSettled([...pending]);
+      return records;
+    },
+  };
+}
+
 function percentile(values, fraction) {
   if (!values.length) return null;
   return values[Math.min(values.length - 1, Math.max(0, Math.ceil(values.length * fraction) - 1))];
 }
 
 const wallStartedAt = Date.now();
+const availabilityAudit = availabilityProbe ? startAvailabilityAudit() : null;
 const results = await Promise.all(Array.from({ length: concurrency }, (_, index) => request(fixtures[index % fixtures.length], index)));
 const wallDurationMs = Date.now() - wallStartedAt;
-const overLimit = testOverLimit ? await request(fixtures[0], concurrency) : null;
+const postBurstRateLimit = testOverLimit ? await request(fixtures[0], concurrency) : null;
+if (availabilityAudit && availabilityTailMs > 0) {
+  await new Promise((resolve) => setTimeout(resolve, availabilityTailMs));
+}
+const availabilityRecords = availabilityAudit ? await availabilityAudit.stop() : [];
 const durations = results.map((result) => result.durationMs).sort((left, right) => left - right);
 const statusCounts = Object.fromEntries([...new Set(results.map((result) => String(result.status || result.error || "unknown")))]
   .sort()
@@ -155,6 +264,7 @@ const report = {
   expectedCapacityBackpressureCount: serverConcurrency === null
     ? null
     : Math.max(0, concurrency - serverConcurrency),
+  strictCapacity,
   fallbackCount: results.filter((result) => result.fallback).length,
   aiReadyCount: results.filter((result) => result.aiReady).length,
   fallbackKinds: Object.fromEntries([...new Set(results.filter((result) => result.fallback).map((result) => result.fallbackKind))]
@@ -173,11 +283,33 @@ const report = {
     itemCount: result.itemCount,
     durationMs: result.durationMs,
   })),
-  overLimit: overLimit ? {
-    status: overLimit.status,
-    responseClass: overLimit.responseClass,
-    retryAfter: overLimit.retryAfter,
+  postBurstRateLimit: postBurstRateLimit ? {
+    status: postBurstRateLimit.status,
+    responseClass: postBurstRateLimit.responseClass,
+    retryAfter: postBurstRateLimit.retryAfter,
+    contentType: postBurstRateLimit.contentType,
+    bodyCategory: postBurstRateLimit.bodyCategory,
   } : null,
+  availability: Object.fromEntries(["root", "health"].map((kind) => {
+    const probes = availabilityRecords.filter((record) => record.kind === kind);
+    const durations = probes.map((record) => record.durationMs).sort((left, right) => left - right);
+    const failures = probes
+      .filter((record) => record.status !== 200 || record.durationMs > AVAILABILITY_TIMEOUT_MS)
+      .map((record) => ({
+        status: record.status,
+        error: record.error || null,
+        durationMs: record.durationMs,
+        contentType: record.contentType,
+        bodyCategory: record.bodyCategory,
+      }));
+    return [kind, {
+      probeCount: probes.length,
+      p95Ms: percentile(durations, 0.95),
+      maxMs: durations.at(-1) || null,
+      failures,
+    }];
+  })),
+  availabilityTailMs: availabilityProbe ? availabilityTailMs : 0,
   configuredClientTimeoutMs: timeoutMs,
   configuredRequestRetries: 0,
   spoofedForwardedAddresses: spoofForwarded ? concurrency + Number(testOverLimit) : 0,
@@ -186,7 +318,7 @@ process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 
 const resultsBoundaryOk = !resultsEndpoint || (
   results.every((result) => ["results_ready", "capacity_backpressure"].includes(result.responseClass))
-  && (serverConcurrency === null
+  && (!strictCapacity || serverConcurrency === null
     || report.capacityBackpressureCount === report.expectedCapacityBackpressureCount)
 );
 const searchBoundaryOk = resultsEndpoint || (
@@ -200,5 +332,10 @@ const baselineOk = resultsBoundaryOk
   && report.fiveHundredCount === 0
   && report.status504Count === 0
   && report.timeoutCount === 0;
-const backpressureOk = !testOverLimit || (overLimit?.status === 429 && Boolean(overLimit.retryAfter));
-if (!baselineOk || !backpressureOk) process.exitCode = 1;
+const rateLimitOk = !testOverLimit || (
+  postBurstRateLimit?.status === 429
+  && postBurstRateLimit.retryAfter === "60"
+);
+const availabilityOk = !availabilityProbe || Object.values(report.availability)
+  .every((summary) => summary.probeCount > 0 && summary.failures.length === 0);
+if (!baselineOk || !rateLimitOk || !availabilityOk) process.exitCode = 1;

@@ -26,7 +26,7 @@ COPY --from=build /app/server ./server
 USER node
 EXPOSE 3000
 
-HEALTHCHECK --interval=1s --timeout=2s --start-period=20s --retries=1 \
+HEALTHCHECK --interval=1s --timeout=2s --start-period=20s --retries=3 \
   CMD wget -qO- 'http://127.0.0.1:3000/api/health/container-readiness' >/dev/null || exit 1
 
 CMD ["node", "server/index.mjs"]

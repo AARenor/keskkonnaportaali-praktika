@@ -83,12 +83,14 @@ test("the public deployment marker accepts only an exact Git revision", () => {
 });
 
 test("container readiness is withdrawn before the old listener drains", async () => {
-  const [dockerfile, index] = await Promise.all([
+  const [dockerfile, compose, index] = await Promise.all([
     readFile(new URL("../Dockerfile", import.meta.url), "utf8"),
+    readFile(new URL("../compose.yaml", import.meta.url), "utf8"),
     readFile(new URL("../server/index.mjs", import.meta.url), "utf8"),
   ]);
-  assert.match(dockerfile, /HEALTHCHECK --interval=1s --timeout=2s --start-period=20s --retries=1/u);
+  assert.match(dockerfile, /HEALTHCHECK --interval=1s --timeout=2s --start-period=20s --retries=3/u);
   assert.match(dockerfile, /api\/health\/container-readiness/u);
+  assert.match(compose, /test: \["CMD", "wget", "-qO-", "http:\/\/127\.0\.0\.1:3000\/api\/health\/container-readiness"\][\s\S]*?interval: 1s[\s\S]*?timeout: 2s[\s\S]*?retries: 3/u);
   assert.match(index, /app\.get\("\/api\/health\/container-readiness"/u);
   assert.match(index, /if \(containerReadiness !== "ready"\)/u);
   assert.doesNotMatch(index, /request\.query\.readiness/u);
@@ -113,6 +115,8 @@ test("the listing endpoint shares the global search capacity boundary", async ()
   assert.match(handler, /response\.status\(429\)/u);
   assert.match(handler, /activeSearches \+= 1/u);
   assert.match(handler, /response\.once\("close", abortDisconnectedClient\)/u);
+  assert.match(handler, /if \(!results\) \{\s*response\.setHeader\("Cache-Control", "no-store"\);\s*response\.setHeader\("Retry-After", "2"\);\s*return response\.status\(503\)/u);
+  assert.match(handler, /\} catch \{\s*response\.setHeader\("Cache-Control", "no-store"\);\s*response\.setHeader\("Retry-After", "2"\);\s*return response\.status\(502\)/u);
   assert.match(handler, /finally \{[\s\S]*?activeSearches = Math\.max\(0, activeSearches - 1\)/u);
 });
 
