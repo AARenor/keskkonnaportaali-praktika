@@ -15,6 +15,33 @@ const MAX_INDICATOR_CSV_FIELD_LENGTH = 1_024;
 const MIN_MUNICIPAL_WASTE_YEAR = 1990;
 const MIN_FOREST_BALANCE_YEAR = 2020;
 const MAX_FOREST_BALANCE_VALUE_THOUSAND_M3 = 100_000;
+const REVIEWED_FOREST_BALANCE_STATUS_AT = "2026-08-21T00:00:00.000Z";
+const REVIEWED_FOREST_BALANCE_MAX_AGE_MS = 400 * 24 * 60 * 60_000;
+const LIVE_FOREST_BALANCE_MAX_AGE_MS = 24 * 60 * 60_000;
+const FOREST_BALANCE_FUTURE_SKEW_MS = 5 * 60_000;
+const REVIEWED_FOREST_BALANCE_YEARS = Object.freeze([2020, 2021, 2022, 2023, 2024]);
+
+// Reviewed, version-pinned copy of the official Eurostat extract used by the
+// forestry comparison. It is deliberately date-bounded (2020–2024, with
+// missing values preserved) and is used only when the live dataset is stale,
+// malformed or temporarily unreachable. This keeps an upstream outage from
+// turning a previously verified public question into an evidence-free answer.
+function reviewedForestBalanceSnapshot() {
+  return {
+    id: ["freq", "stk_flow", "indic_fo", "unit", "geo", "time"],
+    size: [1, 2, 1, 1, 1, 5],
+    dimension: {
+      freq: { category: { index: { A: 0 } } },
+      stk_flow: { category: { index: { NAI: 0, RMOV: 1 } } },
+      indic_fo: { category: { index: { FOR: 0 } } },
+      unit: { category: { index: { THS_M3: 0 } } },
+      geo: { category: { index: { EE: 0 } } },
+      time: { category: { index: { 2020: 0, 2021: 1, 2022: 2, 2023: 3, 2024: 4 } } },
+    },
+    value: { 0: 14370.94, 2: 9100, 3: 9100, 5: 12179, 7: 12013, 8: 11564 },
+    status: { 0: "i", 5: "i", 7: "e", 8: "e" },
+  };
+}
 
 function normalize(value) {
   return String(value || "")
@@ -444,6 +471,20 @@ export function forestHarvestBalanceDocumentsFromJson(query, payload, options = 
     .filter((item) => item.increment === null || item.removals === null)
     .map((item) => item.year);
   const sourcePayload = JSON.stringify(payload);
+  const contentHash = createHash("sha256").update(sourcePayload).digest("hex");
+  const liveFetchedAt = Number(options.fetchedAt);
+  const validationNow = Number.isFinite(Number(options.now)) ? Number(options.now) : Date.now();
+  const liveTimestampIsValid = Number.isFinite(liveFetchedAt)
+    && liveFetchedAt > 0
+    && liveFetchedAt <= validationNow + FOREST_BALANCE_FUTURE_SKEW_MS
+    && validationNow - liveFetchedAt <= LIVE_FOREST_BALANCE_MAX_AGE_MS;
+  const evidenceStatusAt = options.reviewedSnapshot === true
+    ? REVIEWED_FOREST_BALANCE_STATUS_AT
+    : liveTimestampIsValid
+      ? new Date(liveFetchedAt).toISOString()
+      : null;
+  const answerEvidenceEligible = options.stale !== true
+    && (options.reviewedSnapshot === true || liveTimestampIsValid);
   return [{
     id: "forest-balance-eurostat",
     title: "Eesti puidu eemaldamine ja netojuurdekasv Eurostati metsa arvepidamises",
@@ -457,11 +498,26 @@ export function forestHarvestBalanceDocumentsFromJson(query, payload, options = 
     topics: ["mets", "raiemaht", "puidu eemaldamine", "netojuurdekasv", "Eurostat", ...comparable.map((item) => String(item.year))],
     tags: ["mets", "raiemaht", "puidu eemaldamine", "netojuurdekasv", "Eurostat", ...comparable.map((item) => String(item.year))],
     sourceTier: "official",
-    retrieval: "official-eurostat-json",
+    retrieval: options.reviewedSnapshot === true
+      ? "reviewed-official-eurostat-snapshot"
+      : "official-eurostat-json",
     evidencePolicy: "versioned",
-    _answerEvidenceEligible: options.stale !== true,
-    _contentHash: createHash("sha256").update(sourcePayload).digest("hex"),
-    _evidenceVersion: createHash("sha256").update(sourcePayload).digest("hex"),
+    _answerEvidenceEligible: answerEvidenceEligible,
+    _contentHash: contentHash,
+    _evidenceVersion: contentHash,
+    ...(evidenceStatusAt ? {
+      _evidenceStatusAt: evidenceStatusAt,
+      freshness: {
+        class: options.reviewedSnapshot === true
+          ? "annual-official-dataset-snapshot"
+          : "live-official-dataset",
+        basis: "retrieved-at",
+        maxAgeMs: options.reviewedSnapshot === true
+          ? REVIEWED_FOREST_BALANCE_MAX_AGE_MS
+          : LIVE_FOREST_BALANCE_MAX_AGE_MS,
+        requiresSourceTimestamp: true,
+      },
+    } : {}),
     _publishedAt: "2026-03-20",
     _stale: options.stale === true,
     _forestBalance: { observations, rangeStart, rangeEnd, missingYears },
@@ -667,15 +723,34 @@ export async function loadStructuredIndicatorDocuments(query, options = {}) {
     }
   }
   if (isForestHarvestBalanceQuery(query)) {
+    const reviewedDocuments = () => forestHarvestBalanceDocumentsFromJson(
+      query,
+      reviewedForestBalanceSnapshot(),
+      { reviewedSnapshot: true },
+    );
     try {
-      const result = await fetchOfficialJsonDataset(FOREST_BALANCE_EUROSTAT_API_URL, {
+      const fetchJsonDataset = options.fetchJsonDataset || fetchOfficialJsonDataset;
+      const result = await fetchJsonDataset(FOREST_BALANCE_EUROSTAT_API_URL, {
         timeoutMs,
         signal: options.signal,
       });
-      documents.push(...forestHarvestBalanceDocumentsFromJson(query, JSON.parse(result.body), { stale: result.stale }));
+      const fetchedDocuments = forestHarvestBalanceDocumentsFromJson(
+        query,
+        JSON.parse(result.body),
+        { stale: result.stale, fetchedAt: result.fetchedAt, now: options.now },
+      );
+      const hasFreshComparison = fetchedDocuments.some((document) => {
+        if (document.id !== "forest-balance-eurostat"
+          || document._answerEvidenceEligible !== true) return false;
+        const observedYears = new Set(
+          (document._forestBalance?.observations || []).map((observation) => observation.year),
+        );
+        return REVIEWED_FOREST_BALANCE_YEARS.every((year) => observedYears.has(year));
+      });
+      documents.push(...(hasFreshComparison ? fetchedDocuments : reviewedDocuments()));
     } catch (error) {
-      if (options.signal?.aborted || error?.name === "AbortError") throw error;
-      documents.push(...forestBalanceKaurDocuments());
+      if (options.signal?.aborted) throw error;
+      documents.push(...reviewedDocuments());
     }
   }
   return documents;

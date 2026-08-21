@@ -16,6 +16,7 @@ import { createPortalDraft, publicResponse } from "../server/pipeline.mjs";
 import {
   forestHarvestBalanceDocumentsFromJson,
   isForestHarvestBalanceQuery,
+  loadStructuredIndicatorDocuments,
 } from "../server/indicators.mjs";
 import {
   FORESTRY_BALANCE_VARIANTS,
@@ -284,7 +285,7 @@ test("the three harvest/increment formulations use the structured comparison and
   };
 
   for (const query of BALANCE_QUERIES) {
-    const documents = forestHarvestBalanceDocumentsFromJson(query, payload);
+    const documents = forestHarvestBalanceDocumentsFromJson(query, payload, { fetchedAt: Date.now() });
     const draft = await createPortalDraft(query, {
       deadlineAt: Date.now(),
       searchResults: { total: documents.length, items: documents },
@@ -305,7 +306,7 @@ test("the three harvest/increment formulations use the structured comparison and
   }
 
   const missingYearQuery = "Kas 2024. aasta inventuuri kasvunäitaja oli 2023. aasta raietest suurem?";
-  const missingYearDocuments = forestHarvestBalanceDocumentsFromJson(missingYearQuery, payload);
+  const missingYearDocuments = forestHarvestBalanceDocumentsFromJson(missingYearQuery, payload, { fetchedAt: Date.now() });
   const missingYearDraft = await createPortalDraft(missingYearQuery, {
     deadlineAt: Date.now(),
     searchResults: { total: missingYearDocuments.length, items: missingYearDocuments },
@@ -318,6 +319,26 @@ test("the three harvest/increment formulations use the structured comparison and
   assert.match(methodWitness, /Netojuurdekasv[\s\S]*looduslik(?:ku)? suremus(?:e)?/iu);
   assert.match(methodWitness, /Sama aasta eemaldamise ja netojuurdekasvu võrdlus/iu);
   assertNumericClaimsHaveVisibleWitnesses(missingYearDraft, missingYearQuery);
+});
+
+test("an upstream forest-balance outage still reaches the final public answer with claim-complete witnesses", async () => {
+  const query = "Kas raiemaht ületab netojuurdekasvu?";
+  const documents = await loadStructuredIndicatorDocuments(query, {
+    fetchJsonDataset: async () => {
+      throw new DOMException("upstream timeout", "AbortError");
+    },
+  });
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    searchResults: { total: documents.length, items: documents },
+  });
+  const response = publicResponse(draft);
+  assert.equal(draft.evidence.kind, "structured-forest-balance");
+  assert.match(response.answer.intro, /2023[\s\S]*11,6[\s\S]*9,1[\s\S]*2,5 miljoni m³/iu);
+  assert.match(
+    response.sources.find((source) => source.citation === 1)?.evidenceExcerpt || "",
+    /2023[\s\S]*9,1[\s\S]*11,6[\s\S]*2,5 miljoni m³/iu,
+  );
 });
 
 test("the municipality question asks for the missing municipality and metric instead of inventing a number", () => {

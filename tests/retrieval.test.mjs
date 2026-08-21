@@ -1151,6 +1151,14 @@ test("follow-up retrieval context is bounded and keeps only recent questions", (
     "Mida see viimase 5 aasta jooksul tähendab Kas raiemaht ületab juurdekasvu?",
   );
   assert.equal(isSafeEllipticalFollowUp("Mida see 2024. aastaga võrreldes tähendab?"), true);
+  for (const year of [2020, 2021, 2022, 2023, 2024]) {
+    const followUp = `Kas ${year}. aastal?`;
+    assert.equal(isSafeEllipticalFollowUp(followUp), true);
+    assert.equal(
+      contextualRetrievalQuery("Kas raiemaht ületab netojuurdekasvu?", followUp, []),
+      `${followUp} Kas raiemaht ületab netojuurdekasvu?`,
+    );
+  }
 });
 
 test("an inflected seasonal precipitation follow-up is self-contained", () => {

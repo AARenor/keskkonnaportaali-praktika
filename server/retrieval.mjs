@@ -1468,6 +1468,10 @@ export function isSafeEllipticalFollowUp(value) {
   }
   const normalized = text.toLocaleLowerCase("et").replace(/[^0-9a-zõäöüšž]+/giu, " ").trim();
   if (/^(?:aga\s+)?(?:miks|kuidas|millal|kus|mis\s+aastal)$/u.test(normalized)) return true;
+  // A year-only comparison is a common continuation of a dated indicator
+  // answer. Admit it only inside an already accepted conversation, where the
+  // root supplies the indicator and subject.
+  if (/^(?:aga\s+)?kas\s+(?:19|20)\d{2}\s+aastal$/u.test(normalized)) return true;
   return /^(?:aga\s+)?(?:kas|kuidas|kui\s+suur|mida|mis)\s+(?:see|seda|selle|sellest|need|neid|nende)\b/u.test(normalized)
     && normalized.split(" ").length <= 12;
 }

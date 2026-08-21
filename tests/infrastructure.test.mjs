@@ -1012,7 +1012,7 @@ test("forest harvest draft answers the root and temporal follow-up from multiple
     value: { 0: 14370.94, 2: 9100, 3: 9100, 5: 12179, 7: 12013, 8: 11564 },
   };
   const root = "Kas raiemaht ületab netojuurdekasvu?";
-  const documents = forestHarvestBalanceDocumentsFromJson(root, payload);
+  const documents = forestHarvestBalanceDocumentsFromJson(root, payload, { fetchedAt: Date.now() });
   const rootDraft = await createPortalDraft(root, {
     deadlineAt: Date.now(),
     searchResults: { total: documents.length, items: documents },

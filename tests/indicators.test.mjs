@@ -7,9 +7,11 @@ import {
   FOREST_BALANCE_EUROSTAT_API_URL,
   isForestHarvestBalanceQuery,
   isMunicipalWasteRecyclingRateQuery,
+  loadStructuredIndicatorDocuments,
   municipalWasteIndicatorFromCsv,
   MUNICIPAL_WASTE_RECYCLING_CSV_URL,
 } from "../server/indicators.mjs";
+import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
 
 const forestFixture = {
   id: ["freq", "stk_flow", "indic_fo", "unit", "geo", "time"],
@@ -226,6 +228,114 @@ test("forest balance synthesis answers directly from four separately cited offic
   assert.equal(isForestHarvestBalanceQuery("Kas raiemaht ületas kogu juurdekasvu 2023?"), false);
   assert.equal(isForestHarvestBalanceQuery("Kas raiemaht ületas täisjuurdekasvu 2023?"), false);
   assert.equal(isForestHarvestBalanceQuery("Kas raiemaht ületas netojuurdekasvu 2023?"), true);
+});
+
+test("forest balance keeps its reviewed official snapshot when the live dataset is unavailable or stale", async () => {
+  const query = "Kas raiemaht ületab netojuurdekasvu?";
+  const now = Date.parse("2026-08-21T00:00:00Z");
+  const unavailable = await loadStructuredIndicatorDocuments(query, {
+    fetchJsonDataset: async () => {
+      throw new Error("temporary upstream failure");
+    },
+  });
+  const stale = await loadStructuredIndicatorDocuments(query, {
+    fetchJsonDataset: async () => ({ body: JSON.stringify(forestFixture), stale: true }),
+  });
+  const partialPayload = {
+    ...structuredClone(forestFixture),
+    size: [1, 2, 1, 1, 1, 1],
+    dimension: {
+      ...structuredClone(forestFixture.dimension),
+      time: { category: { index: { 2023: 0 } } },
+    },
+    value: { 0: 9100, 1: 11564 },
+    status: { 1: "e" },
+  };
+  const partial = await loadStructuredIndicatorDocuments(query, {
+    now,
+    fetchJsonDataset: async () => ({
+      body: JSON.stringify(partialPayload),
+      stale: false,
+      fetchedAt: now,
+    }),
+  });
+  const missingTimestamp = await loadStructuredIndicatorDocuments(query, {
+    now,
+    fetchJsonDataset: async () => ({ body: JSON.stringify(forestFixture), stale: false }),
+  });
+  const oldTimestamp = await loadStructuredIndicatorDocuments(query, {
+    now,
+    fetchJsonDataset: async () => ({
+      body: JSON.stringify(forestFixture),
+      stale: false,
+      fetchedAt: now - 24 * 60 * 60_000 - 1,
+    }),
+  });
+  const futureTimestamp = await loadStructuredIndicatorDocuments(query, {
+    now,
+    fetchJsonDataset: async () => ({
+      body: JSON.stringify(forestFixture),
+      stale: false,
+      fetchedAt: now + 5 * 60_000 + 1,
+    }),
+  });
+
+  for (const documents of [
+    unavailable,
+    stale,
+    partial,
+    missingTimestamp,
+    oldTimestamp,
+    futureTimestamp,
+  ]) {
+    const snapshot = documents.find((document) => document.id === "forest-balance-eurostat");
+    assert.equal(snapshot?.retrieval, "reviewed-official-eurostat-snapshot");
+    assert.equal(snapshot?._answerEvidenceEligible, true);
+    assert.equal(sourceEvidenceEligibility(snapshot, {
+      now: Date.parse("2026-08-21T00:00:00Z"),
+    }).eligible, true);
+    assert.equal(sourceEvidenceEligibility(snapshot, {
+      now: Date.parse("2027-09-26T00:00:00Z"),
+    }).eligible, false);
+    assert.match(snapshot?.summary || "", /2023\. aastal oli netojuurdekasv 9,1[\s\S]*11,6 miljonit m³/iu);
+    const draft = composeForestHarvestBalanceAnswer(query, documents);
+    assert.match(draft?.answer?.intro || "", /2023[\s\S]*11,6[\s\S]*9,1[\s\S]*2,5 miljoni m³/iu);
+  }
+
+  const internalTimeout = await loadStructuredIndicatorDocuments(query, {
+    signal: new AbortController().signal,
+    fetchJsonDataset: async () => {
+      throw new DOMException("upstream timeout", "AbortError");
+    },
+  });
+  assert.equal(internalTimeout[0]?.retrieval, "reviewed-official-eurostat-snapshot");
+
+  const live = await loadStructuredIndicatorDocuments(query, {
+    now,
+    fetchJsonDataset: async () => ({
+      body: JSON.stringify(forestFixture),
+      stale: false,
+      fetchedAt: now,
+    }),
+  });
+  const liveDocument = live.find((document) => document.id === "forest-balance-eurostat");
+  assert.equal(liveDocument?.retrieval, "official-eurostat-json");
+  assert.equal(sourceEvidenceEligibility(liveDocument, { now }).eligible, true);
+  assert.equal(sourceEvidenceEligibility(liveDocument, {
+    now: now + 24 * 60 * 60_000 + 1,
+  }).eligible, false);
+
+  const caller = new AbortController();
+  caller.abort(new DOMException("caller cancelled", "AbortError"));
+  await assert.rejects(
+    loadStructuredIndicatorDocuments(query, {
+      signal: caller.signal,
+      fetchJsonDataset: async () => {
+        throw caller.signal.reason;
+      },
+    }),
+    { name: "AbortError" },
+  );
 });
 
 test("forest balance synthesis honors an explicit year and abstains when its pair is missing", () => {
