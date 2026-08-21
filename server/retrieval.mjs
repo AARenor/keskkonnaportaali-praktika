@@ -1440,7 +1440,7 @@ function contextAssessmentIsBlocked(assessment) {
     && ["unsafe-instruction", "personal-data-lookup"].includes(assessment.reason);
 }
 
-function isSafeEllipticalFollowUp(value) {
+export function isSafeEllipticalFollowUp(value) {
   const input = canonicalizePublicSearchQuery(value, { maximumLength: 120 });
   const text = input.ok ? input.query : "";
   if (!text || containsUnsafeInstruction(text)

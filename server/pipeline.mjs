@@ -9,6 +9,7 @@ import { composeForestHarvestBalanceAnswer } from "./indicators.mjs";
 import {
   canonicalResultUrl,
   evidenceDocumentsFromListing,
+  isSafeEllipticalFollowUp,
   prepareRankedSearchResults,
   rankSearchCandidates,
   resultMatchesFilters,
@@ -856,7 +857,7 @@ export async function searchEnvironmentLive(query, options = {}) {
   const queryInput = canonicalizePublicSearchQuery(query);
   if (queryInput.reason === "empty") return composeSearchResponse("", [], { limit: 3, total: 0 });
   const directAssessment = assessSearchQuery(queryInput.ok ? queryInput.query : query);
-  if (!queryInput.ok || directAssessment.kind === "out-of-scope") {
+  if (!queryInput.ok) {
     return publicResponse(composeScopeResponse(queryInput.ok ? queryInput.query : "", directAssessment));
   }
   const cleanQuery = queryInput.query;
@@ -865,6 +866,14 @@ export async function searchEnvironmentLive(query, options = {}) {
   if (!assessmentInput.ok || !retrievalInput.ok) {
     const rejectedValue = !assessmentInput.ok ? options.assessmentQuery : options.retrievalQuery;
     return publicResponse(composeScopeResponse("", assessSearchQuery(rejectedValue)));
+  }
+  const contextualAssessment = assessSearchQuery(assessmentInput.query);
+  const validatedEllipticalFollowUp = options.allowSafeEllipticalFollowUp === true
+    && directAssessment.kind === "out-of-scope"
+    && isSafeEllipticalFollowUp(cleanQuery)
+    && contextualAssessment.kind === "answerable";
+  if (directAssessment.kind === "out-of-scope" && !validatedEllipticalFollowUp) {
+    return publicResponse(composeScopeResponse(cleanQuery, directAssessment));
   }
   const contextInput = canonicalizePublicSearchQuery(options.conversationContext || "", {
     maximumLength: 1_400,

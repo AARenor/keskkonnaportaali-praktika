@@ -9,6 +9,7 @@ import {
   conversationContext,
   deduplicateResults,
   evidenceDocumentsFromListing,
+  isSafeEllipticalFollowUp,
   parsePublicSearchFilters,
   publicSearchListing,
   parseBoundedSearchInteger,
@@ -1149,6 +1150,7 @@ test("follow-up retrieval context is bounded and keeps only recent questions", (
     ),
     "Mida see viimase 5 aasta jooksul tähendab Kas raiemaht ületab juurdekasvu?",
   );
+  assert.equal(isSafeEllipticalFollowUp("Mida see 2024. aastaga võrreldes tähendab?"), true);
 });
 
 test("an inflected seasonal precipitation follow-up is self-contained", () => {

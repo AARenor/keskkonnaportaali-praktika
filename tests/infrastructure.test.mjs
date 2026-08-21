@@ -1032,6 +1032,18 @@ test("forest harvest draft answers the root and temporal follow-up from multiple
   assert.match(followDraft.answer.intro, /2025\. aasta rida selles väljavõttes veel ei ole/u);
   assert.match(followDraft.answer.intro, /2020: eemaldamine 12,2 ja netojuurdekasv 14,4/u);
   assert.match(followDraft.answer.note, /Puuduvaid aastaid ei ole interpoleeritud/u);
+
+  const followResponse = await searchEnvironmentLive(followQuestion, {
+    deadlineAt: Date.now() + 1_000,
+    assessmentQuery: retrievalQuery,
+    retrievalQuery,
+    conversationContext: root,
+    allowSafeEllipticalFollowUp: true,
+    searchResults: { total: documents.length, items: documents },
+    useCache: false,
+  });
+  assert.match(followResponse.answer.title, /^2020–2024 viie aasta kohta/iu);
+  assert.doesNotMatch(followResponse.answer.title, /See otsing vastab Eesti keskkonnaandmete küsimustele/iu);
 });
 
 test("LLM intent validation distinguishes a rate from a regulation", () => {
