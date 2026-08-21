@@ -172,13 +172,24 @@ test("remote PostgreSQL TLS always verifies the certificate and hostname", () =>
   const remoteUrl = "postgresql://practice:secret@db.example:5432/keskkonnaportaal_practice";
   assert.equal(resolveDatabaseTls({ mode: "disable", url: localUrl }), undefined);
   assert.equal(resolveDatabaseTls({ mode: "false", url: "postgresql://practice:secret@127.0.0.1/practice" }), undefined);
+  assert.equal(resolveDatabaseTls({
+    mode: "disable",
+    url: "postgresql://practice:secret@s33cu0iqbu0dao7lzolnxyz0/practice",
+    plaintextHosts: "s33cu0iqbu0dao7lzolnxyz0",
+  }), undefined);
   assert.deepEqual(resolveDatabaseTls({ mode: "verify-full", url: remoteUrl }), { rejectUnauthorized: true });
   assert.deepEqual(resolveDatabaseTls({ mode: "true", ca: "TEST CA", url: remoteUrl }), {
     rejectUnauthorized: true,
     ca: "TEST CA",
   });
   assert.throws(() => resolveDatabaseTls({ mode: undefined, url: remoteUrl }), /must be explicitly set/u);
-  assert.throws(() => resolveDatabaseTls({ mode: "disable", url: remoteUrl }), /only for the local Compose or loopback/u);
+  assert.throws(() => resolveDatabaseTls({ mode: "disable", url: remoteUrl }), /explicit local database host/u);
+  for (const plaintextHosts of ["db.internal:5432", "*.internal", "https://db.internal", "db..internal"]) {
+    assert.throws(
+      () => resolveDatabaseTls({ mode: "disable", url: remoteUrl, plaintextHosts }),
+      /exact canonical hostnames/u,
+    );
+  }
   for (const insecure of ["require", "prefer", "no-verify", "allow"]) {
     assert.throws(() => resolveDatabaseTls({ mode: insecure, url: remoteUrl }), /disable or verify-full/u);
   }

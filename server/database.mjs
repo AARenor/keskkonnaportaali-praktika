@@ -92,6 +92,7 @@ export function resolveDatabaseTls({
   mode = process.env.DATABASE_SSL_MODE ?? process.env.DATABASE_SSL,
   ca = process.env.DATABASE_SSL_CA,
   url = databaseUrl,
+  plaintextHosts = process.env.DATABASE_PLAINTEXT_HOSTS,
 } = {}) {
   const selected = String(mode || "").trim().toLocaleLowerCase("en");
   if (!selected) throw new Error("DATABASE_SSL_MODE must be explicitly set to disable or verify-full");
@@ -102,8 +103,22 @@ export function resolveDatabaseTls({
     } catch {
       throw new Error("DATABASE_SSL_MODE=disable requires a recognized local database URL");
     }
-    if (!["postgres", "localhost", "127.0.0.1", "::1"].includes(hostname)) {
-      throw new Error("DATABASE_SSL_MODE=disable is allowed only for the local Compose or loopback database");
+    const configuredHosts = String(plaintextHosts || "")
+      .split(",")
+      .map((value) => value.trim().toLocaleLowerCase("en"))
+      .filter(Boolean);
+    if (configuredHosts.some((value) => {
+      const labels = value.split(".");
+      return value.length > 253
+        || labels.some((label) => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u.test(label));
+    })) {
+      throw new Error("DATABASE_PLAINTEXT_HOSTS must contain exact canonical hostnames without ports or wildcards");
+    }
+    const allowedPlaintextHosts = new Set([
+      "postgres", "localhost", "127.0.0.1", "::1", ...configuredHosts,
+    ]);
+    if (!allowedPlaintextHosts.has(hostname)) {
+      throw new Error("DATABASE_SSL_MODE=disable is allowed only for an explicit local database host");
     }
     return undefined;
   }
