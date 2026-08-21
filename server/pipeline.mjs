@@ -652,6 +652,7 @@ async function searchWithinBudget(cleanQuery, {
   llmClientKey = "unknown",
   useCache = true,
   onDraft,
+  generateAnswer = generateGroundedAnswer,
 }) {
   throwIfRequestAborted(signal);
   const assessment = assessSearchQuery(assessmentQuery);
@@ -712,7 +713,7 @@ async function searchWithinBudget(cleanQuery, {
     onDraft(publicResponse(draft));
   }
   const llmResult = canGenerate && llmBudget >= 500
-    ? await generateGroundedAnswer(cleanQuery, draft, {
+    ? await generateAnswer(cleanQuery, draft, {
       timeoutMs: llmBudget,
       signal,
       conversationContext,
@@ -901,6 +902,18 @@ export async function searchEnvironmentLive(query, options = {}) {
     retrievalQuery: retrievalInput.query,
     conversationContext: safeConversationContext,
   };
+  let acceptedGroundedDraft = null;
+  const captureGroundedDraft = (draft) => {
+    // publicResponse intentionally shares nested answer objects with the
+    // internal draft. Detach the accepted deterministic result before the
+    // provider sees that draft, and give stream consumers their own copy too.
+    // A timeout or provider failure can then never expose partially mutated
+    // answer text without its original citations.
+    acceptedGroundedDraft = structuredClone(draft);
+    if (typeof options.onDraft === "function") options.onDraft(structuredClone(acceptedGroundedDraft));
+  };
+  const bestAvailableFallback = (reason) => acceptedGroundedDraft
+    || searchTimeoutFallback(cleanQuery, { ...canonicalFallbackOptions, reason });
 
   const configuredDeadlineMs = Math.max(1_000, Math.min(Number(process.env.SEARCH_DEADLINE_MS) || DEFAULT_SEARCH_DEADLINE_MS, 15_000));
   const absoluteDeadline = Number(options.deadlineAt) || startedAt + configuredDeadlineMs;
@@ -923,17 +936,20 @@ export async function searchEnvironmentLive(query, options = {}) {
     conversationContext: safeConversationContext,
     llmClientKey: options.llmClientKey || "unknown",
     useCache: options.useCache !== false,
-    onDraft: options.onDraft,
+    onDraft: captureGroundedDraft,
+    generateAnswer: typeof options.generateAnswer === "function"
+      ? options.generateAnswer
+      : generateGroundedAnswer,
   }).catch((error) => {
     if (options.signal?.aborted) {
       throw options.signal.reason instanceof Error ? options.signal.reason : error;
     }
-    return searchTimeoutFallback(cleanQuery, { ...canonicalFallbackOptions, reason: "source-error" });
+    return bestAvailableFallback("source-error");
   });
   return settleWithinDeadline(
     operation,
     deadlineMs,
-    () => searchTimeoutFallback(cleanQuery, canonicalFallbackOptions),
+    () => bestAvailableFallback("deadline"),
     controller,
     { onBackgroundCleanup: options.onBackgroundCleanup },
   );

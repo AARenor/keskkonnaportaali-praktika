@@ -3743,6 +3743,45 @@ test("deadline fallback never turns a timeout into an absence claim", () => {
   assert.deepEqual(result.answer.parts, []);
 });
 
+test("a provider timeout or failure preserves a detached accepted deterministic forestry draft", async () => {
+  const query = "Kuidas arvutatakse juurdekasvu?";
+  const ids = new Set([
+    "increment-method",
+    "forest-smi-methodology-20-years",
+    "forest-area",
+    "forest-smi-2025-presentation",
+    "smi",
+    "forest-balance-kaur-methodology",
+  ]);
+  const items = officialServiceCatalogueDocuments().filter((source) => ids.has(source.id));
+  for (const outcome of ["timeout", "failure"]) {
+    const startedAt = Date.now();
+    let streamedDraft = null;
+    const result = await searchEnvironmentLive(query, {
+      startedAt,
+      deadlineAt: startedAt + 3_000,
+      useCache: false,
+      searchResults: { total: items.length, items },
+      onDraft(draft) {
+        streamedDraft = structuredClone(draft);
+      },
+      generateAnswer(_query, providerDraft) {
+        providerDraft.answer.intro = "PARTIAL_PROVIDER_SENTINEL";
+        providerDraft.answer.introCitations = [];
+        if (outcome === "failure") throw new Error("provider failed after partial assembly");
+        return new Promise(() => undefined);
+      },
+    });
+
+    assert.ok(streamedDraft, outcome);
+    assert.deepEqual(result, streamedDraft, outcome);
+    assert.doesNotMatch(JSON.stringify(result), /PARTIAL_PROVIDER_SENTINEL/u, outcome);
+    assert.match(result.answer.intro, /Kogujuurdekasv/iu, outcome);
+    assert.equal(result.sources[result.answer.introCitations[0] - 1]?.id, "increment-method", outcome);
+    assert.notEqual(result.answer.eyebrow, "Otsing võttis liiga kaua", outcome);
+  }
+});
+
 test("source failures degrade without turning an outage into an absence claim", () => {
   const result = searchTimeoutFallback("kaevandamise keskkonnamõju Ida-Virumaal", {
     reason: "source-error",

@@ -7,6 +7,7 @@ import {
   evidenceDocumentsFromListing,
   prepareRankedSearchResults,
   rankPublicSearchCandidates,
+  selectAnswerEvidence,
 } from "../server/retrieval.mjs";
 import {
   analyzePublicSearchQuery,
@@ -533,28 +534,63 @@ test("canonical duplicate merging cannot launder a missing-policy body through a
   }
 });
 
-test("a federated navigation alias cannot suppress independently validated canonical evidence", () => {
+test("an explicit navigation alias cannot suppress or contaminate independently validated canonical evidence", () => {
   const validated = officialServiceCatalogueDocuments()
     .find((source) => source.id === "forest-stock-stable");
+  for (const retrieval of ["official-federated-search", "catalogue-directory"]) {
+    const navigation = {
+      id: `${retrieval}-navigation-alias`,
+      title: "NAVIGATION_TITLE_SENTINEL",
+      url: validated.url,
+      sourceTier: "official",
+      summary: "NAVIGATION_BODY_SENTINEL",
+      content: "NAVIGATION_BODY_SENTINEL",
+      topics: ["NAVIGATION_TOPIC_SENTINEL"],
+      retrieval,
+      delivery: retrieval === "official-federated-search"
+        ? "federated-discovery"
+        : "catalog-and-bounded-hydration",
+      evidencePolicy: "route-only",
+      _answerEvidenceEligible: false,
+    };
+    for (const input of [[validated, navigation], [navigation, validated]]) {
+      const [merged] = deduplicateResults(input);
+      assert.equal(merged.evidencePolicy, validated.evidencePolicy);
+      assert.equal(merged._answerEvidenceEligible, true);
+      assert.equal(sourceEvidenceEligibility(merged).eligible, true);
+      assert.equal(evidenceDocumentsFromListing({ items: [merged] }).length, 1);
+      assert.doesNotMatch(`${merged.title} ${merged.summary} ${merged.content} ${(merged.topics || []).join(" ")}`, /NAVIGATION_\w+_SENTINEL/u);
+    }
+  }
+});
+
+test("route-only alias tags cannot manufacture evidence for a validated record with no body", () => {
+  const source = officialServiceCatalogueDocuments()
+    .find((candidate) => candidate.id === "smi-metsaregister");
+  const {
+    tags: _tags,
+    topics: _topics,
+    summary: _summary,
+    content: _content,
+    excerpt: _excerpt,
+    answer: _answer,
+    ...validatedWithoutBody
+  } = source;
   const navigation = {
-    id: "federated-navigation-alias",
-    title: validated.title,
-    url: validated.url,
+    id: "route-only-role-tags",
+    title: source.title,
+    url: source.url,
     sourceTier: "official",
-    summary: "FEDERATED_NAVIGATION_SENTINEL",
-    content: "FEDERATED_NAVIGATION_SENTINEL",
-    retrieval: "official-federated-search",
-    delivery: "federated-discovery",
+    tags: ["ROUTE_ONLY_TAG_SENTINEL", "smi", "metsaregister", "metsaandmed", "valikuuring", "kinnistu"],
+    retrieval: "catalogue-directory",
     evidencePolicy: "route-only",
     _answerEvidenceEligible: false,
   };
-  for (const input of [[validated, navigation], [navigation, validated]]) {
+  for (const input of [[validatedWithoutBody, navigation], [navigation, validatedWithoutBody]]) {
     const [merged] = deduplicateResults(input);
-    assert.equal(merged.evidencePolicy, validated.evidencePolicy);
-    assert.equal(merged._answerEvidenceEligible, true);
     assert.equal(sourceEvidenceEligibility(merged).eligible, true);
-    assert.equal(evidenceDocumentsFromListing({ items: [merged] }).length, 1);
-    assert.doesNotMatch(`${merged.summary} ${merged.content}`, /FEDERATED_NAVIGATION_SENTINEL/u);
+    assert.doesNotMatch(`${(merged.tags || []).join(" ")} ${(merged.topics || []).join(" ")}`, /ROUTE_ONLY_TAG_SENTINEL/u);
+    assert.equal(selectAnswerEvidence("Mis vahe on SMI-l ja metsaregistril?", [merged])?.strong, false);
   }
 });
 

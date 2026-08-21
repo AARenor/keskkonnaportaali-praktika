@@ -303,3 +303,40 @@ test("the increment answer exposes the exact method, source summary and locator 
   assert.equal(cited?.url, "https://keskkonnaportaal.ee/et/statistilise-metsainventuuri-smi-ja-maakasutuse-maakasutuse-muutuse-ja-metsanduse-lulucf-andmehoive");
   assert.match(visible[0]?.locator || "", /lk 22/iu);
 });
+
+test("a route-only corpus copy cannot suppress the reviewed increment evidence at the same URL", async () => {
+  const query = "Kuidas arvutatakse juurdekasvu?";
+  const directory = officialServiceCatalogueDocuments();
+  const increment = directory.find((source) => source.id === "increment-method");
+  const corpusNavigationCopy = {
+    id: "corpus-increment-navigation-copy",
+    title: increment.title,
+    url: increment.url,
+    sourceTier: "official",
+    summary: "CORPUS_NAVIGATION_SENTINEL",
+    content: "CORPUS_NAVIGATION_SENTINEL",
+    topics: ["CORPUS_NAVIGATION_SENTINEL"],
+    retrieval: "catalogue-directory",
+    delivery: "catalog-and-bounded-hydration",
+    evidencePolicy: "route-only",
+    _answerEvidenceEligible: false,
+  };
+  const visible = rankPublicSearchCandidates(query, [corpusNavigationCopy, ...directory], {
+    intentDocuments: directory,
+    now: NOW,
+  }).slice(0, 12);
+  const retained = visible.find((source) => source.id === "increment-method");
+  assert.equal(retained?.evidencePolicy, "versioned");
+  assert.equal(retained?._answerEvidenceEligible, true);
+  assert.doesNotMatch(`${retained?.summary} ${retained?.content} ${(retained?.topics || []).join(" ")}`, /CORPUS_NAVIGATION_SENTINEL/u);
+
+  const plan = selectAnswerEvidence(query, visible);
+  assert.equal(plan?.strong, true);
+  assert.equal(plan?.directDocumentId, "increment-method");
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    searchResults: { total: visible.length, items: visible },
+  });
+  assert.equal(draft.evidence.answerable, true);
+  assert.equal(draft.sources.find((source) => source.citation === draft.answer.introCitations[0])?.id, "increment-method");
+});

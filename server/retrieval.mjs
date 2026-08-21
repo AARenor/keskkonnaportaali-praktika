@@ -148,10 +148,8 @@ function hasIndependentEvidenceCapability(document) {
     && sourceEvidenceEligibility(document).eligible;
 }
 
-function isFederatedNavigationAlias(document) {
-  return document?.retrieval === "official-federated-search"
-    && document?.delivery === "federated-discovery"
-    && clean(document.evidencePolicy) === "route-only"
+function isExplicitNavigationAlias(document) {
+  return clean(document?.evidencePolicy) === "route-only"
     && document?._answerEvidenceEligible === false;
 }
 
@@ -197,7 +195,7 @@ function mergeDuplicate(current, candidate) {
     candidateAnswerEligible ? clean(candidate.evidencePolicy) : "route-only",
   ];
   const onlyNavigationAliasesAreIneligible = [current, candidate]
-    .every((document) => hasIndependentEvidenceCapability(document) || isFederatedNavigationAlias(document));
+    .every((document) => hasIndependentEvidenceCapability(document) || isExplicitNavigationAlias(document));
   const preserveValidatedEvidence = capableEvidence.length > 0 && onlyNavigationAliasesAreIneligible;
   const mergedEvidencePolicy = preserveValidatedEvidence
     ? clean(richerEvidence.evidencePolicy)
@@ -233,7 +231,15 @@ function mergeDuplicate(current, candidate) {
       || (currentAnswerEligible
         && candidateAnswerEligible
         && mergedEvidencePolicy !== "route-only"),
-    topics: [...new Set([...(preferred.topics || preferred.tags || []), ...(fallback.topics || fallback.tags || [])])].slice(0, 12),
+    // If an explicitly route-only card shares this URL, it may remain useful
+    // for discovery but none of its title/body/tag vocabulary may become
+    // answer evidence. The independently validated record stays atomic.
+    topics: preserveValidatedEvidence
+      ? [...new Set(richerEvidence.topics || richerEvidence.tags || [])].slice(0, 12)
+      : [...new Set([...(preferred.topics || preferred.tags || []), ...(fallback.topics || fallback.tags || [])])].slice(0, 12),
+    tags: preserveValidatedEvidence
+      ? [...new Set(richerEvidence.tags || richerEvidence.topics || [])].slice(0, 12)
+      : [...new Set([...(preferred.tags || preferred.topics || []), ...(fallback.tags || fallback.topics || [])])].slice(0, 12),
     sourceTier: preferred.sourceTier === "official" || fallback.sourceTier === "official" ? "official" : preferred.sourceTier,
     _relevance: Math.max(Number(preferred._relevance) || 0, Number(fallback._relevance) || 0),
   };
