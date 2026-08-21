@@ -105,7 +105,7 @@ import {
   forestHarvestBalanceDocumentsFromJson,
   FOREST_BALANCE_EUROSTAT_API_URL,
 } from "../server/indicators.mjs";
-import { deduplicateResults } from "../server/retrieval.mjs";
+import { contextualRetrievalQuery, deduplicateResults } from "../server/retrieval.mjs";
 
 function explicitEvidenceSource(source = {}) {
   return {
@@ -1065,6 +1065,45 @@ test("forest harvest draft answers the root and temporal follow-up from multiple
   });
   assert.match(followResponse.answer.title, /^2020–2024 viie aasta kohta/iu);
   assert.doesNotMatch(followResponse.answer.title, /See otsing vastab Eesti keskkonnaandmete küsimustele/iu);
+
+  const yearQuestion = "Kas 2022. aastal?";
+  const yearRetrievalQuery = contextualRetrievalQuery(root, yearQuestion, [followQuestion]);
+  assert.match(yearRetrievalQuery, /Mida see viimase 5 aasta jooksul tähendab/u);
+  let yearGenerationCalls = 0;
+  const yearResponse = await searchEnvironmentLive(yearQuestion, {
+    deadlineAt: Date.now() + 1_000,
+    assessmentQuery: yearRetrievalQuery,
+    retrievalQuery: yearRetrievalQuery,
+    conversationContext: `${root} → ${followQuestion}`,
+    allowSafeEllipticalFollowUp: true,
+    searchResults: { total: documents.length, items: documents },
+    useCache: false,
+    generateAnswer: async () => {
+      yearGenerationCalls += 1;
+      throw new Error("the structured year answer must bypass generation");
+    },
+  });
+  assert.equal(yearGenerationCalls, 0);
+  assert.match(yearResponse.answer.title, /^2022\. aasta võrreldavate andmete järgi jah$/iu);
+  assert.match(yearResponse.answer.intro, /eemaldamine \(removals\) 12,0 miljonit m³ koorega/u);
+  assert.match(yearResponse.answer.intro, /netojuurdekasv 9,1 miljonit m³ koorega/u);
+  assert.match(yearResponse.answer.intro, /2,9 miljoni m³ võrra/u);
+  assert.doesNotMatch(yearResponse.answer.title, /2020–2024|viie aasta/iu);
+  assert.match(yearResponse.sources[0].evidenceExcerpt, /2022\. aastal oli netojuurdekasv 9,1/u);
+  assert.match(yearResponse.sources[0].evidenceExcerpt, /eemaldamine \(removals\) 12,0/u);
+
+  const datedRoot = "Kas 2023. aastal ületas raiemaht netojuurdekasvu?";
+  const windowRetrievalQuery = contextualRetrievalQuery(datedRoot, followQuestion, []);
+  const currentWindowResponse = await searchEnvironmentLive(followQuestion, {
+    deadlineAt: Date.now() + 1_000,
+    assessmentQuery: windowRetrievalQuery,
+    retrievalQuery: windowRetrievalQuery,
+    conversationContext: datedRoot,
+    allowSafeEllipticalFollowUp: true,
+    searchResults: { total: documents.length, items: documents },
+    useCache: false,
+  });
+  assert.match(currentWindowResponse.answer.title, /^2020–2024 viie aasta kohta/iu);
 
   const {
     _forestBalance: _discardedProjection,

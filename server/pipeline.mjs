@@ -745,7 +745,7 @@ export async function createPortalDraft(query, {
   const hydrated = answerCandidates.map((document) => hydratedById.get(document.id) || document);
   const eligibleHydrated = evidenceDocumentsFromListing({ items: hydrated });
   const reranked = rankPortalDocuments(retrievalQuery, eligibleHydrated);
-  const forestBalance = composeForestHarvestBalanceAnswer(retrievalQuery, reranked);
+  const forestBalance = composeForestHarvestBalanceAnswer(retrievalQuery, reranked, query);
   const conventionalQuality = assessEvidence(retrievalQuery, reranked);
   const plannedEvidence = selectAnswerEvidence(retrievalQuery, reranked);
   const quality = plannedEvidence?.strong

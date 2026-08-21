@@ -622,7 +622,7 @@ function forestObservationStatusSentence(observations = []) {
   return details.length ? ` Eurostati kvaliteedimärgendid: ${details.join("; ")}.` : "";
 }
 
-export function composeForestHarvestBalanceAnswer(query, sources = []) {
+export function composeForestHarvestBalanceAnswer(query, sources = [], controlQuery = query) {
   const comparisonIntent = forestHarvestComparisonIntent(query);
   if (!comparisonIntent) return null;
   const citationFor = (id) => {
@@ -636,7 +636,11 @@ export function composeForestHarvestBalanceAnswer(query, sources = []) {
   const fiveYearCitation = citationFor("forest-balance-kaur-five-year");
   const allObservations = validatedForestBalanceProjection(eurostat)?.observations || [];
   const observations = allObservations.filter((item) => item.increment !== null && item.removals !== null);
-  const explicitYear = requestedYear(query);
+  const controlText = String(controlQuery || "");
+  const controlYear = requestedYear(controlText);
+  const controlLastFiveIntent = /\b(?:viimase\s+(?:5|viie)|5\s+aasta|viie\s+aasta|viis\s+aastat)\b/iu.test(controlText);
+  const temporalQuery = controlYear || controlLastFiveIntent ? controlText : query;
+  const explicitYear = requestedYear(temporalQuery);
   if (!observations.length || !eurostatCitation) return null;
   const requestedObservation = explicitYear
     ? allObservations.find((item) => item.year === explicitYear)
@@ -668,7 +672,7 @@ export function composeForestHarvestBalanceAnswer(query, sources = []) {
       ],
     };
   }
-  const lastFiveIntent = /\b(?:viimase\s+(?:5|viie)|5\s+aasta|viie\s+aasta|viis\s+aastat)\b/iu.test(String(query));
+  const lastFiveIntent = /\b(?:viimase\s+(?:5|viie)|5\s+aasta|viie\s+aasta|viis\s+aastat)\b/iu.test(String(temporalQuery));
 
   if (lastFiveIntent) {
     const window = allObservations.slice(-5);
