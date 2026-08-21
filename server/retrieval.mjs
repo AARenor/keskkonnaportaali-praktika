@@ -5,7 +5,12 @@ import {
   searchCorpus,
 } from "./corpus.mjs";
 import { searchOfficialSites } from "./integrations.mjs";
-import { isForestHarvestBalanceQuery, loadStructuredIndicatorDocuments } from "./indicators.mjs";
+import {
+  FOREST_BALANCE_EUROSTAT_API_URL,
+  isForestHarvestBalanceQuery,
+  loadStructuredIndicatorDocuments,
+  validatedForestBalanceProjection,
+} from "./indicators.mjs";
 import {
   analyzePublicSearchQuery,
   assessSearchQuery,
@@ -153,19 +158,44 @@ function isExplicitNavigationAlias(document) {
     && document?._answerEvidenceEligible === false;
 }
 
+function hasValidatedForestBalanceProjection(document) {
+  const contentHash = clean(document?._contentHash);
+  const exactDataset = [document?.url, document?.locator]
+    .some((value) => canonicalResultUrl(value) === canonicalResultUrl(FOREST_BALANCE_EUROSTAT_API_URL));
+  return document?.id === "forest-balance-eurostat"
+    && ["official-eurostat-json", "reviewed-official-eurostat-snapshot"].includes(clean(document?.retrieval))
+    && hasIndependentEvidenceCapability(document)
+    && exactDataset
+    && /^[a-f0-9]{64}$/u.test(contentHash)
+    && contentHash === clean(document?._evidenceVersion)
+    && Boolean(validatedForestBalanceProjection(document));
+}
+
+function retainedForestBalanceFields(document) {
+  const projection = hasValidatedForestBalanceProjection(document)
+    ? validatedForestBalanceProjection(document)
+    : null;
+  return {
+    _forestBalance: projection ? structuredClone(projection) : undefined,
+    _forestBalanceHash: projection ? document._forestBalanceHash : undefined,
+  };
+}
+
 function mergeDuplicate(current, candidate) {
   const currentPriority = Number(current?._ranking?.servicePriority) || 0;
   const candidatePriority = Number(candidate?._ranking?.servicePriority) || 0;
   const currentAnswerEligible = hasIndependentEvidenceCapability(current);
   const candidateAnswerEligible = hasIndependentEvidenceCapability(candidate);
+  const structuredCandidates = [current, candidate].filter(hasValidatedForestBalanceProjection);
+  const structuredPreferred = structuredCandidates.length === 1 ? structuredCandidates[0] : null;
   // Prefer the richer display identity. Evidence eligibility is merged
   // separately and fail-closed below, so a route-only alias can never be
   // upgraded merely because the same landing URL arrived through discovery.
-  const preferred = currentAnswerEligible !== candidateAnswerEligible
+  const preferred = structuredPreferred || (currentAnswerEligible !== candidateAnswerEligible
     ? currentAnswerEligible ? current : candidate
     : candidatePriority !== currentPriority
       ? candidatePriority > currentPriority ? candidate : current
-      : identityQuality(candidate) > identityQuality(current) ? candidate : current;
+      : identityQuality(candidate) > identityQuality(current) ? candidate : current);
   const fallback = preferred === candidate ? current : candidate;
   const sameCanonicalUrl = canonicalResultUrl(current.url) === canonicalResultUrl(candidate.url);
   // A similar title is a display-level duplicate, not proof that both records
@@ -175,6 +205,7 @@ function mergeDuplicate(current, candidate) {
   if (!sameCanonicalUrl) {
     return {
       ...preferred,
+      ...retainedForestBalanceFields(preferred),
       _relevance: Math.max(Number(preferred._relevance) || 0, Number(fallback._relevance) || 0),
     };
   }
@@ -184,7 +215,9 @@ function mergeDuplicate(current, candidate) {
   // the retained answer body. Otherwise a rich missing-policy search card
   // could borrow a thin alias's capability at the same canonical URL.
   const capableEvidence = [current, candidate].filter(hasIndependentEvidenceCapability);
-  const evidenceCandidates = capableEvidence.length ? capableEvidence : [current, candidate];
+  const evidenceCandidates = structuredCandidates.length
+    ? structuredCandidates
+    : capableEvidence.length ? capableEvidence : [current, candidate];
   const richerEvidence = evidenceCandidates.reduce((best, document) => (
     evidenceBodyLength(document) > evidenceBodyLength(best) ? document : best
   ), evidenceCandidates.includes(preferred) ? preferred : evidenceCandidates[0]);
@@ -226,6 +259,10 @@ function mergeDuplicate(current, candidate) {
     _evidenceVersion: richerEvidence._evidenceVersion,
     _evidenceStatusAt: richerEvidence._evidenceStatusAt,
     freshness: richerEvidence.freshness,
+    // Spreads above can inherit an invalid structured projection from either
+    // alias. Assign this field explicitly so a failed version/schema check
+    // removes it instead of letting another alias confer eligibility on it.
+    ...retainedForestBalanceFields(richerEvidence),
     evidencePolicy: mergedEvidencePolicy,
     _answerEvidenceEligible: preserveValidatedEvidence
       || (currentAnswerEligible

@@ -101,7 +101,11 @@ import {
   shouldFetchRemoteSuggestions,
   suggestionsForValue,
 } from "../src/search-suggestions.js";
-import { forestHarvestBalanceDocumentsFromJson } from "../server/indicators.mjs";
+import {
+  forestHarvestBalanceDocumentsFromJson,
+  FOREST_BALANCE_EUROSTAT_API_URL,
+} from "../server/indicators.mjs";
+import { deduplicateResults } from "../server/retrieval.mjs";
 
 function explicitEvidenceSource(source = {}) {
   return {
@@ -1061,6 +1065,43 @@ test("forest harvest draft answers the root and temporal follow-up from multiple
   });
   assert.match(followResponse.answer.title, /^2020–2024 viie aasta kohta/iu);
   assert.doesNotMatch(followResponse.answer.title, /See otsing vastab Eesti keskkonnaandmete küsimustele/iu);
+
+  const {
+    _forestBalance: _discardedProjection,
+    _contentHash: _discardedHash,
+    _evidenceVersion: _discardedVersion,
+    _evidenceStatusAt: _discardedStatusAt,
+    freshness: _discardedFreshness,
+    ...storedEurostatAlias
+  } = documents[0];
+  const productionLikeItems = deduplicateResults([{
+    ...storedEurostatAlias,
+    retrieval: "local-corpus",
+    evidencePolicy: "claim-specific",
+    _answerEvidenceEligible: true,
+    summary: "Stored official landing-page text without the structured JSON-stat observation projection. ".repeat(4),
+    content: "Stored official page body without the structured year-value tuples. ".repeat(8),
+  }, ...documents]);
+  let generatedFollowUps = 0;
+  const collisionSafeResponse = await searchEnvironmentLive(followQuestion, {
+    deadlineAt: Date.now() + 1_000,
+    assessmentQuery: retrievalQuery,
+    retrievalQuery,
+    conversationContext: root,
+    allowSafeEllipticalFollowUp: true,
+    searchResults: { total: productionLikeItems.length, items: productionLikeItems },
+    useCache: false,
+    generateAnswer: async () => {
+      generatedFollowUps += 1;
+      return { answer: null, status: "not-applicable", provider: "test" };
+    },
+  });
+  assert.equal(generatedFollowUps, 0);
+  assert.match(collisionSafeResponse.answer.title, /^2020–2024 viie aasta kohta/iu);
+  assert.match(collisionSafeResponse.answer.intro, /2020: eemaldamine 12,2 ja netojuurdekasv 14,4/u);
+  assert.match(collisionSafeResponse.answer.intro, /Aastate 2021 ja 2024 kohta puudub/u);
+  assert.equal(collisionSafeResponse.sources[0].url, FOREST_BALANCE_EUROSTAT_API_URL);
+  assert.match(collisionSafeResponse.sources[0].evidenceExcerpt, /2023\. aastal oli netojuurdekasv 9,1/u);
 });
 
 test("LLM intent validation distinguishes a rate from a regulation", () => {

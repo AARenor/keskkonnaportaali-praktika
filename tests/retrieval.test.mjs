@@ -29,6 +29,12 @@ import {
   officialServiceCatalogueDocuments,
   queryTerms,
 } from "../server/search.mjs";
+import {
+  composeForestHarvestBalanceAnswer,
+  forestHarvestBalanceDocumentsFromJson,
+  FOREST_BALANCE_EUROSTAT_API_URL,
+  FOREST_BALANCE_EUROSTAT_URL,
+} from "../server/indicators.mjs";
 
 const NOW = Date.parse("2026-08-17T12:00:00Z");
 
@@ -948,6 +954,118 @@ test("current structured harvest balance sources outrank an old policy quote", (
     "forest-balance-eurostat",
     "forest-balance-kaur-methodology",
   ]);
+});
+
+test("structured forest balance keeps the exact dataset identity separate from landing-page aliases", () => {
+  const query = "Mida see viimase 5 aasta jooksul tähendab? Kas raiemaht ületab netojuurdekasvu?";
+  const payload = {
+    id: ["freq", "stk_flow", "indic_fo", "unit", "geo", "time"],
+    size: [1, 2, 1, 1, 1, 1],
+    dimension: {
+      freq: { category: { index: { A: 0 } } },
+      stk_flow: { category: { index: { NAI: 0, RMOV: 1 } } },
+      indic_fo: { category: { index: { FOR: 0 } } },
+      unit: { category: { index: { THS_M3: 0 } } },
+      geo: { category: { index: { EE: 0 } } },
+      time: { category: { index: { 2023: 0 } } },
+    },
+    value: [9_100, 11_564],
+  };
+  const observedAt = Date.now();
+  const documents = forestHarvestBalanceDocumentsFromJson(query, payload, {
+    fetchedAt: observedAt,
+    now: observedAt,
+  });
+  const [structured, ...supportDocuments] = documents;
+  assert.equal(structured.url, FOREST_BALANCE_EUROSTAT_API_URL);
+  assert.equal(structured.locator, FOREST_BALANCE_EUROSTAT_API_URL);
+  assert.notEqual(canonicalResultUrl(structured.url), canonicalResultUrl(FOREST_BALANCE_EUROSTAT_URL));
+
+  for (const aliasUrl of [FOREST_BALANCE_EUROSTAT_URL, FOREST_BALANCE_EUROSTAT_API_URL]) {
+    const storedAlias = {
+      id: "stored-landing-page",
+      title: structured.title,
+      url: aliasUrl,
+      summary: "Stored and independently eligible official page body without the structured observation projection. ".repeat(3),
+      content: "Official page body without JSON-stat tuples.",
+      sourceTier: "official",
+      retrieval: "local-corpus",
+      evidencePolicy: "claim-specific",
+      _answerEvidenceEligible: true,
+      _publishedAt: "2026-03-20",
+    };
+    for (const input of [[storedAlias, structured], [structured, storedAlias]]) {
+      const merged = deduplicateResults(input);
+      assert.equal(merged.length, 1);
+      const retained = merged[0];
+      assert.equal(retained.id, "forest-balance-eurostat");
+      assert.equal(retained.url, FOREST_BALANCE_EUROSTAT_API_URL);
+      assert.equal(retained.evidencePolicy, "versioned");
+      assert.equal(retained._answerEvidenceEligible, true);
+      assert.ok(retained._forestBalance?.observations?.length);
+      assert.equal(evidenceDocumentsFromListing({ items: merged }).some((item) => item.id === retained.id), true);
+    }
+  }
+
+  const changedObservation = (changes) => ({
+    ...structured,
+    _forestBalance: {
+      ...structured._forestBalance,
+      observations: structured._forestBalance.observations.map((item) => ({ ...item, ...changes })),
+    },
+  });
+  const duplicateObservation = structured._forestBalance.observations[0];
+  const circularObservation = { ...duplicateObservation };
+  circularObservation.incrementStatus = circularObservation;
+  const invalidProjections = [
+    { ...structured, _contentHash: "0".repeat(64) },
+    changedObservation({ increment: -99 }),
+    changedObservation({ removals: 101 }),
+    changedObservation({ increment: duplicateObservation.increment + 1 }),
+    {
+      ...structured,
+      _forestBalance: {
+        ...structured._forestBalance,
+        observations: [duplicateObservation, { ...duplicateObservation }],
+      },
+    },
+    {
+      ...structured,
+      _forestBalance: {
+        ...structured._forestBalance,
+        observations: [circularObservation],
+      },
+    },
+  ];
+  for (const invalidProjection of invalidProjections) {
+    assert.equal(composeForestHarvestBalanceAnswer(query, [invalidProjection, ...supportDocuments]), null);
+    for (const aliasUrl of [FOREST_BALANCE_EUROSTAT_API_URL, FOREST_BALANCE_EUROSTAT_URL]) {
+      const eligibleAlias = {
+        id: "forest-balance-eurostat",
+        title: structured.title,
+        url: aliasUrl,
+        locator: aliasUrl,
+        summary: "Independently eligible official page text without a structured projection. ".repeat(3),
+        content: "Official page body without JSON-stat tuples.",
+        sourceTier: "official",
+        retrieval: "local-corpus",
+        evidencePolicy: "claim-specific",
+        _answerEvidenceEligible: true,
+        _publishedAt: "2026-03-20",
+      };
+      for (const input of [[invalidProjection, eligibleAlias], [eligibleAlias, invalidProjection]]) {
+        const merged = deduplicateResults([...input, ...supportDocuments]);
+        const retained = merged.find((document) => document.id === "forest-balance-eurostat");
+        assert.ok(retained);
+        assert.equal(retained._forestBalance, undefined);
+        assert.equal(retained._forestBalanceHash, undefined);
+        assert.equal(
+          composeForestHarvestBalanceAnswer(query, evidenceDocumentsFromListing({ items: merged })),
+          null,
+        );
+      }
+    }
+  }
 });
 
 test("observed forest-age trend outranks an older document with scattered forest words", () => {

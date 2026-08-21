@@ -408,6 +408,66 @@ export function forestBalanceObservations(payload) {
   return observations;
 }
 
+export function validatedForestBalanceProjection(document, {
+  currentYear = new Date().getUTCFullYear(),
+} = {}) {
+  const projection = document?._forestBalance;
+  const projectionHash = String(document?._forestBalanceHash || "").trim();
+  const contentHash = String(document?._contentHash || "").trim();
+  const exactDataset = [document?.url, document?.locator]
+    .some((value) => String(value || "").trim() === FOREST_BALANCE_EUROSTAT_API_URL);
+  if (document?.id !== "forest-balance-eurostat"
+    || !exactDataset
+    || !/^[a-f0-9]{64}$/u.test(contentHash)
+    || contentHash !== String(document?._evidenceVersion || "").trim()
+    || !isPlainObject(projection)
+    || !/^[a-f0-9]{64}$/u.test(projectionHash)
+    || !Array.isArray(projection.observations)
+    || projection.observations.length < 1
+    || projection.observations.length > 200
+    || !Array.isArray(projection.missingYears)
+    || !Number.isInteger(projection.rangeStart)
+    || !Number.isInteger(projection.rangeEnd)
+    || Object.keys(projection).length !== 4
+    || !["observations", "rangeStart", "rangeEnd", "missingYears"]
+      .every((key) => Object.hasOwn(projection, key))) return null;
+
+  const observationKeys = ["year", "increment", "removals", "incrementStatus", "removalsStatus"];
+  const validStatus = (value) => value === null
+    || (typeof value === "string" && value.length <= 16 && !/[\p{Cc}\p{Cf}]/u.test(value));
+  const validValue = (value) => value === null
+    || (Number.isFinite(value) && value >= 0 && value <= 100);
+  if (!projection.observations.every((item, index, observations) => (
+    isPlainObject(item)
+      && Object.keys(item).length === observationKeys.length
+      && observationKeys.every((key) => Object.hasOwn(item, key))
+      && Number.isInteger(item.year)
+      && item.year >= MIN_FOREST_BALANCE_YEAR
+      && item.year <= currentYear + 1
+      && (index === 0 || item.year > observations[index - 1].year)
+      && validValue(item.increment)
+      && validValue(item.removals)
+      && validStatus(item.incrementStatus)
+      && validStatus(item.removalsStatus)
+  ))) return null;
+
+  const expectedMissingYears = projection.observations
+    .filter((item) => item.increment === null || item.removals === null)
+    .map((item) => item.year);
+  if (projection.rangeStart !== projection.observations[0].year
+    || projection.rangeEnd !== projection.observations.at(-1).year
+    || projection.missingYears.length !== expectedMissingYears.length
+    || !projection.missingYears.every((year, index) => (
+      Number.isInteger(year) && year === expectedMissingYears[index]
+    ))) return null;
+
+  // All nested fields have been reduced to bounded primitives above, so the
+  // digest cannot traverse attacker-controlled/circular object structure.
+  const serialized = JSON.stringify(projection);
+  const expectedHash = createHash("sha256").update(serialized).digest("hex");
+  return expectedHash === projectionHash ? projection : null;
+}
+
 function forestBalanceKaurDocuments() {
   return [
     {
@@ -485,13 +545,22 @@ export function forestHarvestBalanceDocumentsFromJson(query, payload, options = 
       : null;
   const answerEvidenceEligible = options.stale !== true
     && (options.reviewedSnapshot === true || liveTimestampIsValid);
+  const forestBalanceProjection = { observations, rangeStart, rangeEnd, missingYears };
+  const forestBalanceHash = createHash("sha256")
+    .update(JSON.stringify(forestBalanceProjection))
+    .digest("hex");
   return [{
     id: "forest-balance-eurostat",
     title: "Eesti puidu eemaldamine ja netojuurdekasv Eurostati metsa arvepidamises",
     organization: "Eurostat",
     type: "Ametlik andmestik",
     published: "20.03.2026",
-    url: FOREST_BALANCE_EUROSTAT_URL,
+    // The machine-readable dataset is the identity of this numeric evidence.
+    // Keeping the landing/news page as the canonical URL lets an unrelated
+    // corpus or discovery card at that page collapse into this record during
+    // deduplication and strip the structured observation tuple. The exact API
+    // URL also gives readers the source that actually contains the values.
+    url: FOREST_BALANCE_EUROSTAT_API_URL,
     locator: FOREST_BALANCE_EUROSTAT_API_URL,
     summary: `${rangeSentence} ${observationsText}.${forestObservationStatusSentence(comparable)}`.trim(),
     content: `Eurostati European Forest Accounts andmestiku for_vol_efa näitaja FOR, algühik tuhat kuupmeetrit koorega; kasutajavastuses on väärtused teisendatud miljoniteks kuupmeetriteks. ${rangeSentence} ${observationsText}. ${missingYears.length ? `Mõlemat võrreldavat väärtust ei ole aastate ${missingYears.join(", ")} kohta avaldatud.` : ""}`.trim(),
@@ -520,7 +589,8 @@ export function forestHarvestBalanceDocumentsFromJson(query, payload, options = 
     } : {}),
     _publishedAt: "2026-03-20",
     _stale: options.stale === true,
-    _forestBalance: { observations, rangeStart, rangeEnd, missingYears },
+    _forestBalanceHash: forestBalanceHash,
+    _forestBalance: forestBalanceProjection,
   }, {
     id: "forest-balance-eurostat-handbook",
     title: "European Forest Accounts Handbook: puidu eemaldamine ja netojuurdekasv",
@@ -564,7 +634,7 @@ export function composeForestHarvestBalanceAnswer(query, sources = []) {
   const handbookCitation = citationFor("forest-balance-eurostat-handbook");
   const methodCitation = citationFor("forest-balance-kaur-methodology");
   const fiveYearCitation = citationFor("forest-balance-kaur-five-year");
-  const allObservations = eurostat?._forestBalance?.observations || [];
+  const allObservations = validatedForestBalanceProjection(eurostat)?.observations || [];
   const observations = allObservations.filter((item) => item.increment !== null && item.removals !== null);
   const explicitYear = requestedYear(query);
   if (!observations.length || !eurostatCitation || !methodCitation) return null;
