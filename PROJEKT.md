@@ -132,7 +132,7 @@ Keskkonnaportaali Drupali otsa ei käsitleta versioonitud lepingulise API-na. P�
 
 ### Kontrollitud andmeteenused ja järgmised tüübikindlad adapterid
 
-Uuringu käigus kontrollitud ametlikud algallikad on lisatud 95 kirjega runtime-kataloogi: 73 üldist keskkonnaallikat, 20 metsanduse tõendiallikat ja kaks WFS-allikat. Esimene toorarvu adapter (`server/indicators.mjs`) katab olmejäätmete ringlussevõtu määra. Reaalaja ilma-, õhu-, vee- ja registrivaated on seni turvalised suunamisallikad, kuni järgmised teenused saavad enne automaatset arvvastust skeemi-, ühiku-, aja- ja eval-kontrolliga adapteri:
+Uuringu käigus kontrollitud ametlikud algallikad on lisatud 97 kirjega runtime-kataloogi: 73 üldist keskkonnaallikat, 22 metsanduse tõendiallikat ja kaks WFS-allikat. Esimene toorarvu adapter (`server/indicators.mjs`) katab olmejäätmete ringlussevõtu määra. Reaalaja ilma-, õhu-, vee- ja registrivaated on seni turvalised suunamisallikad, kuni järgmised teenused saavad enne automaatset arvvastust skeemi-, ühiku-, aja- ja eval-kontrolliga adapteri:
 
 - KAUR PostgREST `https://keskkonnaandmed.envir.ee/` kliima- ja seireandmetele;
 - EELIS avalikud JSON-jaotused ning KAUR GeoServeri WFS kaitse-, Natura-, vääriselupaiga ja Metsaregistri andmetele;

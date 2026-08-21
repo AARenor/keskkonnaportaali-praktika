@@ -4098,6 +4098,8 @@ test("answer citations link directly to their source instead of duplicating a so
   const citation = app.match(/function Citation[\s\S]*?function sourceTierLabel/u)?.[0] || "";
   assert.match(citation, /<ExternalAnchor/u);
   assert.match(citation, /href=\{source\?\.url\}/u);
+  assert.match(citation, /source\.locator \? `Vaata: \$\{source\.locator\}`/u);
+  assert.match(app, /className="broad-result__locator"[\s\S]*?Vaata allikast:/u);
   assert.doesNotMatch(app, /function EvidenceLocatorLink|Ava andmetabel/u);
 });
 

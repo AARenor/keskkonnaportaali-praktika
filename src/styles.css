@@ -2123,6 +2123,20 @@ h3 {
   -webkit-line-clamp: 3;
 }
 
+.broad-result .broad-result__locator {
+  display: -webkit-box;
+  margin-top: 7px;
+  color: #647780;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  -webkit-line-clamp: 2;
+}
+
+.broad-result__locator strong {
+  color: #40545e;
+  font-weight: 650;
+}
+
 .broad-result__topics {
   display: flex;
   flex-wrap: wrap;

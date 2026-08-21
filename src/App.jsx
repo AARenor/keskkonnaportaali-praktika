@@ -808,7 +808,9 @@ function Citation({ number, sources = [] }) {
       aria-label={`Allikas ${number}: ${sourceTitle}${safeExternalHref(source?.url) ? " (avaneb uuel vahelehel)" : ""}`}
       className="citation"
       href={source?.url}
-      title={source ? `${source.title} — ${source.organization}` : `Allikas ${number}`}
+      title={source
+        ? [source.title, source.organization, source.locator ? `Vaata: ${source.locator}` : ""].filter(Boolean).join(" — ")
+        : `Allikas ${number}`}
     >
       <span>{number}</span><span>{label}</span>
     </ExternalAnchor>
@@ -903,6 +905,7 @@ function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRe
               </div>
               <h3>{item.title}<ExternalLink size={15} /></h3>
               {item.summary ? <p>{item.summary}</p> : null}
+              {item.locator ? <p className="broad-result__locator"><strong>Vaata allikast:</strong> {item.locator}</p> : null}
               {item.topics?.length ? <div className="broad-result__topics">{item.topics.slice(0, 3).map((topic) => <span key={topic}>{topic}</span>)}</div> : null}
             </ExternalAnchor>
           ))}

@@ -2519,16 +2519,20 @@ export function assessSearchQuery(query, options = {}) {
       clarification: "Päring sisaldab mitut eri keskkonnateemat. Palun vali üks teema või kirjelda, millist seost nende vahel otsid.",
     };
   }
+  const namedMunicipalityExample = /\bnaiteks\b[\s\S]{0,35}\b(?:omavalitsus|vald|linn)\w*\b/u.test(normalized);
   if (forestryIntent?.kind === "municipality-forest-area"
     && (/\b(?:minu|mu|meie|oma|selles|siin)\b[\s\S]{0,35}\b(?:vald|valla|vallas)\w*\b/u.test(normalized)
       || /\bkoduvall\w*\b/u.test(normalized)
+      || namedMunicipalityExample
       || /^(?:kui\s+palju\s+)?mets\w*\s+(?:on\s+)?vallas$/u.test(normalized)
       || /\b(?:metsa|metsade?)\s+(?:protsent|osakaal|pindala)\s+vallas\b/u.test(normalized))) {
     return {
       kind: "needs-clarification",
       topic: "mets",
       reason: "missing-municipality",
-      clarification: "Palun nimeta vald ja täpsusta, kas soovid metsamaa pindala, metsasuse protsenti või Metsaregistris kehtivate eraldiste pindala. Need on eri näitajad.",
+      clarification: namedMunicipalityExample
+        ? "Palun täpsusta konkreetne omavalitsus (näiteks Võru linn või Võru vald) ja soovitud näitaja: metsamaa pindala, metsasuse protsent või Metsaregistris kehtivate eraldiste pindala. Need on eri näitajad."
+        : "Palun nimeta vald ja täpsusta, kas soovid metsamaa pindala, metsasuse protsenti või Metsaregistris kehtivate eraldiste pindala. Need on eri näitajad.",
     };
   }
   if (!CADASTRE_PATTERN.test(cleanQuery)
@@ -2774,8 +2778,8 @@ const OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     published: "2024",
     url: "https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI2024/SMI_2024.pdf",
     tags: ["mets", "metsamaa", "SMI", "pindala", "metsasus", "statistika", "tagavara", "juurdekasv", "lageraie", "mänd", "kuusk"],
-    summary: "SMI 2024 andmetel oli Eesti metsamaa pindala 2 350,6 tuhat hektarit ehk 51,8% Eesti pindalast; suhteline viga oli ±1,2%.",
-    content: "SMI 2024 andmetel oli Eesti metsamaa pindala 2 350,6 tuhat hektarit ehk 51,8% Eesti pindalast ning suhteline viga oli ±1,2%. Metsaga kaetud pindala ehk puistute pindala oli 2 135,8 tuhat hektarit ehk 47,11% Eesti pindalast. Metsamaa ja metsaga kaetud pindala on eri näitajad. Kogu metsamaa kasvava metsa tagavara hinnang oli 452,831 miljonit tihumeetrit suhtelise veaga ±1,5%. Tagavara ei ole aastane raiemaht ega automaatselt raiutav puidukogus. SMI 2024 järgi oli 19,7% metsamaast mittemajandatav ja 10,1% majanduspiiranguga. Ka majandusmetsas sõltub puidu kasutus vanusest, seisundist, juurdekasvust, õiguslikest piirangutest, ligipääsust ja omaniku otsusest. SMI proovitükkide andmeid ja puistutunnuseid kasutava mudeliga arvutatud metsamaa juurdekasvu hinnang oli 15,4303 miljonit tihumeetrit aastas suhtelise veaga ±1,4%. 2023. aasta raiete tagavara hinnang oli 11,736 miljonit tihumeetrit suhtelise veaga ±10,1%. 2023. aasta lageraie pindala hinnang oli 32,0 tuhat hektarit ja viie aasta keskmine 30,5 tuhat hektarit aastas. Enamuspuuliigi järgi oli männi metsamaa pindala 695,3 tuhat hektarit ehk 29,6% ning kuuse pindala 431,8 tuhat hektarit ehk 18,4%. Mänd oli kuusest suurem ka tagavara osakaalu järgi.",
+    summary: "SMI 2024 järgi oli metsamaa pindala 2 350,6 tuhat hektarit: 51,84% kogu Eesti pindalast või 54,08%, kui nimetajast jätta välja Peipsi ja Võrtsjärv. Pindalahinnangu suhteline viga oli ±1,2%.",
+    content: "SMI 2024 andmetel oli Eesti metsamaa pindala 2 350,6 tuhat hektarit ehk 51,84% kogu Eesti 4 533,9 tuhande hektari suurusest pindalast ning suhteline viga oli ±1,2%. Sama metsamaa pindala on 54,08% siis, kui nimetajast jäetakse välja Peipsi ja Võrtsjärv ning Eesti pindalana kasutatakse 4 346,7 tuhat hektarit. Seega võivad 51,84% ja 54,08% mõlemad olla õiged: erineb arvutuse nimetaja. Metsaga kaetud pindala ehk puistute pindala oli 2 135,8 tuhat hektarit ehk 47,11% kogu Eesti pindalast. Metsamaa ja metsaga kaetud pindala on eri näitajad. Kogu metsamaa kasvava metsa tagavara hinnang oli 452,831 miljonit tihumeetrit suhtelise veaga ±1,5%. Tagavara ei ole aastane raiemaht ega automaatselt raiutav puidukogus. SMI 2024 järgi oli 19,7% metsamaast mittemajandatav ja 10,1% majanduspiiranguga. Ka majandusmetsas sõltub puidu kasutus vanusest, seisundist, juurdekasvust, õiguslikest piirangutest, ligipääsust ja omaniku otsusest. SMI 2024 tabeli järgi oli mudeli alusel arvutatud metsamaa juurdekasvu hinnang 15,4303 miljonit tihumeetrit aastas ehk 6,6 tihumeetrit hektari kohta aastas ning suhteline viga oli ±1,4%. 2023. aasta raiete tagavara hinnang oli 11,736 miljonit tihumeetrit suhtelise veaga ±10,1%. 2023. aasta lageraie pindala hinnang oli 32,0 tuhat hektarit ja viie aasta keskmine 30,5 tuhat hektarit aastas. Enamuspuuliigi järgi oli männi metsamaa pindala 695,3 tuhat hektarit ehk 29,6% ning kuuse pindala 431,8 tuhat hektarit ehk 18,4%. Mänd oli kuusest suurem ka tagavara osakaalu järgi.",
     locator: "SMI 2024, lk 3, 7, 8, 12, 22 ja 57–59: pindala, tagavara, juurdekasv, puuliigid ning raiete hinnangud koos suhtelise veaga.",
   },
   {

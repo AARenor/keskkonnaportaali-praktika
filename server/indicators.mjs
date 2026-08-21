@@ -203,7 +203,8 @@ function forestHarvestComparisonIntent(query) {
   const incrementMatch = text.match(/\b(?:neto ?juurde ?kasv\w*|juurde ?kasv\w*)/u)
     || text.match(/\b(?:mets|puist)\w*(?:\s+\w+){0,2}\s+kasv\w*\s+juurde\b/u)
     || text.match(/\b(?:mets|puist)\w*(?:\s+\w+){0,2}\s+kasv\w*\b/u)
-    || text.match(/\bkasv\w*\s+juurde\b/u);
+    || text.match(/\bkasv\w*\s+juurde\b/u)
+    || text.match(/\b(?:kasvunaitaj|kasvuhinnang)\w*\b/u);
   if (!harvestMatch || !incrementMatch) return null;
   const causal = /\b(?:mojuta|pohjusta|tagajarg|miks)\w*/u.test(text);
   if (causal) return null;

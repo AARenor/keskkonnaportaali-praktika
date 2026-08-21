@@ -40,7 +40,7 @@ const ROUTE_CLASS_IDS = Object.freeze({
     "baltic-sea-litter", "ida-viru-groundwater",
     "forest-area", "forest-stock-stable", "forest-condition-review", "protected-forest-share",
     "forest-smi-2024-summary", "forest-smi-2025-presentation", "forest-yearbook-2023-fellings",
-    "forest-climate-adaptation-report",
+    "forest-climate-adaptation-report", "increment-method", "clearcut-over-time",
   ]),
   official_guidance: new Set([
     "waste-burning-guidance", "protected-nature-guidance", "mining-impact-guidance",
@@ -63,7 +63,7 @@ const ROUTE_CLASS_IDS = Object.freeze({
     "forest-notice-guidance", "forest-law", "nature-conservation-law", "protected-forest-share",
     "forest-spatial-data", "forest-smi-2025-presentation", "forest-smi-methodology-20-years",
     "forest-rmk-data-methods", "forest-yearbook-2023-fellings", "forest-climate-adaptation-report",
-    "forest-register-workflow", "official-forest-register-wfs",
+    "forest-register-workflow", "increment-method", "clearcut-over-time", "official-forest-register-wfs",
   ]),
   official_environmental_assessment: new Set([
     "environmental-assessment", "wind-farm-assessment-guide", "mining-impact-guidance",

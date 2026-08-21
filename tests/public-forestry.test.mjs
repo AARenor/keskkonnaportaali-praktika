@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -29,7 +30,7 @@ const DETERMINISTIC_CASES = [
   ["SMI vs lausmetsakorraldus – tagavara on ülehinnatud.", "smi-method-comparison", /ei tõenda[^.]*üle hinnatud/iu],
   ["Tagavara ei võrdu reaalselt kättesaadava puiduga.", "stock-versus-harvestable", /ei ole aastane raiemaht[^.]*raiutav puidukogus/iu],
   ["RMK andmed vs SMI andmed.", "rmk-versus-smi", /RMK hallatavate[\s\S]*SMI[\s\S]*kogu Eesti/iu],
-  ["Metsasuse ja pindala protsendid.", "forest-covered-area", /eri näitajad[\s\S]*51,8%[\s\S]*47,11%/iu],
+  ["Metsasuse ja pindala protsendid.", "forest-covered-area", /51,8[4%][\s\S]*47,11%[\s\S]*eri näitajad/iu],
   ["Suurem valim ei tähenda automaatselt täpsemat tulemust.", "sample-size-and-precision", /Valimi suurus üksi ei määra hinnangu täpsust/iu],
   ["Eesti metsad hävivad kiiresti.", "forest-depletion", /ei viita[^.]*otsa saamas/iu],
   ["Kõik lageraied on keskkonnavastased.", "clearcut-value-judgement", /kõik lageraied[^.]*ei ole mõõdetav üksikfakt/iu],
@@ -39,7 +40,7 @@ const DETERMINISTIC_CASES = [
   ["Kui suur osa Eestist on kaetud metsaga?", "forest-covered-area", /47,11%/u],
   ["Miks annavad eri allikad erinevaid numbreid?", "why-forest-numbers-differ", /katvus[\s\S]*andmeaasta[\s\S]*definitsioon/iu],
   ["Mis vahe on SMI-l ja metsaregistril?", "forest-data-sources", /SMI[\s\S]*Metsaregister[\s\S]*kinnistu/iu],
-  ["Kuidas arvutatakse juurdekasvu?", "increment-method", /mudeliga arvutatud[^.]*15,4303 miljonit tihumeetrit/iu],
+  ["Kuidas arvutatakse juurdekasvu?", "increment-method", /Kogujuurdekasv[\s\S]*Netojuurdekasv[\s\S]*mudelipõhise meetodi[\s\S]*mitmese imputeerimise/iu],
   ["Miks ei võrdu tagavara raiutava puidukogusega?", "stock-versus-harvestable", /ei ole aastane raiemaht[^.]*raiutav puidukogus/iu],
   ["Kust leida konkreetse kinnistu metsaandmeid?", "property-forest-data", /Metsaregistrit ehk Metsaportaali/iu],
   ["Kui suur osa metsadest on kaitse all?", "protected-forest-share", /28,4%[\s\S]*16,8%/u],
@@ -49,7 +50,7 @@ const DETERMINISTIC_CASES = [
   ["Kas Eestis saab mets otsa?", "forest-depletion", /ei viita[^.]*otsa saamas/iu],
   ["Kas praegu raiutakse rohkem kui 20 aastat tagasi?", "harvest-over-time", /2002\. aasta hinnang 10,157[\s\S]*2022\. aasta hinnang 12,077[\s\S]*18,9% suurem[\s\S]*ei tähenda ühtlast kasvutrendi/iu],
   ["Kas meie metsad muutuvad nooremaks?", "forest-age-trend", /suurenes nii noorte kui ka vanade metsade pindala/iu],
-  ["Kui palju lageraiet on viimase 10 aasta jooksul tehtud?", "clearcut-over-time", /aritmeetiline summa[\s\S]*311,7 tuhat hektarit[\s\S]*2013[.–]+2022/iu],
+  ["Kuidas muutus lageraie pindala 2014–2024?", "clearcut-over-time", /2014[.–]+2024[\s\S]*29,7[\s\S]*34,0[\s\S]*ei näita ühtlast kasvu/iu],
   ["Kas kuusk või mänd domineerib Eestis?", "pine-versus-spruce", /695,3[\s\S]*431,8[\s\S]*Mänd oli kuusest suurem/iu],
   ["Kas kaitsealadel raiutakse?", "logging-in-protected-areas", /sihtkaitsevööndis[\s\S]*piiranguvööndis[\s\S]*registreeritud raied ei tõenda/iu],
 ];
@@ -111,7 +112,8 @@ test("the 26 source-directory forestry routes render explanatory, visibly cited 
 
     const citations = usedCitations(draft);
     const sourcesByCitation = new Map(draft.sources.map((source) => [source.citation, source]));
-    assert.ok(citations.size >= 2, `${query}: answer should synthesize at least two official sources`);
+    const minimumCitationCount = ["increment-method", "clearcut-over-time"].includes(expectedIntent) ? 1 : 2;
+    assert.ok(citations.size >= minimumCitationCount, `${query}: answer should use enough directly relevant official sources`);
     assert.ok([...citations].every((citation) => sourcesByCitation.get(citation)?.sourceTier === "official"), query);
     assert.ok(draft.answer.parts.every((part) => /[.!?]$/u.test(part.text.trim())), `${query}: truncated answer part`);
   }
@@ -194,4 +196,110 @@ test("the municipality question asks for the missing municipality and metric ins
   assert.match(response.answer.intro, /nimeta vald/iu);
   assert.match(response.answer.intro, /metsamaa pindala, metsasuse protsenti või Metsaregistris kehtivate eraldiste pindala/iu);
   assert.equal(response.answer.introCitations.length, 0);
+});
+
+const V2_PUBLIC_INTENTS = Object.freeze({
+  "FAQ-01": "forest-area",
+  "FAQ-03": "why-forest-numbers-differ",
+  "FAQ-04": "forest-data-sources",
+  "FAQ-05": "increment-method",
+  "FAQ-06": "stock-versus-harvestable",
+  "FAQ-07": "property-forest-data",
+  "FAQ-08": "protected-forest-share",
+  "FAQ-09": "rmk-versus-smi",
+  "FAQ-10": "climate-impact",
+  "FAQ-11": "forest-notice",
+  "FAQ-12": "forest-depletion",
+  "FAQ-13": "harvest-over-time",
+  "FAQ-14": "forest-age-trend",
+  "FAQ-15": "clearcut-over-time",
+  "FAQ-16": "pine-versus-spruce",
+  "FAQ-17": "logging-in-protected-areas",
+  "MIS-01": "forest-data-sources",
+  "MIS-03": "stock-versus-harvestable",
+  "MIS-04": "rmk-versus-smi",
+  "MIS-05": "forest-area",
+  "MIS-06": "sample-size-and-precision",
+  "MIS-07": "forest-depletion",
+  "MIS-08": "forest-harvest-balance",
+  "MIS-09": "clearcut-value-judgement",
+  "MIS-10": "old-forest-protection",
+  "MIS-11": "forest-data-sources",
+  "MIS-12": "forest-stock-uncertainty",
+});
+
+test("all 30 locked v2 FAQ and misconception formulations reach current strong public evidence", async () => {
+  const evaluation = JSON.parse(await readFile(new URL("../evaluation/forestry_queries_v2.json", import.meta.url), "utf8"));
+  const answerableRows = evaluation.queries.filter((row) => row.kind === "answerable");
+  const directory = officialServiceCatalogueDocuments();
+  assert.equal(answerableRows.length, 30);
+
+  for (const row of answerableRows) {
+    const tag = row.tags[0];
+    const assessment = assessSearchQuery(row.query);
+    if (tag === "FAQ-18") {
+      assert.equal(forestEvidenceIntent(row.query)?.kind, "municipality-forest-area", row.query);
+      assert.equal(assessment.kind, "needs-clarification", row.query);
+      assert.equal(assessment.reason, "missing-municipality", row.query);
+      assert.match(assessment.clarification, /Võru linn või Võru vald/iu);
+      continue;
+    }
+    assert.equal(assessment.kind, "answerable", row.query);
+    if (["FAQ-02", "MIS-02"].includes(tag)) {
+      assert.equal(isForestHarvestBalanceQuery(row.query), true, row.query);
+      continue;
+    }
+
+    const expectedIntent = V2_PUBLIC_INTENTS[tag];
+    assert.ok(expectedIntent, `${tag}: missing expected current route`);
+    assert.equal(forestEvidenceIntent(row.query)?.kind, expectedIntent, row.query);
+    const visible = rankPublicSearchCandidates(row.query, directory, {
+      intentDocuments: directory,
+      now: NOW,
+    }).slice(0, 12);
+    const plan = selectAnswerEvidence(row.query, visible);
+    assert.equal(plan?.kind, expectedIntent, row.query);
+    assert.equal(plan?.strong, true, row.query);
+    assert.deepEqual(plan?.missingEvidenceGroups || [], [], row.query);
+
+    const draft = await createPortalDraft(row.query, {
+      deadlineAt: Date.now(),
+      searchResults: { total: visible.length, items: visible },
+    });
+    assert.equal(draft.evidence.answerable, true, row.query);
+    const citations = usedCitations(draft);
+    const sourcesByCitation = new Map(draft.sources.map((source) => [source.citation, source]));
+    assert.ok(citations.size >= 1, `${row.query}: no visible citation`);
+    assert.ok([...citations].every((citation) => sourcesByCitation.get(citation)?.sourceTier === "official"), row.query);
+  }
+});
+
+test("the increment answer exposes the exact method, source summary and locator without unrelated forestry facts", async () => {
+  const query = "Kuidas arvutatakse juurdekasvu?";
+  const directory = officialServiceCatalogueDocuments();
+  const visible = rankPublicSearchCandidates(query, directory, {
+    intentDocuments: directory,
+    now: NOW,
+  }).slice(0, 12);
+  const plan = selectAnswerEvidence(query, visible);
+  assert.equal(visible[0]?.id, "increment-method");
+  assert.equal(plan?.directDocumentId, "increment-method");
+  assert.equal(plan?.strong, true);
+
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    searchResults: { total: visible.length, items: visible },
+  });
+  const text = answerText(draft);
+  assert.match(text, /Kogujuurdekasv[\s\S]*Netojuurdekasv/iu);
+  assert.match(text, /mudelipõhise meetodi[\s\S]*mitmese imputeerimise/iu);
+  assert.match(text, /mudelpuude andmetest[\s\S]*alalistele proovitükkidele[\s\S]*ajutistele proovitükkidele/iu);
+  assert.doesNotMatch(text, /51,8%|majandusmetsas sõltub/iu);
+
+  const cited = draft.sources.find((source) => source.citation === draft.answer.introCitations[0]);
+  assert.equal(cited?.id, "increment-method");
+  assert.match(cited?.summary || "", /kahte hindamisviisi[\s\S]*mudelipõhist[\s\S]*imputeerimist/iu);
+  assert.match(cited?.locator || "", /lõpparuande lk 22/iu);
+  assert.equal(cited?.url, "https://keskkonnaportaal.ee/et/statistilise-metsainventuuri-smi-ja-maakasutuse-maakasutuse-muutuse-ja-metsanduse-lulucf-andmehoive");
+  assert.match(visible[0]?.locator || "", /lk 22/iu);
 });

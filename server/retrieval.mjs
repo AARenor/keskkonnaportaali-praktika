@@ -26,7 +26,7 @@ import {
 import { sourceEvidenceEligibility, sourceSupportsRouteClass } from "./source-registry.mjs";
 
 const PUBLIC_ITEM_FIELDS = [
-  "id", "title", "url", "summary", "organization", "type", "published", "topics", "sourceTier",
+  "id", "title", "url", "summary", "locator", "organization", "type", "published", "topics", "sourceTier",
 ];
 const PUBLIC_FILTER_SOURCES = new Set(["all", "trusted", "official", "reviewed", "supplementary", "other"]);
 const PUBLIC_FILTER_SORTS = new Set(["relevance", "newest"]);
@@ -482,7 +482,11 @@ function genericForestryEvidence(intent, document) {
   const matchedGroupIndexes = [...new Set(passageMatches.flatMap((item) => item.matchedGroupIndexes))];
   const uncoveredGroups = new Set(matchedGroupIndexes);
   const selectedMatches = [];
-  while (uncoveredGroups.size && selectedMatches.length < 4) {
+  // The increment explanation has several short, separately verifiable
+  // method steps. Preserve them instead of stopping after the first four
+  // passages and silently omitting how the two methods differ.
+  const maximumSelectedPassages = intent?.kind === "increment-method" ? 7 : 4;
+  while (uncoveredGroups.size && selectedMatches.length < maximumSelectedPassages) {
     const next = passageMatches
       .map((item, index) => ({
         item,
@@ -497,7 +501,11 @@ function genericForestryEvidence(intent, document) {
     selectedMatches.push(next.item);
     for (const groupIndex of next.item.matchedGroupIndexes) uncoveredGroups.delete(groupIndex);
   }
-  const selectedPassages = selectedMatches.map((item) => item.passage);
+  // Greedy coverage chooses the smallest useful passage set, but the public
+  // explanation must still read in the order used by the reviewed source.
+  const selectedPassages = selectedMatches
+    .sort((left, right) => passageMatches.indexOf(left) - passageMatches.indexOf(right))
+    .map((item) => item.passage);
   const coverage = matchedGroupIndexes.length / Math.max(1, normalizedGroups.length);
   return {
     satisfies: matchedGroupIndexes.length === normalizedGroups.length,

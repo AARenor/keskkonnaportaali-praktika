@@ -30,7 +30,7 @@ import {
   textHasQueryRoot,
 } from "./search.mjs";
 
-export const SEARCH_RESPONSE_REVISION = "answer-v28-canonical-query-boundary";
+export const SEARCH_RESPONSE_REVISION = "answer-v29-forestry-evidence-locator";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 
 function rankPortalDocuments(query, documents) {
@@ -38,16 +38,26 @@ function rankPortalDocuments(query, documents) {
     ...document,
     score: document._ranking.score,
   }));
-  const plannedEvidence = selectAnswerEvidence(query, ranked);
-  if (!plannedEvidence?.strong) return ranked;
-  const directIndex = ranked.findIndex((document) => document.id === plannedEvidence.directDocumentId);
-  const withDirectFirst = directIndex > 0
-    ? [ranked[directIndex], ...ranked.slice(0, directIndex), ...ranked.slice(directIndex + 1)]
-    : ranked;
+  // The public search ranker has already admitted these official documents
+  // for the resolved forestry intent. A second lexical pass must not discard
+  // a complementary methodology source merely because it uses different
+  // words from the user's misconception (for example “valimi suurus” rather
+  // than “kümme korda rohkem vaatlusi”).
   const requiredIds = forestryIntentServiceDocumentIds(query);
-  const required = requiredIds
-    .map((id) => withDirectFirst.find((document) => document.id === id))
-    .filter(Boolean);
+  const documentsById = new Map((documents || []).map((document) => [document.id, document]));
+  const required = requiredIds.map((id) => documentsById.get(id)).filter(Boolean);
+  const seenCandidates = new Set();
+  const candidates = [...ranked, ...required].filter((document) => {
+    if (!document?.id || seenCandidates.has(document.id)) return false;
+    seenCandidates.add(document.id);
+    return true;
+  });
+  const plannedEvidence = selectAnswerEvidence(query, candidates);
+  if (!plannedEvidence?.strong) return ranked;
+  const directIndex = candidates.findIndex((document) => document.id === plannedEvidence.directDocumentId);
+  const withDirectFirst = directIndex > 0
+    ? [candidates[directIndex], ...candidates.slice(0, directIndex), ...candidates.slice(directIndex + 1)]
+    : candidates;
   if (!required.length) return withDirectFirst;
   // The displayed list and the answer use the same ranked candidate set. A
   // verified passage may lead that set, and the complementary official
@@ -401,7 +411,13 @@ function composeOfficialForestryEvidenceFallback(query, plannedEvidence, sources
       });
     const selectedKeys = new Set(selectedPassages.map(normalize));
     const selectedLength = selectedPassages.join(" ").length;
-    const supplementaryLimit = selectedLength < 240 ? 2 : selectedLength < 480 ? 1 : 0;
+    // Methodology and time-series answers must remain exactly traceable to the
+    // passages the evidence planner selected. Pulling extra same-document
+    // sentences used to append unrelated forest-area or harvesting facts
+    // merely because those sentences repeated a query word.
+    const supplementaryLimit = ["increment-method", "clearcut-over-time"].includes(plannedEvidence.kind)
+      ? 0
+      : selectedLength < 240 ? 2 : selectedLength < 480 ? 1 : 0;
     const supplementary = safeSourcePassages(source)
       .filter((passage) => !selectedKeys.has(normalize(passage)))
       .filter((passage) => !(/\blagerai\w*|keskkonnamoju\w*/u.test(normalize(passage))
