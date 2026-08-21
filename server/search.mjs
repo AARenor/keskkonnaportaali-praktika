@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import { cadastreSourceDocuments } from "./cadastre.mjs";
 import {
   ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS,
   resolvePublicForestryIntent,
 } from "./forestry-public.mjs";
+import { withOfficialSourceProfile } from "./source-registry.mjs";
 
 const SEARCH_DOCUMENTS = [
   {
@@ -30,6 +32,9 @@ const SEARCH_DOCUMENTS = [
       "Metsa teemakataloog koondab Keskkonnaportaali metsaga seotud väljaanded, uudised, kaardid ja andmeallikad ühte vaatesse.",
     answer:
       "Keskkonnaportaali metsa teemakataloogist leiab samas vaates metsaga seotud publikatsioonid, uudised ja andmeallikad; kinnistupõhiseid andmeid tuleb kontrollida riiklikust Metsaportaalist.",
+    evidencePolicy: "route-only",
+    delivery: "catalog-only",
+    _answerEvidenceEligible: false,
   },
   {
     id: "forest-inventory-publication",
@@ -51,11 +56,14 @@ const SEARCH_DOCUMENTS = [
     type: "Avaandmed",
     published: "jooksev",
     url: "https://keskkonnaportaal.ee/et/avaandmed",
-    tags: ["avaandmed", "andmestik", "allalaadimine", "API", "failihoidla"],
+    tags: ["avaandmed", "andmestik", "allalaadimine", "API", "failihoidla", "metaandmed", "andmestiku kirjeldus"],
     summary:
       "Avaandmete vaade juhatab keskkonnaandmete kirjelduste, allalaaditavate failide ja seotud registrite juurde.",
     answer:
       "Keskkonnaandmete taaskasutamiseks alusta avaandmete vaatest: sealt saab liikuda andmestike kirjelduste, failihoidla ja andmeid haldavate registrite juurde.",
+    evidencePolicy: "route-only",
+    delivery: "catalog-only",
+    _answerEvidenceEligible: false,
   },
   {
     id: "environment-register",
@@ -69,6 +77,9 @@ const SEARCH_DOCUMENTS = [
       "Kaardirakendus võimaldab otsida ja vaadata ruumilisi keskkonnaandmeid, sealhulgas Natura 2000 alasid, kaitsealasid, elupaiku ja kaitstavaid objekte. Kaart aitab leida registriobjekti; konkreetse piirangu kehtivus tuleb kontrollida objekti andmetest ja õigusaktist.",
     answer:
       "Asukohapõhiste keskkonnapiirangute kontrollimiseks kasuta Andmed ja kaart rakendust ning võrdle nähtavaid kihte registri objektiandmetega.",
+    evidencePolicy: "route-only",
+    delivery: "catalog-only",
+    _answerEvidenceEligible: false,
   },
   {
     id: "climate-atlas",
@@ -95,6 +106,9 @@ const SEARCH_DOCUMENTS = [
       "Teemakataloog koondab ilma ja kliimaga seotud ülevaated, väljaanded ja uudised.",
     answer:
       "Ilma üksiksündmuse ja pikaajalise kliimamuutuse eristamiseks vaata koos jooksvaid ilmaandmeid, pika perioodi keskmisi ning Kliimaatlase stsenaariume.",
+    evidencePolicy: "route-only",
+    delivery: "catalog-only",
+    _answerEvidenceEligible: false,
   },
   {
     id: "water-catalogue",
@@ -108,6 +122,9 @@ const SEARCH_DOCUMENTS = [
       "Veeteema materjalid hõlmavad pinna- ja põhjavee seisundit, seiret ning veekogude kasutamist mõjutavaid andmeid.",
     answer:
       "Veekogu seisundi hindamisel tuleb vaadata nii seireandmeid kui ka konkreetse veekogumi koondhinnangut; üks mõõtmine ei kirjelda tavaliselt kogu veekogu seisundit.",
+    evidencePolicy: "route-only",
+    delivery: "catalog-only",
+    _answerEvidenceEligible: false,
   },
   {
     id: "air-catalogue",
@@ -121,6 +138,9 @@ const SEARCH_DOCUMENTS = [
       "Õhukvaliteedi materjalid koondavad seire, heitkoguste ja välisõhu seisundi teemalisi allikaid.",
     answer:
       "Õhukvaliteeti hinnatakse saasteainete kaupa ning tulemust mõjutavad mõõtekoht ja ajavahemik; võrdle hetkenäitu pikema perioodi seireandmetega.",
+    evidencePolicy: "route-only",
+    delivery: "catalog-only",
+    _answerEvidenceEligible: false,
   },
   {
     id: "biodiversity",
@@ -134,6 +154,9 @@ const SEARCH_DOCUMENTS = [
       "Looduskaitse teemakataloog koondab kaitstavate alade, liikide, elupaikade ja elurikkuse seisundi materjalid.",
     answer:
       "Looduskaitselise piirangu olemasolu tuleb kontrollida kaardilt ja registri objektiandmetest; avaliku kaardi puuduv kiht ei tõenda piirangu puudumist.",
+    evidencePolicy: "route-only",
+    delivery: "catalog-only",
+    _answerEvidenceEligible: false,
   },
   {
     id: "waste",
@@ -141,12 +164,16 @@ const SEARCH_DOCUMENTS = [
     organization: "Keskkonnaportaal",
     type: "Teemakataloog",
     published: "jooksev",
-    url: "https://keskkonnaportaal.ee/et/search?search_api_fulltext=ringmajandus",
-    tags: ["jäätmed", "ringmajandus", "pistrik", "jäätmekäitlus", "taaskasutus"],
+    url: "https://keskkonnaportaal.ee/et/teemad/jaatmed-ja-ringmajandus",
+    tags: ["jäätmed", "ringmajandus", "jäätmekäitlus", "taaskasutus", "biojäätmed", "jäätmete liigiti kogumine"],
     summary:
       "Jäätmete ja ringmajanduse materjalid seovad jäätmetekke, käitluse, taaskasutuse ja valdkonna infosüsteemid.",
     answer:
       "Jäätmeandmete puhul täpsusta aasta, jäätmeliik ja käitlusviis, sest kogused ning taaskasutuse näitajad ei ole eri lõigetes otse võrreldavad.",
+    evidencePolicy: "route-only",
+    delivery: "catalog-only",
+    routeClasses: ["official_guidance", "official_data_or_api"],
+    _answerEvidenceEligible: false,
   },
   {
     id: "publications",
@@ -160,20 +187,33 @@ const SEARCH_DOCUMENTS = [
       "Publikatsioonide otsing koondab uuringud, aruanded, ülevaated, kaardilood ja muud avaldatud materjalid.",
     answer:
       "Põhjalikuma vastuse jaoks ava otsingutulemustes algallikas ning kontrolli väljaande kuupäeva, metoodikat ja andmete vaatlusperioodi.",
+    evidencePolicy: "route-only",
+    delivery: "catalog-only",
+    _answerEvidenceEligible: false,
   },
   {
     id: "environmental-permits",
-    title: "Keskkonnaotsuste infosüsteem KOTKAS",
+    title: "KOTKAS avalik keskkonnalubade otsing",
     organization: "Keskkonnaamet",
     type: "Infosüsteem",
     published: "jooksev",
-    url: "https://kotkas.envir.ee/",
+    url: "https://kotkas.envir.ee/permits/public_index",
     locator: "https://keskkonnaamet.ee/kasiraamat-kohaliku-omavalitsuse-keskkonnaspetsialistile/kaevandamisloa-taotluse-menetlus-tahtsamate-etappide-kaupa",
     tags: ["luba", "keskkonnaluba", "taotlemine", "ettevõte", "KMH", "menetlus", "aruandlus", "KOTKAS"],
     summary:
       "KOTKAS on keskkonnalubade ametlik infosüsteem: seal saab esitada taotluse ning kontrollida konkreetse keskkonnaloa menetluse staatust ja avalikke dokumente.",
     answer:
       "Konkreetse loa või menetluse ametlikku seisu kontrolli KOTKASest; portaali otsing aitab leida tausta, kuid menetlusandmete allikaks on infosüsteem ise.",
+    evidencePolicy: "versioned",
+    delivery: "catalog-only",
+    routeClasses: ["official_spatial_or_register", "official_legal_context", "official_data_or_api"],
+    freshness: {
+      class: "current-law-or-procedure",
+      basis: "source-version-or-status-at",
+      maxAgeMs: 24 * 60 * 60 * 1000,
+      requiresSourceTimestamp: true,
+    },
+    _answerEvidenceEligible: false,
   },
   {
     id: "kese-monitoring",
@@ -242,6 +282,9 @@ const SEARCH_DOCUMENTS = [
       "KAIA kaudu avaldatakse meteoroloogia ja hüdroloogia faile, radaripilte, hoiatusi, prognoose, tuleohu andmeid ning mudeltooteid koos API dokumentatsiooniga.",
     answer:
       "Jooksva ilma või hoiatuse jaoks kasuta ajakohast KAIA või Ilm+ väljundit; ajaloolise kliimanäitaja jaoks vali selle asemel mõõtejaama ja perioodiga kliimaandmed.",
+    evidencePolicy: "route-only",
+    delivery: "catalog-only",
+    _answerEvidenceEligible: false,
   },
   {
     id: "statistics-pxweb",
@@ -268,6 +311,15 @@ const SEARCH_DOCUMENTS = [
       "Õhuseire vaade kuvab Eesti välisõhu seirejaamade ajakohaseid mõõtetulemusi saasteainete ja jaamade kaupa. Näitu tuleb tõlgendada koos aine, mõõtekoha ja keskmistamisajaga.",
     answer:
       "Praeguse õhukvaliteedi hindamiseks vali lähim seirejaam ja saasteaine; ühe jaama hetkeline näit ei kirjelda automaatselt kogu linna ega pikaajalist õhukvaliteeti.",
+    evidencePolicy: "timestamped",
+    delivery: "live-service",
+    freshness: {
+      class: "live",
+      basis: "source-observed-at",
+      maxAgeMs: 15 * 60 * 1000,
+      requiresSourceTimestamp: true,
+    },
+    _answerEvidenceEligible: false,
   },
   {
     id: "water-monitoring",
@@ -388,6 +440,15 @@ const SEARCH_DOCUMENTS = [
       "Keskkonnaagentuuri Ilm+ kuvab Eesti prognoosi, hoiatusi ja seirejaamade mõõdetud ilmaandmeid. Prognoosi jaoks on vaja kohta ja ajavahemikku.",
     answer:
       "Homse või tänase ilma vaatamiseks kasuta Ilm+ ajakohast prognoosi ning vali asukoht; kliimaandmete kataloog ei ole ilmaprognoosi asendus.",
+    evidencePolicy: "timestamped",
+    delivery: "live-service",
+    freshness: {
+      class: "live",
+      basis: "source-validity-window",
+      maxAgeMs: 15 * 60 * 1000,
+      requiresSourceTimestamp: true,
+    },
+    _answerEvidenceEligible: false,
   },
   {
     id: "tallinn-noise-map",
@@ -414,6 +475,11 @@ const SEARCH_DOCUMENTS = [
       "Katkise külmkapi, kodumasina või muu jäätme vastuvõtukoha leidmiseks saab Keskkonnaportaali kaardirakenduses valida jäätmekäitluskohtade kihi ja piirata kaardi maakonnale. Vaade sisaldab kehtivaid ning arhiveeritud kohti ja seost KOTKASe menetlusandmetega.",
     answer:
       "Piirkonna jäätmekäitluskohtade leidmiseks ava Andmed ja kaart, vali jäätmekäitluskohtade kiht ning piira kaart soovitud maakonnale. Enne jäätmete viimist kontrolli objekti kehtivust ja vastuvõetavaid jäätmeliike KOTKASest või käitlejalt.",
+    canonicalServiceId: "environment-register",
+    intentView: "waste-facilities",
+    evidencePolicy: "route-only",
+    delivery: "catalog-only",
+    _answerEvidenceEligible: false,
   },
   {
     id: "radiation-monitoring",
@@ -435,7 +501,7 @@ const SEARCH_DOCUMENTS = [
     type: "Ametlik teemaülevaade",
     published: "05.12.2024",
     url: "https://www.eea.europa.eu/en/topics/in-depth/electric-vehicles",
-    tags: ["elektriauto", "elektrisõiduk", "keskkonnamõju", "elutsükkel", "aku", "kasvuhoonegaas", "õhusaaste", "transport"],
+    tags: ["elektriauto", "elektrisõiduk", "keskkonnamõju", "keskkonnajalajälg", "elutsükkel", "aku", "kasvuhoonegaas", "õhusaaste", "transport", "linnakasutus", "võrdlus"],
     summary:
       "Euroopa Keskkonnaagentuuri elutsükli keskkonnamõju ülevaate järgi tekitab tüüpiline elektriauto Euroopas elutsükli jooksul vähem kasvuhoonegaase, õhusaastet ja müra kui võrreldav bensiini- või diiselauto, kuigi tootmisfaasi mõju on tavaliselt suurem.",
     answer:
@@ -566,6 +632,9 @@ const SEARCH_DOCUMENTS = [
     tags: ["meri", "merevesi", "veetemperatuur", "veetase", "vaatlusandmed", "seire", "rannik", "jääkaart", "jääolud"],
     summary:
       "Keskkonnaagentuuri merevaatluste vaade kuvab rannikujaamade veetaset, veetemperatuuri ja muid jooksvaid näite; samas ametlikus mereteenuses on eraldi ajaloolised seireandmed ning jääkaart.",
+    evidencePolicy: "timestamped",
+    delivery: "live-service",
+    _answerEvidenceEligible: false,
   },
   {
     id: "marine-ice-map",
@@ -577,6 +646,9 @@ const SEARCH_DOCUMENTS = [
     tags: ["meri", "merejää", "jääkaart", "jääolud", "jääkate", "vaatlus", "kaart"],
     summary:
       "Keskkonnaagentuuri jääkaart näitab Eesti mereala jääolusid. Merevee temperatuuri ja veetaseme jooksvaid näite kuvatakse eraldi mere seireandmete vaates.",
+    evidencePolicy: "timestamped",
+    delivery: "live-service",
+    _answerEvidenceEligible: false,
   },
   {
     id: "marine-strategy-status",
@@ -588,6 +660,367 @@ const SEARCH_DOCUMENTS = [
     tags: ["meri", "Läänemeri", "merestrateegia", "seisund", "2024", "eutrofeerumine", "seire"],
     summary:
       "Kliimaministeeriumi merestrateegia leht koondab Läänemere Eesti mereala 2024. aasta seisundihinnangu, indikaatorid, aruanded ja järgmiste meetmete dokumendid.",
+  },
+  {
+    id: "bathing-water-quality",
+    title: "Suplusvee kvaliteet ja supluskohad",
+    organization: "Terviseamet",
+    type: "Ajakohane tervise- ja seireinfo",
+    published: "jooksev",
+    url: "https://www.terviseamet.ee/keskkonnatervis/vesi/suplusvesi",
+    tags: ["suplusvesi", "supluskoht", "rand", "veekvaliteet", "E. coli", "soole enterokokid", "kaart", "hoiatus"],
+    summary:
+      "Terviseameti püsileht koondab avatud supluskohad, jooksva suplusvee kvaliteedi, kvaliteediklassid ja kaardivaate. Jooksvat proovitulemust ning nelja viimase aasta andmetel määratud kvaliteediklassi tuleb eristada.",
+    evidencePolicy: "timestamped",
+    delivery: "live-service",
+    _answerEvidenceEligible: false,
+  },
+  {
+    id: "tartu-noise-map",
+    title: "Tartu linna välisõhu strateegiline mürakaart 2022",
+    organization: "Tartu linn",
+    type: "Ametlik mürakaart",
+    published: "16.05.2025",
+    url: "https://tartu.ee/et/uurimused/murakaart2022",
+    tags: ["müra", "mürakaart", "Tartu", "strateegiline mürakaart", "liiklusmüra", "tööstusmüra", "Lden", "Lnight"],
+    summary:
+      "Tartu strateegiline mürakaart annab üldhinnangu linna tiheasustusala pikaajalisele müratasemele ja on müra vähendamise tegevuskava alus. See ei ole üksikobjekti ega hetkelise häiringu mõõtmine.",
+  },
+  {
+    id: "wastewater-local-treatment",
+    title: "Reovee kohtkäitluse ja äraveo eeskiri",
+    organization: "Keskkonnaamet",
+    type: "Ametlik juhend",
+    published: "jooksev",
+    url: "https://keskkonnaamet.ee/kasiraamat-kohaliku-omavalitsuse-keskkonnaspetsialistile/reovee-kohtkaitluse-ja-araveo-eeskiri",
+    tags: ["reovesi", "heitvesi", "kohtkäitlus", "omapuhasti", "väikepuhasti", "kogumismahuti", "äravedu", "ühiskanalisatsioon"],
+    summary:
+      "Keskkonnaameti käsiraamat juhatab kohaliku reovee kohtkäitluse, kogumismahutist äraveo ja ühiskanalisatsiooni purgimise nõuete juurde. Konkreetse kinnistu lahendus sõltub kohaliku omavalitsuse eeskirjast ja ala kanalisatsioonivõimalusest.",
+  },
+  {
+    id: "baltic-sea-litter",
+    title: "Läänemere kaitse ja mereprügi vähendamine",
+    organization: "Kliimaministeerium",
+    type: "Ametlik tegevuskava ja ülevaade",
+    published: "27.03.2025",
+    url: "https://kliimaministeerium.ee/merendus-veekeskkond/merekeskkonna-kaitse/laanemere-kaitse",
+    tags: ["Läänemeri", "meri", "mereprügi", "mikroprügi", "prügi", "HELCOM", "tegevuskava", "merereostus"],
+    summary:
+      "Kliimaministeeriumi Läänemere kaitse leht seob mereprügi vähendamise HELCOMi tegevuskavaga ning juhatab ametlike seisundihinnangute, meetmete ja seire juurde.",
+  },
+  {
+    id: "hazardous-waste-asbestos",
+    title: "Ohtlikud jäätmed ja asbestijäätmed",
+    organization: "Kliimaministeerium",
+    type: "Ametlik jäätmejuhis",
+    published: "jooksev",
+    url: "https://www.kliimaministeerium.ee/elukeskkond-ringmajandus/ohtlikud-jaatmed",
+    tags: ["ohtlikud jäätmed", "asbest", "asbestijäätmed", "eterniit", "jäätmekäitlus", "üleandmine", "jäätmejaam"],
+    summary:
+      "Kliimaministeeriumi juhis selgitab ohtlike jäätmete eraldi kogumist ja nõuetekohasele käitlejale üleandmist. Asbesti sisaldavaid ehitusmaterjale ei tohi segada tavajäätmetega.",
+  },
+  {
+    id: "river-dams-fish",
+    title: "Paisud Eestis ja nende mõju kaladele",
+    organization: "Kliimaministeerium",
+    type: "Ametlik teemaülevaade",
+    published: "jooksev",
+    url: "https://kliimaministeerium.ee/paisud-eestis",
+    tags: ["pais", "jõgi", "kalad", "kalastik", "rändetõke", "kalapääs", "kudeala", "vooluveekogu"],
+    summary:
+      "Kliimaministeeriumi ülevaade selgitab, kuidas paisud katkestavad kalade rändeteid, muudavad jõelist elupaika ning võivad halvendada veekogu seisundit. Leht juhatab ka paisutamise ja kalapääsude käsitluseni.",
+  },
+  {
+    id: "green-network-planning-guide",
+    title: "Rohevõrgustiku planeerimisjuhend",
+    organization: "Keskkonnaagentuur",
+    type: "Ametlik planeerimisjuhend",
+    published: "jooksev",
+    url: "https://keskkonnaagentuur.ee/uudised/keskkonnaagentuuri-tellimusel-valminud-rohevorgustiku-planeerimisjuhend",
+    tags: ["rohevõrgustik", "roheline võrgustik", "planeerimine", "elurikkus", "ökoloogiline sidusus", "tuumala", "koridor"],
+    summary:
+      "Keskkonnaagentuuri tellitud juhend toetab rohevõrgustiku käsitlemist planeeringutes ning aitab hinnata võrgustiku sidusust, tuumalasid ja koridore.",
+  },
+  {
+    id: "invasive-species-guidance",
+    title: "Võõrliigid: ohjamine ja tegevusjuhised",
+    organization: "Keskkonnaamet",
+    type: "Ametlik liigijuhend",
+    published: "jooksev",
+    url: "https://www.keskkonnaamet.ee/voorliigid",
+    tags: ["võõrliik", "invasiivne liik", "aias", "ohjamine", "teavitamine", "võõrnälkjas", "looduskaitse"],
+    summary:
+      "Keskkonnaameti võõrliikide leht aitab liike ära tunda ning koondab tõrje-, ohjamis- ja teavitamisjuhised. Liigiti võivad lubatud tegevused erineda.",
+  },
+  {
+    id: "organizational-footprint",
+    title: "Organisatsioonide keskkonna- ja kasvuhoonegaaside jalajälg",
+    organization: "Kliimaministeerium",
+    type: "Ametlik mudel ja juhend",
+    published: "jooksev",
+    url: "https://www.kliimaministeerium.ee/rohereform-kliima/rohereform/organisatsioonide-jalajalg",
+    tags: ["keskkonnajalajälg", "süsinikujalajälg", "KHG jalajälg", "organisatsioon", "avalik sektor", "arvutusmudel", "eriheitetegur"],
+    summary:
+      "Kliimaministeeriumi püsileht koondab organisatsioonide keskkonna- ja KHG-jalajälje hindamise mudelid, juhendid ning ajakohastatavad eriheitetegurid. Hindamisel tuleb kirjeldada ulatust, mõjualasid ja heiteallikate valikut.",
+  },
+  {
+    id: "wetland-restoration",
+    title: "Märgalade ja soode taastamine",
+    organization: "Keskkonnaagentuur",
+    type: "Ametlik teemaülevaade",
+    published: "jooksev",
+    url: "https://keskkonnaagentuur.ee/node/2632",
+    tags: ["märgala", "soo", "raba", "taastamine", "veerežiim", "süsiniku sidumine", "üleujutus", "elurikkus"],
+    summary:
+      "Keskkonnaagentuuri ülevaade selgitab märgalade taastamise seost veerežiimi, elurikkuse, vee hoidmise ja süsiniku sidumisega ning toob Eesti taastamisalade näiteid.",
+  },
+  {
+    id: "groundwater-pesticide-monitoring",
+    title: "Põhjavee pestitsiidide seiretulemused 2024",
+    organization: "Keskkonnaagentuur",
+    type: "Riikliku seire ülevaade",
+    published: "jooksev",
+    url: "https://keskkonnaagentuur.ee/uudised/mida-naitavad-2024-aasta-keskkonnaseire-tulemused-meie-looduskeskkonna-seisundi-kohta",
+    tags: ["põhjavesi", "pestitsiid", "taimekaitsevahend", "jääk", "seire", "2024", "keemiline seisund"],
+    summary:
+      "Keskkonnaagentuuri 2024. aasta riikliku seire ülevaade käsitleb põhjavee keemilist survet ning taimekaitsevahendite jääkide leide seirejaamades. Üksikleid ja põhjaveekogumi koondseisund on eri näitajad.",
+  },
+  {
+    id: "solar-panel-end-of-life",
+    title: "Mis saab päikesepaneelidest pärast kasutuse lõppu?",
+    organization: "Keskkonnaportaal",
+    type: "Ametlik teemaülevaade",
+    published: "jooksev",
+    url: "https://keskkonnaportaal.ee/et/teemad/taastuvenergia/mis-saab-paikesepaneelidest-ja-tuulikutest-parast-kasutuse-loppu",
+    tags: ["päikesepaneel", "päikesepaneelide jäätmed", "elektroonikajäätmed", "ringlussevõtt", "kasutuse lõpp", "taastuvenergia"],
+    summary:
+      "Keskkonnaportaali ülevaade käsitleb päikesepaneelide materjale, kasutusea lõppu ja ringlussevõttu. Kasutuskõlbmatut paneeli tuleb käidelda elektri- ja elektroonikaseadme jäätmena, mitte segaolmejäätmena.",
+  },
+  {
+    id: "wildlife-status-2025",
+    title: "Ulukiasurkondade seisund ja küttimissoovitus 2025",
+    organization: "Keskkonnaagentuur",
+    type: "Riiklik ulukiseire ülevaade",
+    published: "jooksev",
+    url: "https://keskkonnaagentuur.ee/uudised/keskkonnaagentuur-avaldas-varske-raporti-milles-antakse-ulevaade-ulukiasurkondade",
+    tags: ["uluk", "ulukiseire", "karu", "hunt", "ilves", "arvukus", "asurkond", "2025"],
+    summary:
+      "Keskkonnaagentuuri 2025. aasta ulukiseire ülevaade koondab jahiulukite arvukuse ja asurkondade muutused ning uue jahihooaja küttimissoovitused, sealhulgas suurkiskjate käsitluse.",
+  },
+];
+
+// Curated official services are deliberately separate from the legacy search
+// fixtures above. Dynamic/register landing pages are navigation results only;
+// they cannot become answer evidence until a typed adapter supplies the
+// required observation time or registry version.
+const ADDITIONAL_OFFICIAL_SERVICE_DOCUMENTS = [
+  {
+    id: "current-weather-observations",
+    title: "Jooksvad ilmavaatlused",
+    organization: "Keskkonnaagentuur",
+    type: "Reaalaja seireteenus",
+    published: "jooksev",
+    url: "https://www.ilmateenistus.ee/ilm/ilmavaatlused/vaatlusandmed/",
+    tags: ["ilm", "ilmavaatlus", "hetkeilm", "praegu", "temperatuur", "tuul", "sademed", "ilmajaam"],
+    summary: "Ilmateenistuse ametlik vaatlusvaade annab ilmajaamade jooksvad mõõtetulemused. Väärtus on tõendatav ainult koos jaama, mõõteaja, näitaja ja ühikuga.",
+    evidencePolicy: "timestamped",
+    routeClasses: ["official_live_weather", "official_data_or_api"],
+    delivery: "live-service",
+    freshness: { class: "live", basis: "source-observed-at", maxAgeMs: 15 * 60 * 1000, requiresSourceTimestamp: true },
+    _answerEvidenceEligible: false,
+  },
+  {
+    id: "weather-warnings",
+    title: "Eesti ilmahoiatused",
+    organization: "Keskkonnaagentuur",
+    type: "Reaalaja hoiatusteenus",
+    published: "jooksev",
+    url: "https://www.ilmateenistus.ee/ilm/prognoosid/hoiatused/",
+    tags: ["ilm", "ilmahoiatus", "hoiatus", "torm", "tuul", "äike", "libedus", "tuleoht", "üleujutushoiatus", "maakond", "kehtivus"],
+    summary: "Ilmateenistuse hoiatusvaade avaldab piirkonna, ohutaseme ning hoiatuse algus- ja lõpuaja. Hoiatust ei tohi esitada kehtivana ilma allika kehtivusaja kontrollita.",
+    evidencePolicy: "timestamped",
+    routeClasses: ["official_live_weather"],
+    delivery: "live-service",
+    freshness: { class: "live", basis: "source-validity-window", maxAgeMs: 5 * 60 * 1000, requiresSourceTimestamp: true },
+    _answerEvidenceEligible: false,
+  },
+  {
+    id: "current-hydrology-observations",
+    title: "Jooksvad hüdroloogilised vaatlused",
+    organization: "Keskkonnaagentuur",
+    type: "Reaalaja hüdroloogiline seire",
+    published: "jooksev",
+    url: "https://www.ilmateenistus.ee/siseveed/vaatlusandmed/kaart/",
+    tags: ["hüdroloogia", "veetase", "vooluhulk", "veetemperatuur", "jõgi", "järv", "hüdromeetriajaam", "vaatlus"],
+    summary: "Ametlik kaart kuvab sisevete vaatlusjaamade jooksvaid veetaseme, vooluhulga ja veetemperatuuri näite. Väärtus vajab jaama ning vaatlusaja sidumist.",
+    evidencePolicy: "timestamped",
+    routeClasses: ["official_live_water", "official_historical_observation", "official_data_or_api"],
+    delivery: "live-service",
+    freshness: { class: "live", basis: "source-observed-at", maxAgeMs: 15 * 60 * 1000, requiresSourceTimestamp: true },
+    _answerEvidenceEligible: false,
+  },
+  {
+    id: "drinking-water-guidance",
+    title: "Joogivee kvaliteet ja terviseohutus",
+    organization: "Terviseamet",
+    type: "Ametlik juhis ja järelevalveinfo",
+    published: "jooksev",
+    url: "https://www.terviseamet.ee/keskkonnatervis/vesi/joogivesi",
+    tags: ["joogivesi", "kraanivesi", "vee kvaliteet", "terviseohutus", "veevärk", "järelevalve", "Terviseamet"],
+    summary: "Terviseameti leht selgitab joogivee kvaliteedi, nõuete ja järelevalve ametlikku käsitlust. Konkreetse piirkonna tulemus vajab proovikoha ja perioodiga algallikat.",
+    evidencePolicy: "claim-specific",
+    routeClasses: ["official_guidance"],
+    delivery: "catalog-and-bounded-hydration",
+    freshness: { class: "maintained", basis: "retrieved-at", maxAgeMs: 7 * 24 * 60 * 60 * 1000, requiresSourceTimestamp: false },
+    _answerEvidenceEligible: true,
+  },
+  {
+    id: "surface-water-status",
+    title: "Pinnaveekogumite seisundiinfo",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Ametlik seisundihinnang ja andmestik",
+    published: "jooksev",
+    url: "https://keskkonnaportaal.ee/et/teemad/vesi/pinnavesi/pinnaveekogumite-seisundiinfo",
+    tags: ["pinnavesi", "veekogum", "ökoloogiline seisund", "keemiline seisund", "jõgi", "järv", "seisundiklass", "seisundihinnang"],
+    summary: "Keskkonnaportaali püsileht koondab pinnaveekogumite aasta-, kogumi- ja seisundiliigipõhised hinnangud ning nende metoodika.",
+    evidencePolicy: "claim-specific",
+    routeClasses: ["official_indicator_or_report", "official_data_or_api"],
+    delivery: "structured-or-download",
+    freshness: { class: "annual", basis: "source-published-at", maxAgeMs: 550 * 24 * 60 * 60 * 1000, requiresSourceTimestamp: true },
+    _answerEvidenceEligible: true,
+  },
+  {
+    id: "national-air-emissions",
+    title: "Eesti õhusaasteainete heitkogused",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Riiklik heitkoguste inventuur",
+    published: "jooksev",
+    url: "https://keskkonnaportaal.ee/et/teemad/v%C3%A4lis%C3%B5hk/eesti-%C3%B5husaasteainete-heitkogused",
+    tags: ["välisõhk", "õhusaaste", "heitkogus", "heitkoguste inventuur", "NOx", "SO2", "NH3", "PM2.5", "PM10", "aasta", "aegrida"],
+    summary: "Ametlik inventuur koondab Eesti õhusaasteainete aastased heitkogused ainete ja sektorite kaupa. Arvuline väide peab säilitama aasta, aine, ühiku ja inventuuri versiooni.",
+    evidencePolicy: "claim-specific",
+    routeClasses: ["official_indicator_or_report", "official_data_or_api"],
+    delivery: "structured-or-download",
+    freshness: { class: "annual", basis: "source-published-at", maxAgeMs: 550 * 24 * 60 * 60 * 1000, requiresSourceTimestamp: true },
+    _answerEvidenceEligible: true,
+  },
+  {
+    id: "permitted-source-emissions",
+    title: "Keskkonnakaitseluba omavate heiteallikate heitkogused",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Ametlik käitisepõhine heiteandmestik",
+    published: "jooksev",
+    url: "https://keskkonnaportaal.ee/et/teemad/valisohk/keskkonnakaitseluba-omavate-heiteallikate-heitkogused",
+    tags: ["välisõhk", "heiteallikas", "käitis", "ettevõte", "keskkonnaluba", "heitkogus", "KOTKAS", "aastaaruanne", "saasteaine"],
+    summary: "Ametlik vaade seob loaga heiteallikad käitiste, saasteainete ja aruandeperioodidega. Dünaamilist väärtust ei tohi tõendada landing page'i kirjeldusega.",
+    evidencePolicy: "timestamped",
+    routeClasses: ["official_indicator_or_report", "official_data_or_api"],
+    delivery: "structured-or-download",
+    freshness: { class: "daily-or-annual", basis: "source-observed-or-reporting-period", maxAgeMs: 48 * 60 * 60 * 1000, requiresSourceTimestamp: true },
+    _answerEvidenceEligible: false,
+  },
+  {
+    id: "pakis-register",
+    title: "Pakendiregister PAKIS",
+    organization: "Keskkonnaagentuur",
+    type: "Ametlik register",
+    published: "jooksev",
+    url: "https://pakis.envir.ee/pakis/main/welcome",
+    tags: ["PAKIS", "pakendiregister", "pakend", "pakendiettevõtja", "pakendiaruanne", "pakendijäätmed", "tootjavastutus"],
+    summary: "PAKIS on pakendivaldkonna ametlik register. Kataloogikirje võib teenusesse suunata, kuid ei tõenda ettevõtte registreeringut ega aruande väärtust.",
+    evidencePolicy: "route-only",
+    routeClasses: ["official_spatial_or_register", "official_data_or_api"],
+    delivery: "catalog-only",
+    _answerEvidenceEligible: false,
+  },
+  {
+    id: "proto-register",
+    title: "Probleemtooteregister PROTO",
+    organization: "Keskkonnaagentuur",
+    type: "Ametlik register",
+    published: "jooksev",
+    url: "https://proto.envir.ee/proto/main/welcome",
+    tags: ["PROTO", "probleemtooteregister", "probleemtoode", "aku", "patarei", "rehv", "elektriseade", "tootjavastutus"],
+    summary: "PROTO on probleemtoodete ametlik register. Kataloogikirje võib teenusesse suunata, kuid ei tõenda ettevõtte registreeringut ega aruande väärtust.",
+    evidencePolicy: "route-only",
+    routeClasses: ["official_spatial_or_register", "official_data_or_api"],
+    delivery: "catalog-only",
+    _answerEvidenceEligible: false,
+  },
+  {
+    id: "natura-protected-areas",
+    title: "Natura 2000 ja kaitstavad alad",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Ametlik ülevaade ja andmestik",
+    published: "jooksev",
+    url: "https://keskkonnaportaal.ee/et/natura-2000-ja-kaitstavad-alad",
+    tags: ["Natura 2000", "kaitseala", "loodusala", "linnuala", "kaitstav ala", "elupaik", "pindala", "looduskaitse", "kaart"],
+    summary: "Ametlik püsileht koondab Natura 2000 ja kaitstavate alade üldandmed. Üldandmed ei asenda kinnistu objektiandmeid ega kehtivat kaitse-eeskirja.",
+    evidencePolicy: "claim-specific",
+    routeClasses: ["official_indicator_or_report", "official_spatial_or_register"],
+    delivery: "catalog-and-bounded-hydration",
+    freshness: { class: "maintained-or-periodic", basis: "source-published-at", maxAgeMs: 90 * 24 * 60 * 60 * 1000, requiresSourceTimestamp: false },
+    _answerEvidenceEligible: true,
+  },
+  {
+    id: "nature-observations",
+    title: "Loodusvaatluste andmebaas",
+    organization: "Keskkonnaagentuur",
+    type: "Ametlik vaatlusregister",
+    published: "jooksev",
+    url: "https://lva.keskkonnainfo.ee/",
+    tags: ["LVA", "loodusvaatlus", "liigivaatlus", "liik", "vaatluskoht", "vaatlusaeg", "fenoloogia", "kaart"],
+    summary: "Loodusvaatluste andmebaas koondab vaatlusandmeid. Vaatluskirje ei tõenda iseseisvalt liigi kinnitatud levikut, pesitsemist ega puudumist.",
+    evidencePolicy: "route-only",
+    routeClasses: ["official_spatial_or_register", "official_data_or_api"],
+    delivery: "catalog-only",
+    _answerEvidenceEligible: false,
+  },
+  {
+    id: "metsaportaal",
+    title: "Metsaportaal",
+    organization: "Keskkonnaagentuur",
+    type: "Ametlik metsaandmete registrivaade",
+    published: "jooksev",
+    url: "https://register.metsad.ee/",
+    tags: ["Metsaportaal", "metsaregister", "katastritunnus", "kinnistu", "maatükk", "puistuandmed", "metsaeraldis", "takseerandmed", "metsateatis", "inventeerimisandmed", "kaart"],
+    summary: "Metsaportaal kuvab kinnistu- ja eraldisepõhiseid Metsaregistri andmeid. Kataloogikirje ei tõenda konkreetse eraldise tunnuseid ega tehtud raiet.",
+    evidencePolicy: "route-only",
+    routeClasses: ["official_spatial_or_register", "official_forestry_evidence"],
+    delivery: "catalog-only",
+    _answerEvidenceEligible: false,
+  },
+  {
+    id: "climate-policy-data-gateway",
+    title: "Kliimapoliitika andmevärav",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Ametlik kliimanäitajate koondvaade",
+    published: "jooksev",
+    url: "https://keskkonnaportaal.ee/et/teemad/kliimapoliitika-andmevarav",
+    tags: ["kliimapoliitika", "kasvuhoonegaas", "KHG", "inventuur", "EL HKS", "ETS", "heitkoguste prognoos", "kliimaeesmärk", "energia"],
+    summary: "Andmevärav koondab iga-aastase KHG-inventuuri, EL HKS-i, jõupingutuste jagamise ning heiteprognooside näitajad. Arv peab säilitama aasta, sektori, ühiku ja andmeliigi.",
+    evidencePolicy: "claim-specific",
+    routeClasses: ["official_indicator_or_report", "official_data_or_api"],
+    delivery: "catalog-and-bounded-hydration",
+    freshness: { class: "annual", basis: "source-published-at", maxAgeMs: 550 * 24 * 60 * 60 * 1000, requiresSourceTimestamp: true },
+    _answerEvidenceEligible: true,
+  },
+  {
+    id: "flood-risk-management",
+    title: "Üleujutusriskide hindamine ja maandamine",
+    organization: "Kliimaministeerium",
+    type: "Ametlik riskihinnang ja kaardid",
+    published: "jooksev",
+    url: "https://kliimaministeerium.ee/merendus-veekeskkond/veekasutamine-ja-kaitse/uleujutused",
+    tags: ["üleujutus", "üleujutusrisk", "riskiala", "üleujutuskaart", "Pärnu", "Haapsalu", "10 aasta", "50 aasta", "100 aasta", "1000 aasta"],
+    summary: "Ametlik leht koondab Pärnu ja teiste riskipiirkondade üleujutusriski hindamise ning 10, 50, 100 ja 1000 aasta veetaseme stsenaariumikaardid. Konkreetne asukohaväide peab nimetama stsenaariumi ja kaardiversiooni.",
+    content: "Kliimaministeeriumi üleujutusriskide lehelt saab avada Pärnu ja teiste riskipiirkondade kaardid ning võrrelda 10, 50, 100 ja 1000 aasta veetaseme stsenaariume. 100 aasta kaart kirjeldab vastava tõenäosusstsenaariumi riskiala, mitte tänast üleujutushoiatust. Konkreetse kinnistu kohta järelduse tegemiseks tuleb kontrollida täpset asukohta, stsenaariumi ja kaardiversiooni.",
+    locator: "Üleujutusohupiirkondade kaardid: Pärnu ning 10, 50, 100 ja 1000 aasta stsenaariumid.",
+    evidencePolicy: "claim-specific",
+    routeClasses: ["official_indicator_or_report", "official_spatial_or_register"],
+    delivery: "catalog-and-bounded-hydration",
+    freshness: { class: "six-year-cycle", basis: "source-version", maxAgeMs: 7 * 366 * 24 * 60 * 60 * 1000, requiresSourceTimestamp: true },
+    _answerEvidenceEligible: true,
   },
 ];
 
@@ -620,6 +1053,7 @@ export function hasCompleteSentenceEnding(value = "") {
 }
 
 const STOP_WORDS = new Set([
+  "abil",
   "aga",
   "andmed",
   "andmete",
@@ -689,6 +1123,8 @@ const STOP_WORDS = new Set([
   "saada",
   "leia",
   "leian",
+  "vaata",
+  "vaadata",
   "alla",
   "kaudu",
   "kontrollida",
@@ -698,11 +1134,38 @@ const STOP_WORDS = new Set([
   "teenus",
   "teenuse",
   "ole",
+  "alati",
+  "linnas",
   "sama",
   "asi",
   "kelle",
   "vaja",
   "naeb",
+  "how",
+  "what",
+  "where",
+  "why",
+  "which",
+  "please",
+  "tell",
+  "show",
+  "find",
+  "right",
+  "now",
+  "current",
+  "currently",
+  "today",
+  "tomorrow",
+  "latest",
+  "estonia",
+  "estonian",
+  "the",
+  "and",
+  "for",
+  "with",
+  "from",
+  "into",
+  "about",
 ]);
 
 const DISCOVERY_STOP_WORDS = new Set([
@@ -725,6 +1188,12 @@ const DISCOVERY_STOP_WORDS = new Set([
 
 function discoveryTerm(word) {
   const normalized = normalize(word);
+  if (normalized.startsWith("suplusve")) return "suplusvee";
+  if (normalized.startsWith("reove") || normalized.startsWith("heitve")) return "reovesi";
+  if (normalized.startsWith("mereprug")) return "mereprügi";
+  if (normalized.startsWith("rohevorg")) return "rohevõrgustik";
+  if (normalized.startsWith("voorliig") || normalized.startsWith("invasiiv")) return "võõrliigid";
+  if (normalized.startsWith("margal") || normalized.startsWith("rab") || normalized.startsWith("soo")) return "märgalad";
   if (normalized.startsWith("jaatmekaitluskoh")) return "jäätmekäitluskohad";
   if (normalized.startsWith("autorehv") || normalized.startsWith("rehv")) return "rehvide";
   if (normalized.startsWith("polet")) return "põletamine";
@@ -736,9 +1205,9 @@ function discoveryTerm(word) {
 }
 
 export function buildDiscoveryQuery(query) {
-  const words = String(query || "")
-    .normalize("NFKC")
-    .match(/[\p{L}\p{N}:-]+/gu) || [];
+  const canonicalInput = canonicalizePublicSearchQuery(query);
+  if (!canonicalInput.ok || containsPrivatePersonLookup(canonicalInput.query)) return "";
+  const words = canonicalInput.query.match(/[\p{L}\p{N}:-]+/gu) || [];
   const terms = words
     .filter((word) => {
       const normalized = normalize(word);
@@ -771,11 +1240,14 @@ export function forestEvidenceIntent(query) {
 }
 
 export function buildDiscoveryQueries(query, limit = 3) {
-  const base = buildDiscoveryQuery(query);
+  const canonicalInput = canonicalizePublicSearchQuery(query);
+  if (!canonicalInput.ok) return [];
+  const acceptedQuery = canonicalInput.query;
+  const base = buildDiscoveryQuery(acceptedQuery);
   if (!base) return [];
   const words = base.match(/[\p{L}\p{N}:-]+/gu) || [];
-  const roots = queryTerms(query);
-  const forestryIntent = forestEvidenceIntent(query);
+  const roots = queryTerms(acceptedQuery);
+  const forestryIntent = forestEvidenceIntent(acceptedQuery);
   const expanded = [];
   if (roots.includes("mets") && roots.some((root) => ["noor", "vanus", "muutus"].includes(root))) {
     expanded.push("mets vanus");
@@ -805,11 +1277,58 @@ export function buildDiscoveryQueries(query, limit = 3) {
 }
 
 function topicRoot(word) {
+  if (word.startsWith("groundwater")) return "pohjavesi";
+  if (word.startsWith("weather")) return "ilm";
+  if (word.startsWith("forecast")) return "prognoos";
+  if (word === "air") return "ohk";
+  if (word.startsWith("temperature")) return "temperatuur";
+  if (word.startsWith("precipitation") || word.startsWith("rainfall")) return "sademed";
+  if (word.startsWith("forest") || word.startsWith("woodland")) return "mets";
+  if (word.startsWith("wildlife") || word.startsWith("animal")) return "uluk";
+  if (word.startsWith("biodiversity") || word === "nature") return "elurikkus";
+  if (word.startsWith("species")) return "liik";
+  if (word.startsWith("habitat")) return "elupaik";
+  if (word === "water") return "vesi";
+  if (word.startsWith("river")) return "jogi";
+  if (word.startsWith("lake")) return "jarv";
+  if (word === "sea" || word.startsWith("ocean") || word.startsWith("marine")) return "meri";
+  if (word.startsWith("baltic")) return "laanemeri";
+  if (word.startsWith("pollution")) return "saaste";
+  if (word.startsWith("waste")) return "jaat";
+  if (word.startsWith("recycl")) return "ringlussevott";
+  if (word === "rate") return "maar";
+  if (word.startsWith("noise")) return "mura";
+  if (word.startsWith("radiation")) return "kiirgus";
+  if (word.startsWith("monitor")) return "seire";
+  if (word.startsWith("observation")) return "seire";
+  if (word.startsWith("eutroph") || word.startsWith("algal") || word === "algae" || word.startsWith("bloom")) return "eutrofeerumine";
+  if (word === "map" || word === "maps") return "kaart";
+  if (word === "data") return "andmed";
+  if (word.startsWith("database")) return "register";
+  if (word.startsWith("status")) return "seisund";
+  if (word.startsWith("permit")) return "keskkonnaluba";
+  if (word.startsWith("application")) return "taotlemine";
+  if (word.startsWith("assessment")) return "hindamine";
+  if (word.startsWith("scenario")) return "stsenaarium";
+  if (word.startsWith("climate")) return "kliima";
+  if (word.startsWith("historical")) return "ajalooline";
+  if (word.startsWith("regeneration")) return "taastamine";
+  if (word.startsWith("tyre") || word.startsWith("tire")) return "rehv";
+  if (word.startsWith("dispose") || word.startsWith("disposal")) return "jaat";
   if (word.startsWith("avaandm")) return "avaandmed";
   if (word.startsWith("keskkonnaandm")) return "andmed";
+  if (word.startsWith("metaandm")) return "metaandmed";
+  if (word.startsWith("clidata")) return "api";
+  if (word.startsWith("openapi") || word === "api" || word.startsWith("api")) return "api";
+  if (word.startsWith("geojson") || word.startsWith("qgis") || word.startsWith("wfs") || word.startsWith("wms")) return "ruumikiht";
+  if (word.startsWith("csv") || word.startsWith("json") || word.startsWith("excel")) return "allalaadimine";
+  if (word.startsWith("statist")) return "statistika";
+  if (word.startsWith("andm")) return "andmed";
   if (word.startsWith("kasvuhoonegaas") || word === "khg") return "kasvuhoonegaas";
+  if (word.startsWith("kasvuhoone")) return "kasvuhoonegaas";
   if (word.startsWith("metsaregis")) return "metsaregister";
   if (word.startsWith("metsaandm") || word.startsWith("metsandusandm")) return "metsaandmed";
+  if (word.startsWith("metsloom")) return "uluk";
   if (word.startsWith("mets")) return "mets";
   if (word.startsWith("lausmetsakorrald")) return "mets";
   if (word === "rmk") return "mets";
@@ -817,7 +1336,7 @@ function topicRoot(word) {
   if (word.startsWith("valim") || word.startsWith("proovitukk")) return "mets";
   if (word.startsWith("puist")) return "mets";
   if (word.startsWith("lagerai")) return "raie";
-  if (word.startsWith("metsateatis")) return "mets";
+  if (word.startsWith("metsateatis") || word.startsWith("raieteatis")) return "mets";
   if (word.startsWith("kuusk") || word.startsWith("kuuse") || word.startsWith("kuusik")) return "mets";
   if (word.startsWith("mand") || word.startsWith("manni") || word.startsWith("mannik")) return "mets";
   if (word.startsWith("rai")) return "raie";
@@ -827,17 +1346,23 @@ function topicRoot(word) {
   if (word.startsWith("vanus") || word.startsWith("vanamets") || word.startsWith("keskeal")) return "vanus";
   if (word.startsWith("osakaal")) return "osakaal";
   if (word.startsWith("muut") || word.startsWith("vahen") || word.startsWith("kahan") || word.startsWith("langen")) return "muutus";
+  if (word.startsWith("vaiksem")) return "vaiksem";
   if (word.startsWith("kasv")) return "kasv";
   if (word.startsWith("tulemus")) return "tulemus";
   if (word.startsWith("tulevik")) return "tulevik";
   if (word.startsWith("kliim")) return "kliima";
+  if (word.startsWith("ilm")) return "ilm";
   if (word.startsWith("stsenaarium")) return "stsenaarium";
   if (word.startsWith("kaard")) return "kaart";
   if (word.startsWith("ruumikiht")) return "ruumikiht";
   if (word.startsWith("laadida") || word.startsWith("allalaadi") || word.startsWith("alalaadi")) return "allalaadimine";
   if (word.startsWith("kasutusjuh")) return "kasutusjuhend";
   if (word.startsWith("jaatmekaitluskoh")) return "jaatmekaitluskoht";
+  if (word.startsWith("asbest") || word.startsWith("eterniit")) return "asbest";
+  if (word.startsWith("biojaat") || word.startsWith("kompost")) return "biojaatmed";
   if (word.startsWith("kulmkapp") || word.startsWith("kodumasin") || word.startsWith("elektroonik")) return "jaatmekaitluskoht";
+  if (word.startsWith("patarei") || word.startsWith("ravim") || word.startsWith("varvipurk")) return "jaat";
+  if (word.startsWith("aku")) return "aku";
   if (word.startsWith("jaat")) return "jaat";
   if (word.startsWith("ringlussevot")) return "ringlussevott";
   if (word === "maar" || word.startsWith("protsent")) return "maar";
@@ -845,46 +1370,69 @@ function topicRoot(word) {
   if (word.startsWith("prugi")) return "prugi";
   if (word.startsWith("rehv") || word.startsWith("autorehv")) return "rehv";
   if (word.startsWith("polet")) return "polet";
-  if (["tohib", "voib", "lubatud", "keelatud"].includes(word)) return "lubatavus";
+  if (word.startsWith("tohi") || /^(?:voib|voivad|voiks|voiksid)$/u.test(word)
+    || word.startsWith("lubat") || word.startsWith("keelat")) return "lubatavus";
   if (word.startsWith("ohukval") || word === "ohu") return "ohukvaliteet";
-  if (word.startsWith("peenosak")) return "ohukvaliteet";
+  if (word.startsWith("ohusaast")) return "ohukvaliteet";
+  if (word.startsWith("peenosak") || word.startsWith("pm10") || word.startsWith("pm2")) return "ohukvaliteet";
   if (word === "ohk" || word.startsWith("valisoh")) return "ohk";
   if (word.startsWith("saast")) return "saaste";
+  if (word.startsWith("reove") || word.startsWith("heitve")) return "reovesi";
   if (word.startsWith("heit")) return "heide";
   if (word.startsWith("looduskait")) return "looduskaitse";
   if (word.startsWith("elurikk")) return "elurikkus";
-  if (word.startsWith("elupaik") || word.startsWith("elupaig")) return "elupaik";
-  if (word.startsWith("pusielupaig")) return "pusielupaik";
+  if (word.startsWith("rohevorg") || word.startsWith("rohekoridor")) return "rohevorgustik";
+  if (word.startsWith("voorliig") || word.startsWith("invasiiv") || word.startsWith("karuputk")) return "voorliik";
+  if (word.startsWith("uluk") || word.startsWith("karu") || word.startsWith("hund") || word.startsWith("ilves") || word.startsWith("suurkisk")) return "uluk";
+  if (word.startsWith("elupaik") || word.startsWith("elupaig") || word.startsWith("vaariselupa") || word.startsWith("varjepaig")) return "elupaik";
+  if (word.startsWith("pusielupai")) return "pusielupaik";
   if (word.startsWith("kaitseal")) return "kaitseala";
   if (word.startsWith("kaitstav")) return "kaitstav";
-  if (word.startsWith("liig")) return "liik";
+  if (word.startsWith("liig") || word.startsWith("rahni") || word.startsWith("nahkhiir") || word.startsWith("hulj")
+    || word.startsWith("konn") || word.startsWith("pesapaig")) return "liik";
+  if (word.startsWith("suplusve") || word.startsWith("rannave") || word.startsWith("supluskoh")
+    || word.startsWith("rannas") || word.startsWith("ranna") || word.startsWith("rand")) return "suplusvesi";
+  if (word.startsWith("joogive") || word.startsWith("kraanive")) return "joogivesi";
+  if (word.startsWith("vaikepuhast") || word.startsWith("omapuhast") || word.startsWith("kohtkait") || word.startsWith("kogumismahut")) return "kohtkaitlus";
+  if (word.startsWith("pestitsiid") || word.startsWith("taimekaitsevah")) return "pestitsiid";
+  if (word.startsWith("nitraat")) return "nitraat";
   if (word.startsWith("pohjave")) return "pohjavesi";
-  if (word.startsWith("puurkaev") || word.startsWith("puurauk")) return "puurkaev";
+  if (word.startsWith("puurkaev") || word.startsWith("puurauk") || word.startsWith("salvkaev") || word.startsWith("kaevu")) return "puurkaev";
   if (word.startsWith("registr")) return "register";
+  if (word.startsWith("mereprug")) return "mereprugi";
   if (word.startsWith("laanemer")) return "laanemeri";
+  if (word.startsWith("eutrofeer") || word.startsWith("oitse") || word.startsWith("vetik")) return "eutrofeerumine";
   if (word.startsWith("hudro")) return "vesi";
   if (word.startsWith("emajog") || word.startsWith("emajoe")) return "emajogi";
-  if (word.startsWith("jarv")) return "jarv";
-  if (word.startsWith("jog")) return "jogi";
-  if (word === "vee" || word.startsWith("veek")) return "vesi";
-  if (word.startsWith("veetas")) return "vesi";
+  if (word.startsWith("jarv") || word.startsWith("tiig")) return "jarv";
+  if (word.startsWith("jog") || word.startsWith("joe")) return "jogi";
+  if (["vee", "vees", "veest", "veega", "vett"].includes(word) || word.startsWith("veek")) return "vesi";
+  if (word.startsWith("veetas") || word.startsWith("vooluhulk") || word.startsWith("kraavive")) return "vesi";
+  if (word.startsWith("laht") || word.startsWith("lahes")) return "meri";
   if (word.startsWith("mer")) return "meri";
-  if (word.startsWith("jaaolu") || word === "jaakaart") return "jaaolud";
+  if (word.startsWith("jaaolu") || word === "jaakaart" || word === "jaad" || word === "jaa") return "jaaolud";
   if (word.startsWith("vaatlusandm")) return "seire";
   if (word.startsWith("temperatuur")) return "temperatuur";
-  if (word.startsWith("sadem") || word.startsWith("saju")) return "sademed";
+  if (word.startsWith("sadem") || word.startsWith("saju") || word.startsWith("sajab") || word.startsWith("vihm")) return "sademed";
+  if (word.startsWith("uleujutusrisk") || word.startsWith("uleujutusala") || word.startsWith("uleujutuskaart")) return "uleujutusrisk";
+  if (word.startsWith("aike") || word.startsWith("libed") || word.startsWith("tuleoht") || word.startsWith("uleujutus")) return "hoiatus";
+  if (word.startsWith("talv")) return "kliima";
   if (word.startsWith("prognoos")) return "prognoos";
   if (word.startsWith("ilmaprognoos")) return "prognoos";
   if (word.startsWith("hoiatus") || word.includes("hoiatus")) return "hoiatus";
   if (word.startsWith("katastr")) return "kataster";
   if (word.startsWith("kinnist")) return "kinnistu";
-  if (word.startsWith("keskkonnalub") || word.startsWith("keskkonnalo") || word.startsWith("keskonnalo")) return "keskkonnaluba";
+  if (word.startsWith("keskkonnalub") || word.startsWith("keskkonnalo") || word.startsWith("keskonnalo") || word === "luba" || word.startsWith("loa")) return "keskkonnaluba";
   if (word.startsWith("kotkas")) return "kotkas";
+  if (word.startsWith("loataotl")) return "taotlemine";
   if (word.startsWith("taotl") || word.startsWith("taotle")) return "taotlemine";
+  if (word.startsWith("menetl")) return "menetlus";
   if (word.startsWith("nousole")) return "nousolek";
   if (word.startsWith("ettevot")) return "ettevote";
   if (word.startsWith("ehita") || word.startsWith("ehitus")) return "ehitamine";
   if (word.startsWith("seisund") || word.startsWith("hinnang")) return "seisund";
+  if (word.startsWith("hinnat") || word.startsWith("hindam")) return "hindamine";
+  if (word.startsWith("kvalite")) return "seisund";
   if (word.startsWith("keskkonnamoj")) return "keskkonnamoju";
   if (word.startsWith("keskkonnarisk")) return "keskkonnamoju";
   if (word.startsWith("tuulepar")) return "tuulepark";
@@ -897,11 +1445,21 @@ function topicRoot(word) {
   if (word.startsWith("energi")) return "energia";
   if (word.startsWith("transpor")) return "transport";
   if (word.startsWith("maavar")) return "maavara";
-  if (word.startsWith("kaevand") || word.startsWith("karjaar")) return "kaevandus";
+  if (word.startsWith("kaevand") || word.includes("karjaar")) return "kaevandus";
   if (word.startsWith("korrasta")) return "korrastamine";
   if (word.startsWith("polevkiv")) return "polevkivi";
   if (word.startsWith("mull")) return "muld";
   if (word.startsWith("mura")) return "mura";
+  if (word.startsWith("margal") || word.startsWith("rab") || /^soo(?:d|s|st|de|del|des)?$/u.test(word)) return "margala";
+  if (word.startsWith("taasta")) return "taastamine";
+  if (word.startsWith("pais")) return "pais";
+  if (/^kal(?:a|ad|ade|ast|astik|aliik)/u.test(word)) return "kala";
+  if (word.startsWith("osoon")) return "osoon";
+  if (word.startsWith("paikesepaneel") || word.startsWith("fotogalvaan")) return "paikesepaneel";
+  if (word.startsWith("jalajalg") || word.startsWith("jalajalj") || word.startsWith("keskkonnajalaj") || word.startsWith("susinikujalaj") || word.startsWith("khgjalaj")) return "jalajalg";
+  if (word.startsWith("organisatsioon")) return "organisatsioon";
+  if (word.startsWith("susinik")) return "susinik";
+  if (word.startsWith("sidum")) return "sidumine";
   if (word.includes("kiirg")) return "kiirgus";
   if (word.startsWith("tegevuspiirang")) return "tegevuspiirang";
   if (word.startsWith("piirang")) return "piirang";
@@ -909,6 +1467,11 @@ function topicRoot(word) {
   if (word.startsWith("tallinn")) return "tallinn";
   if (word.startsWith("tartu")) return "tartu";
   if (word.startsWith("viljand")) return "viljandi";
+  if (word.startsWith("parnu")) return "parnu";
+  if (word.startsWith("narva")) return "narva";
+  if (word.startsWith("voru")) return "voru";
+  if (word.startsWith("saare")) return "saaremaa";
+  if (word.startsWith("kohtla")) return "kohtla";
   if (word.endsWith("maal") && word.length >= 7) return word.slice(0, -1);
   return word;
 }
@@ -919,16 +1482,55 @@ export function queryTerms(query) {
     .split(/\s+/u)
     .filter((word) => word.length >= 3 && !STOP_WORDS.has(word) && !/^\d+$/u.test(word))
     .flatMap((word) => {
+      if (word.startsWith("ilmaprognoos")) return ["ilm", "prognoos"];
+      if (word.startsWith("uleujutusrisk") || word.startsWith("uleujutusala") || word.startsWith("uleujutuskaart")) {
+        return ["vesi", "uleujutusrisk"];
+      }
+      if (word.startsWith("tormihoiatus")
+        || word.startsWith("aike")
+        || word.startsWith("libed")
+        || word.startsWith("tuleoht")
+        || word.startsWith("uleujutushoiatus")) return ["ilm", "hoiatus"];
+      if (word.startsWith("sajab") || word.startsWith("vihm")) return ["ilm", "sademed"];
+      if (word.startsWith("vooluhulk") || word.startsWith("veetas") || word.startsWith("veetemperatuur")) {
+        return ["vesi", "mootmine"];
+      }
+      if (word.startsWith("aku") && normalizedQuery.includes("elektriauto")
+        && !/\b(?:jaat\w*|viia|utiliseer\w*|ringlusse\w*|katki|vana)\b/u.test(normalizedQuery)) return ["aku"];
+      if (word.startsWith("metsateatis") || word.startsWith("raieteatis")) return ["mets", "metsateatis"];
+      if (word.startsWith("loataotl")) return ["keskkonnaluba", "taotlemine"];
+      if (word.startsWith("sihtkaitsevoond")) return ["kaitseala", "piirang"];
+      if (word.startsWith("gaas") && normalizedQuery.includes("kasvuhoone gaas")) return ["kasvuhoonegaas"];
+      if (word.startsWith("polevkivikaevand")) return ["polevkivi", "kaevandus"];
       if (word.startsWith("metsastat")) return [topicRoot(word), "statistika"];
       if (word.startsWith("metsaandm") || word.startsWith("metsandusandm")) return ["mets", "andmed"];
       if (word.startsWith("metsaregis")) return ["mets", "metsaregister"];
       if (word.startsWith("kliimastsenaarium")) return ["kliima", "stsenaarium"];
-      if (word.includes("tormihoiatus")) return ["ilm", "hoiatus"];
+      if (word.startsWith("mereprug")) return ["meri", "mereprugi"];
+      if (word.startsWith("asbestijaat")) return ["asbest", "jaat"];
+      if (word.startsWith("paikesepaneelijaat")) return ["paikesepaneel", "jaat"];
+      if (word.startsWith("suplusveekvalite")) return ["suplusvesi", "seisund"];
+      if (word.startsWith("ohusaast")) return ["ohk", "saaste"];
       if (word === "kmh" || word === "ksh") return [word, "keskkonnamoju"];
       if (word.startsWith("pm2")) return ["pm25", "ohukvaliteet"];
+      if (word.startsWith("pm10")) return ["pm10", "ohukvaliteet"];
       return [topicRoot(word)];
     }))];
-  if (!isForestDepletionQuestion(normalizedQuery)) return roots;
+  const phraseRoots = [];
+  if (/\bair\s+quality\b/u.test(normalizedQuery)) phraseRoots.push("ohukvaliteet");
+  if (/\bforest\s+area\b/u.test(normalizedQuery)) phraseRoots.push("mets", "pindala");
+  if (/\benvironmental\s+permits?\b/u.test(normalizedQuery)) phraseRoots.push("keskkonnaluba");
+  if (/\benvironmental\s+impact\b/u.test(normalizedQuery)) phraseRoots.push("keskkonnamoju");
+  if (/\bwind\s+farm\b/u.test(normalizedQuery)) phraseRoots.push("tuulepark");
+  if (/\bprotected\s+areas?\b/u.test(normalizedQuery)) phraseRoots.push("kaitseala");
+  if (/\bmarine\s+litter\b/u.test(normalizedQuery)) phraseRoots.push("mereprugi");
+  if (/\bclimate\s+change\b/u.test(normalizedQuery)) phraseRoots.push("kliima");
+  if (/\bforest\s+data\s+(?:map|maps|mapping)\b/u.test(normalizedQuery)) phraseRoots.push("ruumikiht");
+  if (/\bmetsa\w*\s+andm\w*\s+kaart\w*\b/u.test(normalizedQuery)) phraseRoots.push("ruumikiht");
+  if (/\bbiodiversity\s+(?:observation\w*\s+)?database\b/u.test(normalizedQuery)) phraseRoots.push("loodusvaatlus");
+  if (roots.includes("stsenaarium") && roots.includes("sademed")) phraseRoots.push("kliima");
+  const expandedRoots = [...new Set([...roots, ...phraseRoots])];
+  if (!isForestDepletionQuestion(normalizedQuery)) return expandedRoots;
   // "Otsa" is an idiomatic depletion predicate here, not a useful literal
   // retrieval token. Mapping it to the concept prevents climbing/trail pages
   // such as "Majakivi otsa ronima" from receiving full query coverage.
@@ -936,6 +1538,22 @@ export function queryTerms(query) {
 }
 
 export function queryRootVariants(root) {
+  if (root === "mets") return ["mets", "forest", "woodland"];
+  if (root === "ilm") return ["ilm", "weather"];
+  if (root === "prognoos") return ["prognoos", "forecast"];
+  if (root === "ohk") return ["ohk", "air"];
+  if (root === "temperatuur") return ["temperatuur", "temperature"];
+  if (root === "jogi") return ["jogi", "joe", "river"];
+  if (root === "jarv") return ["jarv", "lake"];
+  if (root === "elurikkus") return ["elurikk", "biodiversity"];
+  if (root === "seire") return ["seire", "monitor", "observation"];
+  if (root === "register") return ["register", "database"];
+  if (root === "mura") return ["mura", "noise"];
+  if (root === "kiirgus") return ["kiirgus", "radiation"];
+  if (root === "kliima") return ["kliima", "climate"];
+  if (root === "keskkonnaluba") return ["keskkonnaluba", "environmental permit", "permit"];
+  if (root === "rehv") return ["rehv", "tyre", "tire"];
+  if (root === "saaste") return ["saaste", "pollution"];
   if (root === "raie") return ["rai"];
   if (root === "juurdekasv") return ["juurdekasv", "netojuurdekasv"];
   if (root === "uletamine") return ["ulet", "suurem", "rohkem"];
@@ -943,45 +1561,78 @@ export function queryRootVariants(root) {
   if (root === "vanus") return ["vanus", "vana", "noor", "keskeal"];
   if (root === "muutus") return ["muut", "trend", "suuren", "vahen", "kahan", "lang", "pusi"];
   if (root === "kasv") return ["kasv", "suuren"];
+  if (root === "vaiksem") return ["vaiksem", "väiksem", "vahem", "vähem"];
   if (root === "kasvuhoonegaas") return ["kasvuhoonegaas", "khg"];
   if (root === "kaevandus") return ["kaevand"];
   if (root === "heide") return ["heide", "heit"];
   if (root === "ringlussevott") return ["ringlussevot", "taaskasut"];
   if (root === "lubatavus") return ["ei tohi", "tohib", "lubat", "keelat"];
   if (root === "elutsukkel") return ["elutsuk"];
+  if (root === "aku") return ["aku", "battery"];
+  if (root === "uleujutusrisk") return ["uleujutusrisk", "uleujutusala", "uleujutuskaart", "riskistsenaarium"];
+  if (root === "joogivesi") return ["joogivesi", "joogivee", "kraanivesi", "kraanivee"];
   if (root === "maar") return ["maar", "osakaal", "protsent", "tase"];
   if (root === "taotlemine") return ["taotl", "taotle"];
   if (root === "ettevote") return ["ettevot"];
   if (root === "ehitamine") return ["ehit"];
   if (root === "seisund") return ["seisund", "hinnang", "klass"];
+  if (root === "hindamine") return ["hinnat", "hinda"];
   if (root === "keskkonnamoju") return ["keskkonnamoj", "keskkonna moju", "moju keskkonn", "keskkonnahairing"];
-  if (root === "laanemeri") return ["laanemer"];
-  if (root === "meri") return ["meri", "mere"];
-  if (root === "sademed") return ["sadem", "saju"];
-  if (root === "pohjavesi") return ["pohjave"];
+  if (root === "laanemeri") return ["laanemer", "läänemer", "baltic sea"];
+  if (root === "meri") return ["meri", "mere", "sea", "ocean", "marine"];
+  if (root === "mereprugi") return ["mereprugi", "mere prugi", "mikroprugi", "makroprugi"];
+  if (root === "sademed") return ["sadem", "saju", "sajab", "vihm", "precipitation", "rainfall"];
+  if (root === "hoiatus") return ["hoiatus", "tuleoht", "libed", "aike", "uleujutus"];
+  if (root === "pohjavesi") return ["pohjave", "groundwater"];
   if (root === "vesi") return ["vesi", "vee", "veek", "hudro"];
+  if (root === "suplusvesi") return ["suplusve", "supluskoh", "rannave"];
+  if (root === "reovesi") return ["reove", "heitve"];
+  if (root === "kohtkaitlus") return ["kohtkait", "vaikepuhast", "omapuhast", "kogumismahut"];
+  if (root === "pestitsiid") return ["pestitsiid", "taimekaitsevah"];
+  if (root === "nitraat") return ["nitraat", "no3"];
   if (root === "emajogi") return ["emajog", "emajoe"];
-  if (root === "ajalooline") return ["ajalool"];
+  if (root === "ajalooline") return ["ajalool", "historical", "historic"];
   if (root === "mootmine") return ["mootm", "tulemus"];
   if (root === "harjumaa") return ["harjumaa", "harju"];
-  if (root === "liik") return ["liik", "liig"];
-  if (root === "kaitseala") return ["kaitseal"];
-  if (root === "elupaik") return ["elupaik", "elupaig"];
-  if (root === "statistika") return ["statist", "smi", "inventuur"];
+  if (root === "liik") return ["liik", "liig", "species"];
+  if (root === "kaitseala") return ["kaitseal", "protected area"];
+  if (root === "elupaik") return ["elupaik", "elupaig", "habitat"];
+  if (root === "statistika") return ["statist", "smi", "inventuur", "pxweb"];
   if (root === "tulemus") return ["tulemus"];
   if (root === "tulevik") return ["tulevik", "prognoos", "lahiaast"];
   if (root === "kadumine") return ["kadum", "kaob", "kaovad", "havim", "havib", "havivad", "otsa saam", "enam metsa pole"];
-  if (root === "andmed") return ["andme", "avaand"];
+  if (root === "andmed") return ["andme", "avaand", "data"];
+  if (root === "metaandmed") return ["metaandm", "andmekirjeld", "andmestiku kirjeld"];
+  if (root === "api") return ["api", "openapi", "clidata", "pxweb"];
   if (root === "metsaregister") return ["metsaregis", "metsaressursi arvestuse"];
   if (root === "avaandmed") return ["avaand"];
   if (root === "allalaadimine") return ["allalaad", "alalaad", "alla laad"];
   if (root === "kasutusjuhend") return ["kasutusjuh", "juhend"];
-  if (root === "kaart") return ["kaart", "kaard"];
-  if (root === "ruumikiht") return ["ruumikiht", "ruumiandm"];
-  if (root === "stsenaarium") return ["stsenaarium"];
+  if (root === "kaart") return ["kaart", "kaard", "map"];
+  if (root === "ruumikiht") return ["ruumikiht", "ruumiandm", "wms", "wfs", "geojson", "qgis"];
+  if (root === "stsenaarium") return ["stsenaarium", "scenario"];
+  if (root === "loodusvaatlus") return ["loodusvaatlus", "liigivaatlus", "vaatlusandm"];
+  if (root === "eutrofeerumine") return ["eutrofeer", "vetikaoit", "vetikate oit", "algal bloom"];
   if (root === "polevkivi") return ["polevkivi", "polevkivibassein"];
   if (root === "ohukvaliteet") return ["ohukvaliteet", "ohu kvaliteet", "valisoh"];
-  if (root === "jaat") return ["jaat", "prugi"];
+  if (root === "jaat") return ["jaat", "prugi", "waste"];
+  if (root === "asbest") return ["asbest", "eterniit"];
+  if (root === "biojaatmed") return ["biojaat", "kompost"];
+  if (root === "rohevorgustik") return ["rohevorg", "roheline vorgustik", "rohekoridor"];
+  if (root === "voorliik") return ["voorliik", "invasiiv"];
+  if (root === "uluk") return ["uluk", "karu", "suurkisk", "wildlife", "animal"];
+  if (root === "margala") return ["margal", "raba", "soo"];
+  if (root === "taastamine") return ["taastam", "tervendam", "restoration", "regeneration"];
+  if (root === "pais") return ["pais", "randetoke"];
+  if (root === "kala") return ["kala", "kalast", "lohe", "forell"];
+  if (root === "osoon") return ["osoon", "o3"];
+  if (root === "paikesepaneel") return ["paikesepaneel", "fotogalvaan"];
+  if (root === "jalajalg") return ["jalajalg", "keskkonnajala", "susinikujala", "khg jalajalg"];
+  if (root === "organisatsioon") return ["organisatsioon", "asutus", "ettevote"];
+  if (root === "menetlus") return ["menetlus", "menetluse", "staatus"];
+  if (root === "metsateatis") return ["metsateatis", "raieteatis"];
+  if (root === "susinik") return ["susinik", "co2"];
+  if (root === "sidumine") return ["sidum", "neel"];
   return [root];
 }
 
@@ -992,33 +1643,637 @@ export function textHasQueryRoot(value, root) {
     // A plain substring match would make legal-regulation pages look like numeric indicators.
     return /\b(?:maar(?!us)\w*|osakaal\w*|protsent\w*|tase\w*)\b/u.test(text);
   }
-  return queryRootVariants(root).some((variant) => text.includes(variant));
+  if (root === "vesi") {
+    return /\b(?:vesi[\p{L}]*|vee(?!b)[\p{L}]*|vett|water)\b/u.test(text);
+  }
+  return queryRootVariants(root).some((variant) => text.includes(normalize(variant)));
 }
 
 const DOMAIN_ROOTS = new Set([
   "mets", "raie", "juurdekasv", "metsaandmed", "metsaregister", "kliima", "ilm", "prognoos", "hoiatus", "temperatuur", "sademed", "tuul",
   "vesi", "jarv", "jogi", "meri", "laanemeri", "pohjavesi", "puurkaev", "jaaolud", "ohk", "ohukvaliteet", "saaste", "heide", "kasvuhoonegaas",
   "jaat", "jaatmekaitluskoht", "prugi", "rehv", "polet", "ringmajandus", "ringlussevott", "looduskaitse", "elurikkus", "elupaik",
-  "kaitseala", "natura", "liik", "seire", "keskkond", "keskkonnaportaal", "keskkonnaluba",
-  "tuulepark",
+  "kaitseala", "natura", "liik", "seire", "loodusvaatlus", "eutrofeerumine", "keskkond", "keskkonnaportaal", "keskkonnaluba", "menetlus", "piirang", "lubatavus",
+  "suplusvesi", "joogivesi", "reovesi", "kohtkaitlus", "pestitsiid", "nitraat", "mereprugi", "asbest", "biojaatmed",
+  "rohevorgustik", "voorliik", "uluk", "margala", "pais", "kala", "osoon", "paikesepaneel", "jalajalg", "susinik",
+  "tuulepark", "aku", "uleujutusrisk",
   "keskkonnamoju", "kotkas", "kmh", "ksh", "kataster", "kinnistu", "metsaregister",
   "elektriauto", "energia", "transport", "kütus", "kytus", "maavara", "kaevandus", "muld",
   "mura", "kiirgus", "climate", "forest", "water", "weather", "pollution", "waste",
-  "biodiversity", "nature", "air", "andmed",
+  "biodiversity", "nature", "air", "animal", "species", "habitat", "wildlife", "woodland",
+  "sea", "ocean", "river", "lake", "data", "andmed", "metaandmed", "api", "statistika", "ruumikiht", "allalaadimine", "kaart", "register", "metsateatis",
 ]);
 const ADMIN_CONTEXT_ROOTS = new Set([
   "tallinn", "tartu", "parnu", "parnumaa", "narva", "viljandi", "rakvere", "voru",
-  "kuressaare", "haapsalu", "johvi", "harjumaa", "ida", "virumaa",
+  "kuressaare", "haapsalu", "johvi", "harjumaa", "saaremaa", "kohtla", "ida", "virumaa",
 ]);
 const AMBIGUOUS_ROOTS = new Set([
   "vesi", "jarv", "ohk", "ohukvaliteet", "saaste", "jaat", "looduskaitse", "elurikkus",
   "kliima", "ilm", "keskkond", "energia", "elektriauto", "seire", "andmed",
 ]);
-const INJECTION_PATTERN = /(?:ignore\s+(?:(?:all|previous)\s+)*(?:instructions?|prompts?)|(?:ignoreeri|eira)\s+(?:(?:kõiki|koiki|eelnev\w*|varasem\w*|süsteemi\w*)\s+)*(?:(?:süsteemi)?juhis\w*|korraldus\w*|reegel\w*|prompt\w*)|system\s+prompt|developer\s+message|api[- ]?key|reveal\s+(?:the\s+)?secret|unusta\s+(?:eelnev\w*|juhis\w*)|(?:avalda|näita|naita|kuva|paljasta)\s+(?:(?:api[- ]?)?(?:saladus\w*|võti\w*|voti\w*|parool\w*|token\w*))|<\s*script\b)/iu;
+const DOMAIN_FAMILY_BY_ROOT = new Map([
+  ["mets", "forest"], ["raie", "forest"], ["juurdekasv", "forest"], ["metsaregister", "forest"],
+  ["kliima", "climate"], ["ilm", "weather"], ["temperatuur", "weather"], ["sademed", "weather"],
+  ["vesi", "water"], ["jarv", "water"], ["jogi", "water"], ["meri", "water"], ["laanemeri", "water"],
+  ["water", "water"], ["sea", "water"], ["ocean", "water"], ["river", "water"], ["lake", "water"],
+  ["pohjavesi", "water"], ["suplusvesi", "water"], ["joogivesi", "water"], ["reovesi", "water"], ["mereprugi", "water"], ["pais", "water"],
+  ["ohk", "air"], ["ohukvaliteet", "air"], ["saaste", "air"], ["osoon", "air"],
+  ["jaat", "waste"], ["prugi", "waste"], ["asbest", "waste"], ["biojaatmed", "waste"],
+  ["looduskaitse", "nature"], ["elurikkus", "nature"], ["liik", "nature"], ["kala", "nature"],
+  ["nature", "nature"], ["biodiversity", "nature"], ["animal", "nature"], ["species", "nature"],
+  ["habitat", "nature"], ["wildlife", "nature"], ["forest", "forest"], ["woodland", "forest"],
+  ["voorliik", "nature"], ["uluk", "nature"], ["margala", "nature"], ["rohevorgustik", "nature"],
+  ["muld", "soil"], ["maavara", "soil"], ["kaevandus", "soil"],
+  ["energia", "energy"], ["transport", "energy"], ["elektriauto", "energy"], ["paikesepaneel", "energy"],
+  ["aku", "energy"], ["uleujutusrisk", "water"],
+  ["api", "data"], ["data", "data"], ["andmed", "data"], ["metaandmed", "data"], ["statistika", "data"],
+  ["ruumikiht", "spatial"], ["kaart", "spatial"], ["register", "spatial"],
+  ["keskkonnaluba", "legal"], ["menetlus", "legal"], ["piirang", "legal"], ["lubatavus", "legal"],
+]);
+const PROMPT_OR_SECRET_PATTERN = /(?:ignore\s+(?:(?:all|previous)\s+)*(?:instructions?|prompts?)|(?:ignoreeri|eira)\s+(?:(?:kõiki|koiki|eelnev\w*|varasem\w*|süsteemi\w*)\s+)*(?:(?:süsteemi)?juhis\w*|korraldus\w*|reegl\w*|prompt\w*)|system\s+prompt|developer\s+message|api[- ]?key|api\s*(?:võti|voti)|reveal\s+(?:the\s+)?secret|unusta\s+(?:eelnev\w*|juhis\w*)|salajas\w*\s+juhis\w*|(?:avalda|anna|näita|naita|kuva|paljasta)\s+(?:(?:api[- ]?)?(?:saladus\w*|võti\w*|voti\w*|parool\w*|token\w*))|(?:näita|naita|kuva|avalda)\s+serveri\s+(?:keskkonnamuutuj\w*|environment\s+variables?))/iu;
+const EXECUTABLE_MARKUP_PATTERN = /(?:<\s*(?:script|img|svg|iframe)\b[^>]*(?:onerror|onload|javascript:)?|\bon(?:error|load)\s*=|javascript\s*:)/iu;
+const PERSONAL_LOOKUP_PATTERNS = Object.freeze([
+  /\baadressil\b[\s\S]{0,80}\b(?:elab|elanikk?[\p{L}\p{N}_-]*|isik[\p{L}\p{N}_-]*|keegi)\b/iu,
+  /\b(?:elukoht[\p{L}\p{N}_-]*|kodune\s+aadress[\p{L}\p{N}_-]*|kodu\s+asukoht[\p{L}\p{N}_-]*)\b/iu,
+  /\b(?:konkreetse|kindla)\s+(?:inimese|isiku|eraisiku)\b[\s\S]{0,80}\b(?:puurkaev[\p{L}\p{N}_-]*|kinnist[\p{L}\p{N}_-]*|aadress[\p{L}\p{N}_-]*|andm[\p{L}\p{N}_-]*)/iu,
+  /\bkes\s+elab\b[\s\S]{0,60}\b[\p{L}'’-]{2,40}\s+\d{1,4}[a-z]?\b/iu,
+  /\belanike?\s+nime[\p{L}\p{N}_-]*\b/iu,
+  /\b(?:kellele\s+kuulub|omaniku\s+nimi|kes\s+on[\s\S]{0,40}\bomanik)\b[\s\S]{0,100}\b(?:katastri[\p{L}\p{N}_:-]*|kinnist[\p{L}\p{N}_-]*|maa(?:u|ü)ksus[\p{L}\p{N}_:-]*|puurkaev[\p{L}\p{N}_-]*|aadress[\p{L}\p{N}_-]*)/iu,
+  /\b(?:leia|otsi|näita|naita)\s+[\p{L}'’-]{2,40}\s+[\p{L}'’-]{2,40}\s+(?:kinnist[\p{L}\p{N}_-]*|maat[\p{L}\p{N}_-]*|maa(?:u|ü)ksus[\p{L}\p{N}_-]*|aadress[\p{L}\p{N}_-]*|puurkaev[\p{L}\p{N}_-]*)\b/iu,
+]);
+const ENGLISH_PERSONAL_LOOKUP_PATTERNS = Object.freeze([
+  // Ownership and occupancy questions can turn an otherwise ordinary
+  // environmental term into a private-person registry lookup. Keep these
+  // patterns independent of the domain vocabulary so every admitted English
+  // root receives the same pre-retrieval privacy treatment.
+  /\bwho\s+(?:owns?|is\s+the\s+(?:registered\s+)?owner\s+of)\b[\s\S]{0,120}\b(?:property|parcel|plot|lot|estate|land|house|home|farm|well|borehole|cadastral\s+(?:unit|parcel)|street\s+address)\b/iu,
+  /\bwho\s+(?:currently\s+)?(?:lives?|resides?|stays?)\s+(?:at|on)\b/iu,
+  /\bwhat\s+is\s+[\p{L}'’-]{2,40}\s+[\p{L}'’-]{2,40}(?:'s|’s)\s+(?:home\s+)?(?:address|residence|phone|telephone|email|contact(?:\s+(?:details|information))?)\b/iu,
+  /\b(?:name|identity|address|phone|telephone|email|contact(?:\s+(?:details|information))?)\s+of\s+the\s+(?:owner|resident|occupant|landowner|homeowner)\b/iu,
+  /\b(?:owner|resident|occupant|landowner|homeowner)(?:'s|’s)?\s+(?:name|identity|address|phone|telephone|email|contact(?:\s+(?:details|information))?)\b/iu,
+  /\b(?:find|identify|locate|show|give|tell)\b[\s\S]{0,100}\b(?:private\s+person|individual|resident|occupant|landowner|homeowner)\b[\s\S]{0,100}\b(?:property|parcel|plot|land|house|home|farm|well|borehole|address|phone|telephone|email|contact)\b/iu,
+  /\b(?:(?:can\s+you\s+|please\s+)?(?:tell(?:\s+me)?|look\s*up|lookup|find|identify|show|provide|reveal|disclose|get|give)|i\s+need)\b[\s\S]{0,100}\b(?:owner|landowner|homeowner)\b[\s\S]{0,100}\b(?:property|parcel|plot|lot|estate|land|house|home|farm|well|borehole|building|dwelling)\b/iu,
+  /\bwhose\s+(?:(?:forest|woodland|land|cadastral|private)\s+){0,2}(?:property|parcel|plot|lot|estate|land|house|home|farm|well|borehole|building|dwelling)\b/iu,
+  /\bwho\s+(?:rents?|leases?|uses?|holds?)\b[\s\S]{0,100}\b(?:property|parcel|plot|lot|estate|land|house|home|farm|well|borehole|building|dwelling)\b/iu,
+  /\bwho\s+is\s+the\s+(?:tenant|lessee|renter|occupant)\s+of\b[\s\S]{0,100}\b(?:property|parcel|plot|lot|estate|land|house|home|farm|well|borehole|building|dwelling)\b/iu,
+  /\b(?:name|identity|contact)\s+of\s+the\s+(?:tenant|lessee|renter|occupant)\s+of\b[\s\S]{0,100}\b(?:property|parcel|plot|lot|estate|land|house|home|farm|well|borehole|building|dwelling)\b/iu,
+  /\bwho\s+is\s+(?:the\s+)?(?:proprietor|landholder|landlord|resident|occupant|inhabitant)\b[\s\S]{0,100}\b(?:property|parcel|plot|lot|estate|land|house|home|farm|well|borehole|building|dwelling|address|street)\b/iu,
+  /\bwho\s+(?:currently\s+)?inhabits?\s+(?:at|on)?\b[\s\S]{0,100}\b(?:property|parcel|plot|lot|estate|land|house|home|farm|well|borehole|building|dwelling|address|street)\b/iu,
+]);
+const ENGLISH_PERSON_TOKEN_SOURCE = String.raw`(?:\p{L}\.?|[\p{L}][\p{L}'’]{1,39})`;
+const ENGLISH_PERSON_SEPARATOR_SOURCE = String.raw`(?:[\s\p{Pd}./·:_]+)`;
+const ENGLISH_PERSON_NAME_SOURCE = String.raw`${ENGLISH_PERSON_TOKEN_SOURCE}${ENGLISH_PERSON_SEPARATOR_SOURCE}${ENGLISH_PERSON_TOKEN_SOURCE}(?:${ENGLISH_PERSON_SEPARATOR_SOURCE}${ENGLISH_PERSON_TOKEN_SOURCE})?`;
+const ENGLISH_PRIVATE_ASSET_SOURCE = String.raw`(?:(?:(?:forest|woodland|land|cadastral|private)\s+){0,2}(?:property|parcel|plot|lot|estate|land|house|home|farm|well|borehole|building|dwelling)|forest|woodland)`;
+const ENGLISH_NAMED_POSSESSIVE_ASSET_PATTERN = new RegExp(
+  String.raw`(?<!\p{L})${ENGLISH_PERSON_NAME_SOURCE}(?:'s|’s)\s+${ENGLISH_PRIVATE_ASSET_SOURCE}(?!\p{L})`,
+  "iu",
+);
+const ENGLISH_ASSET_TO_PERSON_PATTERN = new RegExp(
+  String.raw`(?<!\p{L})${ENGLISH_PRIVATE_ASSET_SOURCE}\b[\s\S]{0,40}\b(?:registered\s+(?:to|under)|recorded\s+under|belongs?\s+to|owned\s+by|held\s+by|associated\s+with|connected\s+to|linked\s+to)\s+${ENGLISH_PERSON_NAME_SOURCE}(?!\p{L})`,
+  "iu",
+);
+const ENGLISH_ASSET_IN_PERSON_NAME_PATTERN = new RegExp(
+  String.raw`(?<!\p{L})${ENGLISH_PRIVATE_ASSET_SOURCE}\b[\s\S]{0,30}\b(?:registered|recorded)\s+in\s+${ENGLISH_PERSON_NAME_SOURCE}(?:'s|’s)\s+name\b`,
+  "iu",
+);
+const ENGLISH_PERSON_TO_ASSET_PATTERN = new RegExp(
+  String.raw`(?<!\p{L})${ENGLISH_PERSON_NAME_SOURCE}\s+(?:has|holds?|rents?|leases?|uses?)\s+(?:an?\s+|the\s+)?${ENGLISH_PRIVATE_ASSET_SOURCE}(?!\p{L})`,
+  "iu",
+);
+const ENGLISH_PERSON_ROLE_ASSET_PATTERN = new RegExp(
+  String.raw`(?<!\p{L})${ENGLISH_PERSON_NAME_SOURCE}\s+is\s+(?:(?:listed|recorded)\s+as\s+)?(?:the\s+)?(?:owner|landowner|homeowner|tenant|lessee|renter|occupant)\s+of\s+(?:an?\s+|the\s+|this\s+)?${ENGLISH_PRIVATE_ASSET_SOURCE}(?!\p{L})`,
+  "iu",
+);
+const ENGLISH_WHERE_RESIDENCE_PATTERN = new RegExp(
+  String.raw`\bwhere\s+(?:does|is)\s+(${ENGLISH_PERSON_NAME_SOURCE})\s+(?:live|living|reside|residing|stay|staying)\b`,
+  "iu",
+);
+const ENGLISH_WHERE_FOUND_PATTERN = new RegExp(
+  String.raw`\bwhere\s+can\s+(${ENGLISH_PERSON_NAME_SOURCE})\s+be\s+found\b`,
+  "iu",
+);
+const ENGLISH_WHERE_LOCATED_PATTERN = new RegExp(
+  String.raw`\bwhere\s+is\s+(${ENGLISH_PERSON_NAME_SOURCE})\s+located\b[\s\S]{0,80}\b(?:forest|woodland|natura|protected|river|lake|sea|address|property|parcel|well|borehole)\b`,
+  "iu",
+);
+const ENGLISH_LOCATE_PERSON_PATTERN = new RegExp(
+  String.raw`\b(?:find|locate)\s+(${ENGLISH_PERSON_NAME_SOURCE})\b[\s\S]{0,60}\b(?:near|at|in)\b[\s\S]{0,50}\b(?:forest|woodland|natura|protected|river|lake|sea|address|property|parcel|well|borehole)\b`,
+  "iu",
+);
+const PUBLIC_ORGANIZATION_PATTERN = /(?<![\p{L}\p{N}])(?:[\p{L}-]*(?:amet|agentuur|ministeerium|keskus|linnavalitsus|vallavalitsus|ülikool|instituut|selts|ühing|sihtasutus|osaühing|aktsiaselts|teenistus|muuseum)[\p{L}-]*|(?:environment(?:al)?|climate|forest|nature|water|land|health|statistics)\s+(?:board|agency|ministry|authority|service|institute|university|museum|centre|center)|ministry\s+of\s+(?:climate|the\s+environment)|RMK|KIK|Tallinna\s+Vesi|Eesti\s+Energia|Eesti\s+Geoloogiateenistus[\p{L}-]*|Elering(?:\s+AS)?|[\p{L}-]+\s+(?:AS|OÜ|MTÜ|SA))(?![\p{L}\p{N}])/iu;
+const PUBLIC_ORGANIZATION_NAME_PATTERNS = Object.freeze([
+  /\b(?:eesti\s+)?keskkonnauuringute\s+keskus[\p{L}-]*\b/giu,
+  /\b(?:euroopa\s+)?keskkonnaagentuur[\p{L}-]*\b/giu,
+  /\bkeskkonnaamet[\p{L}-]*\b/giu,
+  /\bkeskkonnaportaal[\p{L}-]*\b/giu,
+  /\bkliimaministeerium[\p{L}-]*\b/giu,
+  /\bmaa-?\s+ja\s+ruumiamet[\p{L}-]*\b/giu,
+  /\briigi\s+teataja[\p{L}-]*\b/giu,
+  /\briigimetsa\s+majandamise\s+keskus[\p{L}-]*\b/giu,
+  /\bstatistikaamet[\p{L}-]*\b/giu,
+  /\bterviseamet[\p{L}-]*\b/giu,
+  /\btallinna\s+(?:vesi|vee)[\p{L}-]*\b/giu,
+  /\btartu\s+ülikool[\p{L}-]*\b/giu,
+  /\btartu\s+keskkonna(?:hariduse\s+)?keskus[\p{L}-]*\b/giu,
+  /\bpõllumajandus-?\s+ja\s+toiduamet[\p{L}-]*\b/giu,
+  /\beesti\s+geoloogiateenistus[\p{L}-]*\b/giu,
+  /\bkeskkonna\s+investeeringute\s+keskus[\p{L}-]*\b/giu,
+  /\briigi\s+ilmateenistus[\p{L}-]*\b/giu,
+  /\beesti\s+loodusmuuseum[\p{L}-]*\b/giu,
+  /\bestonian\s+environment(?:al)?\s+(?:board|agency|research\s+centre)\b/giu,
+  /\benvironment(?:al)?\s+(?:board|agency)\b/giu,
+  /\bforest\s+service\b/giu,
+  /\bministry\s+of\s+(?:climate|the\s+environment)\b/giu,
+  /\buniversity\s+of\s+tartu\b/giu,
+  /\bstatistics\s+estonia\b/giu,
+  /\bestonian\s+(?:health|land)\s+board\b/giu,
+  /\beesti\s+energia\b/giu,
+  /\belering(?:\s+as)?\b/giu,
+  /(?<![\p{L}\p{N}])[\p{L}-]{2,50}\s+(?:AS|OÜ|MTÜ|SA)(?![\p{L}\p{N}])/giu,
+  /\b(?:rmk|kik)\b/giu,
+]);
+const PRIVATE_CONTACT_FIELD_PATTERN = /^(?:kontakt\w*|contact\w*|telefoni?\w*|telephone\w*|phone\w*|telefoninumber\w*|mobiili?\w*|mobile\w*|e-?post\w*|email\w*|meil\w*|mail\w*|sideandm\w*|postkast\w*|gps|koordinaat\w*|coordinate\w*|asukoht\w*|location\w*|asupaik\w*|a?adress\w*|address\w*|koduaadress\w*|homeaddress\w*|kodutänav\w*|kodutanav\w*|elukoht\w*|residence\w*|kodukoht\w*|viibimiskoht\w*|erakodu\w*|kodu|elamu\w*|elupai[kg]\w*)$/iu;
+const PRIVATE_PERSON_ATTRIBUTE_TOKEN_PATTERN = /^(?:isikuandm\w*|isikukood\w*|s[üu]nni(?:aeg\w*|aj\w*|aasta\w*|koht\w*|kuup[äa]ev\w*)|terviseandm\w*|biomeetri\w*|ssn|birthdate|birthday)$/iu;
+const PRIVATE_PERSON_ATTRIBUTE_CONTEXT_TOKEN_PATTERN = /^(?:isikuandm\w*|isikukood\w*|s[üu]nni(?:aeg\w*|aj\w*|aasta\w*|koht\w*|kuup[äa]ev\w*)|terviseandm\w*|biomeetri\w*|ssn|birthdate|birthday|personal|social|security|numbers?|date|birth|national|identification|passport|identity|information)$/iu;
+const PRIVATE_PERSON_ATTRIBUTE_SEPARATOR_SOURCE = String.raw`[\s\p{P}\p{S}\p{Z}\p{C}\p{M}_]+`;
+const PRIVATE_PERSON_ATTRIBUTE_PATTERN = new RegExp(
+  String.raw`(?:\b(?:isikuandm\w*|isikukood\w*|s[üu]nni(?:aeg\w*|aj\w*|aasta\w*|koht\w*|kuup[äa]ev\w*)|terviseandm\w*|biomeetri\w*|ssn|birthdate|birthday)\b|(?<!\p{L})(?:social${PRIVATE_PERSON_ATTRIBUTE_SEPARATOR_SOURCE}security(?:${PRIVATE_PERSON_ATTRIBUTE_SEPARATOR_SOURCE}(?:numbers?|no))?|personal${PRIVATE_PERSON_ATTRIBUTE_SEPARATOR_SOURCE}(?:data|information)|date${PRIVATE_PERSON_ATTRIBUTE_SEPARATOR_SOURCE}of${PRIVATE_PERSON_ATTRIBUTE_SEPARATOR_SOURCE}birth|national${PRIVATE_PERSON_ATTRIBUTE_SEPARATOR_SOURCE}(?:id|identification)(?:${PRIVATE_PERSON_ATTRIBUTE_SEPARATOR_SOURCE}number)?|passport${PRIVATE_PERSON_ATTRIBUTE_SEPARATOR_SOURCE}number)(?!\p{L}))`,
+  "iu",
+);
+const PRIVATE_POSTAL_FIELD_PATTERN = new RegExp(
+  String.raw`(?<!\p{L})(?:postiaadress\w*|postal${PRIVATE_PERSON_ATTRIBUTE_SEPARATOR_SOURCE}(?:address(?:es)?|details?|information|contact(?:${PRIVATE_PERSON_ATTRIBUTE_SEPARATOR_SOURCE}(?:details?|information))?))(?!\p{L})`,
+  "iu",
+);
+const ECOLOGICAL_SUBJECT_PATTERN = /(?<!\p{L})[\p{L}-]*(?:karu|hundi?|hund|ilves|hülg|hulj|lendorav|kotka?|toonekur(?:g|e)|nahkhiir|saarma?|kobras|põdr|podr|metssiga|rebas|looma?|linnu?|kala|lii[kg]|natura|meri|metsa?|kaitseala|looduskaitse|elurikkus|taime?|rohu?|lille?|samblik|seene?|putuk|konna?|elupai[kg]|pesapai[kg]|rähn|rahn|naarits|rästik|rastik|sisalik|vesilik|siil|madu|nastik|kaan|pärlikar[bp]|parlikar[bp]|hing|võldas|voldas|kuldking|apollo|rüdi|rudi|kõre|kore|tutka?|vigle|animal|bear|beaver|bird|boar|deer|eagle|fish|forest|fox|frog|habitat|lake|lizard|lynx|mink|ocean|orchid|otter|plant|river|salmon|sea|seal|snake|species|squirrel|stork|toad|trout|wolf|woodland)[\p{L}-]*(?!\p{L})/iu;
+const ECOLOGICAL_MODIFIER_PATTERN = /^(?:eesti\w*|euroopa\w*|hall\w*|haige\w*|harilik\w*|haruld\w*|hukkun\w*|kaun\w*|leitud|lääne\w*|laane\w*|must\w*|mustlaik\w*|mustsaba\w*|nähtud|nahtud|noor\w*|panda\w*|pesu\w*|pruun\w*|puna\w*|rohe\w*|surnud|suur\w*|valge\w*|vigastatud|väike\w*|vaike\w*|atlantic|baltic|black|brown|common|estonia\w*|european|freshwater|gray|grey|marine|protected|rare|red|white|young)$/iu;
+const PUBLIC_CONTACT_ROLE_PATTERN = /^(?:büroo\w*|buroo\w*|e|info\w*|juht\w*|keskkonnaosakond\w*|klienditeenindus\w*|nõunik\w*|nounik\w*|osakond\w*|post|press\w*|projektiosakond\w*|spetsialist\w*|teenindus\w*|üld\w*|uld\w*|vaatlus\w*|customer|data|office|regional|research|service|support)$/iu;
+const PERSON_CONTEXT_STOPWORD_PATTERN = /^(?:aga|alal|andm\w*|andmetel|anna|andke|asub|asuv\w*|avalik\w*|jaoks|kaudu|kas|kaits\w*|kasuta\w*|katastri\w*|kes|kuidas|kinnist\w*|konkreetse|kohta|kuulu\w*|kui|kus|kust|küsimus\w*|kõrval|lahedal|lähedal|lasta|lei\w*|loa\w*|luba\w*|maaüksus\w*|maauksus\w*|maatükk\w*|maatukk\w*|metsaeraldis\w*|metsaregister\w*|millal|millis\w*|minu|mis|mida|midagi|miks|nõu\w*|näen|näha|näita|naita|oleva|oma|on|otsing\w*|palju|p[õo]him[õo]t\w*|poliitik\w*|puurkaev\w*|s[äa]ilita\w*|smi|sügavus\w*|tagasta|tagastage|talu\w*|testida|too|t[öo][öo]tle\w*|ütleb|vaadata|valda|vaja|ööbib|oobib|paikneb|peatub|piirkonn\w*|resideerib|registr\w*|viibib|järgi|ja|ning|või|voi|ääres|aasta|elab|elava|majas|a|about|affect\w*|are|area\w*|at|be|by|can|could|customer|data|did|do|does|for|from|get|give|handle[sd]?|handling|how|in|information|is|live[sd]?|living|may|me|must|near|number|occup(?:y|ies|ied|ying)|of|office|on|permit\w*|polic(?:y|ies)|process(?:es|ed|ing)?|protect(?:s|ed|ing)?|protected|public|regional|register\w*|requirement\w*|research|reside[sd]?|residing|return|s|service|should|show|state|stor(?:e|es|ed|ing)|stay(?:s|ed|ing)?|support|tell|that|the|this|to|use[sd]?|using|what|where|which|who|with|would)$/iu;
+const ESTONIAN_PRIVATE_OWNERSHIP_PATTERN = /\b(?:omanik\w*|omaja\w*|omand(?:is|uses)\w*|oma(?:b|vad|s|sid|nud|ma|takse|tud)|valdaj\w*|valduses\w*|valda(?:b|vad|s|sid|nud|ma)|kellele\s+kuulub)\b/iu;
+const PRIVATE_FOREST_ASSET_PATTERN = /(?<!\p{L})(?:metsamaa\w*|metsaeraldis\w*|metsakinnist\w*|metsat(?:ü|u)kk\w*|puistu\w*|mets(?:a(?:s|st|le|lt|ga|d(?:e(?:s|st|le|lt|ga)?)?)?|i)?|forests?|woodlands?)(?!\p{L})/iu;
+const PRIVATE_ASSET_LOOKUP_ACTION_PATTERN = /\b(?:anna|andke|leia|otsi|näita|naita|kuva|tagasta|tagastage|too|show|find|locate|display|reveal|provide|give|get|return|tell)\b/iu;
+const EXPLICIT_PRIVATE_FOREST_ASSET_PATTERN = /^(?:metsamaa\w*|metsaeraldis\w*|metsakinnist\w*|metsat(?:ü|u)kk\w*|puistu\w*)$/iu;
+const ENGLISH_PRIVATE_FOREST_QUALIFIER_PATTERN = /^(?:property|parcel|plot|lot|estate|land|holding)$/iu;
+const PUBLIC_FOREST_RELATION_TOKEN_PATTERN = /^(?:rahvusparg\w*|loodusparg\w*|maastikukaitseal\w*|looduskaitseal\w*|hoiual\w*|kaitseal\w*|riigi\w*|avalik\w*|munitsipaal\w*|mountains?|national|park|public|reserve|state|municipal|government|valley)$/iu;
+const ESTONIAN_BELONGING_PARTICIPLE_PATTERN = /^kuuluv(?:a(?:s|st|le|lt|ga|ks|na|d|te(?:s|st|le|lt|ga)?)?|at|ad)?$/iu;
+const ESTONIAN_BELONGS_VERB_PATTERN = /^kuulu(?:b|vad|nud|s|sid)$/iu;
 const CADASTRE_PATTERN = /\b\d{5}:\d{3}:\d{4}\b/u;
+export const MAX_PUBLIC_SEARCH_QUERY_LENGTH = 180;
+const MAX_PUBLIC_SEARCH_RAW_INPUT_LENGTH = 4_096;
+
+function securityCodePoint(raw, radix, fallback) {
+  const codePoint = Number.parseInt(raw, radix);
+  if (!Number.isInteger(codePoint)
+    || codePoint < 0
+    || codePoint > 0x10ffff
+    || (codePoint >= 0xd800 && codePoint <= 0xdfff)) return fallback;
+  return String.fromCodePoint(codePoint);
+}
+
+function decodeSecurityEscapes(value) {
+  let text = String(value || "");
+  // Decode only bounded, syntactically complete representations that a
+  // browser or another downstream component could interpret differently.
+  // Three passes cover nested percent/entity forms while every transform is
+  // length-reducing, so this cannot become an expansion loop.
+  for (let pass = 0; pass < 3; pass += 1) {
+    const decoded = text
+      .replace(/(?:%[0-9a-f]{2})+/giu, (match) => {
+        try {
+          return decodeURIComponent(match);
+        } catch {
+          return match;
+        }
+      })
+      .replace(/&#x([0-9a-f]{1,6});?/giu, (match, raw) => securityCodePoint(raw, 16, match))
+      .replace(/&#([0-9]{1,7});?/gu, (match, raw) => securityCodePoint(raw, 10, match))
+      .replace(/&(amp|apos|bsol|colon|gt|hyphen|lowbar|lt|nbsp|period|quot|sol);/giu, (_match, name) => ({
+        amp: "&",
+        apos: "'",
+        bsol: "\\",
+        colon: ":",
+        gt: ">",
+        hyphen: "-",
+        lowbar: "_",
+        lt: "<",
+        nbsp: " ",
+        period: ".",
+        quot: "\"",
+        sol: "/",
+      })[name.toLocaleLowerCase("en")])
+      .replace(/\\u\{([0-9a-f]{1,6})\}/giu, (match, raw) => securityCodePoint(raw, 16, match))
+      .replace(/\\u([0-9a-f]{4})/giu, (match, raw) => securityCodePoint(raw, 16, match))
+      .replace(/\\x([0-9a-f]{2})/giu, (match, raw) => securityCodePoint(raw, 16, match));
+    if (decoded === text) break;
+    text = decoded;
+  }
+  return text;
+}
+
+const SECURITY_KEYWORD_SEPARATOR = "[\\p{P}\\p{S}\\p{Z}\\p{C}\\p{M}_]*";
+const SECURITY_CANONICAL_KEYWORDS = [
+  "kontakt", "telefon", "aadress", "adress", "meil", "sideandmed", "postkast",
+  "postiaadress", "postal",
+  "isikuandmed", "isikukood", "sunniaeg", "sunniaja", "sunniajaga", "sunniajast",
+  "sunniajale", "sunniajata", "sunniaasta", "sunnikoht", "sunnikuupaev",
+  "terviseandmed", "biomeetria", "ssn", "birthdate", "birthday", "personal", "social",
+  "security", "identification", "passport", "information", "data", "date", "birth",
+  "national", "number", "id",
+  "koduaadress", "kodutanav", "elukoht", "kodukoht", "erakodu", "asukoht", "asupaik",
+  "koordinaat", "viibimiskoht", "viibib", "oobib", "paikneb", "elab", "asub",
+  "valduses", "valdavad", "valdaja", "valdab", "valdas", "valdama",
+  "omab", "omavad", "omas", "omasid", "omanud", "omama", "omatakse", "omatud",
+  "omaja", "omandis", "omanduses",
+  "mets", "metsa", "metsamaa", "metsaeraldis", "metsakinnistu", "metsatukk", "puistu",
+  "kuulub", "kuuluvad", "kuulus", "kuulusid", "kuulunud", "kuuluv", "kuuluva", "kuuluvat", "kuuluvast",
+  "forest", "woodland", "leia", "otsi", "naita", "kuva", "show", "find", "display",
+  "contact", "phone", "telephone", "address", "email", "residence", "resident",
+  "occupant", "inhabitant", "inhabits", "inhabit", "landowner", "landholder", "landlord",
+  "homeowner", "proprietor", "tenant", "owner", "ownership", "owns",
+  "associated", "connected", "registered", "recorded", "listed", "belongs", "linked",
+  "located", "locate", "disclose", "cadastral", "property", "parcel",
+  "borehole", "plot", "residing", "resides", "reside", "staying", "stays", "stay",
+  "renting", "rents", "rent", "leasing", "leases", "lease", "lives", "live",
+];
+const SECURITY_OBFUSCATED_KEYWORD_PATTERN = new RegExp(
+  `(?<!\\p{L})(?:${SECURITY_CANONICAL_KEYWORDS
+    .map((keyword) => [...keyword].join(SECURITY_KEYWORD_SEPARATOR))
+    .join("|")})(?!\\p{L})`,
+  "giu",
+);
+// V8 compiles these large Unicode expressions lazily. Warm them while the
+// module is loading so the first anonymous request does not pay that CPU cost
+// on the shared event loop.
+"kontakt".replace(SECURITY_OBFUSCATED_KEYWORD_PATTERN, "kontakt");
+SECURITY_OBFUSCATED_KEYWORD_PATTERN.lastIndex = 0;
+
+function canonicalSecurityText(value) {
+  let text = decodeSecurityEscapes(value)
+    // Retrieval and corpus search both apply NFKC. Fold compatibility forms
+    // here first so the privacy decision cannot see weaker semantics than a
+    // downstream search sink; NFD then exposes inserted marks to the bounded
+    // keyword canonicalizer below.
+    .normalize("NFKC")
+    .normalize("NFD")
+    .replace(/[\p{Default_Ignorable_Code_Point}\p{Cc}]/gu, "")
+    .replace(/[аɑα]/giu, "a")
+    .replace(/[еε]/giu, "e")
+    .replace(/[оο]/giu, "o")
+    .replace(/[рρ]/giu, "p")
+    .replace(/[сϲ]/giu, "c")
+    .replace(/[хχ]/giu, "x")
+    .replace(/[іι]/giu, "i")
+    .replace(/[јϳ]/giu, "j")
+    .replace(/[кκϰ]/giu, "k")
+    .replace(/[тτ]/giu, "t")
+    .replace(/[ԁ]/giu, "d")
+    .replace(/[օ]/giu, "o");
+  text = text.replace(
+    SECURITY_OBFUSCATED_KEYWORD_PATTERN,
+    (match) => match.replace(/[^\p{L}\p{N}]/gu, "").toLocaleLowerCase("en"),
+  );
+  return text.normalize("NFC");
+}
+
+export function canonicalizePublicSearchQuery(value, {
+  maximumLength = MAX_PUBLIC_SEARCH_QUERY_LENGTH,
+} = {}) {
+  const boundedMaximum = Math.max(1, Math.min(
+    Math.trunc(Number(maximumLength) || MAX_PUBLIC_SEARCH_QUERY_LENGTH),
+    2_000,
+  ));
+  const rawValue = typeof value === "string" ? value : String(value || "");
+  // Security folding intentionally performs several Unicode and bounded
+  // decoding passes. Cap its input first so an anonymous request cannot spend
+  // event-loop time normalizing the full HTTP body before the public query
+  // length contract is enforced. The multiplier still admits ordinary NFD and
+  // compatibility forms; deeply encoded input fails closed.
+  const rawMaximum = Math.min(
+    MAX_PUBLIC_SEARCH_RAW_INPUT_LENGTH,
+    Math.max(boundedMaximum + 128, boundedMaximum * 4),
+  );
+  if (rawValue.length > rawMaximum) {
+    return { ok: false, query: "", reason: "input-too-long", maximumLength: boundedMaximum };
+  }
+  const query = canonicalSecurityText(rawValue).replace(/\s+/gu, " ").trim();
+  if (!query) return { ok: false, query: "", reason: "empty", maximumLength: boundedMaximum };
+  if (query.length > boundedMaximum) {
+    return { ok: false, query: "", reason: "too-long", maximumLength: boundedMaximum };
+  }
+  return { ok: true, query, reason: null, maximumLength: boundedMaximum };
+}
 
 export function containsUnsafeInstruction(value) {
-  return INJECTION_PATTERN.test(String(value || "").normalize("NFKC"));
+  const text = canonicalSecurityText(value);
+  return PROMPT_OR_SECRET_PATTERN.test(text) || EXECUTABLE_MARKUP_PATTERN.test(text);
+}
+
+export function containsPrivatePersonLookup(value) {
+  const text = canonicalSecurityText(value);
+  const hasMixedScriptWord = (text.match(/\p{L}+/gu) || []).some((word) => (
+    /\p{Script=Latin}/u.test(word)
+      && /[^\p{Script=Latin}\p{M}]/u.test(word)
+  ));
+  const hasPrivateAssetContext = /(?<!\p{L})(?:katastri\w*|kinnist\w*|maa(?:u|ü)ksus\w*|maat(?:ü|u)kk\w*|metsamaa\w*|metsaeraldis\w*|metsakinnist\w*|metsat(?:ü|u)kk\w*|puistu\w*|puurkaev\w*|aadress\w*|property|parcel|plot|lot|estate|land|house|home|farm|well|borehole|building|dwelling|forest|woodland)(?!\p{L})/iu.test(text);
+  // A private-asset query containing a Latin/non-Latin mixed token is
+  // ambiguous by construction (for example Armenian/Cyrillic letters inside
+  // "owns"). Fail closed instead of relying on an endless confusable list.
+  if (hasMixedScriptWord && hasPrivateAssetContext) return true;
+  const matchesEnglishPersonalPattern = ENGLISH_PERSONAL_LOOKUP_PATTERNS
+    .some((pattern) => pattern.test(text));
+  const words = text.match(/[\p{L}\p{N}]+/gu) || [];
+  const sensitiveIndex = words.findIndex((word) => (
+    PRIVATE_CONTACT_FIELD_PATTERN.test(word)
+    || PRIVATE_PERSON_ATTRIBUTE_TOKEN_PATTERN.test(word)
+  ));
+  const hasSensitivePersonalAttribute = PRIVATE_PERSON_ATTRIBUTE_PATTERN.test(text);
+  const hasPrivatePostalField = PRIVATE_POSTAL_FIELD_PATTERN.test(text);
+  const textWithoutKnownOrganizations = PUBLIC_ORGANIZATION_NAME_PATTERNS.reduce(
+    (remaining, pattern) => remaining.replace(pattern, " "),
+    text,
+  );
+  const hasKnownPublicOrganization = normalize(textWithoutKnownOrganizations) !== normalize(text);
+  if (ENGLISH_NAMED_POSSESSIVE_ASSET_PATTERN.test(textWithoutKnownOrganizations)
+    || ENGLISH_ASSET_TO_PERSON_PATTERN.test(textWithoutKnownOrganizations)
+    || ENGLISH_ASSET_IN_PERSON_NAME_PATTERN.test(textWithoutKnownOrganizations)
+    || ENGLISH_PERSON_TO_ASSET_PATTERN.test(textWithoutKnownOrganizations)
+    || ENGLISH_PERSON_ROLE_ASSET_PATTERN.test(textWithoutKnownOrganizations)) return true;
+  const englishWhereResidenceMatch = textWithoutKnownOrganizations.match(ENGLISH_WHERE_RESIDENCE_PATTERN);
+  const englishWhereFoundMatch = textWithoutKnownOrganizations.match(ENGLISH_WHERE_FOUND_PATTERN);
+  const englishWhereLocatedMatch = textWithoutKnownOrganizations.match(ENGLISH_WHERE_LOCATED_PATTERN);
+  const englishLocatePersonMatch = textWithoutKnownOrganizations.match(ENGLISH_LOCATE_PERSON_PATTERN);
+  const englishSubjectIsEcological = (subject) => {
+    const subjectWords = subject?.match(/[\p{L}]+/gu) || [];
+    const meaningfulWords = subjectWords.filter((word) => !PERSON_CONTEXT_STOPWORD_PATTERN.test(word));
+    const explicitlyEcological = subjectWords.length > 0 && subjectWords.every((word) => (
+      ECOLOGICAL_SUBJECT_PATTERN.test(word)
+      || ECOLOGICAL_MODIFIER_PATTERN.test(word)
+      || PERSON_CONTEXT_STOPWORD_PATTERN.test(word)
+    ));
+    const ecologicalCommonName = meaningfulWords.length >= 2
+      && (ECOLOGICAL_SUBJECT_PATTERN.test(meaningfulWords[0])
+        || ECOLOGICAL_MODIFIER_PATTERN.test(meaningfulWords[0]))
+      && meaningfulWords.slice(1).every((word) => word === word.toLocaleLowerCase("en"));
+    return explicitlyEcological || ecologicalCommonName;
+  };
+  const englishWhereResidenceIsEcological = Boolean(englishWhereResidenceMatch)
+    && englishSubjectIsEcological(englishWhereResidenceMatch[1]);
+  const englishNamedResidenceQuestion = Boolean(englishWhereResidenceMatch)
+    && !englishWhereResidenceIsEcological;
+  const englishNamedFoundQuestion = Boolean(englishWhereFoundMatch)
+    && !englishSubjectIsEcological(englishWhereFoundMatch[1]);
+  const englishNamedLocatedQuestion = Boolean(englishWhereLocatedMatch)
+    && !englishSubjectIsEcological(englishWhereLocatedMatch[1]);
+  const englishLocateNamedPerson = Boolean(englishLocatePersonMatch)
+    && !englishSubjectIsEcological(englishLocatePersonMatch[1]);
+  const administrativeFragment = (word) => [...ADMIN_CONTEXT_ROOTS].some((root) => textHasQueryRoot(word, root));
+  const domainFragment = (word) => {
+    const normalizedWord = normalize(word);
+    return [...DOMAIN_ROOTS].some((root) => queryRootVariants(root).some((variant) => {
+      const normalizedVariant = normalize(variant);
+      return normalizedWord === normalizedVariant
+        || (normalizedVariant.length >= 4 && normalizedWord.startsWith(normalizedVariant));
+    }));
+  };
+  // Postal-field phrases are sensitive predicates, not identity material.
+  // Removing the complete phrase prevents words such as "details" from
+  // synthesizing a person beside a legitimate public organization or policy.
+  const identityText = textWithoutKnownOrganizations.replace(PRIVATE_POSTAL_FIELD_PATTERN, " ");
+  const rawIdentityFragments = (identityText.match(/[\p{L}\p{N}]+/gu) || [])
+    .map((word) => word.toLocaleLowerCase("et"))
+    .filter(Boolean);
+  const identityFragments = rawIdentityFragments
+    .filter((word) => !PRIVATE_CONTACT_FIELD_PATTERN.test(word))
+    .filter((word) => !PRIVATE_PERSON_ATTRIBUTE_CONTEXT_TOKEN_PATTERN.test(word))
+    .filter((word) => !PERSON_CONTEXT_STOPWORD_PATTERN.test(word))
+    .filter((word) => !PUBLIC_ORGANIZATION_PATTERN.test(word))
+    .filter((word) => !PUBLIC_CONTACT_ROLE_PATTERN.test(word))
+    .filter((word) => !/^\d+$/u.test(word))
+    .filter(Boolean);
+  const isSuspiciousIdentityFragment = (word) => !PRIVATE_CONTACT_FIELD_PATTERN.test(word)
+    && !PRIVATE_PERSON_ATTRIBUTE_CONTEXT_TOKEN_PATTERN.test(word)
+    && !PERSON_CONTEXT_STOPWORD_PATTERN.test(word)
+    && !PUBLIC_ORGANIZATION_PATTERN.test(word)
+    && !PUBLIC_CONTACT_ROLE_PATTERN.test(word)
+    && !/^\d+$/u.test(word)
+    && !administrativeFragment(word)
+    && !domainFragment(word)
+    && !ECOLOGICAL_SUBJECT_PATTERN.test(word)
+    && !ECOLOGICAL_MODIFIER_PATTERN.test(word);
+  const isPotentialPersonNameToken = (word) => !PRIVATE_CONTACT_FIELD_PATTERN.test(word)
+    && !PRIVATE_PERSON_ATTRIBUTE_CONTEXT_TOKEN_PATTERN.test(word)
+    && !PERSON_CONTEXT_STOPWORD_PATTERN.test(word)
+    && !PUBLIC_ORGANIZATION_PATTERN.test(word)
+    && !PUBLIC_CONTACT_ROLE_PATTERN.test(word)
+    && !/^\d+$/u.test(word)
+    && !administrativeFragment(word);
+  const isEcologicalCommonNamePair = (first, second) => (
+    ECOLOGICAL_SUBJECT_PATTERN.test(second)
+      && (ECOLOGICAL_MODIFIER_PATTERN.test(first)
+        || ECOLOGICAL_SUBJECT_PATTERN.test(first))
+  );
+  const hasAdjacentNameShapedPair = rawIdentityFragments.some((word, index) => {
+    const next = rawIdentityFragments[index + 1];
+    return Boolean(next)
+      && isPotentialPersonNameToken(word)
+      && isPotentialPersonNameToken(next)
+      && !isEcologicalCommonNamePair(word, next);
+  });
+  const suspiciousIdentityFragments = identityFragments.filter(isSuspiciousIdentityFragment);
+  const hasAdjacentSuspiciousPair = rawIdentityFragments.some((word, index) => {
+    const next = rawIdentityFragments[index + 1];
+    return Boolean(next) && isSuspiciousIdentityFragment(word) && isSuspiciousIdentityFragment(next);
+  });
+  const hasAdjacentUnknownEcologicalPair = rawIdentityFragments.some((word, index) => {
+    const next = rawIdentityFragments[index + 1];
+    return Boolean(next)
+      && ((isSuspiciousIdentityFragment(word) && ECOLOGICAL_SUBJECT_PATTERN.test(next))
+        || (ECOLOGICAL_SUBJECT_PATTERN.test(word) && isSuspiciousIdentityFragment(next)));
+  });
+  const hasAdjacentBareEcologicalPair = rawIdentityFragments.some((word, index) => {
+    const next = rawIdentityFragments[index + 1];
+    return Boolean(next)
+      && ECOLOGICAL_SUBJECT_PATTERN.test(word)
+      && ECOLOGICAL_SUBJECT_PATTERN.test(next)
+      && !ECOLOGICAL_MODIFIER_PATTERN.test(word)
+      && !ECOLOGICAL_MODIFIER_PATTERN.test(next);
+  });
+  const hasHumanMarker = /\b(?:eraisik|inimene|isiku|inimese|elaniku|residendi)\w*\b/iu.test(text);
+  const hasSensitiveContact = /\b(?:kontakt\w*|contact\w*|telefoni?\w*|telephone\w*|phone\w*|telefoninumber\w*|mobiili?\w*|mobile\w*|e-?post\w*|email\w*|meil\w*|mail\w*|sideandm\w*|postkast\w*|address\w*|residence\w*)\b/iu.test(text)
+    || hasPrivatePostalField;
+  const hasAddressAndPresence = /\baadress\w*\b[\s\S]{0,100}\b(?:elab|peatub|resideerib|paikneb)\b/iu.test(text);
+  const residenceVerbIndex = words.findIndex((word) => /^(?:elab|elava|resideerib|peatub|viibib|asub|paikneb|ööbib|oobib|live[sd]?|living|reside[sd]?|residing|stay(?:s|ing)?|occup(?:y|ies|ied|ying))$/iu.test(word));
+  const hasResidenceContext = residenceVerbIndex >= 0
+    || /\bkus\b[\s\S]{0,100}\belab\b/iu.test(text)
+    || /\bwhere\b[\s\S]{0,100}\b(?:live|reside|stay)\b/iu.test(text);
+  const hasFusedIdentityShape = suspiciousIdentityFragments.some((word) => word.length >= 8);
+  const hasFusedPrivateAssetIdentity = hasFusedIdentityShape
+    && hasPrivateAssetContext
+    && (PRIVATE_ASSET_LOOKUP_ACTION_PATTERN.test(text)
+      || /(?<!\p{L})(?:registr\w*|registry|register)(?!\p{L})/iu.test(text));
+  const hasPrivateAssetIdentity = hasAdjacentNameShapedPair
+    || hasAdjacentSuspiciousPair
+    || hasAdjacentUnknownEcologicalPair
+    || hasAdjacentBareEcologicalPair
+    || hasFusedPrivateAssetIdentity;
+  const hasNamedIdentity = hasAdjacentNameShapedPair
+    || suspiciousIdentityFragments.length >= 2
+    || hasAdjacentUnknownEcologicalPair
+    || (suspiciousIdentityFragments.length >= 1 && hasKnownPublicOrganization)
+    || (suspiciousIdentityFragments.length >= 1 && hasSensitiveContact)
+    || (hasAdjacentBareEcologicalPair && (hasSensitiveContact || hasKnownPublicOrganization))
+    || (hasResidenceContext && hasFusedIdentityShape);
+  const hasPrivateAssetReference = CADASTRE_PATTERN.test(text)
+    || /\b(?:katastri(?:üksus|uksus|tunnus|number|andmed)\w*|kinnist\w*|maa(?:u|ü)ksus\w*|puurkaev\w*|aadress\w*)\b/iu.test(text);
+  const hasPersonOrOwnerPredicate = ESTONIAN_PRIVATE_OWNERSHIP_PATTERN.test(text)
+    || /\b(?:kontakt\w*|elanike?\s+nime\w*|(?:isiku|inimese|omaniku)\s+nimi\w*|kes\s+(?:kasutab|elab))\b/iu.test(text);
+  const privateScopeWords = identityText.match(/[\p{L}\p{N}]+/gu) || [];
+  const forestAssetIndex = privateScopeWords.findIndex((word) => PRIVATE_FOREST_ASSET_PATTERN.test(word));
+  const isPotentialForestIdentityToken = (word) => {
+    const normalizedWord = normalize(word);
+    return !PRIVATE_CONTACT_FIELD_PATTERN.test(word)
+      && !PERSON_CONTEXT_STOPWORD_PATTERN.test(word)
+      && !PUBLIC_ORGANIZATION_PATTERN.test(word)
+      && !PUBLIC_CONTACT_ROLE_PATTERN.test(word)
+      && !PUBLIC_FOREST_RELATION_TOKEN_PATTERN.test(word)
+      && !/^\d+$/u.test(word)
+      && !ADMIN_CONTEXT_ROOTS.has(normalizedWord)
+      && !(DOMAIN_ROOTS.has(normalizedWord) && !ECOLOGICAL_SUBJECT_PATTERN.test(word));
+  };
+  const precedingForestIdentityFirst = privateScopeWords[forestAssetIndex - 2] || "";
+  const precedingForestIdentitySecond = privateScopeWords[forestAssetIndex - 1] || "";
+  const hasDirectNamedForestRelation = forestAssetIndex >= 2
+    && isPotentialForestIdentityToken(precedingForestIdentityFirst)
+    && isPotentialForestIdentityToken(precedingForestIdentitySecond)
+    && !isEcologicalCommonNamePair(precedingForestIdentityFirst, precedingForestIdentitySecond);
+  const forestAssetWord = privateScopeWords[forestAssetIndex] || "";
+  const followingForestWord = privateScopeWords[forestAssetIndex + 1] || "";
+  const hasExplicitPrivateForestAsset = EXPLICIT_PRIVATE_FOREST_ASSET_PATTERN.test(forestAssetWord)
+    || (/^(?:forests?|woodlands?)$/iu.test(forestAssetWord)
+      && ENGLISH_PRIVATE_FOREST_QUALIFIER_PATTERN.test(followingForestWord));
+  const hasDativeForestPossession = privateScopeWords.some((word, copulaIndex) => {
+    let identityEndIndex = -1;
+    if (/^(?:on|oli|oleks|pole)$/iu.test(word)) {
+      identityEndIndex = copulaIndex - 1;
+    } else if (/^ole$/iu.test(word) && /^ei$/iu.test(privateScopeWords[copulaIndex - 1] || "")) {
+      identityEndIndex = copulaIndex - 2;
+    }
+    if (identityEndIndex < 1
+      || !hasExplicitPrivateForestAsset
+      || forestAssetIndex <= copulaIndex
+      || forestAssetIndex - copulaIndex > 3) return false;
+    const identityFirst = privateScopeWords[identityEndIndex - 1] || "";
+    const identitySecond = privateScopeWords[identityEndIndex] || "";
+    return /(?:le|l)$/iu.test(identitySecond)
+      && isPotentialForestIdentityToken(identityFirst)
+      && isPotentialForestIdentityToken(identitySecond)
+      && !isEcologicalCommonNamePair(identityFirst, identitySecond);
+  });
+  // A direct identity attached to a concrete private forest subdivision is
+  // sufficient regardless of the request verb. Generic forest references
+  // still require an explicit lookup/ownership relation so environmental
+  // questions such as "how much forest" cannot synthesize a person.
+  const hasNamedForestAssetLookup = hasDirectNamedForestRelation
+    && (hasExplicitPrivateForestAsset
+      || PRIVATE_ASSET_LOOKUP_ACTION_PATTERN.test(text)
+      || ESTONIAN_PRIVATE_OWNERSHIP_PATTERN.test(text)
+      || /(?:'s|’s)\s+(?:forest|woodland)\b/iu.test(text));
+  const belongingParticipleIndex = privateScopeWords.findIndex((word) => (
+    ESTONIAN_BELONGING_PARTICIPLE_PATTERN.test(word)
+  ));
+  const belongsVerbIndex = privateScopeWords.findIndex((word) => ESTONIAN_BELONGS_VERB_PATTERN.test(word));
+  const forestBeforeBelongsVerb = belongsVerbIndex > forestAssetIndex
+    && forestAssetIndex >= 0
+    && belongsVerbIndex - forestAssetIndex <= 6;
+  const dativePersonBeforeBelongsVerb = belongsVerbIndex >= 2
+    && forestAssetIndex > belongsVerbIndex
+    && forestAssetIndex - belongsVerbIndex <= 4
+    && /(?:le|l)$/iu.test(privateScopeWords[belongsVerbIndex - 1]);
+  const belongingParticipleNearForest = belongingParticipleIndex >= 0
+    && forestAssetIndex >= 0
+    && Math.abs(belongingParticipleIndex - forestAssetIndex) <= 4;
+  const hasNamedForestOwnership = forestAssetIndex >= 0
+    && hasNamedIdentity
+    && (ESTONIAN_PRIVATE_OWNERSHIP_PATTERN.test(text)
+      || forestBeforeBelongsVerb
+      || dativePersonBeforeBelongsVerb
+      || hasDativeForestPossession
+      || belongingParticipleNearForest);
+  const englishStreetAddress = /\b\d{1,6}[a-z]?\s+[\p{L}\p{N}'’.-]{1,50}(?:\s+[\p{L}\p{N}'’.-]{1,50}){0,4}\s+(?:street|st|road|rd|avenue|ave|lane|ln|drive|dr|way|boulevard|blvd|court|ct|place|pl)\b/iu.test(text);
+  const englishPrivateAsset = /\b(?:property|parcel|plot|lot|estate|land|house|home|farm|well|borehole|building|dwelling|cadastral\s+(?:unit|parcel)|street\s+address)\b/iu.test(text);
+  const englishSpecificForest = /\b(?:this|that|the\s+specific|a\s+specific)\s+(?:forest|woodland|property|parcel|plot|land|house|home|farm|well|borehole|building)\b/iu.test(text);
+  const englishOwnershipIntent = /\b(?:who\s+(?:owns?|is\s+the\s+(?:registered\s+)?(?:owner|proprietor|landholder|landlord)\s+of)|whose\s+(?:property|parcel|plot|land|house|home|farm|well|borehole)|(?:property|parcel|plot|land|forest|home|house)\s+(?:owner|landowner|homeowner|proprietor|landholder|landlord)|(?:identify|find|name|contact|show)\b[\s\S]{0,60}\b(?:owner|landowner|homeowner|proprietor|landholder|landlord))\b/iu.test(text);
+  const englishOwnerContactIntent = /\b(?:(?:contact|name|identity|address|phone|telephone|email)\b[\s\S]{0,50}\b(?:owner|resident|occupant|inhabitant|landowner|landholder|landlord|homeowner|proprietor)|(?:owner|resident|occupant|inhabitant|landowner|landholder|landlord|homeowner|proprietor)\b[\s\S]{0,50}\b(?:contact|name|identity|address|phone|telephone|email))\b/iu.test(text);
+  const englishResidenceIntent = /\bwho\s+(?:currently\s+)?(?:lives?|is\s+living|resides?|is\s+residing|stays?|occup(?:ies|ys)|inhabits?)\b/iu.test(text)
+    || (/\bwhere\s+does\b[\s\S]{0,80}\b(?:live|reside|stay|inhabit)\b/iu.test(text) && hasNamedIdentity);
+  const englishNamedAssetRelationship = hasNamedIdentity && (
+    /\b(?:owns?|owned)\b[\s\S]{0,80}\b(?:property|parcel|plot|land|house|home|farm|well|borehole|forest|woodland)\b/iu.test(text)
+    || /\b(?:property|parcel|plot|land|house|home|farm|well|borehole|forest|woodland)\b[\s\S]{0,50}\bof\b/iu.test(text)
+    || /(?:'s|’s)\s+(?:property|parcel|plot|land|house|home|farm|well|borehole|forest|woodland)\b/iu.test(text)
+  );
+  const englishPublicAggregate = /\b(?:state|public|national|municipal|government(?:-owned)?)\s+(?:forest|woodland|land|property|estate)s?\b/iu.test(text)
+    && !englishStreetAddress
+    && !CADASTRE_PATTERN.test(text)
+    && !englishSpecificForest;
+  const englishGeneralOwnershipPolicy = /\b(?:responsibilit(?:y|ies)|rights?|dut(?:y|ies)|obligations?|rules?|requirements?|law|regulation|guidance|policy)\b/iu.test(text)
+    && !englishStreetAddress
+    && !CADASTRE_PATTERN.test(text)
+    && !englishSpecificForest;
+  const englishGeneralOwnershipExemption = englishPublicAggregate || englishGeneralOwnershipPolicy;
+  const englishAssetIdentityQuestion = /\b(?:who|whom|whose\s+name|which\s+person|show(?:\s+me)?\s+the\s+person)\b/iu.test(textWithoutKnownOrganizations)
+    && englishPrivateAsset
+    && /\b(?:(?:registered|recorded)(?:\s+(?:to|under|in))?|(?:associated|connected|linked)\s+(?:to|with)|(?:owned|held)\s+by)\b/iu.test(textWithoutKnownOrganizations)
+    && !englishGeneralOwnershipExemption;
+  const englishPatternLookup = matchesEnglishPersonalPattern && !(
+    englishGeneralOwnershipExemption
+    && !englishNamedResidenceQuestion
+    && !englishNamedFoundQuestion
+    && !englishNamedLocatedQuestion
+    && !englishLocateNamedPerson
+    && !englishOwnerContactIntent
+  );
+  const englishPersonalLookup = (
+    englishOwnershipIntent
+      && (englishPrivateAsset || englishStreetAddress || englishSpecificForest)
+      && !englishGeneralOwnershipExemption
+  ) || (
+    englishResidenceIntent
+      && !englishWhereResidenceIsEcological
+      && (hasNamedIdentity || englishPrivateAsset || englishStreetAddress || englishSpecificForest)
+  ) || englishNamedResidenceQuestion
+    || englishNamedFoundQuestion
+    || englishNamedLocatedQuestion
+    || englishLocateNamedPerson
+    || englishOwnerContactIntent
+    || (englishNamedAssetRelationship && !englishGeneralOwnershipExemption)
+    || englishAssetIdentityQuestion
+    || englishPatternLookup;
+  const explicitPersonalLookup = PERSONAL_LOOKUP_PATTERNS.some((pattern) => pattern.test(text))
+    || hasAddressAndPresence
+    || (hasHumanMarker && hasSensitiveContact)
+    || (hasPrivateAssetReference && hasPrivateAssetIdentity)
+    || (hasNamedIdentity && (
+      sensitiveIndex >= 0
+      || hasSensitiveContact
+      || hasSensitivePersonalAttribute
+      || hasPrivatePostalField
+    ))
+    || (hasNamedIdentity && hasResidenceContext
+      && !englishWhereResidenceIsEcological
+      && !(englishWhereFoundMatch && englishSubjectIsEcological(englishWhereFoundMatch[1])))
+    || hasNamedForestAssetLookup
+    || hasNamedForestOwnership
+    || englishPersonalLookup;
+  if (explicitPersonalLookup) return true;
+  if (hasKnownPublicOrganization && hasSensitiveContact && suspiciousIdentityFragments.length === 0) return false;
+  return hasPrivateAssetReference && hasPersonOrOwnerPredicate;
+}
+
+function isPublicOrganizationContactQuery(value) {
+  const text = canonicalSecurityText(value);
+  return PUBLIC_ORGANIZATION_PATTERN.test(text)
+    && (/\b(?:kontakt\w*|contact\w*|telefoni?\w*|telephone\w*|phone\w*|telefoninumber\w*|e-?post\w*|email\w*|aadress\w*|address\w*)\b/iu.test(text)
+      || PRIVATE_POSTAL_FIELD_PATTERN.test(text))
+    && !containsPrivatePersonLookup(text);
 }
 
 function rootIsDomain(root) {
@@ -1048,12 +2303,128 @@ function clarificationFor(root) {
   return "Palun lisa teema, näitaja, piirkond või ajavahemik, et saaksin valida õige ametliku allika.";
 }
 
-export function assessSearchQuery(query) {
-  const cleanQuery = String(query ?? "").replace(/\s+/gu, " ").trim().slice(0, 180);
+export function analyzePublicSearchQuery(query, options = {}) {
+  const canonicalInput = canonicalizePublicSearchQuery(query, options);
+  const cleanQuery = canonicalInput.ok ? canonicalInput.query : "";
   const normalized = normalize(cleanQuery);
   const roots = queryTerms(cleanQuery);
   const domainRoots = roots.filter(rootIsDomain);
+  const domainFamilies = new Set(domainRoots.map((root) => DOMAIN_FAMILY_BY_ROOT.get(root)).filter(Boolean));
   const forestryIntent = forestEvidenceIntent(cleanQuery);
+  const locationPattern = /\b(?:tallinn|tartu|parnu|narva|viljandi|rakvere|voru|kuressaare|haapsalu|johvi|saaremaa|kohtla|harjumaa|raplamaa|ida virumaa)\w*/u;
+  const hasLocation = locationPattern.test(normalized);
+  const historical = /\b(?:(?:19|20)\d{2}|ajalool\w*|varasem\w*|arhiiv\w*|eelmisel|mullu|kliima\w*|keskm\w*|moodunud|historical|historic|archive|archived|past)\b/u.test(normalized);
+  const current = /\b(?:tana\w*|homn\w*|homm\w*|homs\w*|ulehomme|praegu|hetkel|hetke\w*|nadalavahet\w*|reaalajas|prognoos\w*|\w*hoiatus\w*|today|tomorrow|current|currently|now|weekend|forecast\w*|warning\w*)\b/u.test(normalized);
+  const weatherIntent = domainRoots.some((root) => ["ilm", "prognoos", "hoiatus", "sademed"].includes(root));
+  const airIntent = roots.some((root) => ["ohk", "ohukvaliteet", "saaste", "osoon", "pm10", "pm25"].includes(root));
+  const routeClasses = new Set();
+  if (weatherIntent && (current || (hasLocation && !historical))) routeClasses.add("official_live_weather");
+  if (airIntent && (current || (hasLocation && !historical))) routeClasses.add("official_live_air");
+  const liveWaterIntent = (current
+    && roots.some((root) => ["vesi", "jogi", "jarv", "meri", "laanemeri", "emajogi", "mootmine", "suplusvesi"].includes(root))
+    && !historical)
+    || (roots.includes("jaaolud") && !historical);
+  if (liveWaterIntent) routeClasses.add("official_live_water");
+  const explicitDataIntent = roots.some((root) => ["api", "avaandmed", "metaandmed", "allalaadimine", "pxweb"].includes(root));
+  const statisticalDataIntent = roots.includes("statistika")
+    && !roots.some((root) => ["mets", "metsaandmed", "metsaregister"].includes(root));
+  if (explicitDataIntent || statisticalDataIntent) {
+    routeClasses.add("official_data_or_api");
+  }
+  if (roots.some((root) => ["kaart", "ruumikiht", "register", "kataster", "kinnistu", "pusielupaik", "puurkaev", "jaatmekaitluskoht", "mura"].includes(root))
+    || (roots.some((root) => ["kaitseala", "elupaik", "liik"].includes(root))
+      && (/\b(?:kaart|piir(?:id|i|ide|joon)\w*|asukoht|naen|näen|leid|otsin|riiklik)\w*/u.test(normalized) || hasLocation))
+    || /\b(?:oma|minu|mu)\s+maat\w*\b[\s\S]{0,50}\b(?:puistu|metsa)andm\w*/u.test(normalized)) {
+    routeClasses.add("official_spatial_or_register");
+  }
+  if ((historical && roots.some((root) => ["ilm", "temperatuur", "vesi", "jogi", "jarv", "meri", "emajogi", "mootmine"].includes(root)))
+    || roots.some((root) => ["jaaolud"].includes(root))
+    || (roots.includes("meri") && roots.some((root) => ["temperatuur", "mootmine", "seire"].includes(root)))) {
+    routeClasses.add("official_historical_observation");
+  }
+  if (roots.some((root) => ["seisund", "kliima", "kasvuhoonegaas", "ringlussevott", "jalajalg", "elektriauto", "pestitsiid", "osoon", "uluk", "suplusvesi", "stsenaarium", "kiirgus", "mereprugi", "eutrofeerumine"].includes(root))
+    || (roots.includes("laanemeri") && /\b(?:oitse\w*|vetika\w*|eutrofeer\w*)\b/u.test(normalized))) {
+    routeClasses.add("official_indicator_or_report");
+  }
+  if (roots.includes("uleujutusrisk")) {
+    routeClasses.add("official_indicator_or_report");
+    routeClasses.add("official_spatial_or_register");
+  }
+  const legalIntent = roots.some((root) => ["keskkonnaluba", "menetlus", "piirang", "taotlemine", "ehitamine"].includes(root))
+    || /\bkaitse\s+alla\b/u.test(normalized)
+    || (roots.includes("metsateatis") && /\b(?:piisab|peab|kohustus\w*|noue\w*|esitama|vaja)\b/u.test(normalized))
+    || (roots.includes("lubatavus")
+      && roots.some((root) => ["kaitseala", "kaitstav", "liik", "elupaik", "puurkaev"].includes(root)));
+  if (legalIntent) routeClasses.add("official_legal_context");
+  if (roots.some((root) => ["kmh", "ksh"].includes(root)) || (roots.includes("keskkonnamoju") && roots.includes("tuulepark"))) {
+    routeClasses.add("official_environmental_assessment");
+  }
+  if (roots.includes("keskkonnamoju") && roots.includes("kaevandus")) {
+    routeClasses.add("official_environmental_assessment");
+    routeClasses.add("official_guidance");
+  }
+  const guidanceIntent = /\b(?:kuidas|kuhu|miks|mida|kas|tohib|voib|teatada|viia|käidelda|kaidelda|how|where|why|what|dispose|report)\b/u.test(normalized)
+    && roots.some((root) => [
+      "jaat", "asbest", "biojaatmed", "reovesi", "kohtkaitlus", "pais", "kala", "voorliik",
+      "liik", "elupaik", "rohevorgustik", "margala", "taastamine", "kaevandus", "paikesepaneel",
+      "pohjavesi", "joogivesi", "vesi", "metsateatis", "rehv", "polet", "jalajalg",
+    ].includes(root));
+  const implicitGuidanceIntent = (roots.includes("paikesepaneel") && /\bmis\s+saab\b/u.test(normalized))
+    || (roots.includes("voorliik") && /\b(?:aias|aeda|aed)\b/u.test(normalized))
+    || (roots.includes("metsateatis") && /\b(?:voi|või)\b/u.test(normalized));
+  if ((guidanceIntent || implicitGuidanceIntent) && (!legalIntent || roots.some((root) => ["jaat", "asbest", "biojaatmed", "reovesi", "kohtkaitlus", "pais", "voorliik", "metsateatis"].includes(root)))) {
+    routeClasses.add("official_guidance");
+  }
+  if (forestryIntent || roots.some((root) => ["mets", "raie", "juurdekasv", "metsaandmed", "metsaregister"].includes(root))) {
+    routeClasses.add("official_forestry_evidence");
+  }
+  const primaryRouteClass = [
+    routeClasses.has("official_live_weather") ? "official_live_weather" : null,
+    routeClasses.has("official_live_air") ? "official_live_air" : null,
+    routeClasses.has("official_live_water") ? "official_live_water" : null,
+    routeClasses.has("official_data_or_api") ? "official_data_or_api" : null,
+    routeClasses.has("official_spatial_or_register") && !/\bavalik\w*\b/u.test(normalized)
+      ? "official_spatial_or_register"
+      : null,
+    routeClasses.has("official_historical_observation") ? "official_historical_observation" : null,
+    routeClasses.has("official_environmental_assessment") ? "official_environmental_assessment" : null,
+    routeClasses.has("official_legal_context") ? "official_legal_context" : null,
+    routeClasses.has("official_guidance") ? "official_guidance" : null,
+    routeClasses.has("official_indicator_or_report") ? "official_indicator_or_report" : null,
+    routeClasses.has("official_spatial_or_register") ? "official_spatial_or_register" : null,
+    routeClasses.has("official_forestry_evidence") ? "official_forestry_evidence" : null,
+  ].find(Boolean) || null;
+  return {
+    cleanQuery,
+    inputReason: canonicalInput.reason,
+    normalized,
+    roots,
+    domainRoots,
+    domainFamilies,
+    forestryIntent,
+    hasLocation,
+    historical,
+    current,
+    weatherIntent,
+    airIntent,
+    candidateRouteClasses: [...routeClasses],
+    primaryRouteClass,
+  };
+}
+
+export function assessSearchQuery(query, options = {}) {
+  const analysis = analyzePublicSearchQuery(query, options);
+  const {
+    cleanQuery, inputReason, normalized, roots, domainRoots, domainFamilies, forestryIntent,
+  } = analysis;
+  if (inputReason === "too-long" || inputReason === "input-too-long") {
+    return {
+      kind: "out-of-scope",
+      topic: null,
+      reason: "invalid-query-length",
+      clarification: "Otsing ületab turvalise pikkuspiiri. Lühenda päringut ja proovi uuesti.",
+    };
+  }
   if (!cleanQuery) return { kind: "needs-clarification", topic: null, reason: "empty", clarification: clarificationFor(null) };
   if (containsUnsafeInstruction(cleanQuery)) {
     return {
@@ -1061,6 +2432,22 @@ export function assessSearchQuery(query) {
       topic: null,
       reason: "unsafe-instruction",
       clarification: "Saan aidata Eesti keskkonnaandmete küsimustega, kuid mitte süsteemijuhiste ega saladuste päringutega.",
+    };
+  }
+  if (containsPrivatePersonLookup(cleanQuery)) {
+    return {
+      kind: "out-of-scope",
+      topic: null,
+      reason: "personal-data-lookup",
+      clarification: "Ma ei aita tuvastada eraisiku elukohta, vara ega muid isikuga seostatavaid registriandmeid. Avalikke keskkonnaobjekte saab otsida objekti tunnuse järgi ametlikust registrist.",
+    };
+  }
+  if (isPublicOrganizationContactQuery(cleanQuery)) {
+    return {
+      kind: "answerable",
+      topic: "keskkonnaandmed",
+      reason: "official-organization-contact",
+      clarification: null,
     };
   }
   if (CADASTRE_PATTERN.test(cleanQuery)) {
@@ -1074,6 +2461,29 @@ export function assessSearchQuery(query) {
       clarification: clarificationFor("andmed"),
     };
   }
+  const broadRequest = /^(?:tahan\s+\w+\s+teada|vajan\s+(?:ainult\s+)?kaarti|otsin\s+loataotlust|minu\s+mets)$/u.test(normalized)
+    || (/\bsiin\b/u.test(normalized) && roots.some((root) => ["lubatavus", "ehitamine"].includes(root)))
+    || (/\b(?:ohk|ohukvaliteet)\b/u.test(normalized)
+      && /\b(?:halb|hea|puhas)\b/u.test(normalized)
+      && !ADMIN_CONTEXT_ROOTS.has(roots.find((root) => ADMIN_CONTEXT_ROOTS.has(root))));
+  if (broadRequest) {
+    return {
+      kind: "needs-clarification",
+      topic: domainRoots[0] || null,
+      reason: "broad-topic",
+      clarification: clarificationFor(domainRoots[0] || null),
+    };
+  }
+  if (roots.includes("register")
+    && roots.includes("ettevote")
+    && !roots.some((root) => ["keskkonnaluba", "jaat", "heide", "saaste", "pakend", "mets", "puurkaev"].includes(root))) {
+    return {
+      kind: "out-of-scope",
+      topic: null,
+      reason: "outside-environment-domain",
+      clarification: "Üldiste ettevõtteandmete asemel küsi konkreetse keskkonnaloa, heite, jäätmearuande või muu keskkonnaregistri kirje kohta.",
+    };
+  }
   if (!domainRoots.length && !forestryIntent) {
     return {
       kind: "out-of-scope",
@@ -1083,15 +2493,51 @@ export function assessSearchQuery(query) {
     };
   }
   const topic = domainRoots[0] || "mets";
+  const suspiciousUnknownTokens = normalized.split(/\s+/u).filter((word) => word.length >= 4
+    && !/[aeiouõäöü]/u.test(word)
+    && !/\d/u.test(word));
+  if (suspiciousUnknownTokens.length && domainRoots.length <= 1) {
+    return {
+      kind: "needs-clarification",
+      topic,
+      reason: "unknown-modifier",
+      clarification: "Üks päringu osa jäi ebaselgeks. Palun sõnasta teema või tundmatu termin täpsemalt.",
+    };
+  }
+  const hasRelationalQuestion = /\b(?:kas|kuidas|miks|mida|milline|millised|tohib|voib)\b/u.test(normalized);
+  const knownCatalogueCombination = domainRoots.some((root) => ["mets", "metsaandmed", "metsaregister"].includes(root))
+    && roots.some((root) => ["andmed", "kaart", "ruumikiht", "register"].includes(root));
+  if (domainFamilies.size >= 3
+    && normalized.split(/\s+/u).length <= 6
+    && !hasRelationalQuestion
+    && !forestryIntent
+    && !knownCatalogueCombination) {
+    return {
+      kind: "needs-clarification",
+      topic,
+      reason: "mixed-topics",
+      clarification: "Päring sisaldab mitut eri keskkonnateemat. Palun vali üks teema või kirjelda, millist seost nende vahel otsid.",
+    };
+  }
   if (forestryIntent?.kind === "municipality-forest-area"
     && (/\b(?:minu|mu|meie|oma|selles|siin)\b[\s\S]{0,35}\b(?:vald|valla|vallas)\w*\b/u.test(normalized)
       || /\bkoduvall\w*\b/u.test(normalized)
-      || /^(?:kui\s+palju\s+)?mets\w*\s+(?:on\s+)?vallas$/u.test(normalized))) {
+      || /^(?:kui\s+palju\s+)?mets\w*\s+(?:on\s+)?vallas$/u.test(normalized)
+      || /\b(?:metsa|metsade?)\s+(?:protsent|osakaal|pindala)\s+vallas\b/u.test(normalized))) {
     return {
       kind: "needs-clarification",
       topic: "mets",
       reason: "missing-municipality",
       clarification: "Palun nimeta vald ja täpsusta, kas soovid metsamaa pindala, metsasuse protsenti või Metsaregistris kehtivate eraldiste pindala. Need on eri näitajad.",
+    };
+  }
+  if (!CADASTRE_PATTERN.test(cleanQuery)
+    && (/(?:\b(?:minu|mu|oma)\s+(?:salvkaev|kaev)\w*\b|\b(?:minu|mu)\s+maal\b[\s\S]{0,50}\bvaariselupaik\b)/u.test(normalized))) {
+    return {
+      kind: "needs-clarification",
+      topic: domainRoots[0] || null,
+      reason: "missing-object-location",
+      clarification: "Palun lisa objekti asukoht või registritunnus. Isiklikke objektiandmeid ma ei tuleta nime ega ebamäärase asukohakirjelduse põhjal.",
     };
   }
   if (["jarv", "vesi"].includes(topic) && /\bjarvede\b/u.test(normalized)) {
@@ -1114,13 +2560,14 @@ export function assessSearchQuery(query) {
       clarification: "Lisa katastritunnus kujul 12345:678:9012. Aadressi järgi üksuse leidmiseks kasuta ametlikku kaardi- või aadressiotsingut.",
     };
   }
-  const weatherLocationPattern = /\b(?:tallinn|tartu|parnu|narva|viljandi|rakvere|voru|kuressaare|haapsalu|johvi)\w*/u;
-  const explicitlyCurrentWeather = /\b(?:tana|homn\w*|homm\w*|homs\w*|ulehomme|praegu|hetkel|prognoos\w*|\w*hoiatus\w*)\b/u.test(normalized);
-  const historicalWeatherContext = /\b(?:(?:19|20)\d{2}|ajalool\w*|kliima\w*|keskm\w*|möödunud|moodunud)\b/u.test(normalized);
-  const locationDefaultsToCurrentWeather = domainRoots.includes("ilm")
+  const weatherLocationPattern = /\b(?:tallinn|tartu|parnu|narva|viljandi|rakvere|voru|kuressaare|haapsalu|johvi|saaremaa|kohtla)\w*/u;
+  const explicitlyCurrentWeather = /\b(?:tana\w*|homn\w*|homm\w*|homs\w*|ulehomme|praegu|hetkel|hetkeseis\w*|nadalavahet\w*|prognoos\w*|\w*hoiatus\w*|today|tomorrow|current|currently|now|weekend|forecast\w*|warning\w*)\b/u.test(normalized);
+  const historicalWeatherContext = /\b(?:(?:19|20)\d{2}|ajalool\w*|kliima\w*|keskm\w*|möödunud|moodunud|historical|historic|archive|past)\b/u.test(normalized);
+  const weatherIntent = domainRoots.some((root) => ["ilm", "prognoos", "hoiatus", "sademed"].includes(root));
+  const locationDefaultsToCurrentWeather = weatherIntent
     && weatherLocationPattern.test(normalized)
     && !historicalWeatherContext;
-  if ((domainRoots.includes("ilm") || domainRoots.includes("prognoos") || domainRoots.includes("hoiatus"))
+  if (weatherIntent
     && (explicitlyCurrentWeather || locationDefaultsToCurrentWeather)) {
     return {
       kind: "live-weather",
@@ -1131,18 +2578,34 @@ export function assessSearchQuery(query) {
         : "Lisa asukoht, et avada õige piirkonna prognoos.",
     };
   }
-  const explicitlyCurrentAir = /\b(?:praeg\w*|hetkel|hetke|reaalajas|tana|värske|varske)\b/u.test(normalized);
-  if (roots.some((root) => ["ohk", "ohukvaliteet", "saaste"].includes(root)) && explicitlyCurrentAir) {
+  const explicitlyCurrentAir = /\b(?:praeg\w*|hetkel|hetke\w*|reaalajas|tana\w*|värske\w*|varske\w*|today|current|currently|now|real\s+time|latest)\b/u.test(normalized);
+  const airIntent = roots.some((root) => ["ohk", "ohukvaliteet", "saaste", "osoon", "pm10", "pm25"].includes(root));
+  const airLocation = /\b(?:tallinn|tartu|parnu|narva|kohtla|viljandi|voru|saaremaa)\w*/u.test(normalized);
+  if (airIntent && (explicitlyCurrentAir || (airLocation && !historicalWeatherContext))) {
     return {
       kind: "live-air",
       topic: "ohukvaliteet",
       reason: "time-sensitive-air-quality",
-      clarification: /\b(?:tallinn|tartu|parnu|narva|kohtla|viljandi|saaremaa)\w*/u.test(normalized)
+      clarification: airLocation
         ? null
         : "Lisa asukoht või lähim seirejaam ja soovitud saasteaine.",
     };
   }
-  if (roots.length <= 1 && AMBIGUOUS_ROOTS.has(topic)) {
+  if (analysis.candidateRouteClasses.includes("official_live_water")) {
+    return {
+      kind: "live-water",
+      topic: roots.includes("suplusvesi")
+        ? "suplusvesi"
+        : roots.some((root) => ["meri", "laanemeri", "jaaolud"].includes(root))
+          ? "meri"
+          : "vesi",
+      reason: "time-sensitive-water",
+      clarification: null,
+    };
+  }
+  const nonContextRoots = roots.filter((root) => root !== topic && !ADMIN_CONTEXT_ROOTS.has(root));
+  const waterContextOnly = ["vesi", "jarv"].includes(topic) && nonContextRoots.length === 0;
+  if (AMBIGUOUS_ROOTS.has(topic) && (roots.length <= 1 || waterContextOnly)) {
     return {
       kind: "needs-clarification",
       topic,
@@ -1204,8 +2667,6 @@ function documentRoots(document) {
 
 function evidencePassages(document) {
   return [
-    document.title,
-    [...(document.tags || []), ...(document.topics || [])].join(" "),
     document.summary,
     document.excerpt,
     document.answer,
@@ -1385,30 +2846,82 @@ export function forestryIntentServiceDocumentIds(query) {
   return [...(intent?.serviceDocumentIds || [])];
 }
 
+// The catalogue contains compact, manually reviewed extracts rather than a
+// live copy of the linked page. Any extract that may support an answer is
+// therefore issued as a short-lived reviewed version. Updating catalogue
+// prose requires advancing this timestamp after the linked sources have been
+// checked; otherwise the extract automatically becomes navigation-only.
+const CATALOGUE_REVIEWED_AT = "2026-08-19T00:00:00.000Z";
+const CATALOGUE_REVIEW_MAX_AGE_MS = 31 * 24 * 60 * 60 * 1_000;
+
+export function reviewedCatalogueEvidenceVersion(document = {}) {
+  const extract = [
+    document.id,
+    document.title,
+    document.organization,
+    document.type,
+    document.published,
+    document.url,
+    document.summary,
+    document.content,
+    document.locator,
+    document.tags,
+    document.topics,
+  ];
+  const digest = createHash("sha256").update(JSON.stringify(extract)).digest("hex");
+  return `catalogue-review-2026-08-19:${digest}`;
+}
+
+function withReviewedCatalogueEvidence(document, { forceRouteOnly = false } = {}) {
+  if (forceRouteOnly || document._answerEvidenceEligible === false
+    || ["route-only", "timestamped", "versioned"].includes(document.evidencePolicy)) {
+    return {
+      ...document,
+      evidencePolicy: forceRouteOnly ? "route-only" : document.evidencePolicy,
+      _answerEvidenceEligible: forceRouteOnly ? false : document._answerEvidenceEligible,
+    };
+  }
+  if (document.evidencePolicy === "claim-specific"
+    && document.freshness?.requiresSourceTimestamp === true) return document;
+  return {
+    ...document,
+    evidencePolicy: "versioned",
+    _answerEvidenceEligible: true,
+    _evidenceVersion: reviewedCatalogueEvidenceVersion(document),
+    _evidenceStatusAt: CATALOGUE_REVIEWED_AT,
+    freshness: {
+      class: "reviewed-catalogue-extract",
+      basis: "reviewed-at",
+      maxAgeMs: CATALOGUE_REVIEW_MAX_AGE_MS,
+      requiresSourceTimestamp: true,
+    },
+  };
+}
+
 export function officialServiceCatalogueDocuments() {
   // The two SMI entries in SEARCH_DOCUMENTS are legacy deterministic-answer
   // fixtures. Current primary forestry evidence instead comes from the
   // maintained, cited service-directory extracts above or live retrieval.
   const legacyForestryFacts = new Set(["forest-overview", "forest-inventory-publication"]);
-  const directory = SEARCH_DOCUMENTS.map(({ answer: _answer, tags, ...document }) => ({
-    ...document,
-    tags: [...(tags || [])],
-    topics: [...(tags || [])],
-    sourceTier: "official",
-    retrieval: "official-service-directory",
-    _answerEvidenceEligible: !legacyForestryFacts.has(document.id),
-  }));
+  const directory = [...SEARCH_DOCUMENTS, ...ADDITIONAL_OFFICIAL_SERVICE_DOCUMENTS]
+    .map(({ answer: _answer, tags, ...document }) => withReviewedCatalogueEvidence({
+      ...document,
+      tags: [...(tags || [])],
+      topics: [...(tags || [])],
+      sourceTier: "official",
+      retrieval: "official-service-directory",
+    }, { forceRouteOnly: legacyForestryFacts.has(document.id) }));
   const forestryDirectory = [
     ...OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS,
     ...ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS,
-  ].map((document) => ({
+  ].map((document) => withReviewedCatalogueEvidence({
     ...document,
     topics: [...document.tags],
     sourceTier: "official",
     retrieval: "official-service-directory",
-    _answerEvidenceEligible: true,
   }));
-  return [...directory, ...forestryDirectory, ...cadastreSourceDocuments()];
+  return [...directory, ...forestryDirectory, ...cadastreSourceDocuments()]
+    .map(withOfficialSourceProfile);
 }
 
 export function rankDocuments(query, documents = SEARCH_DOCUMENTS) {
@@ -1421,7 +2934,8 @@ export function rankDocuments(query, documents = SEARCH_DOCUMENTS) {
 }
 
 export function composeSearchResponse(query, rankedDocuments, options = {}) {
-  const cleanQuery = String(query ?? "").trim().slice(0, 180);
+  const canonicalInput = canonicalizePublicSearchQuery(query);
+  const cleanQuery = canonicalInput.ok ? canonicalInput.query : "";
   const limit = Math.max(1, Math.min(Number(options.limit) || 6, 10));
   const ranked = Array.isArray(rankedDocuments) ? rankedDocuments : [];
   const chosen = ranked
@@ -1462,14 +2976,16 @@ export function composeSearchResponse(query, rankedDocuments, options = {}) {
 }
 
 function responseSources(ids) {
+  const catalogue = [...SEARCH_DOCUMENTS, ...ADDITIONAL_OFFICIAL_SERVICE_DOCUMENTS];
   return ids.flatMap((id, index) => {
-    const source = SEARCH_DOCUMENTS.find((candidate) => candidate.id === id);
+    const source = catalogue.find((candidate) => candidate.id === id);
     return source ? [{ ...source, citation: index + 1 }] : [];
   });
 }
 
 export function composeScopeResponse(query, assessment) {
-  const cleanQuery = String(query ?? "").replace(/\s+/gu, " ").trim().slice(0, 180);
+  const canonicalInput = canonicalizePublicSearchQuery(query);
+  const cleanQuery = canonicalInput.ok ? canonicalInput.query : "";
   if (assessment.kind === "live-weather") {
     const sources = responseSources(["weather-forecast", "kaia-service"]);
     return {
@@ -1516,6 +3032,82 @@ export function composeScopeResponse(query, assessment) {
     };
   }
 
+  if (assessment.kind === "live-water") {
+    const normalized = normalize(cleanQuery);
+    const roots = queryTerms(cleanQuery);
+    const isBathingWater = roots.includes("suplusvesi")
+      || /\b(?:suplus\w*|ujum\w*|rand|ranna)\b/u.test(normalized);
+    const isIce = roots.includes("jaaolud")
+      || /\b(?:jaakaart|merejaa|jaakate)\w*\b/u.test(normalized);
+    const isCombinedMarineObservation = isIce
+      && roots.some((root) => ["temperatuur", "seire", "mootmine"].includes(root));
+    const isMarine = isIce
+      || roots.some((root) => ["meri", "laanemeri"].includes(root))
+      || /\b(?:laht|lahe|rannik\w*)\b/u.test(normalized);
+    const variant = isBathingWater
+      ? {
+          ids: ["bathing-water-quality"],
+          eyebrow: "Ajakohane suplusvee info",
+          title: "Suplusvee hetkeseis tuleb kontrollida Terviseameti vaatest",
+          intro: "Ava Terviseameti suplusvee vaade, vali supluskoht ning kontrolli viimase proovi kuupäeva ja tulemust. Jooksev proovitulemus ja nelja viimase aasta põhjal määratud kvaliteediklass ei ole sama näitaja.",
+          note: "Proovitulemused muutuvad hooaja jooksul; ujumisotsuse puhul kontrolli ka kohapealseid hoiatusi.",
+          related: ["Eesti supluskohad", "suplusvee kvaliteediklass", "Pirita suplusvee proovid"],
+        }
+      : isCombinedMarineObservation
+        ? {
+            ids: ["marine-observations", "marine-ice-map"],
+            eyebrow: "Ajakohane mereseire",
+            title: "Merevee näidud ja jääolud tuleb võtta ametlikest vaatlusvaadetest",
+            intro: "Ava Keskkonnaagentuuri merevaatluste vaade temperatuuri ja veetaseme jaoks ning jääkaart jääolude jaoks. Vali sobiv rannikujaam või kaardiala ja kontrolli mõlema vaate uuendamisaega.",
+            note: "Merevee näidud ja jääolud muutuvad ajas; ühe jaama või kaardikihi põhjal ei saa kirjeldada kogu Läänemerd.",
+            related: ["Eesti merevaatlusjaamad", "Eesti mere jääkaart", "ajaloolised merevaatlused"],
+          }
+        : isIce
+        ? {
+            ids: ["marine-ice-map"],
+            eyebrow: "Ajakohane merejää info",
+            title: "Jääolud tuleb võtta ametlikult jääkaardilt",
+            intro: "Ava Keskkonnaagentuuri mere jääkaart ning kontrolli kaardi vaatlus- ja uuendamisaega. Otsing ei esita vana jääolude kirjeldust praeguse olukorrana.",
+            note: "Jääolud võivad kiiresti muutuda; liikumisohutust ei saa hinnata üksnes üldkaardi põhjal.",
+            related: ["Eesti mere jääkaart", "Läänemere veetemperatuur", "ajaloolised jääolud"],
+          }
+        : isMarine
+          ? {
+              ids: ["marine-observations"],
+              eyebrow: "Ajakohane mereseire",
+              title: "Mere hetkeseis tuleb võtta lähimast vaatlusjaamast",
+              intro: "Ava Keskkonnaagentuuri merevaatluste vaade, vali sobiv rannikujaam ja näitaja ning kontrolli mõõtmise aega. Ühe jaama näit ei kirjelda automaatselt kogu lahte ega Läänemerd.",
+              note: "Veetase ja -temperatuur muutuvad ajas; kontrolli allika viimast mõõtmisaega.",
+              related: ["Eesti merevaatlusjaamad", "Läänemere veetemperatuur", "merevee taseme ajalugu"],
+            }
+          : {
+              ids: ["current-hydrology-observations"],
+              eyebrow: "Ajakohane sisevete seire",
+              title: "Veetaseme hetkeseis tuleb võtta mõõtejaamast",
+              intro: "Ava Keskkonnaagentuuri hüdroloogiliste vaatluste kaart, vali õige jõgi või järv ja mõõtejaam ning kontrolli näidu aega ja ühikut. Otsing ei esita vana vaatlust praeguse näiduna.",
+              note: "Veetase, vooluhulk ja veetemperatuur muutuvad ajas; kontrolli allika viimast mõõtmisaega.",
+              related: ["Eesti hüdromeetriajaamad", "Emajõe ajalooline veetase", "jõgede vooluhulk"],
+            };
+    const sources = responseSources(variant.ids);
+    return {
+      query: cleanQuery,
+      total: sources.length,
+      generatedAt: new Date().toISOString(),
+      answer: {
+        eyebrow: variant.eyebrow,
+        title: variant.title,
+        intro: variant.intro,
+        introCitations: sources.map((source) => source.citation),
+        parts: [],
+        note: variant.note,
+      },
+      sources,
+      related: variant.related,
+      clarification: assessment.clarification,
+      evidence: { kind: "official-live-routing", documentIds: sources.map((source) => source.id) },
+    };
+  }
+
   const isOutOfScope = assessment.kind === "out-of-scope";
   const topicSources = assessment.topic === "kataster"
     ? responseSources(["environment-register", "official-geoserver"])
@@ -1547,8 +3139,8 @@ export function composeScopeResponse(query, assessment) {
 }
 
 export function searchEnvironment(query, limit = 6) {
-  const cleanQuery = String(query ?? "").trim().slice(0, 180);
-  if (!cleanQuery) {
+  const canonicalInput = canonicalizePublicSearchQuery(query);
+  if (canonicalInput.reason === "empty") {
     return {
       query: "",
       total: 0,
@@ -1557,6 +3149,11 @@ export function searchEnvironment(query, limit = 6) {
       related: ["metsade seisund", "Eesti kliima", "keskkonna avaandmed"],
     };
   }
+
+  if (!canonicalInput.ok) {
+    return composeScopeResponse("", assessSearchQuery(query));
+  }
+  const cleanQuery = canonicalInput.query;
 
   const assessment = assessSearchQuery(cleanQuery);
   if (assessment.kind !== "answerable") return composeScopeResponse(cleanQuery, assessment);

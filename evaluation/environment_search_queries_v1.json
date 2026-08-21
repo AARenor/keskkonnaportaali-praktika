@@ -17,7 +17,7 @@
   "zeroResultContract": "A valid filter with no matching documents returns HTTP 200 with zero visible results, zero answer sources and zero citations.",
   "cases": [
     { "id": "A01", "query": "Kas Eestis tohib vanu rehve põletada?", "expected": "answerable", "topSource": "waste-burning-guidance" },
-    { "id": "A02", "query": "õhukvaliteet Tallinnas", "expected": "answerable" },
+    { "id": "A02", "query": "õhukvaliteet Tallinnas", "expected": "live-air" },
     { "id": "A03", "query": "põhjavee seisund Harjumaal 2024", "expected": "answerable", "topSource": "groundwater-status" },
     { "id": "A04", "query": "Natura 2000 piirangud ehitamisel", "expected": "answerable", "topSource": "protected-area-construction" },
     { "id": "A05", "query": "jäätmete ringlussevõtu määr Eestis 2023", "expected": "answerable", "topSource": "municipal-waste-recycling" },

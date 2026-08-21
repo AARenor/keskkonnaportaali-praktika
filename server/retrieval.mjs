@@ -1,14 +1,17 @@
 import { createHash } from "node:crypto";
 import {
-  indexOfficialDiscoveryDocuments,
+  enqueueOfficialDiscoveryDocuments,
   normalizeSearchFilters,
   searchCorpus,
 } from "./corpus.mjs";
 import { searchOfficialSites } from "./integrations.mjs";
 import { isForestHarvestBalanceQuery, loadStructuredIndicatorDocuments } from "./indicators.mjs";
 import {
+  analyzePublicSearchQuery,
   assessSearchQuery,
   buildDiscoveryQueries,
+  canonicalizePublicSearchQuery,
+  containsPrivatePersonLookup,
   containsUnsafeInstruction,
   forestEvidenceIntent,
   forestryIntentServiceDocumentIds,
@@ -20,19 +23,28 @@ import {
   splitTextPassages,
   textHasQueryRoot,
 } from "./search.mjs";
+import { sourceEvidenceEligibility, sourceSupportsRouteClass } from "./source-registry.mjs";
 
 const PUBLIC_ITEM_FIELDS = [
   "id", "title", "url", "summary", "organization", "type", "published", "topics", "sourceTier",
 ];
-const LIVE_INDEX_TTL_MS = 15 * 60 * 1_000;
-const MAX_LIVE_INDEX_KEYS = 2_000;
-const recentlyIndexedLiveUrls = new Map();
 const PUBLIC_FILTER_SOURCES = new Set(["all", "trusted", "official", "reviewed", "supplementary", "other"]);
 const PUBLIC_FILTER_SORTS = new Set(["relevance", "newest"]);
 const CADASTRE_PATTERN = /\b\d{5}:\d{3}:\d{4}\b/u;
 const CADASTRE_SERVICE_IDS = new Set(["official-cadastre-wfs", "official-forest-register-wfs"]);
 const LEGACY_ANSWER_FIXTURE_IDS = new Set(["forest-overview", "forest-inventory-publication"]);
 const VOLATILE_RESULT_ID = /^(?:corpus-|kkp-|vp-)/u;
+const EXPLICIT_ANSWER_EVIDENCE_POLICIES = new Set(["claim-specific", "timestamped", "versioned"]);
+const NAVIGATION_PRIORITY_ROUTE_CLASSES = new Set([
+  "official_live_weather",
+  "official_live_air",
+  "official_live_water",
+  "official_data_or_api",
+  "official_spatial_or_register",
+  "official_guidance",
+  "official_legal_context",
+  "official_environmental_assessment",
+]);
 
 function clean(value = "") {
   return String(value || "").replace(/\s+/gu, " ").trim();
@@ -130,32 +142,99 @@ function identityQuality(document) {
   return score;
 }
 
+function hasIndependentEvidenceCapability(document) {
+  return document?._answerEvidenceEligible === true
+    && EXPLICIT_ANSWER_EVIDENCE_POLICIES.has(clean(document.evidencePolicy))
+    && sourceEvidenceEligibility(document).eligible;
+}
+
+function isFederatedNavigationAlias(document) {
+  return document?.retrieval === "official-federated-search"
+    && document?.delivery === "federated-discovery"
+    && clean(document.evidencePolicy) === "route-only"
+    && document?._answerEvidenceEligible === false;
+}
+
 function mergeDuplicate(current, candidate) {
   const currentPriority = Number(current?._ranking?.servicePriority) || 0;
   const candidatePriority = Number(candidate?._ranking?.servicePriority) || 0;
-  const currentAnswerEligible = current?._answerEvidenceEligible !== false;
-  const candidateAnswerEligible = candidate?._answerEvidenceEligible !== false;
-  // A navigation-only duplicate must not displace a richer, answer-eligible
-  // official directory extract for the same public URL.
+  const currentAnswerEligible = hasIndependentEvidenceCapability(current);
+  const candidateAnswerEligible = hasIndependentEvidenceCapability(candidate);
+  // Prefer the richer display identity. Evidence eligibility is merged
+  // separately and fail-closed below, so a route-only alias can never be
+  // upgraded merely because the same landing URL arrived through discovery.
   const preferred = currentAnswerEligible !== candidateAnswerEligible
     ? currentAnswerEligible ? current : candidate
     : candidatePriority !== currentPriority
       ? candidatePriority > currentPriority ? candidate : current
       : identityQuality(candidate) > identityQuality(current) ? candidate : current;
   const fallback = preferred === candidate ? current : candidate;
-  const richerContent = clean(candidate.content).length > clean(current.content).length ? candidate : current;
+  const sameCanonicalUrl = canonicalResultUrl(current.url) === canonicalResultUrl(candidate.url);
+  // A similar title is a display-level duplicate, not proof that both records
+  // have the same provenance. Keep the winning URL, summary and evidence text
+  // atomic so content from page B can never be cited as page A. Field-level
+  // enrichment is allowed only for true canonical-URL aliases.
+  if (!sameCanonicalUrl) {
+    return {
+      ...preferred,
+      _relevance: Math.max(Number(preferred._relevance) || 0, Number(fallback._relevance) || 0),
+    };
+  }
+  const evidenceBodyLength = (document) => [document.summary, document.excerpt, document.content, document.answer]
+    .reduce((total, value) => total + clean(value).length, 0);
+  // Only an alias that independently passes the evidence boundary may supply
+  // the retained answer body. Otherwise a rich missing-policy search card
+  // could borrow a thin alias's capability at the same canonical URL.
+  const capableEvidence = [current, candidate].filter(hasIndependentEvidenceCapability);
+  const evidenceCandidates = capableEvidence.length ? capableEvidence : [current, candidate];
+  const richerEvidence = evidenceCandidates.reduce((best, document) => (
+    evidenceBodyLength(document) > evidenceBodyLength(best) ? document : best
+  ), evidenceCandidates.includes(preferred) ? preferred : evidenceCandidates[0]);
+  // Every alias must independently be eligible. Missing, unknown, stale or
+  // route-only provenance makes the merged canonical result navigation-only.
+  const evidencePolicies = [
+    currentAnswerEligible ? clean(current.evidencePolicy) : "route-only",
+    candidateAnswerEligible ? clean(candidate.evidencePolicy) : "route-only",
+  ];
+  const onlyNavigationAliasesAreIneligible = [current, candidate]
+    .every((document) => hasIndependentEvidenceCapability(document) || isFederatedNavigationAlias(document));
+  const preserveValidatedEvidence = capableEvidence.length > 0 && onlyNavigationAliasesAreIneligible;
+  const mergedEvidencePolicy = preserveValidatedEvidence
+    ? clean(richerEvidence.evidencePolicy)
+    : evidencePolicies.includes("route-only")
+    ? "route-only"
+    : evidencePolicies.includes("timestamped")
+      ? "timestamped"
+      : evidencePolicies.includes("versioned")
+        ? "versioned"
+        : evidencePolicies[0];
   return {
     ...fallback,
     ...preferred,
-    summary: preferred.summary || fallback.summary,
-    locator: preferred.locator || fallback.locator,
-    content: richerContent.content || preferred.content || fallback.content,
-    _contentHash: richerContent._contentHash || preferred._contentHash || fallback._contentHash,
-    _answerEvidenceEligible: preferred._answerEvidenceEligible !== false
-      || fallback._answerEvidenceEligible !== false,
+    // Evidence text and its timestamp/version provenance must come from the
+    // same record. Mixing a richer old body with a fresh alias timestamp can
+    // otherwise make stale content appear current after deduplication.
+    summary: richerEvidence.summary,
+    excerpt: richerEvidence.excerpt,
+    content: richerEvidence.content,
+    answer: richerEvidence.answer,
+    locator: richerEvidence.locator || preferred.locator || fallback.locator,
+    published: richerEvidence.published,
+    _publishedAt: richerEvidence._publishedAt,
+    _contentHash: richerEvidence._contentHash,
+    _evidenceObservedAt: richerEvidence._evidenceObservedAt,
+    _evidenceValidFrom: richerEvidence._evidenceValidFrom,
+    _evidenceValidUntil: richerEvidence._evidenceValidUntil,
+    _evidenceVersion: richerEvidence._evidenceVersion,
+    _evidenceStatusAt: richerEvidence._evidenceStatusAt,
+    freshness: richerEvidence.freshness,
+    evidencePolicy: mergedEvidencePolicy,
+    _answerEvidenceEligible: preserveValidatedEvidence
+      || (currentAnswerEligible
+        && candidateAnswerEligible
+        && mergedEvidencePolicy !== "route-only"),
     topics: [...new Set([...(preferred.topics || preferred.tags || []), ...(fallback.topics || fallback.tags || [])])].slice(0, 12),
     sourceTier: preferred.sourceTier === "official" || fallback.sourceTier === "official" ? "official" : preferred.sourceTier,
-    _publishedAt: preferred._publishedAt || fallback._publishedAt,
     _relevance: Math.max(Number(preferred._relevance) || 0, Number(fallback._relevance) || 0),
   };
 }
@@ -613,37 +692,96 @@ function ageIntentScore(document, roots, now) {
   return (directYoungTrend ? 24 : visibleTrendEvidence ? 16 : 8) + recency;
 }
 
-function liveServiceIntentScore(query, roots, document) {
-  const current = /\b(?:praeg\w*|hetke\w*|tana|homn\w*|homm\w*|homs\w*|ulehomme|reaalajas|prognoos\w*|\w*hoiatus\w*)\b/iu
-    .test(normalize(query));
-  if (!current) return 0;
-  if (document.id === "weather-forecast" && roots.some((root) => ["ilm", "prognoos", "hoiatus"].includes(root))) {
+function liveServiceIntentScore(query, roots, document, analysis = analyzePublicSearchQuery(query)) {
+  if (analysis.candidateRouteClasses.includes("official_live_weather")
+    && ["weather-forecast", "weather-warnings", "current-weather-observations"].includes(document.id)) {
     return 60;
   }
-  if (document.id === "kaia-service" && roots.some((root) => ["ilm", "prognoos", "hoiatus"].includes(root))) {
+  if (analysis.candidateRouteClasses.includes("official_live_weather") && document.id === "kaia-service") {
     return 18;
   }
-  if (document.id === "air-quality-live" && roots.some((root) => ["ohk", "ohukvaliteet", "saaste"].includes(root))) {
+  if (analysis.candidateRouteClasses.includes("official_live_air") && document.id === "air-quality-live") {
     return 60;
+  }
+  if (analysis.candidateRouteClasses.includes("official_live_water")) {
+    if (roots.includes("suplusvesi")) return document.id === "bathing-water-quality" ? 60 : 0;
+    if (roots.includes("jaaolud")) {
+      const combinedMarineObservation = roots.some((root) => ["temperatuur", "seire", "mootmine"].includes(root));
+      if (combinedMarineObservation && document.id === "marine-observations") return 60;
+      if (document.id === "marine-ice-map") return combinedMarineObservation ? 50 : 60;
+      return 0;
+    }
+    if (roots.includes("meri") || roots.includes("laanemeri")) {
+      return document.id === "marine-observations" ? 60 : 0;
+    }
+    if (roots.some((root) => ["vesi", "jogi", "jarv", "emajogi", "mootmine"].includes(root))) {
+      return document.id === "current-hydrology-observations" ? 60 : 0;
+    }
   }
   return 0;
 }
 
-function serviceIntentPriority(query, roots, document) {
-  const liveScore = liveServiceIntentScore(query, roots, document);
+function serviceIntentPriority(query, roots, document, analysis = analyzePublicSearchQuery(query)) {
+  const liveScore = liveServiceIntentScore(query, roots, document, analysis);
   const normalizedQuery = normalize(query);
   const requestsHistoricalYear = /\b(?:19|20)\d{2}\b/u.test(normalizedQuery);
   const requestsHistoricalObservations = requestsHistoricalYear
-    || /\b(?:ajalool\w*|varasem\w*|arhiiv\w*|vanad?|endisaeg\w*)\b/u.test(normalizedQuery);
+    || /\b(?:ajalool\w*|varasem\w*|arhiiv\w*|vanad?|endisaeg\w*|eelmisel|mullu|moodunud)\b/u.test(normalizedQuery);
+  const requestsForestSpatialData = roots.includes("mets")
+    && roots.includes("kaart")
+    && roots.includes("ruumikiht");
   if (isForestHarvestBalanceQuery(query)) {
     if (document.id === "forest-balance-eurostat") return 6;
     if (document.id === "forest-balance-eurostat-handbook") return 5.5;
     if (document.id === "forest-balance-kaur-methodology") return 5;
     if (document.id === "forest-balance-kaur-five-year") return 4;
   }
+  if (document.id === "weather-forecast"
+    && /\bkas\b/u.test(normalizedQuery)
+    && /\b(?:homme|homn\w*|ulehomme)\b/u.test(normalizedQuery)
+    && /\b(?:torm\w*|saj\w*|aike\w*|lumi\w*|vihm\w*|tuul\w*)\b/u.test(normalizedQuery)) return 4;
+  if (document.id === "forest-inventory-publication"
+    && roots.includes("mets")
+    && roots.includes("statistika")
+    && /\b(?:valim\w*|proovitukk\w*|metood\w*|kuidas[\s\S]{0,40}toot\w*)\b/u.test(normalizedQuery)) return 4;
   if (CADASTRE_PATTERN.test(query) && CADASTRE_SERVICE_IDS.has(document.id)) return 4;
   if (liveScore >= 60) return 3;
   if (liveScore > 0) return 2;
+  if (analysis.primaryRouteClass === "official_live_water"
+    && sourceSupportsRouteClass(document, "official_live_water")) return 0;
+  if (analysis.primaryRouteClass === "official_live_water"
+    && document.id === "historical-hydrology-data"
+    && roots.some((root) => ["vesi", "jogi", "jarv", "emajogi", "mootmine"].includes(root))) return 1;
+  if (roots.includes("suplusvesi") && document.id === "bathing-water-quality") return 5;
+  if (roots.includes("joogivesi") && document.id === "drinking-water-guidance") return 5;
+  if (roots.includes("mura") && roots.includes("tartu") && document.id === "tartu-noise-map") return 5;
+  if (roots.includes("reovesi")
+    && roots.includes("kohtkaitlus")
+    && document.id === "wastewater-local-treatment") return 5;
+  if (roots.includes("meri")
+    && roots.includes("mereprugi")
+    && document.id === "baltic-sea-litter") return 5;
+  if (roots.includes("asbest") && document.id === "hazardous-waste-asbestos") return 5;
+  if (roots.includes("pais") && roots.includes("kala") && document.id === "river-dams-fish") return 5;
+  if (roots.includes("rohevorgustik") && document.id === "green-network-planning-guide") return 5;
+  if (roots.includes("voorliik") && document.id === "invasive-species-guidance") return 5;
+  if (roots.includes("jalajalg") && document.id === "organizational-footprint") return 5;
+  if (roots.includes("margala")
+    && roots.includes("taastamine")
+    && document.id === "wetland-restoration") return 5;
+  if (roots.includes("pestitsiid")
+    && roots.includes("pohjavesi")
+    && document.id === "groundwater-pesticide-monitoring") return 5;
+  if (roots.includes("paikesepaneel")
+    && roots.includes("jaat")
+    && document.id === "solar-panel-end-of-life") return 5;
+  if (roots.includes("uleujutusrisk") && document.id === "flood-risk-management") return 5;
+  if (roots.includes("uluk") && document.id === "wildlife-status-2025") return 5;
+  if (requestsForestSpatialData && document.id === "forest-spatial-data") return 6;
+  if (roots.includes("loodusvaatlus") && document.id === "nature-observations") return 6;
+  if ((roots.includes("meri") || roots.includes("laanemeri"))
+    && roots.includes("eutrofeerumine")
+    && document.id === "marine-strategy-status") return 6;
   const requestsForestCatalogue = roots.includes("mets")
     && roots.includes("kaart")
     && roots.some((root) => root.startsWith("andmestik") || root.startsWith("valjaand"));
@@ -674,6 +812,10 @@ function serviceIntentPriority(query, roots, document) {
   if (roots.includes("avaandmed") && document.id === "open-data") return 3;
   if (roots.includes("avaandmed") && roots.includes("allalaadimine")
     && document.id === "open-data-downloader") return 2;
+  if (roots.includes("jaat")
+    && roots.includes("avaandmed")
+    && /\baastaaru(?:and|ann)\w*/u.test(normalizedQuery)
+    && document.id === "waste-reporting-data") return 4;
   if (roots.includes("api") && roots.includes("andmed")) {
     if (document.id === "official-data-services" && !roots.includes("pxweb")) return 3;
     if (["open-data", "open-data-downloader"].includes(document.id)) return 2;
@@ -702,6 +844,9 @@ function serviceIntentPriority(query, roots, document) {
     && roots.some((root) => ["seire", "mootmine"].includes(root))
     && requestsHistoricalObservations
     && document.id === "historical-hydrology-data") return 3;
+  if (roots.some((root) => ["vesi", "emajogi", "jogi", "jarv"].includes(root))
+    && roots.some((root) => ["seire", "mootmine", "temperatuur"].includes(root))
+    && document.id === "current-hydrology-observations") return requestsHistoricalObservations ? 2 : 3;
   if (roots.includes("keskkonnamoju") && roots.includes("tuulepark")
     && document.id === "wind-farm-assessment-guide") return 3;
   if (roots.includes("keskkonnamoju") && roots.includes("kaevandus")
@@ -764,7 +909,7 @@ export function resultMatchesFilters(document, rawFilters = {}) {
   return true;
 }
 
-export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date.now()) {
+export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date.now(), analysis = analyzePublicSearchQuery(query)) {
   const prepared = {
     ...document,
     tags: document.tags || document.topics || [],
@@ -786,6 +931,7 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
   const titleCoverage = rootCoverage(titleText, roots);
   const summaryCoverage = rootCoverage(summaryText, roots);
   const passageCoverage = bestPassageCoverage(document, roots);
+  const coherentCoverage = Math.max(titleCoverage, summaryCoverage, passageCoverage);
   const specificRoots = roots.filter((root) => !["mets", "keskkond", "andmed", "muutus"].includes(root));
   const titleHasSpecificIntent = specificRoots.length === 0
     || specificRoots.some((root) => fieldHasRoot(titleText, root));
@@ -829,25 +975,65 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
   const completeness = clean(document.content).length >= 180 ? 0.7 : clean(document.summary).length >= 100 ? 0.3 : 0;
   const upstreamSignal = Math.max(0, 1.2 - sourceRank * 0.04);
   const sqlSignal = Math.max(0, Math.min(Number(document._relevance) || 0, 8)) * 0.22;
-  const liveService = liveServiceIntentScore(query, roots, document);
+  const liveService = liveServiceIntentScore(query, roots, document, analysis);
   const cadastreService = CADASTRE_PATTERN.test(query) && CADASTRE_SERVICE_IDS.has(document.id);
-  const servicePriority = serviceIntentPriority(query, roots, document);
+  const inferredRouteMatches = analysis.candidateRouteClasses
+    .filter((routeClass) => sourceSupportsRouteClass(document, routeClass));
+  const hasLexicalRouteAnchor = semantic > 0 || coveredRoots > 0 || sqlSignal > 0 || liveService > 0;
+  const primaryRoutePriority = NAVIGATION_PRIORITY_ROUTE_CLASSES.has(analysis.primaryRouteClass);
+  const routeSubtypeMatched = analysis.primaryRouteClass !== "official_live_water" || liveService > 0;
+  const routePriority = inferredRouteMatches.length && hasLexicalRouteAnchor && primaryRoutePriority && routeSubtypeMatched
+    ? inferredRouteMatches.includes(analysis.primaryRouteClass) ? 2 : 1
+    : 0;
+  const servicePriority = Math.max(serviceIntentPriority(query, roots, document, analysis), routePriority);
+  const routeClassScore = inferredRouteMatches.length && hasLexicalRouteAnchor && primaryRoutePriority && routeSubtypeMatched
+    ? inferredRouteMatches.includes(analysis.primaryRouteClass)
+      ? Math.min(9, 5 + inferredRouteMatches.length)
+      : 2
+    : 0;
+  const directMatch = servicePriority > 0
+    || liveService > 0
+    || cadastreService
+    || (coreCoverage === 1
+      && (roots.length <= 1 || coherentCoverage >= 0.6));
+  const offIntentDirectoryPenalty = document.id === "organizational-footprint"
+    && !roots.includes("jalajalg") ? 24 : 0;
+  const broadGatewayPenalty = document.id === "climate-policy-data-gateway"
+    && roots.includes("kasvuhoonegaas")
+    && !/\b(?:ets|hks|jjm|prognoos\w*|eesmark\w*|kliimapoliitik\w*)\b/u.test(normalize(query))
+    ? 24
+    : 0;
   const forestryIntent = forestEvidenceIntent(query);
   const intentEvidence = intentEvidenceForDocument(forestryIntent, document);
+  const forestMethodQuestion = roots.includes("mets")
+    && roots.includes("mootmine")
+    && /\b(?:kuidas|metood\w*|moot\w*|mõõt\w*|hinnat\w*)\b/iu.test(String(query || ""));
+  const methodPassages = forestMethodQuestion ? normalizedPassages(document) : [];
+  const directlyExplainsForestMethod = forestMethodQuestion
+    && methodPassages.some((passage) => /\b(?:smi|statistilis\w*\s+metsainvent\w*)\b/iu.test(passage))
+    && methodPassages.some((passage) => /\b(?:valim\w*|proovit(?:ukk|ükk)\w*|moot\w*|mõõt\w*|metood\w*)\b/iu.test(passage));
   const restrictedForestryKinds = Array.isArray(document?._forestryIntentKinds)
     ? document._forestryIntentKinds
     : [];
   const forestryRestrictionMatched = !restrictedForestryKinds.length
-    || restrictedForestryKinds.includes(forestryIntent?.kind);
-  const primaryTopic = assessSearchQuery(query).topic;
+    || restrictedForestryKinds.includes(forestryIntent?.kind)
+    || (document.id === "forest-spatial-data"
+      && roots.includes("mets")
+      && roots.includes("kaart")
+      && roots.includes("ruumikiht"));
+  const primaryTopic = analysis.domainRoots[0] || assessSearchQuery(query).topic;
   const primaryIntentMatched = !primaryTopic
     || fieldHasRoot(searchableText, primaryTopic)
-    || liveService > 0;
+    || liveService > 0
+    || routePriority > 0;
   const semanticIntentMatched = forestryIntent?.kind !== "forest-depletion" || intentEvidence.score > 0;
+  const specializedDirectoryIntentMatched = document.id !== "organizational-footprint"
+    || roots.includes("jalajalg");
   const score = semantic
     + coverageScore
     + ageIntentScore(document, roots, now)
     + liveService
+    + routeClassScore
     + (cadastreService ? 48 : 0)
     + authorityScore(document.sourceTier)
     + freshness
@@ -856,20 +1042,29 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
     + upstreamSignal
     + sqlSignal
     + intentEvidence.score
+    + (directMatch ? 4 : 0)
     - conflictingTitleYear
     - roundupPenalty
+    - offIntentDirectoryPenalty
+    - broadGatewayPenalty
     - (futureDated ? 0.6 : 0);
   return {
     score,
     matched: forestryRestrictionMatched
       && primaryIntentMatched
       && semanticIntentMatched
+      && specializedDirectoryIntentMatched
       && (semantic > 0 || coveredRoots > 0 || sqlSignal > 0 || liveService > 0 || cadastreService),
     servicePriority,
+    directMatch,
+    coreCoverage,
+    coherentCoverage,
+    matchedRoots,
+    missingRoots: roots.filter((root) => !matchedRoots.includes(root)),
     // A merely related passage must not outrank a complete direct
     // measurement. Composite forestry plans still receive every required
     // directory source in ensureForestryIntentCandidates below.
-    answerEvidencePriority: intentEvidence.satisfies ? 6 : 0,
+    answerEvidencePriority: directlyExplainsForestMethod ? 7 : intentEvidence.satisfies ? 6 : 0,
     relevanceBucket: Math.floor(Math.max(score, 0) / 6),
     publishedAt: publishedAt || 0,
     futureDated,
@@ -879,10 +1074,11 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
 }
 
 export function rankSearchCandidates(query, documents = [], { sort = "relevance", now = Date.now() } = {}) {
+  const analysis = analyzePublicSearchQuery(query);
   return documents
     .map((document, index) => ({
       ...document,
-      _ranking: scoreSearchCandidate(query, document, index, now),
+      _ranking: scoreSearchCandidate(query, document, index, now, analysis),
     }))
     .filter((document) => document._ranking.matched && document._ranking.score > 0)
     .sort((left, right) => {
@@ -930,8 +1126,12 @@ function ensureForestryIntentCandidates(query, ranked = [], available = []) {
     query,
     ranked.filter((document) => document.sourceTier === "official"),
   );
-  const officialLead = ranked.find((document) => document.id === officialPlan?.directDocumentId
-    && document.sourceTier === "official");
+  const methodQuestion = queryTerms(query).includes("mootmine")
+    && /\b(?:kuidas|metood\w*|moot\w*|mõõt\w*|hinnat\w*)\b/iu.test(String(query || ""));
+  const officialLead = methodQuestion
+    ? ranked[0]
+    : ranked.find((document) => document.id === officialPlan?.directDocumentId
+      && document.sourceTier === "official");
   const seen = new Set();
   return [officialLead, ...required, ...ranked].filter(Boolean).filter((document) => {
     const key = canonicalResultUrl(document.url) || document.id;
@@ -1034,31 +1234,24 @@ function remaining(deadlineAt, reserve = 0) {
   return Number.isFinite(deadlineAt) ? Math.max(0, deadlineAt - Date.now() - reserve) : 2_500;
 }
 
-function queueLiveDocumentsForIndex(documents = [], now = Date.now()) {
-  for (const [url, indexedAt] of recentlyIndexedLiveUrls) {
-    if (now - indexedAt >= LIVE_INDEX_TTL_MS || recentlyIndexedLiveUrls.size > MAX_LIVE_INDEX_KEYS) {
-      recentlyIndexedLiveUrls.delete(url);
-    }
-  }
-  const pending = documents.filter((document) => {
-    const key = canonicalResultUrl(document.url);
-    if (!key || now - Number(recentlyIndexedLiveUrls.get(key) || 0) < LIVE_INDEX_TTL_MS) return false;
-    recentlyIndexedLiveUrls.set(key, now);
-    return true;
-  });
-  if (!pending.length) return;
-  void indexOfficialDiscoveryDocuments(pending).then((result) => {
-    if (result?.status === "degraded") {
-      for (const document of pending) recentlyIndexedLiveUrls.delete(canonicalResultUrl(document.url));
-    }
-  }).catch(() => {
-    for (const document of pending) recentlyIndexedLiveUrls.delete(canonicalResultUrl(document.url));
-  });
+function throwIfRetrievalClosed(signal, deadlineAt) {
+  if (!signal?.aborted && (!Number.isFinite(deadlineAt) || Date.now() < deadlineAt)) return;
+  throw signal?.reason instanceof Error
+    ? signal.reason
+    : new DOMException("The retrieval window closed", "AbortError");
 }
 
 export function shouldUseLiveDiscovery(page) {
-  const safePage = Math.max(1, Number(page) || 1);
-  return safePage <= 500;
+  return parseBoundedSearchInteger(page, 1, 500, { rejectInvalid: true }) !== null;
+}
+
+export function parseBoundedSearchInteger(value, fallback, maximum, { rejectInvalid = false } = {}) {
+  if (value === undefined || value === null || value === "") return fallback;
+  const numeric = Number(value);
+  if (!Number.isInteger(numeric) || numeric < 1 || numeric > maximum) {
+    return rejectInvalid ? null : fallback;
+  }
+  return numeric;
 }
 
 export async function prepareRankedSearchResults(query, {
@@ -1067,13 +1260,37 @@ export async function prepareRankedSearchResults(query, {
   filters = {},
   deadlineAt,
   signal,
+  clientKey = "unknown",
 } = {}) {
   const appliedFilters = normalizeSearchFilters(filters);
-  const safePage = Math.max(1, Math.min(Number(page) || 1, 500));
-  const safePageSize = Math.max(1, Math.min(Number(pageSize) || 12, 50));
+  const safePage = parseBoundedSearchInteger(page, 1, 500);
+  const safePageSize = parseBoundedSearchInteger(pageSize, 12, 50);
   const offset = (safePage - 1) * safePageSize;
+  const canonicalInput = canonicalizePublicSearchQuery(query);
+  const acceptedQuery = canonicalInput.ok ? canonicalInput.query : "";
+  const assessment = assessSearchQuery(canonicalInput.ok ? acceptedQuery : query);
+  // Do not send private-person, injection, or other explicitly out-of-scope
+  // queries to PostgreSQL or any external discovery provider. This guard is
+  // deliberately inside retrieval so every current and future route inherits
+  // it even if a caller forgets to classify first.
+  if (!canonicalInput.ok || assessment.kind === "out-of-scope") {
+    return {
+      status: "empty",
+      mode: "blocked-before-retrieval",
+      total: 0,
+      page: safePage,
+      pageSize: safePageSize,
+      pageCount: 0,
+      hasMore: false,
+      items: [],
+      facets: { sources: [], categories: [], years: [] },
+      appliedFilters,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+  throwIfRetrievalClosed(signal, deadlineAt);
   const prefixLocalLimit = 50;
-  const discoveryQueries = buildDiscoveryQueries(query, 3);
+  const discoveryQueries = buildDiscoveryQueries(acceptedQuery, 3);
   const discoveryTimeout = Math.max(250, Math.min(2_200, remaining(deadlineAt, 12_000)));
   // Structured official datasets are compact and high-value evidence. Give them
   // a separate bounded slice: the live-site discovery reserve can intentionally
@@ -1086,19 +1303,22 @@ export async function prepareRankedSearchResults(query, {
     }))
     : [];
   const [localResult, structuredResult, ...officialResults] = await Promise.allSettled([
-    searchCorpus(query, {
+    searchCorpus(acceptedQuery, {
       page: 1,
       pageSize: prefixLocalLimit,
       includeContent: true,
       preferSnapshot: false,
       filters: appliedFilters,
+      signal,
+      deadlineAt,
     }),
-    loadStructuredIndicatorDocuments(query, {
+    loadStructuredIndicatorDocuments(acceptedQuery, {
       timeoutMs: structuredTimeout,
       signal,
     }),
     ...liveDiscovery,
   ]);
+  throwIfRetrievalClosed(signal, deadlineAt);
   const local = localResult.status === "fulfilled"
     ? localResult.value
     : { status: "degraded", total: 0, items: [], facets: {} };
@@ -1112,19 +1332,20 @@ export async function prepareRankedSearchResults(query, {
   const directory = shouldUseLiveDiscovery(safePage)
     ? officialServiceCatalogueDocuments().filter((document) => resultMatchesFilters(document, appliedFilters))
     : [];
-  queueLiveDocumentsForIndex(filteredLive);
-  const rankedPrefix = rankPublicSearchCandidates(query, [...(local.items || []), ...filteredStructured, ...filteredLive, ...directory], {
+  enqueueOfficialDiscoveryDocuments(filteredLive, { signal, clientKey });
+  const rankedPrefix = rankPublicSearchCandidates(acceptedQuery, [...(local.items || []), ...filteredStructured, ...filteredLive, ...directory], {
     sort: appliedFilters.sort,
     intentDocuments: directory,
   });
   const localUrls = new Set((local.items || []).map((document) => canonicalResultUrl(document.url)));
-  const facetExtras = rankAndDeduplicate(query, [...filteredStructured, ...filteredLive, ...directory])
+  const facetExtras = rankAndDeduplicate(acceptedQuery, [...filteredStructured, ...filteredLive, ...directory])
     .filter((document) => !localUrls.has(canonicalResultUrl(document.url)));
   let selected = rankedPrefix.slice(offset, offset + safePageSize);
   const missing = safePageSize - selected.length;
   if (missing > 0) {
+    throwIfRetrievalClosed(signal, deadlineAt);
     const tailOffset = Math.max(0, offset - rankedPrefix.length);
-    const tail = await searchCorpus(query, {
+    const tail = await searchCorpus(acceptedQuery, {
       page: 1,
       pageSize: missing,
       includeContent: true,
@@ -1132,7 +1353,10 @@ export async function prepareRankedSearchResults(query, {
       filters: appliedFilters,
       resultOffset: tailOffset,
       excludeUrls: rankedPrefix.map((document) => canonicalResultUrl(document.url)),
+      signal,
+      deadlineAt,
     });
+    throwIfRetrievalClosed(signal, deadlineAt);
     selected = deduplicateResults([...selected, ...(tail.items || [])]).slice(0, safePageSize);
   }
   const total = Math.max(Number(local.total || 0), rankedPrefix.length);
@@ -1174,23 +1398,28 @@ export function publicSearchListing(listing = {}) {
   };
 }
 
-export function evidenceDocumentsFromListing(listing = {}) {
+export function evidenceDocumentsFromListing(listing = {}, options = {}) {
   return (listing.items || [])
     .filter((item) => ["official", "reviewed"].includes(item.sourceTier)
       && !LEGACY_ANSWER_FIXTURE_IDS.has(item.id)
-      && item._answerEvidenceEligible !== false)
+      && item.retrieval !== "official-federated-search"
+      && sourceEvidenceEligibility(item, options).eligible)
     .map((item) => ({
       ...item,
       tags: item.topics || item.tags || [],
-      retrieval: "ranked-search-result",
+      retrieval: item.retrieval === "approved-page-hydration"
+        ? "approved-page-hydration"
+        : "ranked-search-result",
     }));
 }
 
 export function contextualRetrievalQuery(rootQuery, question, previousQuestions = []) {
   const safeFragment = (value) => {
-    const fragment = clean(value).slice(0, 180);
-    return fragment && !containsUnsafeInstruction(fragment) ? fragment : "";
+    const input = canonicalizePublicSearchQuery(value);
+    const fragment = input.ok ? input.query : "";
+    return fragment && !contextAssessmentIsBlocked(assessSearchQuery(fragment)) ? fragment : "";
   };
+  if (blockedFollowUpAssessment(rootQuery, question, previousQuestions)) return "";
   const root = safeFragment(rootQuery);
   const followUp = safeFragment(question);
   const previous = (Array.isArray(previousQuestions) ? previousQuestions : [])
@@ -1198,17 +1427,73 @@ export function contextualRetrievalQuery(rootQuery, question, previousQuestions 
     .filter(Boolean)
     .slice(-3);
   if (followUp && assessSearchQuery(followUp).kind === "answerable") return followUp;
-  return [followUp, previous.at(-1), root].filter(Boolean).join(" ").slice(0, 520);
+  let retrievalQuery = "";
+  for (const fragment of [followUp, previous.at(-1), root].filter(Boolean)) {
+    const candidate = canonicalizePublicSearchQuery([retrievalQuery, fragment].filter(Boolean).join(" "));
+    if (candidate.ok) retrievalQuery = candidate.query;
+  }
+  return retrievalQuery;
+}
+
+function contextAssessmentIsBlocked(assessment) {
+  return assessment?.kind === "out-of-scope"
+    && ["unsafe-instruction", "personal-data-lookup"].includes(assessment.reason);
+}
+
+function isSafeEllipticalFollowUp(value) {
+  const input = canonicalizePublicSearchQuery(value, { maximumLength: 120 });
+  const text = input.ok ? input.query : "";
+  if (!text || containsUnsafeInstruction(text)
+    || /\b(?:aadress\w*|elab|elukoht\w*|kodu\w*|kontakt\w*|omanik\w*|kellele\s+kuulub|isiku\w*|inimese\w*)\b/iu.test(text)) {
+    return false;
+  }
+  const normalized = text.toLocaleLowerCase("et").replace(/[^0-9a-zõäöüšž]+/giu, " ").trim();
+  if (/^(?:aga\s+)?(?:miks|kuidas|millal|kus|mis\s+aastal)$/u.test(normalized)) return true;
+  return /^(?:aga\s+)?(?:kas|kuidas|kui\s+suur|mida|mis)\s+(?:see|seda|selle|sellest|need|neid|nende)\b/u.test(normalized)
+    && normalized.split(" ").length <= 12;
+}
+
+export function blockedFollowUpAssessment(rootQuery, question, previousQuestions = []) {
+  const fragments = [
+    { value: rootQuery, allowEllipsis: false },
+    ...(Array.isArray(previousQuestions)
+      ? previousQuestions.map((value) => ({ value, allowEllipsis: true }))
+      : []),
+    { value: question, allowEllipsis: true },
+  ];
+  for (const { value, allowEllipsis } of fragments) {
+    const input = canonicalizePublicSearchQuery(value);
+    if (input.reason === "empty") continue;
+    if (!input.ok) return assessSearchQuery(value);
+    const fragment = input.query;
+    if (containsPrivatePersonLookup(fragment)) {
+      return {
+        kind: "out-of-scope",
+        topic: null,
+        reason: "personal-data-lookup",
+        clarification: "Ma ei aita tuvastada eraisiku elukohta, vara ega muid isikuga seostatavaid registriandmeid.",
+      };
+    }
+    const assessment = assessSearchQuery(fragment);
+    if (assessment.kind === "out-of-scope"
+      && (!allowEllipsis || !isSafeEllipticalFollowUp(fragment))) return assessment;
+  }
+  return null;
 }
 
 export function conversationContext(rootQuery, previousQuestions = []) {
-  const keepSafeContext = (value) => {
-    const cleaned = clean(value).slice(0, 180);
-    return cleaned && assessSearchQuery(cleaned).reason !== "unsafe-instruction" ? cleaned : "";
+  const keepSafeContext = (value, allowEllipsis = false) => {
+    const input = canonicalizePublicSearchQuery(value);
+    const cleaned = input.ok ? input.query : "";
+    if (!cleaned) return "";
+    const assessment = assessSearchQuery(cleaned);
+    return assessment.kind !== "out-of-scope" || (allowEllipsis && isSafeEllipticalFollowUp(cleaned))
+      ? cleaned
+      : "";
   };
   const root = keepSafeContext(rootQuery);
   const previous = (Array.isArray(previousQuestions) ? previousQuestions : [])
-    .map(keepSafeContext)
+    .map((value) => keepSafeContext(value, true))
     .filter(Boolean)
     .slice(-3);
   // Retrieval itself remains short and bounded, but the answer model can use

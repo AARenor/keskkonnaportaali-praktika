@@ -3,6 +3,16 @@ import { readFileSync } from "node:fs";
 import { request as httpsRequest } from "node:https";
 import { rootCertificates } from "node:tls";
 import { load } from "cheerio";
+import {
+  createByteBoundedLruCache,
+  readBoundedResponseText as readBoundedText,
+} from "./upstream.mjs";
+import {
+  requestApprovedPublicHttpsText,
+  validateApprovedPublicHttpsUrl,
+} from "./public-https.mjs";
+import { canonicalizePublicSearchQuery } from "./search.mjs";
+import { sourceEvidenceEligibility } from "./source-registry.mjs";
 
 const PORTAL_BASE = "https://keskkonnaportaal.ee";
 const VPORTAL_SEARCH_BASE = "https://search.service.eu-live.vportal.ee/v1/search";
@@ -27,6 +37,12 @@ const OFFICIAL_HOSTS = new Set([
   "register.keskkonnaportaal.ee",
   "tallinn.ee",
   "www.tallinn.ee",
+  "tartu.ee",
+  "www.tartu.ee",
+  "terviseamet.ee",
+  "www.terviseamet.ee",
+  "rmk.ee",
+  "www.rmk.ee",
   "tableau.envir.ee",
   "ec.europa.eu",
   "foresteurope.org",
@@ -34,6 +50,7 @@ const OFFICIAL_HOSTS = new Set([
   "eea.europa.eu",
   "www.eea.europa.eu",
 ]);
+const OFFICIAL_ORIGINS = new Set([...OFFICIAL_HOSTS].map((hostname) => `https://${hostname}`));
 const VPORTAL_SITES = [
   {
     index: "keskkonnaamet",
@@ -60,15 +77,24 @@ const VPORTAL_CA = [
   ...rootCertificates,
   readFileSync(new URL("./certs/vportal-chain.pem", import.meta.url), "utf8"),
 ];
-const responseCache = new Map();
 const MAX_CACHE_ENTRIES = 250;
+const MAX_CACHE_BYTES = 8_000_000;
 const MAX_UPSTREAM_BYTES = 2_000_000;
+const APPROVED_PAGE_EVIDENCE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1_000;
 const MAX_CONCURRENT_OFFICIAL_DISCOVERIES = 2;
+const MAX_CONCURRENT_HYDRATIONS = 4;
+const MAX_CONCURRENT_SUGGESTIONS = 2;
 const MAX_DISCOVERY_DOCUMENT_TEXT = 7_500;
 const MAX_DISCOVERY_MARKUP = 48_000;
+const responseCache = createByteBoundedLruCache({
+  maximumEntries: MAX_CACHE_ENTRIES,
+  maximumBytes: MAX_CACHE_BYTES,
+  sizeOf: (entry) => Number(entry?.bytes) || 0,
+});
 
-export function createAbortableConcurrencyGate(maximum = 1) {
+export function createAbortableConcurrencyGate(maximum = 1, { maximumQueue = 64 } = {}) {
   const limit = Math.max(1, Math.min(Number(maximum) || 1, 20));
+  const queueLimit = Math.max(1, Math.min(Number(maximumQueue) || 64, 1_000));
   const queued = [];
   let active = 0;
 
@@ -102,6 +128,11 @@ export function createAbortableConcurrencyGate(maximum = 1) {
         return Promise.reject(new TypeError("A concurrency-gated operation must be a function"));
       }
       if (signal?.aborted) return Promise.reject(abortError(signal));
+      if (active >= limit && queued.length >= queueLimit) {
+        const error = new Error("The upstream work queue is full");
+        error.code = "UPSTREAM_CAPACITY";
+        return Promise.reject(error);
+      }
       return new Promise((resolve, reject) => {
         const entry = {
           operation,
@@ -134,6 +165,75 @@ export function createAbortableConcurrencyGate(maximum = 1) {
 // JSON-i ja HTML-i puhastamise töö piisavalt väikese, et tervise- ja staatilised
 // lehed ei jääks koormuspiigi ajal Node'i event loop'i taha ootama.
 const officialDiscoveryGate = createAbortableConcurrencyGate(MAX_CONCURRENT_OFFICIAL_DISCOVERIES);
+const officialHydrationGate = createAbortableConcurrencyGate(MAX_CONCURRENT_HYDRATIONS, { maximumQueue: 48 });
+const officialSuggestionGate = createAbortableConcurrencyGate(MAX_CONCURRENT_SUGGESTIONS, { maximumQueue: 16 });
+const hydrationInflight = new Map();
+const suggestionInflight = new Map();
+
+function waitForSharedRequest(entry, signal, disconnectedMessage) {
+  throwIfRequestAborted(signal);
+  entry.waiters += 1;
+  return new Promise((resolve, reject) => {
+    let complete = false;
+    const finish = (callback, value) => {
+      if (complete) return;
+      complete = true;
+      signal?.removeEventListener("abort", onAbort);
+      entry.waiters = Math.max(0, entry.waiters - 1);
+      if (!entry.waiters && !entry.settled && !entry.controller.signal.aborted) {
+        entry.controller.abort(new DOMException(disconnectedMessage, "AbortError"));
+      }
+      callback(value);
+    };
+    const onAbort = () => finish(reject, signal.reason instanceof Error
+      ? signal.reason
+      : new DOMException("The operation was aborted", "AbortError"));
+    signal?.addEventListener("abort", onAbort, { once: true });
+    entry.promise.then(
+      (value) => finish(resolve, value),
+      (error) => finish(reject, error),
+    );
+  });
+}
+
+async function sharedHydration(url, { timeoutMs, signal, requestText } = {}) {
+  const canonicalUrl = validatedOfficialUrl(url).toString();
+  let entry = hydrationInflight.get(canonicalUrl);
+  if (!entry) {
+    const controller = new AbortController();
+    entry = { controller, promise: null, settled: false, waiters: 0 };
+    entry.promise = officialHydrationGate.run(async () => {
+      const { body, finalUrl, fetchedAt, stale } = await fetchCached(canonicalUrl, {
+        ttlMs: 30 * 60_000,
+        timeoutMs: timeoutMs || 4_500,
+        signal: controller.signal,
+        requestText,
+        requireSameResource: true,
+      });
+      const content = articleText(body);
+      await yieldToEventLoop();
+      return { content, finalUrl, fetchedAt, stale };
+    }, { signal: controller.signal });
+    hydrationInflight.set(canonicalUrl, entry);
+    void entry.promise.finally(() => {
+      entry.settled = true;
+      if (hydrationInflight.get(canonicalUrl) === entry) hydrationInflight.delete(canonicalUrl);
+    }).catch(() => undefined);
+  }
+  return waitForSharedRequest(entry, signal, "All hydration clients disconnected");
+}
+
+export function officialHydrationStats() {
+  return { ...officialHydrationGate.stats(), inflight: hydrationInflight.size };
+}
+
+export function officialSuggestionStats() {
+  return {
+    ...officialSuggestionGate.stats(),
+    inflight: suggestionInflight.size,
+    cache: responseCache.stats(),
+  };
+}
 
 function cleanText(value = "") {
   return String(value)
@@ -146,59 +246,39 @@ function sourceId(prefix, value) {
   return `${prefix}-${createHash("sha256").update(String(value)).digest("hex").slice(0, 16)}`;
 }
 
-function cacheResponse(url, body) {
-  if (responseCache.has(url)) responseCache.delete(url);
-  responseCache.set(url, { body, savedAt: Date.now() });
-  while (responseCache.size > MAX_CACHE_ENTRIES) {
-    responseCache.delete(responseCache.keys().next().value);
-  }
+function cacheResponse(url, body, finalUrl = url) {
+  const bytes = Buffer.byteLength(String(body), "utf8");
+  const savedAt = Date.now();
+  responseCache.set(url, { body, finalUrl, bytes, savedAt });
+  return savedAt;
 }
 
 export function validatedOfficialUrl(value, base) {
-  const url = new URL(value, base);
-  if (url.protocol !== "https:" || !OFFICIAL_HOSTS.has(url.hostname)) {
+  try {
+    return validateApprovedPublicHttpsUrl(new URL(value, base), OFFICIAL_ORIGINS);
+  } catch {
     throw new Error("Upstream URL is outside the official allowlist");
   }
-  url.username = "";
-  url.password = "";
-  url.hash = "";
-  return url;
 }
 
-async function fetchOfficial(url, options = {}, maximumRedirects = 3) {
-  let current = validatedOfficialUrl(url);
-  for (let redirects = 0; redirects <= maximumRedirects; redirects += 1) {
-    const response = await fetch(current, { ...options, redirect: "manual" });
-    if (![301, 302, 303, 307, 308].includes(response.status)) return response;
-    const location = response.headers.get("location");
-    await response.body?.cancel().catch(() => undefined);
-    if (!location || redirects === maximumRedirects) throw new Error("Too many or invalid upstream redirects");
-    current = validatedOfficialUrl(location, current);
+function canonicalHydrationResource(value) {
+  const url = validatedOfficialUrl(value);
+  const hostname = url.hostname.replace(/^www\./u, "");
+  const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/u, "") : url.pathname;
+  return `${url.protocol}//${hostname}${pathname}${url.search}`;
+}
+
+export function hydrationResourceMatches(requestedValue, finalValue) {
+  try {
+    return canonicalHydrationResource(requestedValue) === canonicalHydrationResource(finalValue);
+  } catch {
+    return false;
   }
-  throw new Error("Too many upstream redirects");
 }
 
 export async function readBoundedResponseText(response, maximumBytes = MAX_UPSTREAM_BYTES) {
   const limit = Math.max(1, Math.min(Number(maximumBytes) || MAX_UPSTREAM_BYTES, MAX_UPSTREAM_BYTES));
-  const declaredSize = Number(response.headers.get("content-length") || 0);
-  if (declaredSize > limit) throw new Error("Upstream response is too large");
-  if (!response.body) return "";
-  const reader = response.body.getReader();
-  const chunks = [];
-  let size = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > limit) throw new Error("Upstream response is too large");
-      chunks.push(value);
-    }
-  } catch (error) {
-    await reader.cancel().catch(() => undefined);
-    throw error;
-  }
-  return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8");
+  return readBoundedText(response, limit, "Upstream response");
 }
 
 function throwIfRequestAborted(signal) {
@@ -214,11 +294,24 @@ async function fetchCached(url, {
   staleMs = 24 * 60 * 60_000,
   timeoutMs = 7_000,
   signal: externalSignal,
+  requestText = requestApprovedPublicHttpsText,
+  requireSameResource = false,
 } = {}) {
   throwIfRequestAborted(externalSignal);
+  const canonicalUrl = validatedOfficialUrl(url).toString();
   const now = Date.now();
-  const cached = responseCache.get(url);
-  if (cached && now - cached.savedAt < ttlMs) return { body: cached.body, cache: "hit", stale: false };
+  const cached = responseCache.get(canonicalUrl);
+  const cachedFinalUrl = cached?.finalUrl || canonicalUrl;
+  const cachedMatches = !requireSameResource || hydrationResourceMatches(canonicalUrl, cachedFinalUrl);
+  if (cached && cachedMatches && now - cached.savedAt < ttlMs) {
+    return {
+      body: cached.body,
+      finalUrl: cachedFinalUrl,
+      fetchedAt: cached.savedAt,
+      cache: "hit",
+      stale: false,
+    };
+  }
 
   const controller = new AbortController();
   const boundedTimeoutMs = Math.max(250, Math.min(Number(timeoutMs) || 7_000, 15_000));
@@ -227,20 +320,36 @@ async function fetchCached(url, {
     ? AbortSignal.any([controller.signal, externalSignal])
     : controller.signal;
   try {
-    const response = await fetchOfficial(url, {
+    const upstream = await requestText(canonicalUrl, {
+      approvedOrigins: OFFICIAL_ORIGINS,
       headers: {
         Accept: accept || "text/html,application/xhtml+xml",
+        "Accept-Encoding": "identity",
         "User-Agent": "Keskkonnaportaali-praktika/3.0 (+https://praktika.arleserver.cfd)",
       },
       signal,
+      maximumBytes: MAX_UPSTREAM_BYTES,
+      maximumRedirects: 3,
     });
-    if (!response.ok) throw new Error(`Upstream returned ${response.status}`);
-    const body = await readBoundedResponseText(response);
-    cacheResponse(url, body);
-    return { body, cache: "miss", stale: false };
+    if (upstream.status < 200 || upstream.status >= 300) throw new Error(`Upstream returned ${upstream.status}`);
+    const body = String(upstream.body || "");
+    const finalUrl = validatedOfficialUrl(upstream.url || canonicalUrl).toString();
+    if (requireSameResource && !hydrationResourceMatches(canonicalUrl, finalUrl)) {
+      throw new Error("Official hydration redirected to a different resource");
+    }
+    const fetchedAt = cacheResponse(canonicalUrl, body, finalUrl);
+    return { body, finalUrl, fetchedAt, cache: "miss", stale: false };
   } catch (error) {
     throwIfRequestAborted(externalSignal);
-    if (cached && now - cached.savedAt < staleMs) return { body: cached.body, cache: "stale", stale: true };
+    if (cached && cachedMatches && now - cached.savedAt < staleMs) {
+      return {
+        body: cached.body,
+        finalUrl: cachedFinalUrl,
+        fetchedAt: cached.savedAt,
+        cache: "stale",
+        stale: true,
+      };
+    }
     throw error;
   } finally {
     clearTimeout(timeout);
@@ -407,12 +516,11 @@ async function searchVportalSite(site, query, limit, options) {
     throwIfRequestAborted(options.signal);
     let sourceUrl;
     try {
-      sourceUrl = new URL(item.uri, site.baseUrl);
+      sourceUrl = validatedOfficialUrl(item.uri, site.baseUrl);
     } catch {
       continue;
     }
-    if (sourceUrl.protocol !== "https:" || !OFFICIAL_HOSTS.has(sourceUrl.hostname)) continue;
-    sourceUrl.hash = "";
+    if (sourceUrl.toString().length > 2_000) continue;
     const highlighted = stripMarkup(item.highlighted, 12_000).slice(0, 900);
     const lead = stripMarkup(item.lead_text, 12_000).slice(0, 900);
     const fullContent = boundedVportalContent(Array.isArray(item.content) ? item.content : []);
@@ -420,21 +528,25 @@ async function searchVportalSite(site, query, limit, options) {
     const summary = cleanText([lead, highlighted].filter(Boolean).join(" ")).slice(0, 1_200)
       || firstContent
       || `${item.title} – ${site.organization} ametlik otsingutulemus.`;
-    const title = cleanText(item.title);
+    const title = cleanText(item.title).slice(0, 500);
     if (!title || !summary) continue;
+    const contentType = cleanText(item.content_type).slice(0, 160);
     documents.push({
       id: sourceId(`vp-${site.index}`, sourceUrl.toString()),
       title,
       organization: site.organization,
-      type: cleanText(item.content_type) || "Ametlik veebileht",
+      type: contentType || "Ametlik veebileht",
       published: officialDate(item.created),
       url: sourceUrl.toString(),
-      tags: [cleanText(item.content_type), site.organization, "ametlik allikas"].filter(Boolean),
+      tags: [contentType, site.organization.slice(0, 240), "ametlik allikas"].filter(Boolean),
       summary,
       content: fullContent || undefined,
       excerpt: highlighted || lead,
       sourceSystem: `${site.organization} otsing`,
       retrieval: "official-federated-search",
+      delivery: "federated-discovery",
+      evidencePolicy: "route-only",
+      _answerEvidenceEligible: false,
       stale,
     });
     // Cheerio puhastab HTML-i sünkroonselt. Väljastame kontrolli iga dokumendi
@@ -457,6 +569,7 @@ export async function searchOfficialSites(query, limit = 5, options = {}) {
     const results = await Promise.allSettled(
       VPORTAL_SITES.map((site) => searchVportalSite(site, query, boundedLimit, options)),
     );
+    throwIfRequestAborted(options.signal);
     const available = results.filter((result) => result.status === "fulfilled").map((result) => result.value);
     return {
       documents: available.flatMap((result) => result.documents),
@@ -473,6 +586,7 @@ export async function searchKeskkonnaportaal(query, limit = 10, options = {}) {
     ttlMs: 5 * 60_000,
     timeoutMs: options.timeoutMs || 7_000,
     signal: options.signal,
+    requestText: options.requestText,
   });
   const $ = load(body);
   const heading = cleanText($(".news__title").first().text());
@@ -509,6 +623,9 @@ export async function searchKeskkonnaportaal(query, limit = 10, options = {}) {
       excerpt: summary,
       sourceSystem: "Keskkonnaportaal",
       retrieval: "live-discovery",
+      delivery: "federated-discovery",
+      evidencePolicy: "route-only",
+      _answerEvidenceEligible: false,
     });
   });
 
@@ -530,16 +647,63 @@ export function articleText(body) {
 export async function hydrateOfficialDocuments(documents, limit = 5, options = {}) {
   const selected = (documents || []).slice(0, Math.max(1, Math.min(Number(limit) || 5, 10)));
   return Promise.all(selected.map(async (document) => {
-    if (String(document.content || "").length >= 120) return document;
+    if (document.retrieval !== "official-federated-search"
+      && String(document.content || "").length >= 120) return document;
     try {
-      const { body, stale } = await fetchCached(document.url, {
-        ttlMs: 30 * 60_000,
+      const { content, finalUrl, fetchedAt, stale } = await sharedHydration(document.url, {
         timeoutMs: options.timeoutMs || 4_500,
         signal: options.signal,
+        requestText: options.requestText,
       });
-      const content = articleText(body);
-      return content.length >= 120 ? { ...document, content, stale } : document;
-    } catch {
+      if (!hydrationResourceMatches(document.url, finalUrl)) return document;
+      if (content.length < 120) return document;
+      // A stale fallback may remain useful for navigation, but it must never
+      // become a fresh claim-evidence body after the official page failed.
+      if (stale) return { ...document, stale: true };
+      const page = {
+        ...document,
+        content,
+        stale,
+        _contentHash: createHash("sha256").update(content).digest("hex"),
+      };
+      if (document.retrieval !== "official-federated-search") {
+        if (!sourceEvidenceEligibility(document).eligible) {
+          return {
+            ...page,
+            evidencePolicy: "route-only",
+            _answerEvidenceEligible: false,
+          };
+        }
+        const observedAt = new Date(fetchedAt).toISOString();
+        return {
+          ...page,
+          retrieval: "approved-page-hydration",
+          evidencePolicy: "versioned",
+          _answerEvidenceEligible: true,
+          _evidenceVersion: page._contentHash,
+          _evidenceStatusAt: observedAt,
+          freshness: {
+            class: "cached-official-page",
+            basis: "retrieved-at",
+            maxAgeMs: APPROVED_PAGE_EVIDENCE_MAX_AGE_MS,
+            requiresSourceTimestamp: true,
+          },
+        };
+      }
+      // Federated results are untrusted discovery cards. Fetching their page
+      // replaces index prose for display, but does not itself confer an
+      // evidence capability. Vetted catalogue/corpus producers issue that
+      // capability explicitly at their own ingestion boundary.
+      return {
+        ...page,
+        summary: cleanText(content).slice(0, 900),
+        excerpt: undefined,
+        evidencePolicy: "route-only",
+        _answerEvidenceEligible: false,
+        _pageHydrated: true,
+      };
+    } catch (error) {
+      throwIfRequestAborted(options.signal);
       return document;
     }
   }));
@@ -547,14 +711,35 @@ export async function hydrateOfficialDocuments(documents, limit = 5, options = {
 
 export const hydrateKeskkonnaportaalDocuments = hydrateOfficialDocuments;
 
-export async function getKeskkonnaportaalSuggestions(query, limit = 5) {
+export async function getKeskkonnaportaalSuggestions(query, limit = 5, options = {}) {
+  throwIfRequestAborted(options.signal);
+  const canonicalInput = canonicalizePublicSearchQuery(query, { maximumLength: 80 });
+  if (!canonicalInput.ok) return { suggestions: [], cache: "rejected" };
   const url = new URL("/et/search_api_autocomplete/kem_kkp_search", PORTAL_BASE);
-  url.searchParams.set("q", query);
-  const { body, cache } = await fetchCached(url.toString(), {
-    accept: "application/json",
-    ttlMs: 10 * 60_000,
-    timeoutMs: 4_500,
-  });
+  url.searchParams.set("q", canonicalInput.query);
+  const cacheKey = url.toString();
+  let entry = suggestionInflight.get(cacheKey);
+  if (!entry) {
+    const controller = new AbortController();
+    entry = { controller, promise: null, settled: false, waiters: 0 };
+    entry.promise = officialSuggestionGate.run(() => fetchCached(cacheKey, {
+      accept: "application/json",
+      ttlMs: 10 * 60_000,
+      timeoutMs: 4_500,
+      signal: controller.signal,
+      requestText: options.requestText,
+    }), { signal: controller.signal });
+    suggestionInflight.set(cacheKey, entry);
+    void entry.promise.finally(() => {
+      entry.settled = true;
+      if (suggestionInflight.get(cacheKey) === entry) suggestionInflight.delete(cacheKey);
+    }).catch(() => undefined);
+  }
+  const { body, cache } = await waitForSharedRequest(
+    entry,
+    options.signal,
+    "All autocomplete clients disconnected",
+  );
   const payload = JSON.parse(body);
   const suggestions = (Array.isArray(payload) ? payload : [])
     .filter((item) => cleanText(item?.value))

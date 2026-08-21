@@ -12,6 +12,8 @@
     "eval:live": "node scripts/evaluate-live-search.mjs",
     "eval:holdout": "node scripts/evaluate-relevance-holdout.mjs",
     "eval:blind": "node scripts/evaluate-relevance-holdout.mjs --dataset=environment_search_blind_spot_v1.json",
+    "eval:open": "node scripts/evaluate-open-search.mjs",
+    "eval:public": "node scripts/evaluate-public-search.mjs",
     "audit:grounding": "node scripts/audit-live-grounding.mjs",
     "audit:filters": "node scripts/audit-live-filters.mjs",
     "audit:followups": "node scripts/audit-live-followups.mjs",
@@ -22,10 +24,15 @@
     "test:sites": "node --test tests/sites-worker.test.mjs"
   },
   "dependencies": {
+    "@openai/agents": "0.17.0",
     "cheerio": "^1.1.2",
     "express": "5.1.0",
+    "ipaddr.js": "1.9.1",
     "jsonrepair": "^3.13.1",
-    "pg": "^8.16.3"
+    "openai": "7.5.0",
+    "pg": "^8.16.3",
+    "proxy-addr": "2.0.7",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "5.0.4",

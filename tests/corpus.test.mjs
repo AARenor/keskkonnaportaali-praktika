@@ -1,18 +1,100 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { readFile } from "node:fs/promises";
+import { Readable } from "node:stream";
 import test from "node:test";
 import {
   buildPrefixTsQuery,
   deduplicateCorpusDocuments,
   extractReadablePage,
+  fetchCorpusText,
+  hydrationResourceMatches,
   isApprovedCorpusRedirect,
+  limitOfficialDiscoveryDocuments,
+  OFFICIAL_DISCOVERY_DELETE_SQL,
+  OFFICIAL_DISCOVERY_RETIRE_SQL,
   pageRobotsPolicy,
+  parsePortalReportedTotal,
   parsePortalSearchPage,
   parsePortalSitemap,
+  parsePortalSitemapPage,
   parseRobotsTxt,
+  publicSearchItem,
   robotsAllowsUrl,
   summarizeUrlOccurrences,
 } from "../server/corpus.mjs";
+import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
+
+function mockCorpusHttpsRequest(responses, calls = []) {
+  return (url, options, callback) => {
+    const request = new EventEmitter();
+    let response;
+    request.end = () => queueMicrotask(() => {
+      const spec = responses.shift();
+      calls.push({ url: url.toString(), options });
+      response = spec.stream || Readable.from(spec.chunks || [spec.body || ""]);
+      response.statusCode = spec.status;
+      response.headers = spec.headers || {};
+      callback(response);
+    });
+    request.destroy = (error) => {
+      response?.destroy();
+      if (error) queueMicrotask(() => request.emit("error", error));
+    };
+    return request;
+  };
+}
+
+test("live discovery persistence has explicit retirement and deletion bounds", async () => {
+  assert.match(OFFICIAL_DISCOVERY_RETIRE_SQL, /source_key = 'official-live-search'/u);
+  assert.match(OFFICIAL_DISCOVERY_RETIRE_SQL, /is_available = FALSE/u);
+  assert.match(OFFICIAL_DISCOVERY_RETIRE_SQL, /make_interval\(hours => \$1\)/u);
+  assert.match(OFFICIAL_DISCOVERY_DELETE_SQL, /DELETE FROM practice_corpus_documents/u);
+  assert.match(OFFICIAL_DISCOVERY_DELETE_SQL, /source_key = 'official-live-search'/u);
+
+  const [corpus, retrieval, server] = await Promise.all([
+    readFile(new URL("../server/corpus.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../server/retrieval.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../server/index.mjs", import.meta.url), "utf8"),
+  ]);
+  assert.match(corpus, /SET LOCAL statement_timeout = '2000ms'/u);
+  assert.match(corpus, /await client\.query\("BEGIN"\)/u);
+  assert.match(corpus, /await client\.query\("ROLLBACK"\)/u);
+  assert.match(corpus, /document\.source_key <> 'official-live-search'[\s\S]*?document\.last_seen_at >= NOW\(\)/u);
+  assert.match(corpus, /discoveryOnly \? "WHERE current\.source_key = 'official-live-search'"/u);
+  assert.match(corpus, /source_key = 'official-page-hydration'/u);
+  assert.match(corpus, /source_kind: "official-page-hydration"/u);
+  assert.match(corpus, /source_key IN \('portal-sitemap', 'portal-catalog', 'official-page-hydration'\)/u);
+  assert.match(corpus, /pg_advisory_xact_lock\(hashtext\('practice-official-discovery-capacity'\)\)/u);
+  assert.match(corpus, /OFFICIAL_DISCOVERY_MAX_ROWS/u);
+  assert.match(retrieval, /enqueueOfficialDiscoveryDocuments\(filteredLive, \{ signal, clientKey \}\)/u);
+  assert.doesNotMatch(retrieval, /void indexOfficialDiscoveryDocuments/u);
+  assert.match(server, /stopOfficialDiscoveryIndexing\(new DOMException/u);
+  assert.match(server, /clearInterval\(officialDiscoveryMaintenanceTimer\)/u);
+});
+
+test("live discovery row admission preserves existing URLs and caps new rows", () => {
+  const documents = [
+    { url: "https://example.test/new-a" },
+    { url: "https://example.test/existing" },
+    { url: "https://example.test/new-b" },
+  ];
+  assert.deepEqual(limitOfficialDiscoveryDocuments(
+    documents,
+    ["https://example.test/existing"],
+    2,
+    3,
+  ).map((item) => item.url), [
+    "https://example.test/new-a",
+    "https://example.test/existing",
+  ]);
+  assert.deepEqual(limitOfficialDiscoveryDocuments(
+    documents,
+    ["https://example.test/existing"],
+    3,
+    3,
+  ).map((item) => item.url), ["https://example.test/existing"]);
+});
 
 test("duplicate URLs are merged before a PostgreSQL upsert batch", () => {
   const documents = deduplicateCorpusDocuments([
@@ -44,6 +126,124 @@ test("duplicate URLs are merged before a PostgreSQL upsert batch", () => {
   assert.notEqual(documents[0].publishedLabel, "null");
 });
 
+test("federated snippets can never replace a non-live page body or its provenance", () => {
+  const url = "https://keskkonnaportaal.ee/et/vesi/provenance";
+  const hydrated = {
+    sourceKey: "portal-catalog",
+    url,
+    title: "Hüdreeritud leht",
+    summary: "Ametliku lehe kokkuvõte.",
+    content: "OFFICIAL_PAGE_BODY kontrollitud lehesisu.",
+    topics: ["lehe teema"],
+    sourceTier: "official",
+    quality: 2,
+    metadata: { source_kind: "portal-catalog", hydrated: true },
+  };
+  const live = {
+    sourceKey: "official-live-search",
+    url,
+    title: "LIVE_INDEX_TITLE",
+    summary: "LIVE_INDEX_SUMMARY",
+    content: `LIVE_INDEX_BODY ${"otsinguindeksi tekst ".repeat(50)}`,
+    topics: ["LIVE_INDEX_TOPIC"],
+    sourceTier: "reviewed",
+    quality: 5,
+    metadata: { source_kind: "official-live-search", injected: true },
+  };
+  const left = deduplicateCorpusDocuments([hydrated, live])[0];
+  const right = deduplicateCorpusDocuments([live, hydrated])[0];
+  for (const merged of [left, right]) {
+    assert.equal(merged.sourceKey, "portal-catalog");
+    assert.equal(merged.title, "Hüdreeritud leht");
+    assert.equal(merged.summary, "Ametliku lehe kokkuvõte.");
+    assert.equal(merged.content, "OFFICIAL_PAGE_BODY kontrollitud lehesisu.");
+    assert.deepEqual(merged.topics, ["lehe teema"]);
+    assert.equal(merged.sourceTier, "official");
+    assert.deepEqual(merged.metadata, { source_kind: "portal-catalog", hydrated: true });
+    assert.doesNotMatch(JSON.stringify(merged), /LIVE_INDEX/u);
+  }
+  assert.deepEqual(left, right);
+
+  const emptyNonLive = {
+    ...hydrated,
+    summary: "",
+    content: "",
+    topics: [],
+    metadata: { source_kind: "portal-sitemap" },
+  };
+  for (const order of [[emptyNonLive, live], [live, emptyNonLive]]) {
+    const merged = deduplicateCorpusDocuments(order)[0];
+    assert.equal(merged.sourceKey, "portal-catalog");
+    assert.equal(merged.content, "");
+    assert.equal(merged.summary, "");
+    assert.deepEqual(merged.metadata, { source_kind: "portal-sitemap" });
+  }
+});
+
+test("only an atomically validated corpus hydration row becomes answer evidence", () => {
+  const base = {
+    id: 7,
+    source_key: "portal-catalog",
+    canonical_url: "https://keskkonnaportaal.ee/et/kontrollitud-leht",
+    title: "Kontrollitud leht",
+    summary: "Ametlik kokkuvõte",
+    content: "Kontrollitud ametliku lehe tõendikeha. ".repeat(4),
+    organization: "Keskkonnaportaal",
+    category: "Artikkel",
+    published_at: "2026-08-19",
+    published_label: "19.08.2026",
+    topics: ["keskkond"],
+    source_tier: "official",
+    content_hash: "a".repeat(64),
+    fetched_at: "2026-08-20T12:00:00Z",
+    metadata: {},
+  };
+  for (const row of [
+    base,
+    { ...base, source_key: "portal-sitemap" },
+    { ...base, source_key: "official-live-search" },
+    { ...base, source_key: "official-page-hydration", metadata: { hydrated: true } },
+    { ...base, source_key: "official-page-hydration", content_hash: "invalid", metadata: { hydrated: true, source_kind: "official-page-hydration" } },
+  ]) {
+    const item = publicSearchItem(row, true);
+    assert.equal(item.evidencePolicy, "route-only");
+    assert.equal(item._answerEvidenceEligible, false);
+    assert.equal(sourceEvidenceEligibility(item).eligible, false);
+  }
+  const item = publicSearchItem({
+    ...base,
+    source_key: "official-page-hydration",
+    metadata: { hydrated: true, source_kind: "official-page-hydration" },
+  }, true);
+  assert.equal(item.retrieval, "approved-page-hydration");
+  assert.equal(item.evidencePolicy, "versioned");
+  assert.equal(item._answerEvidenceEligible, true);
+  assert.equal(item._evidenceVersion, base.content_hash);
+  assert.equal(item._evidenceStatusAt, "2026-08-20T12:00:00.000Z");
+  assert.equal(sourceEvidenceEligibility(item, {
+    now: Date.parse("2026-08-21T12:00:00Z"),
+  }).eligible, true);
+
+  const stale = publicSearchItem({
+    ...base,
+    source_key: "official-page-hydration",
+    fetched_at: "2026-08-01T12:00:00Z",
+    metadata: { hydrated: true, source_kind: "official-page-hydration" },
+  }, true);
+  assert.equal(sourceEvidenceEligibility(stale, {
+    now: Date.parse("2026-08-21T12:00:00Z"),
+  }).eligible, false);
+  const missingStatus = publicSearchItem({
+    ...base,
+    source_key: "official-page-hydration",
+    fetched_at: null,
+    metadata: { hydrated: true, source_kind: "official-page-hydration" },
+  }, true);
+  assert.equal(sourceEvidenceEligibility(missingStatus, {
+    now: Date.parse("2026-08-21T12:00:00Z"),
+  }).eligible, false);
+});
+
 test("portal search parser preserves upstream total and card metadata", () => {
   const html = `
     <main>
@@ -70,6 +270,13 @@ test("portal search parser preserves upstream total and card metadata", () => {
   assert.equal(result.documents[0].sourceTier, "official");
 });
 
+test("portal result counts are bounded before they can control crawl work", () => {
+  assert.equal(parsePortalReportedTotal("953"), 953);
+  assert.throws(() => parsePortalReportedTotal("999999"), /configured result limit/u);
+  assert.throws(() => parsePortalSearchPage("<main><h1>Tulemused otsingule (999999)</h1></main>"), /configured result limit/u);
+  assert.throws(() => parsePortalReportedTotal("9007199254740993"), /invalid result count/u);
+});
+
 test("portal snapshot preserves upstream occurrences but pages distinct URLs", () => {
   const summary = summarizeUrlOccurrences([
     "https://keskkonnaportaal.ee/et/a",
@@ -94,6 +301,22 @@ test("sitemap parser canonicalizes portal URLs and keeps modification time", () 
   assert.equal(documents[0].url, "https://keskkonnaportaal.ee/et/mets");
   assert.equal(documents[0].modifiedAt, "2026-08-16T12:00:00Z");
   assert.equal(documents[0].sourceTier, "official");
+});
+
+test("portal sitemap cannot delegate its official tier to off-host entries", () => {
+  const xml = `
+    <urlset>
+      <url><loc>https://keskkonnaportaal.ee/et/vesi</loc></url>
+      <url><loc>https://example.com/copied-official-page</loc></url>
+      <url><loc>https://keskkonnaamet.ee/uudised/ametlik-kuid-mitte-portaali-sitemap</loc></url>
+    </urlset>`;
+  const documents = parsePortalSitemap(xml);
+  assert.deepEqual(documents.map((document) => document.url), ["https://keskkonnaportaal.ee/et/vesi"]);
+  assert.equal(documents[0].sourceTier, "official");
+  assert.deepEqual(
+    { entryCount: parsePortalSitemapPage(xml).entryCount, rejectedCount: parsePortalSitemapPage(xml).rejectedCount },
+    { entryCount: 3, rejectedCount: 2 },
+  );
 });
 
 test("PostgreSQL prefix query drops conversational stop words", () => {
@@ -161,6 +384,126 @@ test("crawler validates every redirect target before following it", () => {
     "https://keskkonnaportaal.ee/et/mets",
     "https://10.0.0.1/internal",
   ), false);
+  assert.equal(isApprovedCorpusRedirect(
+    "https://keskkonnaportaal.ee/et/mets",
+    "https://keskkonnaportaal.ee:444/internal",
+  ), false);
+  assert.equal(isApprovedCorpusRedirect(
+    "https://keskkonnaportaal.ee/et/mets",
+    "https://user:secret@keskkonnaportaal.ee/internal",
+  ), false);
+});
+
+test("corpus fetch uses the shared public-only HTTPS transport on every hop", async () => {
+  let redirectDestroyed = false;
+  let redirectReads = 0;
+  const redirectBody = new Readable({
+    read() {
+      redirectReads += 1;
+      this.push(Buffer.alloc(64 * 1024));
+    },
+    destroy(error, callback) {
+      redirectDestroyed = true;
+      callback(error);
+    },
+  });
+  const calls = [];
+  const result = await fetchCorpusText("https://keskkonnaportaal.ee/et/start", {
+    retries: 0,
+    requestImpl: mockCorpusHttpsRequest([
+      {
+        status: 302,
+        headers: { location: "https://www.keskkonnaportaal.ee/et/final" },
+        stream: redirectBody,
+      },
+      {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8", "x-robots-tag": "index, follow" },
+        body: "<main>Avalik kontrollitud leht</main>",
+      },
+    ], calls),
+  });
+  assert.equal(result.finalUrl, "https://www.keskkonnaportaal.ee/et/final");
+  assert.equal(result.contentType, "text/html; charset=utf-8");
+  assert.equal(result.robotsTag, "index, follow");
+  assert.equal(redirectDestroyed, true);
+  assert.equal(redirectReads, 0);
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every((call) => call.options.headers["Accept-Encoding"] === "identity"));
+
+  let unsafeCalls = 0;
+  const mustNotRun = () => {
+    unsafeCalls += 1;
+    throw new Error("unsafe corpus URL reached the transport");
+  };
+  await assert.rejects(fetchCorpusText("https://keskkonnaportaal.ee:444/private", {
+    retries: 0,
+    requestImpl: mustNotRun,
+  }), /approved HTTPS origins/u);
+  await assert.rejects(fetchCorpusText("https://user:secret@keskkonnaportaal.ee/private", {
+    retries: 0,
+    requestImpl: mustNotRun,
+  }), /approved HTTPS origins/u);
+  assert.equal(unsafeCalls, 0);
+
+  const dnsAwareRequest = (url, options, callback) => {
+    const request = new EventEmitter();
+    request.end = () => queueMicrotask(() => options.lookup(url.hostname, {}, (error) => {
+      if (error) {
+        request.emit("error", error);
+        return;
+      }
+      const response = Readable.from(["must not reach response"]);
+      response.statusCode = 200;
+      response.headers = {};
+      callback(response);
+    }));
+    request.destroy = (error) => {
+      if (error) queueMicrotask(() => request.emit("error", error));
+    };
+    return request;
+  };
+  await assert.rejects(fetchCorpusText("https://keskkonnaportaal.ee/private-dns", {
+    retries: 0,
+    requestImpl: dnsAwareRequest,
+    lookupImpl: (_hostname, _options, callback) => callback(null, [
+      { address: "8.8.8.8", family: 4 },
+      { address: "10.0.0.1", family: 4 },
+    ]),
+  }), /non-public DNS answer/u);
+
+  const privatePeerRequest = (_url, _options, _callback) => {
+    const request = new EventEmitter();
+    request.end = () => queueMicrotask(() => {
+      const socket = new EventEmitter();
+      socket.remoteAddress = "127.0.0.1";
+      request.emit("socket", socket);
+    });
+    request.destroy = (error) => queueMicrotask(() => request.emit("error", error));
+    return request;
+  };
+  await assert.rejects(fetchCorpusText("https://keskkonnaportaal.ee/private-peer", {
+    retries: 0,
+    requestImpl: privatePeerRequest,
+  }), /non-public address/u);
+});
+
+test("corpus hydration binds fetched content to the canonical final resource", async () => {
+  assert.equal(hydrationResourceMatches(
+    "https://keskkonnaportaal.ee/et/mets/",
+    "https://www.keskkonnaportaal.ee/et/mets?utm_source=redirect",
+  ), true);
+  assert.equal(hydrationResourceMatches(
+    "https://keskkonnaportaal.ee/et/mets",
+    "https://keskkonnaportaal.ee/et/muu-leht",
+  ), false);
+  assert.equal(hydrationResourceMatches(
+    "https://keskkonnaportaal.ee/et/mets",
+    "https://keskkonnaamet.ee/et/mets",
+  ), false);
+
+  const corpus = await readFile(new URL("../server/corpus.mjs", import.meta.url), "utf8");
+  assert.match(corpus, /if \(!hydrationResourceMatches\(url, response\.finalUrl\)\) return false;[\s\S]*?extractReadablePage/u);
 });
 
 test("crawler refuses HTML or response headers marked noindex", () => {
@@ -177,7 +520,7 @@ test("progressive answer endpoint and broad result pagination remain separate co
     readFile(new URL("../src/App.jsx", import.meta.url), "utf8"),
     readFile(new URL("../server/corpus.mjs", import.meta.url), "utf8"),
   ]);
-  assert.match(server, /app\.get\("\/api\/search\/results"/u);
+  assert.doesNotMatch(server, /app\.get\("\/api\/search\/results"/u);
   assert.match(server, /app\.post\("\/api\/search\/results"/u);
   assert.match(server, /prepareRankedSearchResults/u);
   assert.match(server, /publicSearchListing/u);

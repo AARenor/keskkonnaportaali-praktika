@@ -1,0 +1,135 @@
+{
+  "version": "2.0.0",
+  "status": "development-adversarial-not-independent",
+  "description": "Avatud päringute arenduskomplekt, mis peegeldab live-auditis nähtud uudise-, üldlehe- ja osalise vaste lõkse. See ei ole suletud ega sõltumatu holdout.",
+  "thresholds": {
+    "routeAccuracy": 1,
+    "primaryAt1": 1,
+    "mrr": 1,
+    "ndcgAt5": 0.95,
+    "recallAt5": 0.95,
+    "abstentionNoSources": 1
+  },
+  "distractors": [
+    {
+      "id": "weekly-climate-wetlands",
+      "title": "Nädala kliimauudised: märgalad ja muutuv ilm",
+      "url": "https://example.invalid/nadala-kliimauudised",
+      "summary": "Uudiste ringvaade mainib raba taastamist, metsa, õhku ja üleujutusi eri lugudes.",
+      "organization": "Ametlik väljaanne",
+      "type": "Uudiste ringvaade",
+      "published": "18.08.2026",
+      "sourceTier": "official"
+    },
+    {
+      "id": "waves-and-litter-news",
+      "title": "Läänemere lained tõid randa prügi",
+      "url": "https://example.invalid/laanemere-lained",
+      "summary": "Üksik rannauudis räägib tuulest, lainetest ja leitud mereprügist.",
+      "organization": "Ametlik väljaanne",
+      "type": "Uudis",
+      "published": "17.08.2026",
+      "sourceTier": "official"
+    },
+    {
+      "id": "groundwater-day-news",
+      "title": "Põhjaveepäev tuletab meelde puhta vee tähtsust",
+      "url": "https://example.invalid/pohjaveepaev",
+      "summary": "Üldine uudis mainib nitraate, pestitsiide ja põhjavee kaitset, kuid ei esita seiretulemusi.",
+      "organization": "Ametlik väljaanne",
+      "type": "Uudis",
+      "published": "16.08.2026",
+      "sourceTier": "official"
+    },
+    {
+      "id": "spring-cleaning-asbestos",
+      "title": "Kevadkoristus ja vanad ehitusjäätmed",
+      "url": "https://example.invalid/kevadkoristus",
+      "summary": "Üldine koristusuudis nimetab eterniiti ja asbesti ühe näitena paljude jäätmeliikide seas.",
+      "organization": "Ametlik väljaanne",
+      "type": "Uudis",
+      "published": "15.08.2026",
+      "sourceTier": "official"
+    },
+    {
+      "id": "consumer-footprint-products",
+      "title": "Tarbijate valikud ja toodete keskkonnajalajälg",
+      "url": "https://example.invalid/toodete-jalajalg",
+      "summary": "Artikkel käsitleb üksikute toodete jalajälge, mitte organisatsiooni hindamismudelit.",
+      "organization": "Ametlik väljaanne",
+      "type": "Artikkel",
+      "published": "14.08.2026",
+      "sourceTier": "official"
+    },
+    {
+      "id": "local-wastewater-spill",
+      "title": "Kohalik reoveeleke suunati puhastisse",
+      "url": "https://example.invalid/reoveeleke",
+      "summary": "Üksik juhtum mainib reovett, väikepuhastit ja kogumismahutit, kuid ei ole kohtkäitluse juhend.",
+      "organization": "Ametlik väljaanne",
+      "type": "Uudis",
+      "published": "13.08.2026",
+      "sourceTier": "official"
+    },
+    {
+      "id": "old-bathing-water-news",
+      "title": "Euroopa suplusvee kvaliteet 2018",
+      "url": "https://example.invalid/suplusvesi-2018",
+      "summary": "Vana Euroopa koondlugu ei näita Eesti supluskohtade jooksvat kvaliteeti ega hoiatusi.",
+      "organization": "Ametlik väljaanne",
+      "type": "Uudis",
+      "published": "2019",
+      "sourceTier": "official"
+    },
+    {
+      "id": "mixed-keyword-news",
+      "title": "Kalad, mets ja õhk ühe keskkonnanädala jooksul",
+      "url": "https://example.invalid/segateemad",
+      "summary": "Koondlugu sisaldab kolme eraldi teema märksõnu ega vasta ühelegi täpsustatud küsimusele.",
+      "organization": "Ametlik väljaanne",
+      "type": "Uudiste ringvaade",
+      "published": "12.08.2026",
+      "sourceTier": "official"
+    },
+    {
+      "id": "solar-production-news",
+      "title": "Päikesepaneelid püstitasid elektritootmise rekordi",
+      "url": "https://example.invalid/paikeseenergia",
+      "summary": "Tootmisuudis mainib paneelide tulevast ringlussevõttu, kuid ei selgita jäätmekäitlust.",
+      "organization": "Ametlik väljaanne",
+      "type": "Uudis",
+      "published": "11.08.2026",
+      "sourceTier": "official"
+    },
+    {
+      "id": "bear-visit-news",
+      "title": "Karu külastas mesilat",
+      "url": "https://example.invalid/karu-mesilas",
+      "summary": "Üksik karuvaatlus ei kirjelda Eesti karu asurkonna arvukust ega seiremetoodikat.",
+      "organization": "Ametlik väljaanne",
+      "type": "Uudis",
+      "published": "10.08.2026",
+      "sourceTier": "official"
+    }
+  ],
+  "cases": [
+    { "id": "O01", "query": "kust vaadata suplusvee kvaliteeti", "expectedRoute": "answerable", "expectedTop": "bathing-water-quality", "qrels": [{ "id": "bathing-water-quality", "gain": 3 }] },
+    { "id": "O02", "query": "mürakaart Tartus", "expectedRoute": "answerable", "expectedTop": "tartu-noise-map", "qrels": [{ "id": "tartu-noise-map", "gain": 3 }] },
+    { "id": "O03", "query": "reovesi ja väikepuhasti", "expectedRoute": "answerable", "expectedTop": "wastewater-local-treatment", "qrels": [{ "id": "wastewater-local-treatment", "gain": 3 }] },
+    { "id": "O04", "query": "mereprügi Läänemeres", "expectedRoute": "answerable", "expectedTop": "baltic-sea-litter", "qrels": [{ "id": "baltic-sea-litter", "gain": 3 }, { "id": "marine-strategy-status", "gain": 2 }] },
+    { "id": "O05", "query": "asbestijäätmed kuhu viia", "expectedRoute": "answerable", "expectedTop": "hazardous-waste-asbestos", "qrels": [{ "id": "hazardous-waste-asbestos", "gain": 3 }] },
+    { "id": "O06", "query": "jõgede paisud ja kalad", "expectedRoute": "answerable", "expectedTop": "river-dams-fish", "qrels": [{ "id": "river-dams-fish", "gain": 3 }] },
+    { "id": "O07", "query": "rohevõrgustiku planeerimisjuhend", "expectedRoute": "answerable", "expectedTop": "green-network-planning-guide", "qrels": [{ "id": "green-network-planning-guide", "gain": 3 }] },
+    { "id": "O08", "query": "võõrliigid aias", "expectedRoute": "answerable", "expectedTop": "invasive-species-guidance", "qrels": [{ "id": "invasive-species-guidance", "gain": 3 }] },
+    { "id": "O09", "query": "organisatsiooni keskkonnajalajälg", "expectedRoute": "answerable", "expectedTop": "organizational-footprint", "qrels": [{ "id": "organizational-footprint", "gain": 3 }] },
+    { "id": "O10", "query": "raba taastamine", "expectedRoute": "answerable", "expectedTop": "wetland-restoration", "qrels": [{ "id": "wetland-restoration", "gain": 3 }] },
+    { "id": "O11", "query": "pestitsiidid põhjavees", "expectedRoute": "answerable", "expectedTop": "groundwater-pesticide-monitoring", "qrels": [{ "id": "groundwater-pesticide-monitoring", "gain": 3 }] },
+    { "id": "O12", "query": "päikesepaneelide jäätmed", "expectedRoute": "answerable", "expectedTop": "solar-panel-end-of-life", "qrels": [{ "id": "solar-panel-end-of-life", "gain": 3 }] },
+    { "id": "O13", "query": "karu arvukus Eestis", "expectedRoute": "answerable", "expectedTop": "wildlife-status-2025", "qrels": [{ "id": "wildlife-status-2025", "gain": 3 }] },
+    { "id": "O14", "query": "praegune osoon Narvas", "expectedRoute": "live-air", "expectedTop": "air-quality-live", "qrels": [{ "id": "air-quality-live", "gain": 3 }] },
+    { "id": "O15", "query": "Eesti kasvuhoonegaaside heide 2022", "expectedRoute": "answerable", "expectedTop": "greenhouse-gas-inventory", "qrels": [{ "id": "greenhouse-gas-inventory", "gain": 3 }] },
+    { "id": "O16", "query": "kala mets õhk", "expectedRoute": "needs-clarification", "qrels": [] },
+    { "id": "O17", "query": "xyzzy mets", "expectedRoute": "needs-clarification", "qrels": [] },
+    { "id": "O18", "query": "Tartu vesi 2025", "expectedRoute": "needs-clarification", "qrels": [] }
+  ]
+}

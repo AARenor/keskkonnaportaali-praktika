@@ -1,6 +1,6 @@
 # Ametlike allikate ja API-de register
 
-Uuendatud: 18.08.2026
+Uuendatud: 19.08.2026
 
 See register kirjeldab, millised allikad on otsingu päringuteel aktiivsed, millised on kasutajale suunavad kataloogiallikad ning milliseid teenuseid ei kasutata enne eraldi valideeritud adapterit. Ükski allikas ei anna mudelile õigust kasutada üldteadmisi: vastus peab jääma tagastatud tõendite piiresse.
 
@@ -17,11 +17,11 @@ See register kirjeldab, millised allikad on otsingu päringuteel aktiivsed, mill
 
 Kõigil võrguallikatel on HTTPS-hostide allowlist, päringu ajapiir, vastusemahu piir ja kontrollitud redirect. Väliskutsed tehakse paralleelselt ning kogu kasutajapäring peab lõppema hiljemalt 15 sekundiga.
 
-Üldotsingu sünteesi sõnastab OpenCode Go `gpt-5.6-luna` Responses API kaudu. Luna saab ainult nähtava filtreeritud tulemusehulga ametliku tõendialamhulga ja range JSON Schema ning selle väljund läbib viite-, arvu-, ühiku-, väitekatvuse ja polaarsuse kontrolli. Tõrke korral säilib tulemuste loend ja kuvatakse aus fallback; mudelil puudub ligipääs andmebaasile, veebile ja tööriistadele.
+Üldotsingu sünteesi juhib OpenAI Agents SDK manager OpenCode Go `gpt-5.6-luna` Responses API kaudu. Mitme allika korral peab manager esmalt kasutama relevantsusspetsialisti ja võib arvude või väidete pingete korral kasutada tõendikriitikut; spetsialistid on manageri tööriistad, mitte eraldi vastusekanalid. Kõik mudelikutsed jäävad nähtava filtreeritud tulemusehulga ametliku tõendialamhulga ja range skeemi piiresse ning lõppväljund läbib viite-, arvu-, ühiku-, väitekatvuse ja polaarsuse kontrolli. Tõrke korral säilib tulemuste loend ja kuvatakse aus fallback; agentidel puudub ligipääs andmebaasile ja veebile.
 
 ## Metsastatistika avaldamisseis
 
-18.08.2026 kontrolli seisuga on viimane päriselt avaldatud terviklik aastakäik **SMI 2024**. Keskkonnaagentuuri 12.08.2026 artikkel [„Kui palju ja millist metsa Eestis on?”](https://keskkonnaagentuur.ee/uudised/blogis-kui-palju-ja-millist-metsa-eestis) teatab, et SMI 2025 tulemused avaldatakse järgmisel nädalal; rakendus ei nimeta neid enne avaldamist olemasolevaks ega tuleta puuduvaid arve. Otsing võib kasutada 2026. aasta artiklit värske tõlgenduse ja 30.07.2025 SMI-tulemuste lehte viimase avaldatud arvulise/vanusjaotuse tõendina. Pärast SMI 2025 tegelikku avaldamist jõuab uus URL live-otsingu kaudu kandidaadihulka ega vaja eelkirjutatud vastuse vahetamist.
+19.08.2026 kontrollis oli **SMI 2025** ametlik esitlus-PDF juba Keskkonnaportaali failiruumis avaldatud: [„SMI 2025 ettekanne”](https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI%20tulemused%202025/SMI%202025%20ettekanne.pdf), serveri `Last-Modified` 18.08.2026. PDF-i metaandmed, tekstikiht ja visuaalselt renderdatud võtmelehed kinnitasid muu hulgas 2,3602 mln ha metsamaad (52,1%), 466 mln m³ tagavara, majanduskategooriad 20,2% / 10,4% / 69,4%, puistute keskmise vanuse 55 aastat ning 2025. aasta raiemahu 11,0 mln m³ eksperthinnangu. Teemakataloogi maandumisleht näitas samal kontrollhetkel veel SMI 2024 aastakäiku, seega käsitleb rakendus seda indeksi viitena, mitte tõendina, et uuem PDF puudub. Uus PDF on runtime'i ametlikus metsakataloogis eraldi allikana ja selle väiteid ei segata SMI 2024 metoodika või arvudega.
 
 ## Regressiooni- ja võrdlusmaterjal
 
@@ -29,7 +29,18 @@ Versioonitud metsakorpus sisaldab 16 algallikat ja 21 vastusedokumenti ning sell
 
 ## Kontrollitud kataloogi- ja suunamisallikad
 
-Need 48 kohalikus kataloogis olevat kirjet aitavad valida õige ametliku teenuse ja on nõrga võrguolukorra korral kasutajale suunavad allikad. Need ei muutu automaatselt konkreetse arvu või õigusliku järelduse tõendiks. 18.08.2026 automaatne lingikontroll sai kõigilt 48 siht-URL-ilt eduka vastuse või ümbersuunamise.
+Runtime'i kataloogis on 95 kirjet: 73 üldist keskkonnaallikat, 20 metsanduse tõendiallikat ja kaks katastri-/Metsaregistri WFS-allikat. Need aitavad valida õige ametliku teenuse ja on nõrga võrguolukorra korral kasutajale suunavad allikad, kuid ei muutu automaatselt konkreetse arvu või õigusliku järelduse tõendiks. 18.08.2026 varasema 48 siht-URL-i automaatne kontroll sai kõigilt eduka vastuse või ümbersuunamise; 19.08 lisatud lehed kontrolliti eraldi nende ametlikul hostil ning lukustati realistliku 147 päringuga arendusmaatriksi ja teemaliste peibutusallikate vastu.
+
+Kataloogi allikaprofiil (`server/source-registry.mjs`) määrab eraldi marsruudiklassi, tarneviisi, värskusklassi ja tõendipoliitika. Need väljad ei lähe avalikku API-sse, kuid takistavad teenuse maandumislehte muutumast seal peituva väärtuse tõendiks.
+
+| Tõendipoliitika | Mida runtime lubab |
+|---|---|
+| `route-only` | Kuvab ametliku teenuse õige suunana; ei anna selle kirje tekstiga AI-le faktivastuse õigust. |
+| `timestamped` | Jooksev väärtus on AI-tõend ainult tüübikindla adapteri mõõte- või kehtivusajaga. |
+| `versioned` | Muutuv õigus-, loa- või menetlusseis vajab versiooni või kontrollitud staatuse aega. |
+| `claim-specific` | Püsilehe puhastatud sisu võib tõendada ainult päringuga samas lõigus otseselt kaetud väidet. |
+
+Uus kate sisaldab Ilmateenistuse jooksvaid ilma-, hoiatuse- ja hüdroloogiavaateid, Terviseameti joogivee juhist, pinnaveekogumite seisundit, riiklikke ja käitisepõhiseid õhuheiteid, PAKIS-e ja PROTO registreid, Natura alasid, Loodusvaatluste andmebaasi, Metsaportaali, kliimapoliitika andmeväravat ning üleujutusriski kaarte. Dünaamilised vaated on tahtlikult `route-only` või `timestamped`, kuni nende jaoks on skeemi, aja ja ühiku valideerimisega adapter.
 
 | Valdkond | Ametlik teenus | Kontrollitud omadus | Runtime-roll |
 |---|---|---|---|
@@ -61,6 +72,19 @@ Need 48 kohalikus kataloogis olevat kirjet aitavad valida õige ametliku teenuse
 | Kaitstaval alal ehitamine | [Keskkonnaamet](https://keskkonnaamet.ee/elusloodus-looduskaitse/tegevused-kaitstavatel-aladel/planeerimine-ja-ehitamine) | Eelnev nõusolek, looduskaitselised piirangud ja Natura hindamine | Tegevusjuhend eelistatakse üldisele kaitseala-uudisele |
 | Põhjavee seisund | [Keskkonnaportaal](https://keskkonnaportaal.ee/teemad/vesi/pohjavesi/pohjavee-seisund) | Keemiline ja koguseline seisund, kaardilugu ning kogumipõhised aruanded | Maakonna-aasta päring suunatakse seisundimaterjalidele, mitte kohanimega kõrvalteemale |
 | Mereala 2024 seisund | [Kliimaministeerium](https://kliimaministeerium.ee/keskkonnakasutus/merestrateegia) | Eesti merestrateegia, 2024 seisundihinnang, indikaatorid ja aruanded | Läänemere seisundipäring eelistab hinnangut üldisele mereuudisele |
+| Suplusvee kvaliteet | [Terviseamet](https://www.terviseamet.ee/keskkonnatervis/vesi/suplusvesi) | Ametlik supluskohtade seire, proovide tulemused ja suplushooaja info | „Kust vaadata?” päring eelistab seireteenust juhuslikule rannauudisele |
+| Tartu strateegiline müra | [Tartu linn](https://tartu.ee/et/uurimused/murakaart2022) | 2022. aasta strateegiline mürakaart ja tegevuskava lähtematerjal | Tartu mürakaardi päring ei lähe Tallinna kaardile ega üldisele mürauuringule |
+| Reovee kohtkäitlus | [Keskkonnaamet](https://keskkonnaamet.ee/kasiraamat-kohaliku-omavalitsuse-keskkonnaspetsialistile/reovee-kohtkaitluse-ja-araveo-eeskiri) | Kogumismahuti, omapuhasti, äraveo ja kohaliku eeskirja ametlik juhis | Majapidamise tegevusjuhend eelistatakse üldisele veeseisundi lehele |
+| Läänemere mereprügi | [Kliimaministeerium](https://kliimaministeerium.ee/merendus-veekeskkond/merekeskkonna-kaitse/laanemere-kaitse) | Läänemere kaitse, mereprügi ja rahvusvahelised meetmed | Konkreetne mereprügi allikas püsib üldise mereteema ja värske uudise ees |
+| Ohtlikud jäätmed ja asbest | [Kliimaministeerium](https://www.kliimaministeerium.ee/elukeskkond-ringmajandus/ohtlikud-jaatmed) | Ohtlike jäätmete, sh asbesti, ohutu käitluse põhimõtted | Käitlusjuhis eelistatakse jäätmete üldkataloogile; vastuvõtukoht tuleb eraldi kontrollida |
+| Paisud ja kalade läbipääs | [Kliimaministeerium](https://kliimaministeerium.ee/paisud-eestis) | Paisude mõju veekogule ning kalade liikumise ja paisutamise nõuded | Jõekalade/paisu päring eelistab otsest juhendit juhuslikule kalandusuudisele |
+| Rohevõrgustiku planeerimine | [Keskkonnaagentuur](https://keskkonnaagentuur.ee/uudised/keskkonnaagentuuri-tellimusel-valminud-rohevorgustiku-planeerimisjuhend) | Planeerimisjuhend rohevõrgustiku sidususe käsitlemiseks | Planeerimisküsimus suunatakse juhendile, mitte üldisele elurikkuse kataloogile |
+| Võõrliigid | [Keskkonnaamet](https://www.keskkonnaamet.ee/voorliigid) | Võõrliikide tuvastamine, teatamine ja ohjamise ametlik info | Tegevusjuhend eelistatakse liigiteemalisele uudisele |
+| Organisatsiooni jalajälg | [Kliimaministeerium](https://www.kliimaministeerium.ee/rohereform-kliima/rohereform/organisatsioonide-jalajalg) | Organisatsiooni keskkonna- ja süsinikujalajälje hindamise juhised | Ainult jalajäljeintent aktiveerib lehe; üldine KHG-aasta päring jääb inventuuri juurde |
+| Märgalade taastamine | [Keskkonnaagentuur](https://keskkonnaagentuur.ee/node/2632) | Märgalade taastamise eesmärgid ja ökosüsteemipõhine kontekst | Taastamispäring eelistab otsest projekti-/juhendiallikat üldisele kliimauudisele |
+| Pestitsiidid põhjavees | [Keskkonnaagentuur](https://keskkonnaagentuur.ee/uudised/mida-naitavad-2024-aasta-keskkonnaseire-tulemused-meie-looduskeskkonna-seisundi-kohta) | 2024. aasta keskkonnaseire tulemused, sh põhjavee pestitsiidijäägid | Aasta ja näitajaga päring säilitab 2024 mõõteperioodi ega vali üldist põhjaveelehte |
+| Päikesepaneelide lõppkäitlus | [Keskkonnaportaal](https://keskkonnaportaal.ee/et/teemad/taastuvenergia/mis-saab-paikesepaneelidest-ja-tuulikutest-parast-kasutuse-loppu) | Paneelide ja tuulikute kasutusjärgne käitlus ning ringlus | Elutsüklipäring eelistab otsest selgitust taastuvenergia ülduudisele |
+| Ulukiasurkonnad 2025 | [Keskkonnaagentuur](https://keskkonnaagentuur.ee/uudised/keskkonnaagentuur-avaldas-varske-raporti-milles-antakse-ulevaade-ulukiasurkondade) | Värske ulukiasurkondade seisundi ja küttimissoovituste raport | Liigi arvukuse päring eelistab 2025 raportit juhuslikule metsa- või jahiartiklile |
 
 ## Teadlikult mitte automaatselt kasutatavad liidesed
 

@@ -5,6 +5,12 @@ import {
   databaseQuery,
   withDatabaseClient,
 } from "./database.mjs";
+import { createOfficialDiscoveryIndexQueue } from "./live-index-queue.mjs";
+import {
+  requestApprovedPublicHttpsText,
+  validateApprovedPublicHttpsUrl,
+} from "./public-https.mjs";
+import { canonicalizePublicSearchQuery } from "./search.mjs";
 
 const PORTAL_BASE = "https://keskkonnaportaal.ee";
 const PORTAL_SEARCH = `${PORTAL_BASE}/et/search`;
@@ -15,9 +21,34 @@ const MAX_FETCH_BYTES = 4_000_000;
 const DEFAULT_PAGE_SIZE = 12;
 const MAX_PAGE_SIZE = 50;
 const PORTAL_PAGE_SIZE = 50;
+const MAX_PORTAL_CATALOG_TOTAL = 20_000;
+const MAX_PORTAL_CATALOG_PAGES = Math.ceil(MAX_PORTAL_CATALOG_TOTAL / PORTAL_PAGE_SIZE);
 const SITEMAP_PAGE_SIZE = 5_000;
 const MAX_SITEMAP_PAGES = 20;
 const ROBOTS_CACHE_MS = 60 * 60 * 1_000;
+const OFFICIAL_DISCOVERY_RETENTION_HOURS = Math.max(
+  24,
+  Math.min(Number(process.env.OFFICIAL_DISCOVERY_RETENTION_HOURS) || 168, 720),
+);
+const APPROVED_PAGE_EVIDENCE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1_000;
+const OFFICIAL_DISCOVERY_MAX_ROWS = Math.max(
+  1_000,
+  Math.min(Math.trunc(Number(process.env.OFFICIAL_DISCOVERY_MAX_ROWS) || 20_000), 100_000),
+);
+const OFFICIAL_DISCOVERY_PROCESS_URL_BUDGET = Math.max(
+  100,
+  Math.min(
+    Math.trunc(Number(process.env.OFFICIAL_DISCOVERY_PROCESS_URL_BUDGET) || 10_000),
+    OFFICIAL_DISCOVERY_MAX_ROWS,
+  ),
+);
+const OFFICIAL_DISCOVERY_CLIENT_URL_BUDGET = Math.max(
+  25,
+  Math.min(
+    Math.trunc(Number(process.env.OFFICIAL_DISCOVERY_CLIENT_URL_BUDGET) || 500),
+    OFFICIAL_DISCOVERY_PROCESS_URL_BUDGET,
+  ),
+);
 const OFFICIAL_HOSTS = new Set([
   "keskkonnaportaal.ee",
   "www.keskkonnaportaal.ee",
@@ -34,6 +65,10 @@ const OFFICIAL_HOSTS = new Set([
   "andmed.stat.ee",
   "rmk.ee",
   "www.rmk.ee",
+  "tartu.ee",
+  "www.tartu.ee",
+  "terviseamet.ee",
+  "www.terviseamet.ee",
   "kik.ee",
   "www.kik.ee",
   "loodusveeb.ee",
@@ -41,6 +76,9 @@ const OFFICIAL_HOSTS = new Set([
   "envir.ee",
   "www.envir.ee",
 ]);
+const CORPUS_HTTPS_ORIGINS = new Set(
+  [...OFFICIAL_HOSTS, "et.wikipedia.org"].map((hostname) => `https://${hostname}`),
+);
 const WIKIPEDIA_TITLES = [
   "Mets",
   "Eesti metsad",
@@ -63,6 +101,47 @@ let backgroundSyncPromise;
 let portalRobotsPromise;
 let portalRobotsFetchedAt = 0;
 
+export const OFFICIAL_DISCOVERY_RETIRE_SQL = `
+  UPDATE practice_corpus_documents
+  SET is_available = FALSE,
+      metadata = metadata || '{"retired_reason":"official-live-search-ttl"}'::JSONB
+  WHERE source_key = 'official-live-search'
+    AND is_available = TRUE
+    AND last_seen_at < NOW() - make_interval(hours => $1)
+`;
+
+export const OFFICIAL_DISCOVERY_DELETE_SQL = `
+  DELETE FROM practice_corpus_documents
+  WHERE source_key = 'official-live-search'
+    AND last_seen_at < NOW() - make_interval(hours => $1)
+`;
+
+function officialDiscoveryQueueKey(document = {}) {
+  try {
+    const url = new URL(document.url);
+    if (url.protocol !== "https:" || !OFFICIAL_HOSTS.has(url.hostname)) return "";
+    url.hash = "";
+    for (const key of [...url.searchParams.keys()]) {
+      if (/^(?:utm_|fbclid|gclid)/iu.test(key)) url.searchParams.delete(key);
+    }
+    url.searchParams.sort();
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
+const officialDiscoveryIndexQueue = createOfficialDiscoveryIndexQueue({
+  keyOf: officialDiscoveryQueueKey,
+  acceptanceWindowMs: OFFICIAL_DISCOVERY_RETENTION_HOURS * 60 * 60_000,
+  maximumAcceptedPerWindow: OFFICIAL_DISCOVERY_PROCESS_URL_BUDGET,
+  maximumAcceptedPerClient: OFFICIAL_DISCOVERY_CLIENT_URL_BUDGET,
+  writeBatch: (documents, { signal, maintenance }) => indexOfficialDiscoveryDocuments(documents, {
+    signal,
+    retireStale: maintenance,
+  }),
+});
+
 function cleanText(value = "") {
   return String(value ?? "").replace(/\s+/gu, " ").trim();
 }
@@ -76,7 +155,8 @@ function hash(value) {
 }
 
 export function normalizeCorpusQuery(value = "") {
-  return cleanText(value).normalize("NFKC").toLocaleLowerCase("et").slice(0, 180);
+  const canonicalInput = canonicalizePublicSearchQuery(value);
+  return canonicalInput.ok ? canonicalInput.query.toLocaleLowerCase("et") : "";
 }
 
 function corpusTermRoot(term) {
@@ -209,6 +289,12 @@ function canonicalUrl(value, base = PORTAL_BASE) {
   }
 }
 
+export function hydrationResourceMatches(requestedValue, finalValue) {
+  const requested = canonicalUrl(requestedValue);
+  const finalResource = canonicalUrl(finalValue);
+  return Boolean(requested && finalResource && requested === finalResource);
+}
+
 function robotsPatternRegex(pattern) {
   const endAnchored = pattern.endsWith("$");
   const body = (endAnchored ? pattern.slice(0, -1) : pattern)
@@ -264,17 +350,24 @@ export function robotsAllowsUrl(url, rules = []) {
 
 export function isApprovedCorpusRedirect(requestedValue, candidateValue) {
   try {
-    const requested = new URL(requestedValue);
-    const candidate = new URL(candidateValue, requested);
-    const allowedHosts = new Set([requested.hostname]);
-    if (["keskkonnaportaal.ee", "www.keskkonnaportaal.ee"].includes(requested.hostname)) {
-      allowedHosts.add("keskkonnaportaal.ee");
-      allowedHosts.add("www.keskkonnaportaal.ee");
-    }
-    return candidate.protocol === "https:" && allowedHosts.has(candidate.hostname);
+    const requested = validateApprovedPublicHttpsUrl(requestedValue, CORPUS_HTTPS_ORIGINS);
+    validateApprovedPublicHttpsUrl(new URL(candidateValue, requested), corpusOriginsForUrl(requested));
+    return true;
   } catch {
     return false;
   }
+}
+
+function corpusOriginsForUrl(value) {
+  const requested = validateApprovedPublicHttpsUrl(value, CORPUS_HTTPS_ORIGINS);
+  const origins = new Set([requested.origin]);
+  const hostname = requested.hostname.startsWith("www.")
+    ? requested.hostname.slice(4)
+    : requested.hostname;
+  for (const counterpart of [`https://${hostname}`, `https://www.${hostname}`]) {
+    if (CORPUS_HTTPS_ORIGINS.has(counterpart)) origins.add(counterpart);
+  }
+  return origins;
 }
 
 function sourceTierForUrl(value) {
@@ -358,6 +451,31 @@ export function deduplicateCorpusDocuments(rawDocuments = []) {
       byUrl.set(document.url, document);
       continue;
     }
+    const currentIsFederated = current.sourceKey === "official-live-search";
+    const documentIsFederated = document.sourceKey === "official-live-search";
+    if (currentIsFederated !== documentIsFederated) {
+      // Search-index snippets are discovery metadata, not a hydrated page body.
+      // Keep the non-live record's identity, body, hash and provenance atomic in
+      // either input order; only harmless topic coverage and tier quality merge.
+      const authoritative = currentIsFederated ? document : current;
+      const discovery = currentIsFederated ? current : document;
+      const merged = {
+        ...discovery,
+        ...authoritative,
+        metadata: { ...authoritative.metadata },
+      };
+      merged.contentHash = hash(JSON.stringify([
+        merged.title,
+        merged.summary,
+        merged.content,
+        merged.category,
+        merged.organization,
+        merged.publishedAt,
+        merged.topics,
+      ]));
+      byUrl.set(document.url, merged);
+      continue;
+    }
     const preferred = document.quality >= current.quality ? document : current;
     const fallback = preferred === document ? current : document;
     const merged = {
@@ -386,13 +504,26 @@ export function deduplicateCorpusDocuments(rawDocuments = []) {
   return [...byUrl.values()];
 }
 
+export function parsePortalReportedTotal(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return 0;
+  if (!/^\d{1,6}$/u.test(raw)) throw new Error("Portal search returned an invalid result count");
+  const total = Number(raw);
+  if (!Number.isSafeInteger(total) || total < 0 || total > MAX_PORTAL_CATALOG_TOTAL) {
+    throw new Error("Portal search exceeds the configured result limit");
+  }
+  return total;
+}
+
 export function parsePortalSearchPage(html, baseUrl = PORTAL_BASE) {
   const $ = load(String(html || ""));
   const mainText = cleanText($("main").text());
-  const total = Number(mainText.match(/Tulemused otsingule\s*\((\d+)\)/iu)?.[1]
+  const total = parsePortalReportedTotal(mainText.match(/Tulemused otsingule\s*\((\d+)\)/iu)?.[1]
     || mainText.match(/(\d+)\s+tulemust/iu)?.[1]
-    || 0);
-  const documents = $(".search-results__item-wrap").map((_, element) => {
+    || "");
+  const resultCards = $(".search-results__item-wrap");
+  if (resultCards.length > PORTAL_PAGE_SIZE) throw new Error("Portal search returned too many result cards");
+  const documents = resultCards.map((_, element) => {
     const card = $(element);
     const link = card.find(".search-results__item > a[href]").first();
     const url = canonicalUrl(link.attr("href"), baseUrl);
@@ -417,11 +548,18 @@ export function parsePortalSearchPage(html, baseUrl = PORTAL_BASE) {
   return { total, documents };
 }
 
-export function parsePortalSitemap(xml) {
+export function parsePortalSitemapPage(xml) {
   const $ = load(String(xml || ""), { xmlMode: true });
-  return $("url").map((_, element) => {
+  const entries = $("url");
+  if (entries.length > SITEMAP_PAGE_SIZE) throw new Error("Portal sitemap returned too many URL entries");
+  const documents = entries.map((_, element) => {
     const url = canonicalUrl($(element).find("loc").text());
     if (!url) return null;
+    try {
+      if (new URL(url).hostname !== "keskkonnaportaal.ee") return null;
+    } catch {
+      return null;
+    }
     return normalizeDocument({
       sourceKey: "portal-sitemap",
       url,
@@ -432,6 +570,11 @@ export function parsePortalSitemap(xml) {
       metadata: { source_kind: "portal-sitemap", placeholder: true },
     });
   }).get().filter(Boolean);
+  return { documents, entryCount: entries.length, rejectedCount: entries.length - documents.length };
+}
+
+export function parsePortalSitemap(xml) {
+  return parsePortalSitemapPage(xml).documents;
 }
 
 export function extractReadablePage(html, url) {
@@ -549,6 +692,19 @@ async function ensureCorpusSchema() {
           ON practice_corpus_documents (published_at DESC NULLS LAST);
         CREATE INDEX IF NOT EXISTS practice_corpus_tier_idx
           ON practice_corpus_documents (source_tier, is_available);
+        CREATE INDEX IF NOT EXISTS practice_corpus_live_seen_idx
+          ON practice_corpus_documents (last_seen_at)
+          WHERE source_key = 'official-live-search';
+
+        UPDATE practice_corpus_documents
+        SET is_available = FALSE,
+            metadata = metadata || '{"retired_reason":"official-live-search-ttl"}'::JSONB
+        WHERE source_key = 'official-live-search'
+          AND is_available = TRUE
+          AND last_seen_at < NOW() - make_interval(hours => ${OFFICIAL_DISCOVERY_RETENTION_HOURS});
+        DELETE FROM practice_corpus_documents
+        WHERE source_key = 'official-live-search'
+          AND last_seen_at < NOW() - make_interval(hours => ${OFFICIAL_DISCOVERY_RETENTION_HOURS * 2});
 
         CREATE TABLE IF NOT EXISTS practice_corpus_runs (
           id BIGSERIAL PRIMARY KEY,
@@ -620,10 +776,18 @@ async function ensureCorpusSchema() {
   return corpusSchemaPromise;
 }
 
-async function upsertDocuments(client, rawDocuments, runId) {
+function throwIfCorpusAborted(signal) {
+  if (!signal?.aborted) return;
+  throw signal.reason instanceof Error
+    ? signal.reason
+    : new DOMException("Corpus indexing was aborted", "AbortError");
+}
+
+async function upsertDocuments(client, rawDocuments, runId, { signal, discoveryOnly = false } = {}) {
   const documents = deduplicateCorpusDocuments(rawDocuments);
   let indexed = 0;
   for (let offset = 0; offset < documents.length; offset += 250) {
+    throwIfCorpusAborted(signal);
     const batch = documents.slice(offset, offset + 250);
     const result = await client.query(`
       INSERT INTO practice_corpus_documents AS current (
@@ -670,30 +834,94 @@ async function upsertDocuments(client, rawDocuments, runId) {
         content_hash TEXT
       )
       ON CONFLICT (canonical_url) DO UPDATE SET
-        external_id = CASE WHEN EXCLUDED.metadata_quality >= current.metadata_quality THEN EXCLUDED.external_id ELSE current.external_id END,
-        source_key = CASE WHEN EXCLUDED.metadata_quality >= current.metadata_quality THEN EXCLUDED.source_key ELSE current.source_key END,
-        title = CASE WHEN EXCLUDED.metadata_quality >= current.metadata_quality THEN EXCLUDED.title ELSE current.title END,
-        summary = CASE WHEN EXCLUDED.metadata_quality >= current.metadata_quality AND EXCLUDED.summary <> '' THEN EXCLUDED.summary ELSE current.summary END,
-        content = CASE WHEN EXCLUDED.content <> '' THEN EXCLUDED.content ELSE current.content END,
-        category = CASE WHEN EXCLUDED.metadata_quality >= current.metadata_quality AND EXCLUDED.category <> '' THEN EXCLUDED.category ELSE current.category END,
-        organization = CASE WHEN EXCLUDED.metadata_quality >= current.metadata_quality AND EXCLUDED.organization <> '' THEN EXCLUDED.organization ELSE current.organization END,
-        published_at = CASE WHEN EXCLUDED.metadata_quality >= current.metadata_quality THEN COALESCE(EXCLUDED.published_at, current.published_at) ELSE current.published_at END,
-        published_label = CASE WHEN EXCLUDED.metadata_quality >= current.metadata_quality AND EXCLUDED.published_label <> '' THEN EXCLUDED.published_label ELSE current.published_label END,
-        modified_at = GREATEST(current.modified_at, EXCLUDED.modified_at),
-        topics = CASE WHEN EXCLUDED.metadata_quality >= current.metadata_quality AND cardinality(EXCLUDED.topics) > 0 THEN EXCLUDED.topics ELSE current.topics END,
+        external_id = CASE
+          WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search'
+            THEN current.external_id
+          WHEN current.source_key = 'official-live-search' AND EXCLUDED.source_key <> 'official-live-search'
+            THEN EXCLUDED.external_id
+          WHEN EXCLUDED.metadata_quality >= current.metadata_quality THEN EXCLUDED.external_id
+          ELSE current.external_id
+        END,
+        source_key = CASE
+          WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search'
+            THEN current.source_key
+          WHEN current.source_key = 'official-live-search' AND EXCLUDED.source_key <> 'official-live-search'
+            THEN EXCLUDED.source_key
+          WHEN EXCLUDED.metadata_quality >= current.metadata_quality THEN EXCLUDED.source_key
+          ELSE current.source_key
+        END,
+        title = CASE
+          WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search' THEN current.title
+          WHEN current.source_key = 'official-live-search' AND EXCLUDED.source_key <> 'official-live-search' THEN EXCLUDED.title
+          WHEN EXCLUDED.metadata_quality >= current.metadata_quality THEN EXCLUDED.title ELSE current.title END,
+        summary = CASE
+          WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search' THEN current.summary
+          WHEN current.source_key = 'official-live-search' AND EXCLUDED.source_key <> 'official-live-search' THEN EXCLUDED.summary
+          WHEN EXCLUDED.metadata_quality >= current.metadata_quality AND EXCLUDED.summary <> '' THEN EXCLUDED.summary ELSE current.summary END,
+        content = CASE
+          WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search' THEN current.content
+          WHEN current.source_key = 'official-live-search' AND EXCLUDED.source_key <> 'official-live-search' THEN EXCLUDED.content
+          WHEN EXCLUDED.content <> '' THEN EXCLUDED.content ELSE current.content END,
+        category = CASE
+          WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search' THEN current.category
+          WHEN current.source_key = 'official-live-search' AND EXCLUDED.source_key <> 'official-live-search' THEN EXCLUDED.category
+          WHEN EXCLUDED.metadata_quality >= current.metadata_quality AND EXCLUDED.category <> '' THEN EXCLUDED.category ELSE current.category END,
+        organization = CASE
+          WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search' THEN current.organization
+          WHEN current.source_key = 'official-live-search' AND EXCLUDED.source_key <> 'official-live-search' THEN EXCLUDED.organization
+          WHEN EXCLUDED.metadata_quality >= current.metadata_quality AND EXCLUDED.organization <> '' THEN EXCLUDED.organization ELSE current.organization END,
+        published_at = CASE
+          WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search' THEN current.published_at
+          WHEN current.source_key = 'official-live-search' AND EXCLUDED.source_key <> 'official-live-search' THEN EXCLUDED.published_at
+          WHEN EXCLUDED.metadata_quality >= current.metadata_quality THEN COALESCE(EXCLUDED.published_at, current.published_at) ELSE current.published_at END,
+        published_label = CASE
+          WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search' THEN current.published_label
+          WHEN current.source_key = 'official-live-search' AND EXCLUDED.source_key <> 'official-live-search' THEN EXCLUDED.published_label
+          WHEN EXCLUDED.metadata_quality >= current.metadata_quality AND EXCLUDED.published_label <> '' THEN EXCLUDED.published_label ELSE current.published_label END,
+        modified_at = CASE
+          WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search' THEN current.modified_at
+          WHEN current.source_key = 'official-live-search' AND EXCLUDED.source_key <> 'official-live-search' THEN EXCLUDED.modified_at
+          ELSE GREATEST(current.modified_at, EXCLUDED.modified_at) END,
+        topics = CASE
+          WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search' THEN current.topics
+          WHEN current.source_key = 'official-live-search' AND EXCLUDED.source_key <> 'official-live-search' THEN EXCLUDED.topics
+          WHEN EXCLUDED.metadata_quality >= current.metadata_quality AND cardinality(EXCLUDED.topics) > 0 THEN EXCLUDED.topics ELSE current.topics END,
         source_tier = CASE
+          WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search' THEN current.source_tier
+          WHEN current.source_key = 'official-live-search' AND EXCLUDED.source_key <> 'official-live-search' THEN EXCLUDED.source_tier
           WHEN current.source_tier = 'reviewed' OR EXCLUDED.source_tier = 'reviewed' THEN 'reviewed'
           WHEN EXCLUDED.metadata_quality >= current.metadata_quality THEN EXCLUDED.source_tier
           ELSE current.source_tier
         END,
-        language = CASE WHEN EXCLUDED.metadata_quality >= current.metadata_quality THEN EXCLUDED.language ELSE current.language END,
-        metadata_quality = GREATEST(current.metadata_quality, EXCLUDED.metadata_quality),
-        metadata = current.metadata || EXCLUDED.metadata,
-        content_hash = CASE WHEN EXCLUDED.metadata_quality >= current.metadata_quality OR EXCLUDED.content <> '' THEN EXCLUDED.content_hash ELSE current.content_hash END,
-        fetched_at = CASE WHEN EXCLUDED.content <> '' THEN NOW() ELSE current.fetched_at END,
+        language = CASE
+          WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search' THEN current.language
+          WHEN current.source_key = 'official-live-search' AND EXCLUDED.source_key <> 'official-live-search' THEN EXCLUDED.language
+          WHEN EXCLUDED.metadata_quality >= current.metadata_quality THEN EXCLUDED.language ELSE current.language END,
+        metadata_quality = CASE
+          WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search' THEN current.metadata_quality
+          WHEN current.source_key = 'official-live-search' AND EXCLUDED.source_key <> 'official-live-search' THEN EXCLUDED.metadata_quality
+          ELSE GREATEST(current.metadata_quality, EXCLUDED.metadata_quality) END,
+        metadata = CASE
+          WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search'
+            THEN current.metadata
+          WHEN current.source_key = 'official-live-search' AND EXCLUDED.source_key <> 'official-live-search'
+            THEN EXCLUDED.metadata
+          WHEN EXCLUDED.source_key = 'official-live-search'
+            THEN (current.metadata - 'retired_reason') || EXCLUDED.metadata
+          ELSE current.metadata || EXCLUDED.metadata
+        END,
+        content_hash = CASE
+          WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search' THEN current.content_hash
+          WHEN current.source_key = 'official-live-search' AND EXCLUDED.source_key <> 'official-live-search' THEN EXCLUDED.content_hash
+          WHEN EXCLUDED.metadata_quality >= current.metadata_quality OR EXCLUDED.content <> '' THEN EXCLUDED.content_hash ELSE current.content_hash END,
+        fetched_at = CASE
+          WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search' THEN current.fetched_at
+          WHEN current.source_key = 'official-live-search' AND EXCLUDED.source_key <> 'official-live-search' THEN NOW()
+          WHEN EXCLUDED.content <> '' THEN NOW() ELSE current.fetched_at END,
         last_seen_at = NOW(),
         last_seen_run = EXCLUDED.last_seen_run,
         is_available = TRUE
+      ${discoveryOnly ? "WHERE current.source_key = 'official-live-search'" : ""}
       RETURNING id
     `, [JSON.stringify(batch.map((document) => ({
       external_id: document.externalId,
@@ -714,14 +942,42 @@ async function upsertDocuments(client, rawDocuments, runId) {
       metadata: document.metadata,
       content_hash: document.contentHash,
     }))), runId]);
+    throwIfCorpusAborted(signal);
     indexed += result.rowCount;
   }
   return indexed;
 }
 
-export async function indexOfficialDiscoveryDocuments(rawDocuments = []) {
+async function retireStaleOfficialDiscoveryDocuments(client, signal) {
+  throwIfCorpusAborted(signal);
+  const retired = await client.query(OFFICIAL_DISCOVERY_RETIRE_SQL, [OFFICIAL_DISCOVERY_RETENTION_HOURS]);
+  throwIfCorpusAborted(signal);
+  const deleted = await client.query(OFFICIAL_DISCOVERY_DELETE_SQL, [OFFICIAL_DISCOVERY_RETENTION_HOURS * 2]);
+  throwIfCorpusAborted(signal);
+  return { retired: Number(retired.rowCount || 0), deleted: Number(deleted.rowCount || 0) };
+}
+
+export function limitOfficialDiscoveryDocuments(
+  documents = [],
+  existingUrls = [],
+  currentRowCount = 0,
+  maximumRows = OFFICIAL_DISCOVERY_MAX_ROWS,
+) {
+  const existing = new Set(existingUrls.map((value) => String(value || "")));
+  const safeMaximum = Math.max(0, Math.trunc(Number(maximumRows) || 0));
+  let newSlots = Math.max(0, safeMaximum - Math.max(0, Math.trunc(Number(currentRowCount) || 0)));
+  return documents.filter((document) => {
+    if (existing.has(String(document?.url || ""))) return true;
+    if (newSlots <= 0) return false;
+    newSlots -= 1;
+    return true;
+  });
+}
+
+export async function indexOfficialDiscoveryDocuments(rawDocuments = [], { signal, retireStale = false } = {}) {
   if (!databaseEnabled()) return { status: "disabled", indexed: 0 };
-  const documents = rawDocuments.flatMap((document) => {
+  throwIfCorpusAborted(signal);
+  const documents = deduplicateCorpusDocuments(rawDocuments.flatMap((document) => {
     let url;
     try {
       url = new URL(document.url);
@@ -745,59 +1001,142 @@ export async function indexOfficialDiscoveryDocuments(rawDocuments = []) {
       quality: 4,
       metadata: { source_kind: "official-live-search", placeholder: false },
     }];
-  });
-  if (!documents.length) return { status: "empty", indexed: 0 };
+  }));
+  if (!documents.length && !retireStale) return { status: "empty", indexed: 0 };
   try {
-    const indexed = await withDatabaseClient((client) => upsertDocuments(client, documents, null));
-    return { status: "ready", indexed: Number(indexed || 0) };
-  } catch {
+    await ensureCorpusSchema();
+    const result = await withDatabaseClient(async (client) => {
+      throwIfCorpusAborted(signal);
+      await client.query("BEGIN");
+      try {
+        await client.query("SET LOCAL statement_timeout = '2000ms'");
+        // Serialize capacity admission across application replicas. Retirement
+        // runs in the same transaction before the count, so new public-search
+        // rows can never grow the retained live corpus past its hard ceiling.
+        await client.query("SELECT pg_advisory_xact_lock(hashtext('practice-official-discovery-capacity'))");
+        const maintenance = retireStale || documents.length
+          ? await retireStaleOfficialDiscoveryDocuments(client, signal)
+          : { retired: 0, deleted: 0 };
+        let admittedDocuments = documents;
+        if (documents.length) {
+          const countResult = await client.query(`
+            SELECT COUNT(*)::INTEGER AS total
+            FROM practice_corpus_documents
+            WHERE source_key = 'official-live-search'
+          `);
+          const existingResult = await client.query(`
+            SELECT canonical_url
+            FROM practice_corpus_documents
+            WHERE source_key = 'official-live-search'
+              AND canonical_url = ANY($1::TEXT[])
+          `, [documents.map((document) => document.url)]);
+          throwIfCorpusAborted(signal);
+          admittedDocuments = limitOfficialDiscoveryDocuments(
+            documents,
+            existingResult.rows.map((row) => row.canonical_url),
+            countResult.rows[0]?.total,
+            OFFICIAL_DISCOVERY_MAX_ROWS,
+          );
+        }
+        const indexed = admittedDocuments.length
+          ? await upsertDocuments(client, admittedDocuments, null, { signal, discoveryOnly: true })
+          : 0;
+        throwIfCorpusAborted(signal);
+        await client.query("COMMIT");
+        return {
+          indexed,
+          capacityDropped: Math.max(0, documents.length - admittedDocuments.length),
+          ...maintenance,
+        };
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw error;
+      }
+    });
+    return {
+      status: documents.length ? "ready" : "empty",
+      indexed: Number(result?.indexed || 0),
+      retired: Number(result?.retired || 0),
+      deleted: Number(result?.deleted || 0),
+      capacityDropped: Number(result?.capacityDropped || 0),
+    };
+  } catch (error) {
+    if (signal?.aborted) throw error;
     return { status: "degraded", indexed: 0 };
   }
 }
 
-async function fetchText(url, { timeoutMs = 15_000, retries = 2, accept = "text/html,application/xhtml+xml,application/xml,text/xml" } = {}) {
+export function enqueueOfficialDiscoveryDocuments(documents = [], options = {}) {
+  return officialDiscoveryIndexQueue.enqueue(documents, options);
+}
+
+export function scheduleOfficialDiscoveryMaintenance(options = {}) {
+  return officialDiscoveryIndexQueue.scheduleMaintenance(options);
+}
+
+export function stopOfficialDiscoveryIndexing(reason) {
+  return officialDiscoveryIndexQueue.stop(reason);
+}
+
+export function officialDiscoveryIndexStats() {
+  return officialDiscoveryIndexQueue.stats();
+}
+
+function boundedTransportHeader(headers, name) {
+  const value = typeof headers?.get === "function" ? headers.get(name) : headers?.[name];
+  return String(Array.isArray(value) ? value[0] : value || "").slice(0, 240);
+}
+
+export async function fetchCorpusText(url, {
+  timeoutMs = 15_000,
+  retries = 2,
+  accept = "text/html,application/xhtml+xml,application/xml,text/xml",
+  requestText = requestApprovedPublicHttpsText,
+  lookupImpl,
+  requestImpl,
+} = {}) {
+  const requestedUrl = validateApprovedPublicHttpsUrl(url, CORPUS_HTTPS_ORIGINS).toString();
+  const approvedOrigins = corpusOriginsForUrl(requestedUrl);
+  const maximumRetries = Math.max(0, Math.min(Number.isFinite(Number(retries)) ? Math.trunc(Number(retries)) : 2, 3));
   let lastError;
-  for (let attempt = 0; attempt <= retries; attempt += 1) {
+  for (let attempt = 0; attempt <= maximumRetries; attempt += 1) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const boundedTimeoutMs = Math.max(250, Math.min(Number(timeoutMs) || 15_000, 30_000));
+    const timer = setTimeout(() => controller.abort(), boundedTimeoutMs);
     try {
-      let currentUrl = new URL(url).toString();
-      let response;
-      for (let redirectCount = 0; redirectCount <= 5; redirectCount += 1) {
-        response = await fetch(currentUrl, {
-          headers: {
-            Accept: accept,
-            "User-Agent": "Keskkonnaportaali-praktika-corpus/1.0 (+https://praktika.arleserver.cfd)",
-          },
-          redirect: "manual",
-          signal: controller.signal,
-        });
-        if (![301, 302, 303, 307, 308].includes(response.status)) break;
-        const location = response.headers.get("location");
-        const nextUrl = location ? new URL(location, currentUrl).toString() : "";
-        if (!nextUrl || !isApprovedCorpusRedirect(url, nextUrl)) {
-          throw new Error("Corpus source redirected outside its approved host");
-        }
-        if (redirectCount === 5) throw new Error("Corpus source redirected too many times");
-        currentUrl = nextUrl;
+      const response = await requestText(requestedUrl, {
+        approvedOrigins,
+        headers: {
+          Accept: accept,
+          "Accept-Encoding": "identity",
+          "User-Agent": "Keskkonnaportaali-praktika-corpus/1.0 (+https://praktika.arleserver.cfd)",
+        },
+        signal: controller.signal,
+        maximumBytes: MAX_FETCH_BYTES,
+        maximumRedirects: 3,
+        lookupImpl,
+        requestImpl,
+      });
+      if (response.status < 200 || response.status >= 300) {
+        throw new Error(`Corpus source returned ${response.status}`);
       }
-      if (!response.ok) throw new Error(`Corpus source returned ${response.status}`);
-      if (!isApprovedCorpusRedirect(url, currentUrl)) {
-        throw new Error("Corpus source redirected outside its approved host");
+      const finalUrl = validateApprovedPublicHttpsUrl(
+        response.url || requestedUrl,
+        approvedOrigins,
+      ).toString();
+      const body = String(response.body || "");
+      if (Buffer.byteLength(body, "utf8") > MAX_FETCH_BYTES) {
+        throw new Error("Corpus source response is too large");
       }
-      const size = Number(response.headers.get("content-length") || 0);
-      if (size > MAX_FETCH_BYTES) throw new Error("Corpus source is too large");
-      const buffer = new Uint8Array(await response.arrayBuffer());
-      if (buffer.byteLength > MAX_FETCH_BYTES) throw new Error("Corpus source is too large");
       return {
-        text: new TextDecoder().decode(buffer),
-        contentType: String(response.headers.get("content-type") || ""),
-        robotsTag: String(response.headers.get("x-robots-tag") || ""),
-        finalUrl: currentUrl,
+        text: body,
+        contentType: boundedTransportHeader(response.headers, "content-type"),
+        robotsTag: boundedTransportHeader(response.headers, "x-robots-tag"),
+        finalUrl,
       };
     } catch (error) {
       lastError = error;
-      if (attempt < retries) await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+      if (attempt < maximumRetries) await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
     } finally {
       clearTimeout(timer);
     }
@@ -807,7 +1146,7 @@ async function fetchText(url, { timeoutMs = 15_000, retries = 2, accept = "text/
 
 async function assertPortalRobotsAllowed(url) {
   if (!portalRobotsPromise || Date.now() - portalRobotsFetchedAt >= ROBOTS_CACHE_MS) {
-    portalRobotsPromise = fetchText(PORTAL_ROBOTS, {
+    portalRobotsPromise = fetchCorpusText(PORTAL_ROBOTS, {
       accept: "text/plain",
       retries: 1,
     }).then((response) => {
@@ -836,7 +1175,7 @@ function portalSearchUrl(query, page, pageSize = PORTAL_PAGE_SIZE) {
 async function fetchPortalSearchPage(query, page, pageSize = PORTAL_PAGE_SIZE) {
   const url = portalSearchUrl(query, page, pageSize);
   await assertPortalRobotsAllowed(url);
-  const response = await fetchText(url);
+  const response = await fetchCorpusText(url);
   return parsePortalSearchPage(response.text, response.finalUrl);
 }
 
@@ -845,21 +1184,39 @@ async function crawlPortalSearch(query, onDocuments, { concurrency = 2, delayMs 
   if ((!query && first.total === 0) || (first.total > 0 && first.documents.length === 0)) {
     throw new Error("Portal search returned an incomplete first page");
   }
+  if ((first.total === 0 && first.documents.length > 0) || first.documents.length > first.total) {
+    throw new Error("Portal search returned an inconsistent result count");
+  }
   await onDocuments(first.documents, 0);
   const orderedUrls = first.documents.map((document) => document.url);
+  const seenUrls = new Set(orderedUrls);
   const pages = Math.max(1, Math.ceil(first.total / PORTAL_PAGE_SIZE));
-  const remaining = Array.from({ length: Math.max(0, pages - 1) }, (_, index) => index + 1);
-  for (let offset = 0; offset < remaining.length; offset += concurrency) {
-    const pageNumbers = remaining.slice(offset, offset + concurrency);
+  if (pages > MAX_PORTAL_CATALOG_PAGES) {
+    throw new Error("Portal search exceeds the configured page limit");
+  }
+  const boundedConcurrency = Math.max(1, Math.min(Number(concurrency) || 2, 4));
+  for (let offset = 1; offset < pages; offset += boundedConcurrency) {
+    const pageNumbers = [];
+    for (let page = offset; page < Math.min(pages, offset + boundedConcurrency); page += 1) {
+      pageNumbers.push(page);
+    }
     const results = await Promise.all(pageNumbers.map((page) => fetchPortalSearchPage(query, page)));
     for (const [index, result] of results.entries()) {
       if (pageNumbers[index] * PORTAL_PAGE_SIZE < first.total && result.documents.length === 0) {
         throw new Error("Portal search returned an incomplete result page");
       }
+      if (orderedUrls.length + result.documents.length > MAX_PORTAL_CATALOG_TOTAL) {
+        throw new Error("Portal search exceeds the configured document limit");
+      }
+      const pageUrls = result.documents.map((document) => document.url);
+      if (pageUrls.length && pageUrls.every((url) => seenUrls.has(url))) {
+        throw new Error("Portal search repeated a result page");
+      }
       await onDocuments(result.documents, pageNumbers[index]);
-      orderedUrls.push(...result.documents.map((document) => document.url));
+      orderedUrls.push(...pageUrls);
+      for (const url of pageUrls) seenUrls.add(url);
     }
-    if (offset + concurrency < remaining.length && delayMs > 0) {
+    if (offset + boundedConcurrency < pages && delayMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
@@ -874,16 +1231,28 @@ async function crawlPortalSearch(query, onDocuments, { concurrency = 2, delayMs 
 
 async function crawlPortalSitemap({ delayMs = 120 } = {}) {
   const documents = [];
+  const seenUrls = new Set();
   let pages = 0;
   for (let page = 1; page <= MAX_SITEMAP_PAGES; page += 1) {
     const url = `${PORTAL_SITEMAP}?page=${page}`;
     await assertPortalRobotsAllowed(url);
-    const response = await fetchText(url);
-    const pageDocuments = parsePortalSitemap(response.text);
+    const response = await fetchCorpusText(url);
+    const parsedPage = parsePortalSitemapPage(response.text);
+    const pageDocuments = parsedPage.documents;
+    if (parsedPage.rejectedCount > 0) {
+      throw new Error("Portal sitemap contains a URL outside its approved host policy");
+    }
     if (pageDocuments.length === 0) {
       throw new Error("Portal sitemap returned an empty or unparseable page");
     }
+    if (pageDocuments.every((document) => seenUrls.has(document.url))) {
+      throw new Error("Portal sitemap repeated a complete page");
+    }
+    if (documents.length + pageDocuments.length > MAX_SITEMAP_PAGES * SITEMAP_PAGE_SIZE) {
+      throw new Error("Portal sitemap exceeds the configured document limit");
+    }
     documents.push(...pageDocuments);
+    for (const document of pageDocuments) seenUrls.add(document.url);
     pages = page;
     if (pageDocuments.length < SITEMAP_PAGE_SIZE) break;
     if (page === MAX_SITEMAP_PAGES) {
@@ -909,7 +1278,7 @@ async function wikipediaDocuments() {
     url.searchParams.set("titles", title);
     url.searchParams.set("formatversion", "2");
     url.searchParams.set("format", "json");
-    const response = await fetchText(url.toString(), { accept: "application/json", retries: 1 });
+    const response = await fetchCorpusText(url.toString(), { accept: "application/json", retries: 1 });
     const page = JSON.parse(response.text)?.query?.pages?.[0];
     const pageUrl = canonicalUrl(page?.fullurl || `https://et.wikipedia.org/wiki/${encodeURIComponent(page?.title || title)}`);
     if (!page || page.missing || !pageUrl || !page.extract) return null;
@@ -974,8 +1343,12 @@ async function hydrateUrls(client, urls, runId, { limit = 0, concurrency = 3, de
     const batch = candidates.slice(offset, offset + concurrency);
     const results = await Promise.allSettled(batch.map(async (url) => {
       await assertPortalRobotsAllowed(url);
-      const response = await fetchText(url, { retries: 1 });
+      const response = await fetchCorpusText(url, { retries: 1 });
       if (!response.contentType.includes("text/html")) return false;
+      // The transport may follow only approved HTTPS origins, but a same-origin
+      // redirect can still name a different resource. Never promote that body
+      // under the pre-redirect row's title, organization, category, or URL.
+      if (!hydrationResourceMatches(url, response.finalUrl)) return false;
       const robots = pageRobotsPolicy(response.text, response.robotsTag);
       if (robots.noindex) {
         await client.query(`
@@ -990,8 +1363,11 @@ async function hydrateUrls(client, urls, runId, { limit = 0, concurrency = 3, de
       if (extracted.content.length < 80) return false;
       await client.query(`
         UPDATE practice_corpus_documents
-        SET title = CASE WHEN metadata_quality <= 1 AND $2 <> '' THEN $2 ELSE title END,
+        SET title = CASE WHEN $2 <> '' THEN $2 ELSE title END,
+            source_key = 'official-page-hydration',
+            summary = LEFT($3, 500),
             content = $3,
+            topics = ARRAY[]::TEXT[],
             content_hash = $4,
             metadata = (metadata - 'robots_noindex') || $5::JSONB,
             metadata_quality = GREATEST(metadata_quality, 3),
@@ -1000,7 +1376,10 @@ async function hydrateUrls(client, urls, runId, { limit = 0, concurrency = 3, de
             last_seen_run = $6,
             is_available = TRUE
         WHERE canonical_url = $1
-      `, [url, extracted.title, extracted.content, hash(extracted.content), JSON.stringify({ hydrated: true }), runId]);
+      `, [url, extracted.title, extracted.content, hash(extracted.content), JSON.stringify({
+        hydrated: true,
+        source_kind: "official-page-hydration",
+      }), runId]);
       return true;
     }));
     hydrated += results.filter((result) => result.status === "fulfilled" && result.value).length;
@@ -1165,7 +1544,7 @@ export async function syncPortalCorpus({
         const retired = await client.query(`
           UPDATE practice_corpus_documents
           SET is_available = FALSE
-          WHERE source_key IN ('portal-sitemap', 'portal-catalog')
+          WHERE source_key IN ('portal-sitemap', 'portal-catalog', 'official-page-hydration')
             AND (
               canonical_url LIKE 'https://keskkonnaportaal.ee/%'
               OR canonical_url LIKE 'https://www.keskkonnaportaal.ee/%'
@@ -1208,7 +1587,19 @@ function formatPublished(row) {
     : "";
 }
 
-function publicSearchItem(row, includeContent = false) {
+export function publicSearchItem(row, includeContent = false) {
+  const isFederatedDiscovery = row.source_key === "official-live-search";
+  const hydrationMetadata = row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+    ? row.metadata
+    : {};
+  const isValidatedPageHydration = row.source_key === "official-page-hydration"
+    && hydrationMetadata.hydrated === true
+    && hydrationMetadata.source_kind === "official-page-hydration"
+    && boundedText(row.content, 80_000).length >= 80
+    && /^[a-f0-9]{64}$/u.test(String(row.content_hash || ""));
+  const fetchedAt = row.fetched_at && Number.isFinite(new Date(row.fetched_at).getTime())
+    ? new Date(row.fetched_at).toISOString()
+    : null;
   const item = {
     id: `corpus-${row.id}`,
     title: row.title,
@@ -1221,6 +1612,25 @@ function publicSearchItem(row, includeContent = false) {
     sourceTier: row.source_tier,
     _publishedAt: row.published_at ? new Date(row.published_at).toISOString().slice(0, 10) : null,
     _relevance: Number(row.relevance || 0),
+    ...(isValidatedPageHydration ? {
+      retrieval: "approved-page-hydration",
+      delivery: "catalog-and-bounded-hydration",
+      evidencePolicy: "versioned",
+      _answerEvidenceEligible: true,
+      _evidenceVersion: row.content_hash,
+      _evidenceStatusAt: fetchedAt,
+      freshness: {
+        class: "cached-official-page",
+        basis: "retrieved-at",
+        maxAgeMs: APPROVED_PAGE_EVIDENCE_MAX_AGE_MS,
+        requiresSourceTimestamp: true,
+      },
+    } : {
+      retrieval: isFederatedDiscovery ? "official-federated-search" : "catalogue-directory",
+      delivery: isFederatedDiscovery ? "federated-discovery" : "catalog-and-bounded-hydration",
+      evidencePolicy: "route-only",
+      _answerEvidenceEligible: false,
+    }),
   };
   if (includeContent) {
     item.content = boundedText(row.content, 15_000);
@@ -1229,13 +1639,22 @@ function publicSearchItem(row, includeContent = false) {
   return item;
 }
 
-async function snapshotResults(query, page, pageSize, includeContent) {
+function throwIfCorpusSearchClosed(signal, deadlineAt) {
+  if (!signal?.aborted && (!Number.isFinite(deadlineAt) || Date.now() < deadlineAt)) return;
+  throw signal?.reason instanceof Error
+    ? signal.reason
+    : new DOMException("The corpus search window closed", "AbortError");
+}
+
+async function snapshotResults(query, page, pageSize, includeContent, queryOptions) {
+  throwIfCorpusSearchClosed(queryOptions?.signal, queryOptions?.deadlineAt);
   const snapshot = await databaseQuery(`
     SELECT upstream_total, stored_occurrence_count, distinct_url_count,
            document_urls, captured_at
     FROM practice_corpus_query_snapshots
     WHERE query_hash = $1 AND captured_at > NOW() - INTERVAL '72 hours'
-  `, [hash(normalizeCorpusQuery(query))]);
+  `, [hash(normalizeCorpusQuery(query))], queryOptions);
+  throwIfCorpusSearchClosed(queryOptions?.signal, queryOptions?.deadlineAt);
   if (!snapshot?.rows[0]) return null;
   const summary = summarizeUrlOccurrences(
     Array.isArray(snapshot.rows[0].document_urls) ? snapshot.rows[0].document_urls : [],
@@ -1256,12 +1675,17 @@ async function snapshotResults(query, page, pageSize, includeContent) {
     };
   }
   const rows = await databaseQuery(`
-    SELECT id, canonical_url, title, summary, content, organization, category,
-           published_at, published_label, topics, source_tier, content_hash
+    SELECT id, source_key, canonical_url, title, summary, content, organization, category,
+           published_at, published_label, topics, source_tier, content_hash, fetched_at, metadata
     FROM practice_corpus_documents
     WHERE canonical_url = ANY($1::TEXT[]) AND is_available = TRUE
       AND COALESCE(metadata->>'robots_noindex', 'false') <> 'true'
-  `, [selected]);
+      AND (
+        source_key <> 'official-live-search'
+        OR last_seen_at >= NOW() - make_interval(hours => ${OFFICIAL_DISCOVERY_RETENTION_HOURS})
+      )
+  `, [selected], queryOptions);
+  throwIfCorpusSearchClosed(queryOptions?.signal, queryOptions?.deadlineAt);
   const byUrl = new Map((rows?.rows || []).map((row) => [row.canonical_url, row]));
   return {
     status: "ready",
@@ -1288,6 +1712,8 @@ export async function searchCorpus(query, {
   filters = {},
   resultOffset = null,
   excludeUrls = [],
+  signal,
+  deadlineAt,
 } = {}) {
   const normalized = normalizeCorpusQuery(query);
   const safePage = Math.max(1, Math.min(Number(page) || 1, 500));
@@ -1313,10 +1739,13 @@ export async function searchCorpus(query, {
     };
   }
   try {
+    throwIfCorpusSearchClosed(signal, deadlineAt);
     await ensureCorpusSchema();
+    throwIfCorpusSearchClosed(signal, deadlineAt);
+    const queryOptions = { signal, deadlineAt };
     const hasFilters = appliedFilters.source !== "all" || appliedFilters.category || appliedFilters.year || appliedFilters.sort !== "relevance";
     if (preferSnapshot && !hasFilters) {
-      const snapshot = await snapshotResults(normalized, safePage, safePageSize, includeContent);
+      const snapshot = await snapshotResults(normalized, safePage, safePageSize, includeContent, queryOptions);
       if (snapshot) {
         const pageableTotal = snapshot.distinctTotal || snapshot.total;
         return {
@@ -1357,7 +1786,7 @@ export async function searchCorpus(query, {
       safeOffset,
       safeExcludedUrls,
     ];
-    const [result, facetResult] = await Promise.all([databaseQuery(`
+    const [resultState, facetState] = await Promise.allSettled([databaseQuery(`
       WITH parameters AS (
         SELECT
           websearch_to_tsquery('simple', public.unaccent($1)) AS web_query,
@@ -1398,6 +1827,10 @@ export async function searchCorpus(query, {
         FROM practice_corpus_documents document, parameters
         WHERE document.is_available = TRUE
           AND COALESCE(document.metadata->>'robots_noindex', 'false') <> 'true'
+          AND (
+            document.source_key <> 'official-live-search'
+            OR document.last_seen_at >= NOW() - make_interval(hours => ${OFFICIAL_DISCOVERY_RETENTION_HOURS})
+          )
           AND (cardinality($4::TEXT[]) = 0 OR document.source_tier = ANY($4::TEXT[]))
           AND ($5::TEXT IS NULL OR document.category = $5::TEXT)
           AND ($6::INTEGER IS NULL OR EXTRACT(YEAR FROM document.published_at)::INTEGER = $6::INTEGER)
@@ -1419,13 +1852,13 @@ export async function searchCorpus(query, {
         SELECT ranked.*, FLOOR(GREATEST(relevance, 0) / 5.0) AS relevance_bucket
         FROM ranked
       )
-      SELECT id, canonical_url, title, summary, content, organization, category,
-             published_at, published_label, topics, source_tier, content_hash, relevance,
+      SELECT id, source_key, canonical_url, title, summary, content, organization, category,
+             published_at, published_label, topics, source_tier, content_hash, fetched_at, metadata, relevance,
              COUNT(*) OVER()::INTEGER AS full_count
       FROM bucketed
       ORDER BY ${orderClause}
       LIMIT $8 OFFSET $9
-    `, parameters), databaseQuery(`
+    `, parameters, queryOptions), databaseQuery(`
       WITH parameters AS (
         SELECT
           websearch_to_tsquery('simple', public.unaccent($1)) AS web_query,
@@ -1436,6 +1869,10 @@ export async function searchCorpus(query, {
         FROM practice_corpus_documents document, parameters
         WHERE document.is_available = TRUE
           AND COALESCE(document.metadata->>'robots_noindex', 'false') <> 'true'
+          AND (
+            document.source_key <> 'official-live-search'
+            OR document.last_seen_at >= NOW() - make_interval(hours => ${OFFICIAL_DISCOVERY_RETENTION_HOURS})
+          )
           AND (
             document.search_vector @@ parameters.prefix_query
             OR document.search_vector @@ parameters.web_query
@@ -1458,7 +1895,14 @@ export async function searchCorpus(query, {
           WHERE published_at IS NOT NULL AND published_at <= CURRENT_DATE
           GROUP BY EXTRACT(YEAR FROM published_at) ORDER BY value DESC LIMIT 12
         ) item), '[]'::JSONB) AS years
-    `, [normalized, prefixQuery])]);
+    `, [normalized, prefixQuery], queryOptions)]);
+    // Join both parallel database operations before the request-owned corpus
+    // work can settle and release its admission slot.
+    throwIfCorpusSearchClosed(signal, deadlineAt);
+    if (resultState.status === "rejected") throw resultState.reason;
+    if (facetState.status === "rejected") throw facetState.reason;
+    const result = resultState.value;
+    const facetResult = facetState.value;
     const rows = result?.rows || [];
     const total = Number(rows[0]?.full_count || 0);
     const facetRow = facetResult?.rows?.[0] || {};
@@ -1478,7 +1922,9 @@ export async function searchCorpus(query, {
       },
       appliedFilters,
     };
-  } catch {
+  } catch (error) {
+    if (signal?.aborted || (Number.isFinite(deadlineAt) && Date.now() >= deadlineAt)
+      || error?.name === "AbortError") throw error;
     return {
       status: "degraded",
       mode: "local-index",
@@ -1508,7 +1954,7 @@ export async function searchCorpusEvidence(query, limit = 12, { filters = {} } =
       .map((item) => ({
         ...item,
         tags: item.topics,
-        retrieval: "local-corpus",
+        retrieval: item.retrieval || "local-corpus",
       })),
   };
 }
@@ -1567,6 +2013,10 @@ export async function corpusStats() {
         MAX(last_seen_at) AS indexed_at
       FROM practice_corpus_documents
       WHERE is_available = TRUE
+        AND (
+          source_key <> 'official-live-search'
+          OR last_seen_at >= NOW() - make_interval(hours => ${OFFICIAL_DISCOVERY_RETENTION_HOURS})
+        )
     `);
     const lastRun = await databaseQuery(`
       SELECT status, finished_at, details

@@ -18,6 +18,7 @@ import {
 import {
   assessEvidence,
   assessSearchQuery,
+  canonicalizePublicSearchQuery,
   composeScopeResponse,
   composeSearchResponse,
   forestryIntentServiceDocumentIds,
@@ -28,7 +29,7 @@ import {
   textHasQueryRoot,
 } from "./search.mjs";
 
-export const SEARCH_RESPONSE_REVISION = "answer-v21-researched-forestry-answers";
+export const SEARCH_RESPONSE_REVISION = "answer-v28-canonical-query-boundary";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 
 function rankPortalDocuments(query, documents) {
@@ -455,6 +456,13 @@ function remainingBudget(deadlineAt, reserveMs = 0) {
   return Math.max(0, deadlineAt - Date.now() - reserveMs);
 }
 
+function throwIfRequestAborted(signal) {
+  if (!signal?.aborted) return;
+  throw signal.reason instanceof Error
+    ? signal.reason
+    : new DOMException("The operation was aborted", "AbortError");
+}
+
 export function isSearchCacheEnabled(value = process.env.SEARCH_CACHE_ENABLED) {
   return String(value ?? "true").toLocaleLowerCase("et") !== "false";
 }
@@ -489,23 +497,34 @@ export async function createPortalDraft(query, {
   signal,
   retrievalQuery = query,
   searchResults,
+  clientKey = "unknown",
 } = {}) {
+  throwIfRequestAborted(signal);
   const listing = searchResults || await prepareRankedSearchResults(retrievalQuery, {
     page: 1,
     pageSize: 12,
     deadlineAt,
     signal,
+    clientKey,
   });
   const candidates = evidenceDocumentsFromListing(listing);
+  // Route-only federated cards stay visible as discovery results but cannot
+  // become answer evidence. Hydrate only independently eligible sources so a
+  // search never spends six page requests on cards discarded immediately.
   const ranked = rankPortalDocuments(retrievalQuery, candidates);
   const hydrationBudget = remainingBudget(deadlineAt, 7_000);
-  const hydrated = hydrationBudget >= 500
-    ? await hydrateOfficialDocuments(ranked.slice(0, 10), 10, {
+  const answerCandidates = ranked.slice(0, 10);
+  const hydratedTop = hydrationBudget >= 500
+    ? await hydrateOfficialDocuments(ranked.slice(0, 6), 6, {
       timeoutMs: Math.min(2_000, hydrationBudget),
       signal,
     })
-    : ranked.slice(0, 8);
-  const reranked = rankPortalDocuments(retrievalQuery, hydrated);
+    : answerCandidates.slice(0, 6);
+  throwIfRequestAborted(signal);
+  const hydratedById = new Map(hydratedTop.map((document) => [document.id, document]));
+  const hydrated = answerCandidates.map((document) => hydratedById.get(document.id) || document);
+  const eligibleHydrated = evidenceDocumentsFromListing({ items: hydrated });
+  const reranked = rankPortalDocuments(retrievalQuery, eligibleHydrated);
   const forestBalance = composeForestHarvestBalanceAnswer(retrievalQuery, reranked);
   const conventionalQuality = assessEvidence(retrievalQuery, reranked);
   const plannedEvidence = selectAnswerEvidence(retrievalQuery, reranked);
@@ -613,9 +632,18 @@ async function searchWithinBudget(cleanQuery, {
   searchResults,
   filters = {},
   conversationContext = "",
+  llmClientKey = "unknown",
   useCache = true,
   onDraft,
 }) {
+  throwIfRequestAborted(signal);
+  const assessment = assessSearchQuery(assessmentQuery);
+  // Out-of-scope and private-person requests are never cache keys, database
+  // telemetry, or model/retrieval inputs. Keep this defensive boundary before
+  // even a cache read so legacy rows cannot bypass the current classifier.
+  if (assessment.kind === "out-of-scope") {
+    return publicResponse(composeScopeResponse(cleanQuery, assessment));
+  }
   const defaultFilters = !filters?.category && !filters?.year
     && [undefined, "", "all"].includes(filters?.source)
     && [undefined, "", "relevance"].includes(filters?.sort);
@@ -624,12 +652,12 @@ async function searchWithinBudget(cleanQuery, {
   const listingBackedCache = cacheEnabled && Boolean(searchResults?.items?.length);
   if (listingBackedCache) {
     const cached = await readSearchCache(cleanQuery, cacheRevision);
+    throwIfRequestAborted(signal);
     if (cached && cachedSourcesBelongToListing(cached, searchResults)) {
       return cached;
     }
   }
 
-  const assessment = assessSearchQuery(assessmentQuery);
   let draft;
   if (assessment.kind !== "answerable") {
     draft = composeScopeResponse(cleanQuery, assessment);
@@ -655,12 +683,15 @@ async function searchWithinBudget(cleanQuery, {
       signal,
       retrievalQuery,
       searchResults,
+      clientKey: llmClientKey,
     });
   }
+  throwIfRequestAborted(signal);
   draft.generatedAt = new Date().toISOString();
   const canGenerate = shouldGenerateGroundedAnswer(draft);
   const llmBudget = remainingBudget(deadlineAt, 300);
   if (canGenerate && llmBudget >= 500 && typeof onDraft === "function") {
+    throwIfRequestAborted(signal);
     onDraft(publicResponse(draft));
   }
   const llmResult = canGenerate && llmBudget >= 500
@@ -668,8 +699,10 @@ async function searchWithinBudget(cleanQuery, {
       timeoutMs: llmBudget,
       signal,
       conversationContext,
+      clientKey: llmClientKey,
     })
     : { answer: null, status: "not-applicable", provider: "deterministic-current-evidence" };
+  throwIfRequestAborted(signal);
 
   if (llmResult.answer) draft.answer = llmResult.answer;
   if (llmResult.related?.length) draft.related = mergeRelatedQuestions(llmResult.related, draft.related, 6);
@@ -681,12 +714,13 @@ async function searchWithinBudget(cleanQuery, {
     && Object.values(draft.evidence?.states || {}).some((state) => state === "unavailable");
   const structuredStale = evidenceKind === "structured-forest-balance"
     && draft.sources.some((source) => source._stale === true);
-  const cacheResponse = llmResult.status === "ready"
-    || evidenceKind === "safe-abstention"
+  const cacheResponse = llmResult.status !== "ready" && (
+    evidenceKind === "safe-abstention"
     || evidenceKind === "needs-clarification"
     || evidenceKind === "official-live-routing"
     || (evidenceKind === "structured-forest-balance" && !structuredStale)
-    || (evidenceKind === "official-spatial-snapshot" && !spatialDegraded);
+    || (evidenceKind === "official-spatial-snapshot" && !spatialDegraded)
+  );
   const ttlMinutes = ["official-live-routing", "structured-forest-balance"].includes(evidenceKind) ? 5 : 20;
 
   if (requestCanStillPersist({ signal, deadlineAt })) {
@@ -755,16 +789,63 @@ export function searchTimeoutFallback(cleanQuery, {
   return publicResponse(draft);
 }
 
-export async function settleWithinDeadline(operation, timeoutMs, fallback, controller = new AbortController()) {
+export function createDeadlineCleanupLease(finalize = () => undefined) {
+  const pending = new Set();
+  let finished = false;
+  let finalized = false;
+  const maybeFinalize = () => {
+    if (finalized || !finished || pending.size) return;
+    finalized = true;
+    finalize();
+  };
+  const track = (operation) => {
+    if (!operation) return Promise.resolve();
+    const cleanup = Promise.resolve(operation).catch(() => undefined);
+    pending.add(cleanup);
+    cleanup.then(() => {
+      pending.delete(cleanup);
+      maybeFinalize();
+    });
+    return cleanup;
+  };
+  return {
+    track,
+    finish() {
+      finished = true;
+      maybeFinalize();
+    },
+    pendingCount() {
+      return pending.size;
+    },
+  };
+}
+
+export async function settleWithinDeadline(
+  operation,
+  timeoutMs,
+  fallback,
+  controller = new AbortController(),
+  { onBackgroundCleanup } = {},
+) {
   let timer;
+  let timedOut = false;
+  const operationPromise = Promise.resolve(operation);
   const timeout = new Promise((resolve) => {
     timer = setTimeout(() => {
-      controller.abort();
-      resolve(typeof fallback === "function" ? fallback() : fallback);
+      timedOut = true;
+      controller.abort(new DOMException("The search deadline expired", "AbortError"));
+      resolve(undefined);
     }, timeoutMs);
   });
   try {
-    return await Promise.race([Promise.resolve(operation), timeout]);
+    const result = await Promise.race([operationPromise, timeout]);
+    if (!timedOut) return result;
+    const cleanup = operationPromise.then(() => undefined, () => undefined);
+    // Return the bounded response immediately. HTTP owners pass this cleanup
+    // promise to a lease which retains their admission slot until the losing
+    // database/upstream operation has actually released its resources.
+    if (typeof onBackgroundCleanup === "function") onBackgroundCleanup(cleanup);
+    return typeof fallback === "function" ? fallback() : fallback;
   } finally {
     clearTimeout(timer);
   }
@@ -772,17 +853,34 @@ export async function settleWithinDeadline(operation, timeoutMs, fallback, contr
 
 export async function searchEnvironmentLive(query, options = {}) {
   const startedAt = Number(options.startedAt) || Date.now();
-  const cleanQuery = String(query ?? "").replace(/\s+/g, " ").trim().slice(0, 180);
-  if (!cleanQuery) return composeSearchResponse("", [], { limit: 3, total: 0 });
-  const directAssessment = assessSearchQuery(cleanQuery);
-  if (directAssessment.reason === "unsafe-instruction") {
-    return publicResponse(composeScopeResponse(cleanQuery, directAssessment));
+  const queryInput = canonicalizePublicSearchQuery(query);
+  if (queryInput.reason === "empty") return composeSearchResponse("", [], { limit: 3, total: 0 });
+  const directAssessment = assessSearchQuery(queryInput.ok ? queryInput.query : query);
+  if (!queryInput.ok || directAssessment.kind === "out-of-scope") {
+    return publicResponse(composeScopeResponse(queryInput.ok ? queryInput.query : "", directAssessment));
   }
+  const cleanQuery = queryInput.query;
+  const assessmentInput = canonicalizePublicSearchQuery(options.assessmentQuery ?? cleanQuery);
+  const retrievalInput = canonicalizePublicSearchQuery(options.retrievalQuery ?? cleanQuery);
+  if (!assessmentInput.ok || !retrievalInput.ok) {
+    const rejectedValue = !assessmentInput.ok ? options.assessmentQuery : options.retrievalQuery;
+    return publicResponse(composeScopeResponse("", assessSearchQuery(rejectedValue)));
+  }
+  const contextInput = canonicalizePublicSearchQuery(options.conversationContext || "", {
+    maximumLength: 1_400,
+  });
+  const safeConversationContext = contextInput.ok ? contextInput.query : "";
+  const canonicalFallbackOptions = {
+    ...options,
+    assessmentQuery: assessmentInput.query,
+    retrievalQuery: retrievalInput.query,
+    conversationContext: safeConversationContext,
+  };
 
   const configuredDeadlineMs = Math.max(1_000, Math.min(Number(process.env.SEARCH_DEADLINE_MS) || DEFAULT_SEARCH_DEADLINE_MS, 15_000));
   const absoluteDeadline = Number(options.deadlineAt) || startedAt + configuredDeadlineMs;
   if (absoluteDeadline <= Date.now()) {
-    return searchTimeoutFallback(cleanQuery, options);
+    return searchTimeoutFallback(cleanQuery, canonicalFallbackOptions);
   }
   const deadlineMs = Math.max(1, Math.min(configuredDeadlineMs, absoluteDeadline - Date.now()));
   const controller = new AbortController();
@@ -793,13 +891,25 @@ export async function searchEnvironmentLive(query, options = {}) {
     startedAt,
     deadlineAt: absoluteDeadline,
     signal,
-    assessmentQuery: options.assessmentQuery || cleanQuery,
-    retrievalQuery: options.retrievalQuery || cleanQuery,
+    assessmentQuery: assessmentInput.query,
+    retrievalQuery: retrievalInput.query,
     searchResults: options.searchResults,
     filters: options.filters || {},
-    conversationContext: options.conversationContext || "",
+    conversationContext: safeConversationContext,
+    llmClientKey: options.llmClientKey || "unknown",
     useCache: options.useCache !== false,
     onDraft: options.onDraft,
-  }).catch(() => searchTimeoutFallback(cleanQuery, { ...options, reason: "source-error" }));
-  return settleWithinDeadline(operation, deadlineMs, () => searchTimeoutFallback(cleanQuery, options), controller);
+  }).catch((error) => {
+    if (options.signal?.aborted) {
+      throw options.signal.reason instanceof Error ? options.signal.reason : error;
+    }
+    return searchTimeoutFallback(cleanQuery, { ...canonicalFallbackOptions, reason: "source-error" });
+  });
+  return settleWithinDeadline(
+    operation,
+    deadlineMs,
+    () => searchTimeoutFallback(cleanQuery, canonicalFallbackOptions),
+    controller,
+    { onBackgroundCleanup: options.onBackgroundCleanup },
+  );
 }

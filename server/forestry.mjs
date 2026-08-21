@@ -389,6 +389,8 @@ function sourceFor(reference) {
     locator: reference.locator,
     tags: [source.source_type, source.data_year ? String(source.data_year) : null].filter(Boolean),
     sourceTier: "reviewed",
+    evidencePolicy: "claim-specific",
+    _answerEvidenceEligible: true,
   };
 }
 

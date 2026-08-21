@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { load } from "cheerio";
+import { requestApprovedPublicHttpsText } from "../server/public-https.mjs";
+import { AUDIT_CITATION_ORIGINS } from "./audit-citation-policy.mjs";
+import { requestBoundedAuditJson } from "./audit-http.mjs";
 
 const options = Object.fromEntries(process.argv.slice(2).map((argument) => {
   const [key, ...rest] = argument.replace(/^--/u, "").split("=");
@@ -65,7 +68,7 @@ async function search(query) {
   const waitMs = Math.max(0, intervalMs - (Date.now() - lastRequestAt));
   if (waitMs) await new Promise((resolve) => setTimeout(resolve, waitMs));
   lastRequestAt = Date.now();
-  const response = await fetch(new URL("/api/search", baseUrl), {
+  const { response, body } = await requestBoundedAuditJson(new URL("/api/search", baseUrl), {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -74,29 +77,22 @@ async function search(query) {
     },
     body: JSON.stringify({ q: query }),
     signal: AbortSignal.timeout(20_000),
-  });
-  let body = null;
-  try {
-    body = await response.json();
-  } catch {
-    body = null;
-  }
+  }, { label: "Grounding audit response" });
   return { status: response.status, body };
 }
 
 async function sourceText(url) {
   if (fetchedSources.has(url)) return fetchedSources.get(url);
   const promise = (async () => {
-    const parsed = new URL(url);
-    if (parsed.protocol !== "https:") throw new Error("non-HTTPS citation");
-    const response = await fetch(parsed, {
+    const response = await requestApprovedPublicHttpsText(url, {
+      approvedOrigins: AUDIT_CITATION_ORIGINS,
       headers: { "User-Agent": "Keskkonnaportaali-praktika-grounding-audit/1.0" },
-      redirect: "follow",
       signal: AbortSignal.timeout(20_000),
+      maximumBytes: 4_000_000,
+      maximumRedirects: 3,
     });
-    const html = await response.text();
     if (response.status !== 200) throw new Error(`citation HTTP ${response.status}`);
-    const $ = load(html);
+    const $ = load(response.body);
     $("script, style, noscript, svg, nav, footer, form").remove();
     const sourceBody = $("body").text();
     return {

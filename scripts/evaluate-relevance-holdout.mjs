@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { canonicalResultUrl, rankSearchCandidates } from "../server/retrieval.mjs";
 import { officialServiceCatalogueDocuments } from "../server/search.mjs";
+import { requestBoundedAuditJson } from "./audit-http.mjs";
 
 const options = Object.fromEntries(process.argv.slice(2).map((argument) => {
   const [key, ...rest] = argument.replace(/^--/u, "").split("=");
@@ -74,7 +75,7 @@ if (baseUrl) {
     let body = null;
     let error = null;
     try {
-      response = await fetch(new URL("/api/search", baseUrl), {
+      const result = await requestBoundedAuditJson(new URL("/api/search", baseUrl), {
         method: "POST",
         headers: {
           Accept: "application/json",
@@ -82,10 +83,10 @@ if (baseUrl) {
           "User-Agent": "Keskkonnaportaali-praktika-holdout/1.0",
         },
         body: JSON.stringify({ q: item.query }),
-        redirect: "error",
         signal: AbortSignal.timeout(20_000),
-      });
-      body = await response.json();
+      }, { label: "Holdout evaluation response" });
+      response = result.response;
+      body = result.body;
     } catch (cause) {
       error = cause.name;
     }

@@ -8,7 +8,7 @@
   },
   "evaluator": {
     "path": "scripts/evaluate-relevance-holdout.mjs",
-    "sha256": "845714f6add3392f1b7279f18414c5a2bc35923a2e5957612a74df6f24bd509f",
+    "sha256": "0c3c05fab74a11e2df09ba1eca1b5de76b3ab5b2054d4cf3e6480c07d68f62da",
     "fixedNow": "2026-08-18T00:00:00.000Z",
     "liveIdentity": "canonical URL rather than volatile upstream ID"
   },

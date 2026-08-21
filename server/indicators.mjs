@@ -8,6 +8,14 @@ export const FOREST_BALANCE_EFA_HANDBOOK_URL = "https://ec.europa.eu/eurostat/we
 export const FOREST_BALANCE_KAUR_URL = "https://keskkonnaagentuur.ee/node/2720";
 export const FOREST_FIVE_YEAR_KAUR_URL = "https://keskkonnaagentuur.ee/uudised/smi-segametsade-osakaal-kasvab";
 
+const MAX_INDICATOR_CSV_BYTES = 1_000_000;
+const MAX_INDICATOR_CSV_ROWS = 500;
+const MAX_INDICATOR_CSV_COLUMNS = 32;
+const MAX_INDICATOR_CSV_FIELD_LENGTH = 1_024;
+const MIN_MUNICIPAL_WASTE_YEAR = 1990;
+const MIN_FOREST_BALANCE_YEAR = 2020;
+const MAX_FOREST_BALANCE_VALUE_THOUSAND_M3 = 100_000;
+
 function normalize(value) {
   return String(value || "")
     .normalize("NFD")
@@ -19,39 +27,76 @@ function normalize(value) {
 }
 
 function csvRows(value) {
+  const input = String(value || "");
+  if (Buffer.byteLength(input, "utf8") > MAX_INDICATOR_CSV_BYTES || input.includes("\0")) return null;
   const rows = [];
   let row = [];
   let field = "";
   let quoted = false;
-  const text = String(value || "").replace(/^\uFEFF/u, "");
+  let closedQuote = false;
+  const text = input.replace(/^\uFEFF/u, "");
+  const pushField = () => {
+    if (field.length > MAX_INDICATOR_CSV_FIELD_LENGTH || row.length >= MAX_INDICATOR_CSV_COLUMNS) return false;
+    row.push(field.trim());
+    field = "";
+    closedQuote = false;
+    return true;
+  };
+  const pushRow = () => {
+    if (!pushField()) return false;
+    if (row.some(Boolean)) {
+      if (rows.length >= MAX_INDICATOR_CSV_ROWS) return false;
+      rows.push(row);
+    }
+    row = [];
+    return true;
+  };
   for (let index = 0; index < text.length; index += 1) {
     const character = text[index];
     if (quoted && character === '"' && text[index + 1] === '"') {
       field += '"';
       index += 1;
+    } else if (quoted && character === '"') {
+      quoted = false;
+      closedQuote = true;
+    } else if (quoted) {
+      field += character;
+    } else if (closedQuote && (character === " " || character === "\t")) {
+      continue;
+    } else if (closedQuote && character !== "," && character !== "\n" && character !== "\r") {
+      return null;
     } else if (character === '"') {
-      quoted = !quoted;
+      if (field) return null;
+      quoted = true;
     } else if (character === "," && !quoted) {
-      row.push(field.trim());
-      field = "";
+      if (!pushField()) return null;
     } else if ((character === "\n" || character === "\r") && !quoted) {
       if (character === "\r" && text[index + 1] === "\n") index += 1;
-      row.push(field.trim());
-      if (row.some(Boolean)) rows.push(row);
-      row = [];
-      field = "";
+      if (!pushRow()) return null;
     } else {
       field += character;
     }
+    if (field.length > MAX_INDICATOR_CSV_FIELD_LENGTH) return null;
   }
-  row.push(field.trim());
-  if (row.some(Boolean)) rows.push(row);
+  if (quoted) return null;
+  if (field || row.length) {
+    if (!pushRow()) return null;
+  }
   return rows;
 }
 
-function numeric(value) {
-  const parsed = Number(String(value || "").replace(",", "."));
-  return Number.isFinite(parsed) ? parsed : null;
+function municipalRate(value) {
+  const normalized = String(value ?? "").trim();
+  if (!/^\d{1,3}(?:[.,]\d{1,6})?$/u.test(normalized)) return null;
+  const parsed = Number(normalized.replace(",", "."));
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 100 ? parsed : null;
+}
+
+function uniqueHeaderIndex(header, name) {
+  const matches = header
+    .map((value, index) => (value === name ? index : -1))
+    .filter((index) => index >= 0);
+  return matches.length === 1 ? matches[0] : -1;
 }
 
 function etNumber(value) {
@@ -82,24 +127,45 @@ export function isMunicipalWasteRecyclingRateQuery(query) {
     && /\b(?:maar|protsent|osakaal|tase)\w*/u.test(text);
 }
 
-export function municipalWasteIndicatorFromCsv(query, csv) {
+export function municipalWasteIndicatorFromCsv(query, csv, options = {}) {
   if (!isMunicipalWasteRecyclingRateQuery(query)) return [];
   const rows = csvRows(csv);
-  if (rows.length < 2) return [];
+  if (!rows || rows.length < 2) return [];
   const header = rows[0];
-  const yearIndex = header.indexOf("Aasta");
-  const nameIndex = header.indexOf("Measure Names");
-  const estoniaIndex = header.indexOf("% Eesti");
-  const euIndex = header.indexOf("% EL");
+  const yearIndex = uniqueHeaderIndex(header, "Aasta");
+  const nameIndex = uniqueHeaderIndex(header, "Measure Names");
+  const estoniaIndex = uniqueHeaderIndex(header, "% Eesti");
+  const euIndex = uniqueHeaderIndex(header, "% EL");
   if ([yearIndex, nameIndex, estoniaIndex, euIndex].some((index) => index < 0)) return [];
   const byYear = new Map();
+  const seen = new Set();
+  const maximumYear = new Date().getUTCFullYear() + 1;
   for (const row of rows.slice(1)) {
-    const year = Number(row[yearIndex]);
-    if (!Number.isInteger(year)) continue;
+    if (row.length !== header.length) return [];
+    const yearText = String(row[yearIndex] || "");
+    if (!/^(?:19|20)\d{2}$/u.test(yearText)) return [];
+    const year = Number(yearText);
+    if (year < MIN_MUNICIPAL_WASTE_YEAR || year > maximumYear) return [];
+    const entity = row[nameIndex];
+    if (entity !== "Eesti" && entity !== "Euroopa Liit (EL)") return [];
+    const key = `${year}:${entity}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
     const values = byYear.get(year) || { year, estonia: null, eu: null };
-    if (row[nameIndex] === "Eesti") values.estonia = numeric(row[estoniaIndex]);
-    if (row[nameIndex] === "Euroopa Liit (EL)") values.eu = numeric(row[euIndex]);
+    if (entity === "Eesti") {
+      if (String(row[euIndex] || "").trim()) return [];
+      values.estonia = municipalRate(row[estoniaIndex]);
+      if (values.estonia === null) return [];
+    } else {
+      if (String(row[estoniaIndex] || "").trim()) return [];
+      values.eu = municipalRate(row[euIndex]);
+      if (values.eu === null) return [];
+    }
     byYear.set(year, values);
+  }
+  if (!byYear.size || byYear.size > 150) return [];
+  for (const observation of byYear.values()) {
+    if (observation.eu !== null && observation.estonia === null) return [];
   }
   const requested = requestedYear(query);
   const available = [...byYear.values()].filter((item) => item.estonia !== null).sort((left, right) => right.year - left.year);
@@ -122,7 +188,10 @@ export function municipalWasteIndicatorFromCsv(query, csv) {
     tags: ["jäätmed", "olmejäätmed", "ringlussevõtt", "protsent", String(observation.year)],
     sourceTier: "official",
     retrieval: "official-tableau-csv",
+    evidencePolicy: "versioned",
+    _answerEvidenceEligible: options.stale !== true,
     _contentHash: createHash("sha256").update(csv).digest("hex"),
+    _evidenceVersion: createHash("sha256").update(csv).digest("hex"),
     _publishedAt: `${observation.year}-12-31`,
   }];
 }
@@ -154,39 +223,152 @@ export function isForestHarvestBalanceQuery(query) {
   return Boolean(forestHarvestComparisonIntent(query));
 }
 
-function dimensionPositions(payload, name) {
-  const index = payload?.dimension?.[name]?.category?.index;
-  if (Array.isArray(index)) return new Map(index.map((value, position) => [String(value), position]));
-  if (!index || typeof index !== "object") return new Map();
-  return new Map(Object.entries(index).map(([value, position]) => [String(value), Number(position)]));
+function isPlainObject(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
-function jsonStatIndex(payload, coordinates) {
-  const ids = Array.isArray(payload?.id) ? payload.id : [];
-  const sizes = Array.isArray(payload?.size) ? payload.size : [];
-  if (!ids.length || ids.length !== sizes.length) return null;
+function validatedDimensionPositions(payload, name, size) {
+  const index = payload?.dimension?.[name]?.category?.index;
+  let entries;
+  if (Array.isArray(index)) {
+    if (index.length !== size) return null;
+    entries = index.map((value, position) => [value, position]);
+  } else if (isPlainObject(index)) {
+    entries = Object.entries(index);
+    if (entries.length !== size) return null;
+  } else {
+    return null;
+  }
+  const positions = new Map();
+  const occupied = new Set();
+  for (const [rawLabel, rawPosition] of entries) {
+    if (typeof rawLabel !== "string" || !rawLabel || rawLabel.length > 80) return null;
+    if (!Number.isInteger(rawPosition) || rawPosition < 0 || rawPosition >= size) return null;
+    if (positions.has(rawLabel) || occupied.has(rawPosition)) return null;
+    positions.set(rawLabel, rawPosition);
+    occupied.add(rawPosition);
+  }
+  if (occupied.size !== size) return null;
+  for (let position = 0; position < size; position += 1) {
+    if (!occupied.has(position)) return null;
+  }
+  return positions;
+}
+
+function validJsonStatContainer(container, size, validValue, { optional = false } = {}) {
+  if (container === undefined || container === null) return optional;
+  if (Array.isArray(container)) {
+    if (container.length !== size) return false;
+    for (let index = 0; index < size; index += 1) {
+      if (!Object.hasOwn(container, index) || !validValue(container[index])) return false;
+    }
+    return true;
+  }
+  if (!isPlainObject(container) || Object.keys(container).length > size) return false;
+  for (const [key, value] of Object.entries(container)) {
+    if (!/^(?:0|[1-9]\d*)$/u.test(key)) return false;
+    const index = Number(key);
+    if (!Number.isSafeInteger(index) || index < 0 || index >= size || !validValue(value)) return false;
+  }
+  return true;
+}
+
+function validateForestBalanceJsonStat(payload) {
+  if (!isPlainObject(payload) || !Array.isArray(payload.id) || !Array.isArray(payload.size)) return null;
+  const expected = ["freq", "stk_flow", "indic_fo", "unit", "geo", "time"];
+  const ids = payload.id;
+  const sizes = payload.size;
+  if (ids.length !== expected.length || sizes.length !== expected.length) return null;
+  if (ids.some((id) => typeof id !== "string") || new Set(ids).size !== ids.length) return null;
+  if (expected.some((id) => !ids.includes(id))) return null;
+  if (!isPlainObject(payload.dimension)) return null;
+  const dimensionKeys = Object.keys(payload.dimension);
+  if (dimensionKeys.length !== expected.length || dimensionKeys.some((id) => !expected.includes(id))) return null;
+  if (sizes.some((size) => !Number.isSafeInteger(size) || size <= 0)) return null;
+  const sizeByName = new Map(ids.map((id, index) => [id, sizes[index]]));
+  if (sizeByName.get("freq") !== 1
+    || sizeByName.get("stk_flow") !== 2
+    || sizeByName.get("indic_fo") !== 1
+    || sizeByName.get("unit") !== 1
+    || sizeByName.get("geo") !== 1
+    || sizeByName.get("time") < 1
+    || sizeByName.get("time") > 200) return null;
+  const totalSize = sizes.reduce((product, size) => product * size, 1);
+  if (!Number.isSafeInteger(totalSize) || totalSize <= 0 || totalSize > 400) return null;
+  const positions = new Map();
+  for (const id of ids) {
+    const dimension = validatedDimensionPositions(payload, id, sizeByName.get(id));
+    if (!dimension) return null;
+    positions.set(id, dimension);
+  }
+  const exactCodes = new Map([
+    ["freq", ["A"]],
+    ["stk_flow", ["NAI", "RMOV"]],
+    ["indic_fo", ["FOR"]],
+    ["unit", ["THS_M3"]],
+    ["geo", ["EE"]],
+  ]);
+  for (const [id, codes] of exactCodes) {
+    const actual = positions.get(id);
+    if (actual.size !== codes.length || codes.some((code) => !actual.has(code))) return null;
+  }
+  const maximumYear = new Date().getUTCFullYear() + 1;
+  for (const year of positions.get("time").keys()) {
+    if (!/^\d{4}$/u.test(year)) return null;
+    const numericYear = Number(year);
+    if (numericYear < MIN_FOREST_BALANCE_YEAR || numericYear > maximumYear) return null;
+  }
+  if (!validJsonStatContainer(
+    payload.value,
+    totalSize,
+    (value) => value === null || (typeof value === "number"
+      && Number.isFinite(value)
+      && value >= 0
+      && value <= MAX_FOREST_BALANCE_VALUE_THOUSAND_M3),
+  )) return null;
+  if (!validJsonStatContainer(
+    payload.status,
+    totalSize,
+    (value) => value === null || (typeof value === "string"
+      && value.length <= 16
+      && !/[\p{Cc}\p{Cf}]/u.test(value)),
+    { optional: true },
+  )) return null;
+  return { ids, sizes, positions, totalSize };
+}
+
+function jsonStatIndex(schema, coordinates) {
+  if (!schema || !isPlainObject(coordinates)) return null;
+  const coordinateKeys = Object.keys(coordinates);
+  if (coordinateKeys.length !== schema.ids.length
+    || schema.ids.some((id) => !Object.hasOwn(coordinates, id))) return null;
   let index = 0;
-  for (let dimension = 0; dimension < ids.length; dimension += 1) {
-    const position = dimensionPositions(payload, ids[dimension]).get(String(coordinates[ids[dimension]]));
-    if (!Number.isInteger(position) || position < 0 || position >= Number(sizes[dimension])) return null;
-    index = index * Number(sizes[dimension]) + position;
+  for (let dimension = 0; dimension < schema.ids.length; dimension += 1) {
+    const id = schema.ids[dimension];
+    const position = schema.positions.get(id).get(String(coordinates[id]));
+    if (!Number.isInteger(position) || position < 0 || position >= schema.sizes[dimension]) return null;
+    index = index * schema.sizes[dimension] + position;
   }
   return index;
 }
 
 export function forestBalanceObservations(payload) {
-  const years = [...dimensionPositions(payload, "time").keys()]
+  const schema = validateForestBalanceJsonStat(payload);
+  if (!schema) return [];
+  const years = [...schema.positions.get("time").keys()]
     .filter((value) => /^\d{4}$/u.test(value))
     .sort((left, right) => Number(left) - Number(right));
   const observations = [];
   for (const year of years) {
     const shared = { freq: "A", indic_fo: "FOR", unit: "THS_M3", geo: "EE", time: year };
-    const incrementIndex = jsonStatIndex(payload, { ...shared, stk_flow: "NAI" });
-    const removalsIndex = jsonStatIndex(payload, { ...shared, stk_flow: "RMOV" });
+    const incrementIndex = jsonStatIndex(schema, { ...shared, stk_flow: "NAI" });
+    const removalsIndex = jsonStatIndex(schema, { ...shared, stk_flow: "RMOV" });
     const incrementValue = incrementIndex === null ? null : payload?.value?.[incrementIndex];
     const removalsValue = removalsIndex === null ? null : payload?.value?.[removalsIndex];
-    const increment = incrementValue === null || incrementValue === undefined ? null : Number(incrementValue);
-    const removals = removalsValue === null || removalsValue === undefined ? null : Number(removalsValue);
+    const increment = incrementValue === null || incrementValue === undefined ? null : incrementValue;
+    const removals = removalsValue === null || removalsValue === undefined ? null : removalsValue;
     observations.push({
       year: Number(year),
       increment: Number.isFinite(increment) ? Number((increment / 1_000).toFixed(6)) : null,
@@ -213,6 +395,8 @@ function forestBalanceKaurDocuments() {
       tags: ["mets", "raiemaht", "netojuurdekasv", "pikaajaline trend", "SMI"],
       sourceTier: "official",
       retrieval: "official-structured-forestry-source",
+      evidencePolicy: "claim-specific",
+      _answerEvidenceEligible: true,
       _publishedAt: "2026-04-09",
     },
     {
@@ -228,6 +412,8 @@ function forestBalanceKaurDocuments() {
       tags: ["mets", "raiemaht", "viis aastat", "SMI", "2021", "2022", "2023"],
       sourceTier: "official",
       retrieval: "official-structured-forestry-source",
+      evidencePolicy: "claim-specific",
+      _answerEvidenceEligible: true,
       _publishedAt: "2024-06-10",
     },
   ];
@@ -258,12 +444,15 @@ export function forestHarvestBalanceDocumentsFromJson(query, payload, options = 
     url: FOREST_BALANCE_EUROSTAT_URL,
     locator: FOREST_BALANCE_EUROSTAT_API_URL,
     summary: `${observationsText}.${forestObservationStatusSentence(comparable)}`,
-    content: `Eurostati European Forest Accounts andmestiku for_vol_efa näitaja FOR, algühik tuhat kuupmeetrit koorega; kasutajavastuses on väärtused teisendatud miljoniteks kuupmeetriteks. ${observationsText}. ${payload?.updated ? `Andmestiku uuenduse aeg: ${payload.updated}.` : ""} ${missingYears.length ? `Mõlemat võrreldavat väärtust ei ole aastate ${missingYears.join(", ")} kohta avaldatud.` : ""}`.trim(),
+    content: `Eurostati European Forest Accounts andmestiku for_vol_efa näitaja FOR, algühik tuhat kuupmeetrit koorega; kasutajavastuses on väärtused teisendatud miljoniteks kuupmeetriteks. ${observationsText}. ${missingYears.length ? `Mõlemat võrreldavat väärtust ei ole aastate ${missingYears.join(", ")} kohta avaldatud.` : ""}`.trim(),
     topics: ["mets", "raiemaht", "puidu eemaldamine", "netojuurdekasv", "Eurostat", ...comparable.map((item) => String(item.year))],
     tags: ["mets", "raiemaht", "puidu eemaldamine", "netojuurdekasv", "Eurostat", ...comparable.map((item) => String(item.year))],
     sourceTier: "official",
     retrieval: "official-eurostat-json",
+    evidencePolicy: "versioned",
+    _answerEvidenceEligible: options.stale !== true,
     _contentHash: createHash("sha256").update(sourcePayload).digest("hex"),
+    _evidenceVersion: createHash("sha256").update(sourcePayload).digest("hex"),
     _publishedAt: "2026-03-20",
     _stale: options.stale === true,
     _forestBalance: { observations, rangeStart, rangeEnd, missingYears },
@@ -280,6 +469,8 @@ export function forestHarvestBalanceDocumentsFromJson(query, payload, options = 
     tags: ["mets", "puidu eemaldamine", "removals", "metoodika", "koorega"],
     sourceTier: "official",
     retrieval: "official-eurostat-methodology",
+    evidencePolicy: "claim-specific",
+    _answerEvidenceEligible: true,
     _publishedAt: "2024-01-01",
   }, ...kaur];
 }
@@ -460,7 +651,7 @@ export async function loadStructuredIndicatorDocuments(query, options = {}) {
         timeoutMs,
         signal: options.signal,
       });
-      documents.push(...municipalWasteIndicatorFromCsv(query, result.body));
+      documents.push(...municipalWasteIndicatorFromCsv(query, result.body, { stale: result.stale }));
     } catch (error) {
       if (options.signal?.aborted || error?.name === "AbortError") throw error;
       // The rest of the ranked official search remains available.

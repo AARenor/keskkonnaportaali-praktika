@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { canonicalResultUrl } from "../server/retrieval.mjs";
 import { hasCompleteSentenceEnding } from "../server/search.mjs";
+import { requestBoundedAuditText } from "./audit-http.mjs";
 
 const argumentsMap = Object.fromEntries(process.argv.slice(2).map((argument) => {
   const [key, ...rest] = argument.replace(/^--/u, "").split("=");
@@ -48,7 +49,7 @@ async function request(pathname, parameters = {}) {
   };
   lastRequestStartedAt = Date.now();
   const startedAt = Date.now();
-  const response = await fetch(url, {
+  const { response, text } = await requestBoundedAuditText(url, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -56,10 +57,8 @@ async function request(pathname, parameters = {}) {
       "User-Agent": "Keskkonnaportaali-praktika-live-eval/1.0",
     },
     body: JSON.stringify(requestBody),
-    redirect: "error",
     signal: AbortSignal.timeout(20_000),
-  });
-  const text = await response.text();
+  }, { label: "Live evaluation response" });
   let body;
   try {
     body = JSON.parse(text);

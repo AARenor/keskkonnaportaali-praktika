@@ -1,4 +1,5 @@
 import { canonicalResultUrl } from "../server/retrieval.mjs";
+import { requestBoundedAuditJson } from "./audit-http.mjs";
 
 const options = Object.fromEntries(process.argv.slice(2).map((argument) => {
   const [key, ...rest] = argument.replace(/^--/u, "").split("=");
@@ -77,7 +78,7 @@ async function post(pathname, q, filters = {}, { page = 1, pageSize = 12 } = {})
   if (waitMs) await new Promise((resolve) => setTimeout(resolve, waitMs));
   lastRequestStartedAt = Date.now();
   const startedAt = Date.now();
-  const response = await fetch(new URL(pathname, baseUrl), {
+  const { response, body } = await requestBoundedAuditJson(new URL(pathname, baseUrl), {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -85,15 +86,8 @@ async function post(pathname, q, filters = {}, { page = 1, pageSize = 12 } = {})
       "User-Agent": "Keskkonnaportaali-praktika-filter-audit/1.0",
     },
     body: JSON.stringify({ q, filters, page, page_size: pageSize }),
-    redirect: "error",
     signal: AbortSignal.timeout(20_000),
-  });
-  let body = null;
-  try {
-    body = await response.json();
-  } catch {
-    body = null;
-  }
+  }, { label: "Filter audit response" });
   return { status: response.status, body, durationMs: Date.now() - startedAt };
 }
 

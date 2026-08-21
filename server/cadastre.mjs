@@ -1,3 +1,5 @@
+import { readBoundedResponseJson } from "./upstream.mjs";
+
 const GEOSERVER_BASE = "https://gsavalik.envir.ee/geoserver";
 const CADASTRE_PATTERN = /\b\d{5}:\d{3}:\d{4}\b/u;
 const MAX_RESPONSE_BYTES = 3_000_000;
@@ -19,13 +21,14 @@ const SOURCE_DEFINITIONS = [
     title: "Metsaregistri andmestikud",
     organization: "Keskkonnaagentuur / Keskkonnaportaal",
     type: "Avalik ruumiandmeteenus",
-    url: "https://keskkonnaportaal.ee/et/avaandmed/metsaregistri-andmestikud",
+    url: "https://gsavalik.envir.ee/geoserver/metsaregister/wfs",
+    locator: "https://keskkonnaportaal.ee/et/avaandmed/metsaregistri-andmestikud",
     sourceTier: "official",
     tags: ["WFS", "metsaregister", "kataster", "metsaeraldis"],
   },
 ];
 
-export function cadastreSourceDocuments(published = new Date().toISOString().slice(0, 10).split("-").reverse().join(".")) {
+export function cadastreSourceDocuments(published = "jooksev") {
   return SOURCE_DEFINITIONS.map((source, index) => ({
     ...source,
     published,
@@ -34,6 +37,7 @@ export function cadastreSourceDocuments(published = new Date().toISOString().sli
       : "Keskkonnaportaali Metsaregistri avalik WFS annab katastritunnusega seotud metsaeraldiste kirjed.",
     topics: [...source.tags],
     retrieval: "official-service-directory",
+    evidencePolicy: "route-only",
     _answerEvidenceEligible: false,
   }));
 }
@@ -84,14 +88,11 @@ async function fetchFeatureCollection(url, timeoutMs = 4_800, externalSignal) {
       signal,
     });
     if (!response.ok) throw new Error(`Official WFS returned ${response.status}`);
-    const declaredSize = Number(response.headers.get("content-length") || 0);
-    if (declaredSize > MAX_RESPONSE_BYTES) throw new Error("Official WFS response is too large");
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength > MAX_RESPONSE_BYTES) throw new Error("Official WFS response is too large");
-    const payload = JSON.parse(new TextDecoder().decode(bytes));
+    const payload = await readBoundedResponseJson(response, MAX_RESPONSE_BYTES, "Official WFS response");
     if (!payload || payload.type !== "FeatureCollection" || !Array.isArray(payload.features)) {
       throw new Error("Official WFS returned an invalid feature collection");
     }
+    if (payload.features.length > 250) throw new Error("Official WFS returned too many features");
     return payload.features;
   } finally {
     clearTimeout(timeout);

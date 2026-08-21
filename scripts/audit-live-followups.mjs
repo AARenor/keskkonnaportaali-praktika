@@ -1,4 +1,5 @@
 import { canonicalResultUrl } from "../server/retrieval.mjs";
+import { requestBoundedAuditJson } from "./audit-http.mjs";
 
 const options = Object.fromEntries(process.argv.slice(2).map((argument) => {
   const [key, ...rest] = argument.replace(/^--/u, "").split("=");
@@ -26,7 +27,7 @@ function check(condition, message, context = {}) {
 
 async function post(pathname, body) {
   const startedAt = Date.now();
-  const response = await fetch(new URL(pathname, baseUrl), {
+  const { response, body: payload } = await requestBoundedAuditJson(new URL(pathname, baseUrl), {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -35,13 +36,7 @@ async function post(pathname, body) {
     },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(timeoutMs),
-  });
-  let payload = null;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
-  }
+  }, { label: "Follow-up audit response" });
   return { status: response.status, durationMs: Date.now() - startedAt, payload };
 }
 

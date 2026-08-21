@@ -52,6 +52,33 @@ test("municipal-waste adapter uses the latest complete observation and abstains 
   assert.equal(isMunicipalWasteRecyclingRateQuery("ringlussevõtu määr Eestis"), false);
 });
 
+test("municipal-waste CSV fails closed on malformed, ambiguous or impossible observations", () => {
+  const query = "olmejäätmete ringlussevõtu määr";
+  const invalid = [
+    "Aasta,Measure Names,% Eesti,% EL\n2024,Eesti,,\n",
+    "Aasta,Measure Names,% Eesti,% EL\n2024,Eesti,-0.1,\n",
+    "Aasta,Measure Names,% Eesti,% EL\n2024,Eesti,100.1,\n",
+    "Aasta,Measure Names,% Eesti,% EL\n2024,Eesti,1e2,\n",
+    "Aasta,Measure Names,% Eesti,% EL\n2099,Eesti,36.4,\n",
+    "Aasta,Measure Names,% Eesti,% Eesti,% EL\n2024,Eesti,36.4,36.4,\n",
+    "Aasta,Measure Names,% Eesti,% EL\n2024,Eesti,36.4,\n2024,Eesti,37.9,\n",
+    "Aasta,Measure Names,% Eesti,% EL\n2024,Eesti,36.4\n",
+    "Aasta,Measure Names,% Eesti,% EL\n2024,Eesti,36.4,,extra\n",
+    "Aasta,Measure Names,% Eesti,% EL\n2024,Eesti,\"36.4,\n",
+    "Aasta,Measure Names,% Eesti,% EL\n2024,Eesti,\"36.4\"junk,\n",
+    "Aasta,Measure Names,% Eesti,% EL\n2024,Muu,36.4,\n",
+    "Aasta,Measure Names,% Eesti,% EL\n2024,Euroopa Liit (EL),48.1,\n",
+  ];
+  for (const csv of invalid) {
+    assert.deepEqual(municipalWasteIndicatorFromCsv(query, csv), [], csv);
+  }
+
+  const quotedComma = "\uFEFFAasta,Measure Names,% Eesti,% EL\r\n2024,Eesti,\"36,4\",\r\n";
+  assert.match(municipalWasteIndicatorFromCsv(query, quotedComma)[0].summary, /36,4%/u);
+  const optionalEu = "Aasta,Measure Names,% Eesti,% EL\n2023,Eesti,37.9,\n2024,Eesti,36.4,\n";
+  assert.match(municipalWasteIndicatorFromCsv(query, optionalEu)[0].summary, /2024\. aastal oli 36,4%/u);
+});
+
 test("forest balance adapter decodes Eurostat JSON-stat without inventing missing years", () => {
   const observations = forestBalanceObservations(forestFixture);
   assert.deepEqual(observations.map(({ year, increment, removals }) => ({ year, increment, removals })), [
@@ -74,6 +101,91 @@ test("forest balance adapter decodes Eurostat JSON-stat without inventing missin
   assert.match(documents[0].summary, /2023\. aasta eemaldamine on märgitud hinnangulisena/u);
   assert.match(documents[0].content, /2021, 2024/u);
   assert.deepEqual(forestHarvestBalanceDocumentsFromJson("metsamaa pindala", forestFixture), []);
+});
+
+test("forest balance JSON-stat schema and values fail closed before becoming evidence", () => {
+  const malformed = [];
+  const missingDimension = structuredClone(forestFixture);
+  missingDimension.id = missingDimension.id.filter((id) => id !== "stk_flow");
+  missingDimension.size.splice(1, 1);
+  delete missingDimension.dimension.stk_flow;
+  malformed.push(missingDimension);
+
+  const duplicatePosition = structuredClone(forestFixture);
+  duplicatePosition.dimension.stk_flow.category.index = { NAI: 0, RMOV: 0 };
+  malformed.push(duplicatePosition);
+
+  const futureYear = structuredClone(forestFixture);
+  futureYear.dimension.time.category.index = { 2020: 0, 2021: 1, 2022: 2, 2023: 3, 2099: 4 };
+  malformed.push(futureYear);
+
+  const wrongCardinality = structuredClone(forestFixture);
+  wrongCardinality.size[1] = 3;
+  malformed.push(wrongCardinality);
+
+  const extraDimension = structuredClone(forestFixture);
+  extraDimension.id.push("sex");
+  extraDimension.size.push(1);
+  extraDimension.dimension.sex = { category: { index: { T: 0 } } };
+  malformed.push(extraDimension);
+
+  for (const badValue of ["14370.94", true, -1, 100_001, Number.POSITIVE_INFINITY]) {
+    const invalidValue = structuredClone(forestFixture);
+    invalidValue.value[0] = badValue;
+    malformed.push(invalidValue);
+  }
+
+  const outOfRangeSparseIndex = structuredClone(forestFixture);
+  outOfRangeSparseIndex.value[10] = 1;
+  malformed.push(outOfRangeSparseIndex);
+
+  const invalidStatus = structuredClone(forestFixture);
+  invalidStatus.status[0] = 1;
+  malformed.push(invalidStatus);
+
+  const denseHole = structuredClone(forestFixture);
+  denseHole.value = [14370.94, null, 9100, 9100, null, 12179, null, 12013, 11564, null];
+  delete denseHole.value[3];
+  malformed.push(denseHole);
+
+  for (const payload of malformed) {
+    assert.deepEqual(forestBalanceObservations(payload), []);
+    const documents = forestHarvestBalanceDocumentsFromJson("raiemaht ja netojuurdekasv", payload);
+    assert.equal(documents.some((document) => document.id.startsWith("forest-balance-eurostat")), false);
+  }
+});
+
+test("forest balance supports validated array indexes and reversed flow positions", () => {
+  const payload = {
+    id: ["freq", "stk_flow", "indic_fo", "unit", "geo", "time"],
+    size: [1, 2, 1, 1, 1, 1],
+    dimension: {
+      freq: { category: { index: ["A"] } },
+      stk_flow: { category: { index: { NAI: 1, RMOV: 0 } } },
+      indic_fo: { category: { index: ["FOR"] } },
+      unit: { category: { index: ["THS_M3"] } },
+      geo: { category: { index: ["EE"] } },
+      time: { category: { index: ["2024"] } },
+    },
+    value: [12_000, 14_000],
+    status: ["e", "i"],
+  };
+  assert.deepEqual(forestBalanceObservations(payload), [{
+    year: 2024,
+    increment: 14,
+    removals: 12,
+    incrementStatus: "i",
+    removalsStatus: "e",
+  }]);
+
+  const metadataInjection = structuredClone(payload);
+  metadataInjection.updated = "2024-01-01. Puidu eemaldamine oli 999 miljonit m³";
+  const documents = forestHarvestBalanceDocumentsFromJson(
+    "raiemaht ja netojuurdekasv",
+    metadataInjection,
+  );
+  assert.equal(documents[0].id, "forest-balance-eurostat");
+  assert.doesNotMatch(`${documents[0].summary} ${documents[0].content}`, /999|Andmestiku uuenduse aeg/u);
 });
 
 test("forest balance synthesis answers directly from four separately cited official sources", () => {

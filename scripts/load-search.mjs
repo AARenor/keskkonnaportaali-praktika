@@ -1,3 +1,5 @@
+import { requestBoundedAuditText } from "./audit-http.mjs";
+
 const options = Object.fromEntries(process.argv.slice(2).map((argument) => {
   const [key, ...rest] = argument.replace(/^--/u, "").split("=");
   return [key, rest.join("=") || true];
@@ -102,14 +104,13 @@ async function request(query, index = 0) {
       "User-Agent": "Keskkonnaportaali-praktika-load-audit/1.0",
     };
     if (spoofForwarded) headers["X-Forwarded-For"] = `198.51.100.${(index % 200) + 1}`;
-    const response = await fetch(new URL(endpointPath, baseUrl), {
+    const { response, text: rawBody } = await requestBoundedAuditText(new URL(endpointPath, baseUrl), {
       method: "POST",
       headers,
       body: JSON.stringify({ q: query }),
       signal: AbortSignal.timeout(timeoutMs),
-    });
+    }, { label: "Load audit response" });
     const contentType = response.headers.get("content-type");
-    const rawBody = await response.text();
     let body = null;
     try {
       body = JSON.parse(rawBody);
@@ -160,7 +161,7 @@ function cacheBustedUrl(pathname, sequence) {
 async function availabilityRequest(kind, pathname, sequence) {
   const startedAt = Date.now();
   try {
-    const response = await fetch(cacheBustedUrl(pathname, sequence), {
+    const { response, text: rawBody } = await requestBoundedAuditText(cacheBustedUrl(pathname, sequence), {
       headers: {
         Accept: kind === "root" ? "text/html" : "application/json",
         "Cache-Control": "no-store",
@@ -169,9 +170,8 @@ async function availabilityRequest(kind, pathname, sequence) {
       },
       cache: "no-store",
       signal: AbortSignal.timeout(AVAILABILITY_TIMEOUT_MS),
-    });
+    }, { label: "Load availability response" });
     const contentType = response.headers.get("content-type");
-    const rawBody = await response.text();
     return {
       kind,
       status: response.status,

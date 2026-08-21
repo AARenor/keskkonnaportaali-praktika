@@ -58,6 +58,10 @@ textarea {
   font: inherit;
 }
 
+code {
+  font: inherit;
+}
+
 button,
 a {
   -webkit-tap-highlight-color: transparent;

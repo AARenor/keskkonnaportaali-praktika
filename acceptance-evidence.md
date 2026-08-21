@@ -4,6 +4,24 @@ See fail seob projekti tootmisvalmiduse väited korduvkäivitatavate testide, ru
 
 ## Otsingu hindamisspetsifikatsioon
 
+### Jooksev lokaalne arenduskontroll 21.08.2026
+
+`evaluation/public_search_development_v3.json` lisab 147 käsitsi koostatud realistlikku eestikeelset päringut 11 rühmas: andmed/API, reaalaja ilm, õhk ja vesi, jäätmed, vesi, loodus/ruum, kliima/energia/kaevandamine, metsandus, load/õigus, keelevariandid, ebaselgus ning ohtlik/teemaväline sisend. See ei pärine liikluslogidest, ei mõõda päringute tegelikku populaarsust ega ole sõltumatu holdout. Selle eesmärk on lai arendusregressioon; külmutatud holdout-, post-fix- ja adversariaalsed komplektid jäävad eraldi.
+
+Lokaalne `npm run eval:public` läbis 147/147 juhtumit: käitumistäpsus, õige allikaklass top-1-s ja top-5-s, kataloogi ametlik kirje top-1-s ning ohtliku/teemavälise sisendi täpsus olid kõik 1,0. Ohtliku ja privaatsust rikkuva rühma kirjed kontrollivad lisaks täpset keeldumise põhjust (`unsafe-instruction`, `personal-data-lookup` või `outside-environment-domain`). Test kasutab 95 kirjega kureeritud runtime-kataloogi ja kontrollib allikarolli, mitte ühe enda optimeeritud URL-i qrel'i. `catalogOfficialAt1` on selles ainult ametlikest kirjetest koosnevas kataloogitestis tervikluse kontroll, mitte sõltumatu autoriteedivõrdlus. See on tööpuu tulemus, mitte väide tootmises juurutatud revisjoni kohta.
+
+Uued regressioonid jõustavad lisaks, et `route-only` või ilma vaatlusajata reaalajaallikas ei pääse AI tõendipakki, kanoonilise URL-i duplikaat ei saa piiravat poliitikat üles tõsta ega vana tõenditeksti värske aliase ajatempliga siduda, AI tõendipakk kannab allikarolli ja värskuse metaandmeid ning ohtlikud või eraisiku aadressi/vara otsivad päringud peatatakse enne retrieval'it. Jooksva sisevee, merevee, jääolude ja suplusvee päringud annavad faktisünteesi asemel õige ametliku reaalaja teenuse; alamliigi täpne vaste jääb esimeseks ning vanu arvulisi uudiseid ei esitata hetkeväärtusena.
+
+Lokaalne `npm test` läbis 296/296 testi. Production build, Sites-pakendi 4/4 test, Compose'i konfiguratsioon, `git diff --check` ja `npm audit --omit=dev` läbisid; audit leidis 0 sõltuvushaavatavust. Eraldi relevantsusväravad läbisid `eval:holdout` 40/40, `eval:blind` 10/10 ning 18 päringuga `eval:open`: route accuracy, P@1, MRR ja Recall@5 olid 1,0, nDCG@5 oli 0,9971 ning kõik täpsustamist vajavad juhud tagastasid lõppvastuses null allikat (`abstentionNoSources = 1`). Lisaks lukustab 28-juhtumiline tavaliste eesti- ja ingliskeelsete päringute regressioon õige teenuseklassi ning ametliku esikoha, sh ilm, õhk, merevesi, mets, load, ruumiandmed, loodusvaatlused, jäätmed ja kliimastsenaariumid. Need on regressioonikatted, mitte sõltumatu inimhinnang ega tootmisliikluse populaarsusmõõtmine.
+
+Codex Security 71-failine relevantsete radade kontroll lõpetas täieliku katvusega; selle kolm madala taseme tähelepanekut ja esimese lõpliku tööpuu-kontrolli üks madala taseme tähelepanek parandati ning viimane report-only korduskontroll `HEAD`-i vastu lõpetas täieliku katvuse ja 0 kinnitatud leiuga.
+
+Tõendipiir on vaikimisi keelav: puuduva poliitika või adapteri sõnaselge loata dokument jääb `route-only`, indekseeritud otsingukatkend ei muutu pelgalt lehe allalaadimise tõttu AI-väite tõendiks ning aegunud hydratsiooni cache ei taaskasuta vana lehekeha. Korpuse kontrollitud lehetekst peab kandma üheselt seotud hydratsiooni-provenantsi ja sisuhashi. Arvuliste ning modaalsemantiliste väidete kontroll jagab sissejuhatuse ja kõigi osade vahel ühist tööeelarvet ning lõpetab liigse väite-, klausli- või tõendimahu korral enne superlineaarset võrdlust. Nimega eraisiku vara, puurkaevu või katastriüksust siduvad päringud peatatakse enne cache'i, retrieval'it ja mudelikõnet.
+
+Avaliku otsingu protsessiülene admission-gate rakendab usaldatud proxy-ahelast tuletatud kliendivõtmele eraldi aktiiv- ja järjekorralimiiti ning teenindab kliendijärjekordi ringmeetodil. IPv6 privacy-aadressid koondatakse samaks seadistatavaks võrguprefiksiks ning sama identiteet juhib fixed-window rate-limit'it, admission'it ja kliendi LLM-kvooti. Järjekorra ooteaeg arvestatakse sama 12/15 sekundi kogutähtaja sisse ja pärast tähtaega uut retrieval'it ei alustata. Tähtaja saabudes tagastatakse varuvastus kohe ka katkestussignaali eirava alamtöö korral, kuid eraldi cleanup-lease hoiab admission-koha kinni kuni hilinenud töö tegeliku lõppemiseni. Päringupõhine PostgreSQL-i töö saab sama katkestussignaali ja tähtaja, kasutab tehingulokaalset `statement_timeout`-i ning lõpetab või teeb rollback'i enne admission-koha vabastamist. Live-avastuse PostgreSQL-i kirjutused läbivad ühe piiratud, URL-i järgi koondava tööjärjekorra: samaaegne duplikaat ei tekita järelkirjutust, edu- ja retry-ajalugu katab kogu 10 000 URL-i vastuvõtuakna, rikkam sisu ja kokkuvõte säilitatakse eraldi välja kaupa, ebaõnnestumisel kehtib backoff ning `official-live-search` read märgitakse seitsme päeva järel aegunuks ja kustutatakse 14 päeva järel. Shutdown puhastab admission'i, kolm hooldustaimerit, pending-tööd ja aktiivse kirjutaja signaali.
+
+Terrapointi ja live-grounding auditi HTTPS-transport kontrollib algset ning iga ümbersuunatud URL-i täpse päritoluloendi vastu, seob DNS-i kontrollitud avaliku IPv4/IPv6 aadressi tegeliku TLS-ühendusega, kontrollib sokli peer-aadressi, keelab special-use, private, metadata, IPv4-mapped, NAT64, 6to4, ORCHID, benchmark- ja dokumentatsioonivahemikud ning lõpetab redirect-keha seda lugemata. Nii `Content-Length` kui voogedastatud keha on baitpiiriga. LLM-võti loetakse alles pärast täpse `https://opencode.ai` päritolu valideerimist ning otsene mudelikõne ei järgi redirect'i.
+
 `evaluation/environment_search_queries_v1.json` sisaldab 59 külmutatud päringut. Neist 24-l on käsitsi valitud oodatud esikoha allikas. Oodatud allikas on küsimuse intenti otseselt teenindav ametlik püsileht, juhis, register või kaardirakendus, mitte kõige rohkem märksõnu sisaldav uudis.
 
 Faili `coverage` väli seob juhtumid järgmiste klassidega: faktiküsimus, õiguslik või menetluslik küsimus, asukoht, live- või hädaolukord, võrdlus, kõnekeel, kirjaviga, diakriitikata tekst, eesti käänded, täpsustamist vajav päring ning teemaväline/prompt-injection päring. Nulltulemuse leping nõuab HTTP 200 vastust, null nähtavat tulemust, null vastuseallikat ja null viidet.
@@ -11,6 +29,7 @@ Faili `coverage` väli seob juhtumid järgmiste klassidega: faktiküsimus, õigu
 Kontrollid:
 
 - `npm test` kontrollib kõigi 59 juhtumi intenti ja 24 qrel'i deterministlikku esikohta;
+- `npm run eval:public` kontrollib 147 realistliku arendusjuhu käitumist ning õige ametliku allikaklassi top-1/top-5 asetust;
 - `npm run eval:live -- --base-url=https://praktika.arleserver.cfd` kontrollib samu 24 esikohta tootmises ning lisaks vastuse, viidete, filtrite, lehitsemise, privaatsusväljade ja terviklausete avalikku lepingut;
 - `npm run audit:grounding -- --base-url=https://praktika.arleserver.cfd` kontrollib kümmet esinduslikku maandatud vastust ja kümmet adversariaalset loobumist, viidatud URL-ide HTTP 200 olekut ning väidete sõna- ja arvutuge;
 - `npm run eval:holdout -- --base-url=https://praktika.arleserver.cfd` kontrollib 40 lukustatud päringu relevantsust nii kataloogi kui ka päris ühendotsingu vastu; valiku ja ajaloolise baseline'i tõenduspiir on kirjas masinloetavas manifestis;
@@ -42,7 +61,7 @@ Tootmise andmebaasi lõpp-risttabel:
 | Hüdratsioon | 1600 täistekstiga + 10 785 metadata-only = 12 385; 1600 erinevat mittetühja sisu |
 | `official` ristlõige | 1592 täistekstiga + 9925 metadata-only = 11 517 |
 | Runtime providerid pärast deploy'd | 10 `opencode-go/gpt-5.6-luna` vastust ja 29 kontrollitud `deterministic-current-evidence` vastust; DeepSeek 0 |
-| PostgreSQL privaatsus | toorpäringuga otsingukirjeid 0, toorpäringuga vahemäluridu 0, vahemälu JSON-i `query` välju 0, aegunud vahemäluridu 0; `log_statement=none`, `log_min_duration_statement=-1` |
+| PostgreSQL privaatsus | toorpäringuga otsingukirjeid 0, toonases lubatud väljadega vahemälus toorpäringu või päringupõhise pealkirjaga välju 0, aegunud vahemäluridu 0; `log_statement=none`, `log_min_duration_statement=-1` |
 | Unikaalne nonce | URL, title, history, cookie, local/session storage, app-logi, proxy-logi, run/cache/corpus kõik 0; same-origin request oli JSON POST ja referrer ainult `/otsi` |
 
 ## Relevantsus- ja kaitsekiht 18.08.2026
@@ -63,14 +82,14 @@ Mõlema komplekti täpne provenance, päringu- ja qrel-hashid, mõõdikute defin
 | Grounding | 10/10 esinduslikku ja 10/10 adversariaalset juhtumit; 20 väidet, 30 viiteavamist, 18 eri URL-i; 0 viga |
 | Luna paralleelkontroll | 2/2 HTTP 200 ja 2/2 `AI koondvastus`; p50 1344 ms, p95 2274 ms; 0 fallback'i, timeout'i, 5xx-i või 504 |
 | Koormus ja päris AI | IPv4-first kontrollis 20/20 HTTP 200; 9 valideeritud `AI koondvastus`, 8 selgelt märgitud capacity-fallback'i; p50 10 418 ms, p95 14 880 ms, max 15 146 ms; 0 timeout'i, 5xx-i või 504; 21. päring 429 + `Retry-After: 60` ka 21 pöörleva XFF-väärtusega |
-| Cache'i rikketaaste | vigase mudelivõtmega 2025 ms kontrollitud fallback ja 0 cache-rida; taastunud Lunaga 3897 ms `ready` vastus ja 1 puhastatud cache-rida; järgmine sama päring 797 ms |
+| Cache'i rikketaaste | `privacy-safe-v5` korral ei kirjutata Luna `ready` proosat püsivasse response-cache'i; kontrollitud deterministliku tee lubatavus, tundliku ja suvalise mitmesõnalise fragmendi keeld ning tehnilise run-kirje säilimine on regressioonitestiga kaetud |
 | Tootmise providerid | revisjonil `answer-v11-ranked-live-sources`: 31 Luna `ready`, 20 kontrollitud degradeerunud drafti ja 33 deterministlikku marsruutvastust |
 | Andmebaas | 12 473 aktiivset dokumenti = 11 605 `official` + 8 `supplementary` + 860 `other`; 1723 täistekstiga; aktiivse URL-i duplikaate 0 |
 | Privaatsusristtabel | toorpäringuga run/cache ridu 0, cache JSON-i `query` välju 0, aegunud cache'i 0 ja üle 30 päeva vanu run-ridu 0 |
 
 Värske Playwrighti desktop- ja 390 × 844 mobiilisessioon algasid `scrollY=0`, aktiivse `BODY`, nähtava ühe otsingukasti ja ilma horisontaalse overflow'ta. Mobiili submit-nupu nimi oli „Küsi”. Jätkuküsimuse voog andis ühe uue fokusseeritud vastuse, kaheksa jätkuallikat ja viis pakutud küsimust; juur- ja jätkupäring läksid ainult same-origin POST-kehadesse ning Terrapoint ei saanud kumbagi. Terrapointi päris iframe'is avanes „Kaardi vaade”, „Piirangud” vahekaart ja töötav Leafleti zoom. Kõigi värskete first-party sessioonide konsoolis oli 0 viga ja 0 hoiatust.
 
-Uus kasutajale nähtav privaatsusplokk kirjeldab täpselt Luna payloadi ja linki teenusepakkuja säilitustingimustele. Server eemaldab tõenditest prompt-injection'i lõigud, lubab väljaminevaks tulemuse-URL-iks ainult HTTPS-i ja ignoreerib rate-limit'i identiteedis kliendi suvalist `X-Forwarded-For` väärtust. Neid piire katavad viis pahatahtlikku tõendifixtuuri, URL-protokolli kontroll ja 21 pöörleva XFF-aadressi regressioon.
+Uus kasutajale nähtav privaatsusplokk kirjeldab täpselt Luna payloadi ja linki teenusepakkuja säilitustingimustele. Server eemaldab tõenditest prompt-injection'i lõigud, lubab väljaminevaks tulemuse-URL-iks ainult HTTPS-i ning usaldab edastatud kliendiaadressi ainult seadistatud proxy-ahelas. Fikseeritud API-, otsingu- ja Terrapointi operatsioonikvoote ei saa tee või katastritunnuse vahetamisega poolitada. Neid piire katavad pahatahtlikud tõendifixtuurid, URL-protokolli kontroll, võltsitud CF/XFF-ahelad ja muutuvate ressursiteedega kvoodiregressioon.
 
 ## Struktureeritud näitajate lõppväljalase 18.08.2026
 
@@ -124,20 +143,22 @@ flowchart LR
   C[(PostgreSQL)]
   D[FTS + pg_trgm + intent + fraas + passage + aasta + autoriteet + värskus]
   E[Üks filtreeritud ja deduplitseeritud järjestatud hetktõmmis]
-  F[Luna: ainult küsimus ja kuni 8 valitud avalikku tõendit]
+  F[Agents SDK manager: küsimus ja kuni 10 valitud avalikku tõendit]
+  S[Relevantsusspetsialist + vajaduse korral tõendikriitik]
   G[Deterministlik viite, arvu, ühiku, aasta-väärtuse, üksuse, võrdluse, polaarsuse ja intenti kontroll]
   H[Koondvastus, allikad, tulemused]
   Q[(Qdrant: eksperimentaalne profiil)]
 
   A --> B --> C --> D --> E
   E --> F --> G --> H
+  F --> S --> F
   E --> H
   E -. praeguses runtime'is importimata .-> Q
 ```
 
-PostgreSQL on püsiv tööandmebaas. `practice_corpus_documents` hoiab normaliseeritud dokumente, täisteksti, metaandmeid ja `tsvector` indeksit. `practice_search_cache` hoiab versioonitud vastusepuhvrit ilma `query` väljata. `practice_search_runs` hoiab ainult serverisaladusega HMAC-SHA-256 päringusõrmejälge, redigeeritud tekstivälja, kestust ja dokumentide ID-sid. Cache'i revisjon sisaldab jooksva järjestatud loendi URL-e, järjekorda, metaandmeid, täpset andmelokaatorit ja sisuversiooni; hit lükatakse tagasi ka siis, kui mõni viidatud URL pole enam loendis. Aegunud vahemäluread ja üle 30 päeva vanad otsingukirjed eemaldatakse käivitumisel ning iga 60 sekundi järel; vana liht-räsi võtmeversiooni read eemaldatakse migratsiooniga. Päringu deadline kandub salvestustehingusse: enne cache'i, run-kirje ja commit'i kontrollitakse signaali ning ajavaru; aegunud tehing tehakse rollback.
+PostgreSQL on püsiv tööandmebaas. `practice_corpus_documents` hoiab normaliseeritud dokumente, täisteksti, metaandmeid ja `tsvector` indeksit. `practice_search_cache` hoiab ainult `privacy-safe-v5` lubatud väljade skeemi: mudeli loodud vastuseproosat ei kirjutata püsivasse cache'i ning deterministliku tee puhul puuduvad toorpäring ja päringupõhine pealkiri. Täieliku päringu või mistahes vähemalt kolmetähelise sisulise päringutokeni otse, käändevormis või korduvalt URL-, HTML- või kaldkriipsuga kodeeritult säilimine tühistab cache-kirjutuse enne JSON-serialiseerimist. E-posti, telefoni, isikukoodi, UUID, katastritunnuse või pika unikaalse täht-numbrilise tunnusega päring ei ole vastusecache'i jaoks kõlblik. Piiratud dekodeerimine peab jõudma fikspunktini; tööpiiri ületamine loobub cache'ist, kuid jätab redigeeritud run-kirje alles. `practice_search_runs` hoiab ainult eraldi vähemalt 32 juhusliku baidiga serverisaladuse HMAC-SHA-256 päringusõrmejälge, redigeeritud tekstivälja, kestust ja dokumentide ID-sid; püsiv runtime ei käivitu puuduva, mittekanoonilise Base64/Base64URL-i, vähese baidierisusega, lühikese kordusmustriga, andmebaasi mandaadiga kattuva või muul viisil ennustatava võtmega. Cache'i revisjon sisaldab jooksva järjestatud loendi URL-e, järjekorda, metaandmeid, täpset andmelokaatorit ja sisuversiooni; hit lükatakse tagasi ka siis, kui mõni viidatud URL pole enam loendis. Aegunud vahemäluread ja üle 30 päeva vanad otsingukirjed eemaldatakse käivitumisel ning iga 60 sekundi järel; varasemad võtme- ja vastuseskeemid eemaldatakse migratsiooniga. Päringu deadline kandub salvestustehingusse: enne cache'i, run-kirje ja commit'i kontrollitakse signaali ning ajavaru; aegunud tehing tehakse rollback. Iga seadistatud andmebaas nõuab eksplitsiitset TLS-režiimi: `disable` sobib ainult Compose'i täpsele `postgres` hostile või loopback'ile ning iga muu host nõuab serdi ja hostinimega `verify-full` TLS-i.
 
-Kõik arvulised allikad ei ole HTML-lehel tekstina olemas. `server/indicators.mjs` on tüübikindel adapter, mis tuvastab olmejäätmete ringlussevõtu määra päringu, loeb portaali ametliku Tableau CSV-vaate, valideerib veerud ning valib küsitud aasta Eesti ja EL-i rea. Avalik viide avab inimesele näitajalehe; eraldi `locator` osutab kontrollitavale masinloetavale tabelile. CSV sisu hash osaleb cache'i revisjonis ja grounding-audit nõuab iga kuvatud arvu olemasolu just selles tabelis.
+Kõik arvulised allikad ei ole HTML-lehel tekstina olemas. `server/indicators.mjs` on tüübikindel adapter, mis tuvastab olmejäätmete ringlussevõtu määra päringu, loeb portaali ametliku Tableau CSV-vaate, valideerib veerud ning valib küsitud aasta Eesti ja EL-i rea. Parser kontrollib enne tõendiks ülendamist CSV süntaksit ja ristkülikulist kuju, unikaalseid päiseid ning aasta-üksuse paare, aasta mõistlikku vahemikku ja protsenti `0..100`. Eurostati JSON-stat peab tõendama täpselt kuus nõutud dimensiooni, nende kardinaalsuse ja indeksid, lubatud koodid, väärtuse/status'e kuju ning Eesti metsamahu mitte-negatiivse piiratud vahemiku; vea korral jääb alles sõltumatu KAURi fallback, kuid vigane Eurostati keha ei saa tõendiks. Avalik viide avab inimesele näitajalehe; eraldi `locator` osutab kontrollitavale masinloetavale tabelile. CSV sisu hash osaleb cache'i revisjonis ja grounding-audit nõuab iga kuvatud arvu olemasolu just selles tabelis.
 
 Korpuse loendurite täpsed definitsioonid:
 
@@ -150,9 +171,9 @@ Korpuse loendurite täpsed definitsioonid:
 
 Korduv import on idempotentne: `canonical_url` on unikaalne, lisaks on unikaalne paar `source_key + external_id`, ning UPSERT uuendab sama rida. `last_seen_run` ja `last_seen_at` annavad värskuse; ametlikust sitemapist kadunud read märgitakse `is_available = FALSE`, mitte ei anta uue ID all uuesti välja. Viited kasutavad sama vastuse järjestatud allikaloendi stabiilseid numbreid ja kanoonilisi URL-e.
 
-Värskuse leping on kahekihiline. Taustsünk käivitub startup'il ainult siis, kui viimane edukas jooks on vanem kui `CORPUS_SYNC_INTERVAL_HOURS=24`; see uuendab sitemap'i liikmelisuse ja tombstone'id. Iga esimese 500 tulemuselehe päring teeb lisaks kuni kolm ajapiiratud live-discovery otsingut ametlikes indeksites ja indekseerib uued URL-id kuni 15 minuti deduplikatsiooni-TTL-iga. Kontrollhetkel oli viimane täielik sync lõpetatud `2026-08-17T19:27:40.475Z`, kuid päringuaegne indeks oli värskenenud `2026-08-18T06:44:34.377Z`.
+Värskuse leping on kahekihiline. Taustsünk käivitub startup'il ainult siis, kui viimane edukas jooks on vanem kui `CORPUS_SYNC_INTERVAL_HOURS=24`; see uuendab sitemap'i liikmelisuse ja tombstone'id. Iga esimese 500 tulemuselehe päring teeb lisaks kuni kolm ajapiiratud live-discovery otsingut ametlikes indeksites ja indekseerib uued URL-id kuni 15 minuti deduplikatsiooni-TTL-iga. Avalik live-indeks võtab ühe säilitusakna jooksul vaikimisi vastu kuni 10 000 uut URL-i ning ühe protsessis HMAC-pseudonüümitud kliendi kohta kuni 500; PostgreSQL-i kirjutuseelne advisory-lukuga tehing retireerib vanad read ja rakendab sõltumatut 20 000 live-rea lage. Sama URL-i lubatud värskendus ei kuluta uut URL-i kvooti. Kontrollhetkel oli viimane täielik sync lõpetatud `2026-08-17T19:27:40.475Z`, kuid päringuaegne indeks oli värskenenud `2026-08-18T06:44:34.377Z`.
 
-`hydrated` tähendab, et kohalikus reas on puhastatud mittetühi täistekst; `metadataOnly` tähendab pealkirja, URL-i, kokkuvõtet ja teisi kaardivälju ilma püsivalt salvestatud täisleheta. Vastuse top-k dokumente üritatakse päringu ajal uuesti hüdrateerida ametliku HTTPS-lehelt 2 sekundi piiriga. Kui see ei õnnestu, võib järjestus endiselt näidata metadata-kaarti, kuid AI-värav peab leidma samast nähtavast allikast küsimust otseselt katva terviklause; vastasel juhul tagastatakse täpsustus või abstention, mitte puuduvast sisust tuletatud fakt.
+`hydrated` tähendab, et kohalikus reas on puhastatud mittetühi täistekst; `metadataOnly` tähendab pealkirja, URL-i, kokkuvõtet ja teisi kaardivälju ilma püsivalt salvestatud täisleheta. Kuni kuut kõrgeima asetusega dokumenti üritatakse päringu ajal ametliku HTTPS-lehelt 2 sekundi piiriga hüdrateerida. Kogu protsessi peale töötab korraga kuni neli hüdratsiooni, järjekord on piiratud ja sama URL-i samaaegsed laadimised koondatakse. Redirect'i järel ülendatakse keha tõendiks ainult siis, kui lõppressursi kanooniline URL on algse reaga sama; teise tee, hosti või ressursi sisu ei päranda vana rea identiteeti ega metaandmeid. Kui hydratsioon ei õnnestu, võib järjestus endiselt näidata metadata-kaarti, kuid AI-värav peab leidma samast nähtavast allikast küsimust otseselt katva terviklause; vastasel juhul tagastatakse täpsustus või abstention, mitte puuduvast sisust tuletatud fakt.
 
 Filtrid on ühe valikuga: sama fasseti sees mitmikvalikut ei ole, eri fassetid rakenduvad `AND`-ina. Regressioon `a filter cannot leave a hidden live source cited outside the visible listing` annab olukorra, kus globaalselt tugev reaalajaallikas jääb aastafiltri tõttu välja, ning nõuab, et see ei ilmuks vastuses ega viidetes.
 
@@ -160,9 +181,9 @@ Qdrant on ainult Compose'i `experimental-vector` profiil. `server/qdrant.mjs` ka
 
 ## AI-provideri piir
 
-Tootmise vastusetee on `server/pipeline.mjs` → `server/llm.mjs` → OpenCode Go Responses API. Deploy määrab `LLM_MODEL=gpt-5.6-luna`, `LLM_API_STYLE=responses` ja tühja fallback-mudeli. Avalik marsruut ei saa neid keskkonnamuutujaid muuta. DeepSeek V4 Flash töötab ainult Codexi arendus-Swarmi planeerimis- ja auditikihis; see ei kraabi ega vasta tootmisrakenduse päringutele.
+Vastusetee on `server/pipeline.mjs` → `server/llm.mjs` → OpenAI Agents SDK → OpenCode Go Responses API. Seadistus määrab `LLM_MODEL=gpt-5.6-luna`, `LLM_API_STYLE=responses`, `LLM_ORCHESTRATION=agents` ja tühja fallback-mudeli; ühe allika korral jääb tee otseseks range skeemiga mudelikõneks. Avalik marsruut ei saa neid keskkonnamuutujaid muuta.
 
-Mudeli sisend sisaldab küsimust, ranget JSON skeemi ja kuni kaheksa juba järjestatud avaliku allika piiratud tõendit. Mudelil pole PostgreSQL-i, Qdranti, Terrapointi, shelli ega veebitööriistu. Väljund avaldatakse ainult deterministlike kontrollide läbimisel; muidu jääb kasutusele kontrollitud allikapõhine draft. Korraga tehakse kuni kaks Luna kutset; ülejäänud vastused ei oota mudelijärjekorras, vaid kasutavad sama tõendi põhjal deterministlikku drafti. Piir põhineb live-koormusmõõtmisel: kaks paralleelset kutset vastasid 2/2, nelja samaaegse kutse puhul venisid kõik mudelivastused ühise tähtajani.
+Mudeli sisend sisaldab küsimust, ranget skeemi ja kuni kümne juba järjestatud avaliku allika piiratud tõendit. Mitme allika korral peab manager esmalt kutsuma relevantsusspetsialisti ja võib kutsuda tõendikriitiku; spetsialistid ei saa algsest paketist laiemaid allikaid. Ühelgi agendil pole PostgreSQL-i, Qdranti, Terrapointi, shelli ega veebitööriistu. Väljund avaldatakse ainult deterministlike kontrollide läbimisel; muidu jääb kasutusele kontrollitud allikapõhine draft. Korraga on kuni kaks AI-orchestratsiooni töökohta; ülejäänud vastused ei oota mudelijärjekorras. Kõigile klientidele kehtib üks libiseva akna teenusepakkuja päringu- ja tokenieelarve ning igale usaldatud proxy-ahelast tuletatud, protsessis HMAC-pseudonüümitud kliendile eraldi õiglane alamkvoot. Iga tegelik SDK mudelikõne reserveerib enne võrku saatmist oma piiratud JSON-sisendi baitidele konservatiivse tokenilae ning väljundilae, seejärel asendatakse reservatsioon teenusepakkuja raporteeritud sisend- ja väljundtokenite kogusummaga. Redirectid, varjatud retry'd ja üle 1 MB vastused on keelatud; pärast dispatch'i teadmata kasutusega katkestus debiteerib kogu reservatsiooni. Ammendumine annab eristatava `budget-exhausted` oleku koos deterministliku fallback'iga. Varasem otsese Luna tee koormusmõõtmine ei asenda uue mitme agent-turniga tee deploy-eelset live-kontrolli.
 
 ## Dokumentatsiooni ja koodi kaart
 
@@ -174,6 +195,8 @@ Mudeli sisend sisaldab küsimust, ranget JSON skeemi ja kuni kaheksa juba järje
 | Tüübikindel ametlik arvunäitaja | `server/indicators.mjs`, `server/integrations.mjs` | CSV-fixtuuri unit-testid ja live grounding-audit |
 | Luna range JSON ja maandatus | `server/llm.mjs` | adversariaalsed LLM unit-testid, live grounding audit |
 | Progressiivse voo 15 s ja kõik-korraga liidese 12 s vastusepiir | `server/index.mjs`, `server/request-budget.mjs`, `server/pipeline.mjs` | fault-injection ja live load audit |
+| Upstream'i voogedastav baitpiir, cache-baidieelarve ja autocomplete'i värav | `server/upstream.mjs`, `server/integrations.mjs`, `server/index.mjs` | chunked-body, LRU, koondamise, concurrency ja abort unit-testid |
+| Globaalne ja kliendipõhine tasulise LLM-töö eelarve | `server/llm-budget.mjs`, `server/agent-orchestrator.mjs`, `server/llm.mjs` | halvima juhu reservatsiooni, kliendieralduse, manageri ja mõlema spetsialisti koondkasutuse, hilise/varase katkestuse, valideerimisvea, akna aegumise ning fallback-oleku unit-testid |
 | Terrapointi täisrakendus | `src/App.jsx`, CSP `frame-src` | desktopi/mobiili Playwrighti teekond |
 | POST-põhine privaatne UI-otsing | `src/App.jsx`, `server/index.mjs` | brauseri request-list, nonce test |
 | Qdrant pole tootmise otsinguteel | `server/qdrant.mjs`, `compose.yaml` | impordigraafi kontroll, profiilide Compose validation |
@@ -184,11 +207,11 @@ Mudeli sisend sisaldab küsimust, ranget JSON skeemi ja kuni kaheksa juba järje
 | Meetod | Tee | Mõju ja piir |
 |---|---|---|
 | GET | `/api/health` | ainult tervis, ei muuda olekut |
-| GET/POST | `/api/search` | ainult otsing; UI kasutab progressiivset streami; 180 märki, kõik-korraga vastusel 12 s, 20 päringut minutis; kuni 8 täismahus paralleelotsingut, üle selle kontrollitud capacity-fallback |
-| GET/POST | `/api/search/results` | ainult lehitsemine/filtrid; UI kasutab POST-i |
-| POST | `/api/search/follow-up` | ainult vastus; kuni neli varasemat küsimust ja 520 märki konteksti; juurpäringu allika-, tüübi-, aasta- ja järjestusfilter rakendatakse igal voorul uuesti |
+| POST | `/api/search` | sama päritolu JSON-otsing; UI kasutab progressiivset streami; 180 märki, kõik-korraga vastusel 12 s, 20 päringut minutis; kuni 8 täismahus paralleelotsingut, üle selle kontrollitud capacity-fallback |
+| POST | `/api/search/results` | sama päritolu JSON-lehitsemine ja filtrid; kulukas GET-alias puudub |
+| POST | `/api/search/follow-up` | ainult vastus; kuni neli varasemat küsimust ja 1400 märki konteksti; juurpäringu allika-, tüübi-, aasta- ja järjestusfilter rakendatakse igal voorul uuesti |
 | GET | `/api/corpus` | ainult agregeeritud avalikud loendurid |
-| GET/POST | `/api/suggestions` | ainult soovitused; UI kasutab POST-i; 80 märki |
+| POST | `/api/suggestions` | sama päritolu JSON-soovitused; 80 märki |
 | GET | `/api/terrapoint/address` | fikseeritud Terrapointi upstream; vaba URL puudub |
 | GET | `/api/terrapoint/parcel/:number` | ainult valideeritud katastritunnus; fikseeritud upstream |
 
