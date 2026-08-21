@@ -218,6 +218,18 @@ test("forest balance synthesis answers directly from four separately cited offic
     ...followUp.answer.introCitations,
     ...followUp.answer.parts.flatMap((part) => part.citations),
   ]).size >= 4);
+
+  const numericOnlyDirect = composeForestHarvestBalanceAnswer(
+    "Kas raiemaht ületab juurdekasvu?",
+    [documents[0]],
+  );
+  assert.match(numericOnlyDirect.answer.intro, /11,6[\s\S]*9,1[\s\S]*2,5 miljoni m³/u);
+  const numericOnlyFollowUp = composeForestHarvestBalanceAnswer(
+    "Mida see viimase 5 aasta jooksul tähendab Kas raiemaht ületab juurdekasvu?",
+    [documents[0]],
+  );
+  assert.match(numericOnlyFollowUp.answer.title, /^2020–2024 viie aasta kohta/u);
+  assert.match(numericOnlyFollowUp.answer.intro, /2020: eemaldamine 12,2 ja netojuurdekasv 14,4/u);
   assert.match(followUp.answer.parts[0].text, /metsast ära toodud looduslikku väljalangemist/u);
   assert.equal(isForestHarvestBalanceQuery("raiemaht ja netojuurdekasv"), true);
   assert.equal(isForestHarvestBalanceQuery("raiemaht 2023"), false);

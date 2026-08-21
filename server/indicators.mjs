@@ -637,24 +637,28 @@ export function composeForestHarvestBalanceAnswer(query, sources = []) {
   const allObservations = validatedForestBalanceProjection(eurostat)?.observations || [];
   const observations = allObservations.filter((item) => item.increment !== null && item.removals !== null);
   const explicitYear = requestedYear(query);
-  if (!observations.length || !eurostatCitation || !methodCitation) return null;
+  if (!observations.length || !eurostatCitation) return null;
   const requestedObservation = explicitYear
     ? allObservations.find((item) => item.year === explicitYear)
     : null;
   if (explicitYear && (!requestedObservation
     || requestedObservation.increment === null
     || requestedObservation.removals === null)) {
+    const missingYearExplanation = [
+      methodCitation ? "Netojuurdekasv arvestab juurdekasvust maha loodusliku suremuse." : "",
+      handbookCitation ? "Eurostati käsiraamatu järgi näitab sama aasta eemaldamise ja netojuurdekasvu võrdlus, kas eemaldamine ületab juurdekasvu või jääb sellest alla." : "",
+    ].filter(Boolean).join(" ");
     return {
       answer: {
         eyebrow: "Allikapõhine koondvastus",
         title: `${explicitYear}. aasta kohta võrreldav paar puudub`,
         intro: `Kasutatud Eurostati metsa arvepidamise väljavõttes ei ole ${explicitYear}. aasta kohta korraga avaldatud nii Eesti netojuurdekasvu kui ka puidu eemaldamise (removals) väärtust. Seetõttu ei saa selle andmerea põhjal nende suhet sel aastal hinnata.`,
         introCitations: [eurostatCitation],
-        parts: [{
+        parts: missingYearExplanation ? [{
           title: "Miks ma puuduvat väärtust ei asenda",
-          text: "Netojuurdekasv arvestab juurdekasvust maha loodusliku suremuse. Eurostati käsiraamatu järgi näitab sama aasta eemaldamise ja netojuurdekasvu võrdlus, kas eemaldamine ületab juurdekasvu või jääb sellest alla.",
+          text: missingYearExplanation,
           citations: [methodCitation, handbookCitation].filter(Boolean),
-        }],
+        }] : [],
         note: "Puuduv võrreldav paar ei tähenda, et raiet või juurdekasvu sel aastal ei olnud; see tähendab ainult, et kasutatud ametlikus reas ei ole mõlemat väärtust avaldatud.",
       },
       related: [
@@ -710,11 +714,11 @@ export function composeForestHarvestBalanceAnswer(query, sources = []) {
             text: "Keskkonnaagentuuri 2024. aasta SMI ülevaates oli 2018/2019–2022/2023 viie raiehooaja keskmine raiemaht 11,2 miljonit tihumeetrit; 2021. aasta hinnang oli 10,0 ja 2022. aasta hinnang 12,1 miljonit tihumeetrit. See ei ole sama ajavahemik ega üks-ühele sama näitaja kui Eurostati removals-rida.",
             citations: [fiveYearCitation],
           }] : []),
-          {
+          ...(methodCitation ? [{
             title: "Pikem võrdlus annab teise vaate",
             text: "Keskkonnaagentuuri järgi oli viimase kümnendi keskmisena elusate puude raiemaht majandatavate metsade netojuurdekasvust kõrgem, kuid 20 aasta vaates madalam. Üks lühike või lünklik periood ei tõenda üksi pikaajalist üle- ega alaraiet.",
             citations: [methodCitation],
-          },
+          }] : []),
         ].slice(0, 3),
         note: "Puuduvaid aastaid ei ole interpoleeritud. Eurostati puidu eemaldamise, SMI raiemahu ning kogu- ja netojuurdekasvu mõisted ja ulatused ei ole omavahel asendatavad.",
       },
@@ -756,14 +760,16 @@ export function composeForestHarvestBalanceAnswer(query, sources = []) {
           text: "EFA removals mõõdab perioodil metsast eemaldatud elusate ja surnud puude mahtu koorega ning võib hõlmata metsast ära toodud looduslikku väljalangemist, varem langetatud puitu ja mittetüvepuitu. See ei ole üks-ühele sama mis ühe aasta SMI raiemaht.",
           citations: [handbookCitation],
         }] : []),
-        {
+        ...(methodCitation ? [{
           title: "Eraldi KAURi raiemahu võrdlus",
           text: "Netojuurdekasv on kogu juurdekasv pärast loodusliku suremuse mahaarvamist. Keskkonnaagentuur kirjutab eraldi majandatavate metsade SMI võrdluses, et elusate puude raiemaht oli viimase kümnendi keskmisena netojuurdekasvust kõrgem, kuid 20 aasta vaates madalam.",
           citations: [methodCitation],
-        },
+        }] : []),
         ...(fiveYearCitation ? [{
           title: "Lühem taust",
-          text: "SMI järgi oli 2018/2019–2022/2023 viie raiehooaja keskmine raiemaht 11,2 miljonit tihumeetrit. See taust ei ole sama ajavahemik ega üks-ühele sama näitaja kui Eurostati puidu eemaldamine ning ei anna üksi lõplikku hinnangut metsamajanduse kestlikkusele.",
+          text: handbookCitation
+            ? "SMI järgi oli 2018/2019–2022/2023 viie raiehooaja keskmine raiemaht 11,2 miljonit tihumeetrit. See taust ei ole sama ajavahemik ega üks-ühele sama näitaja kui Eurostati puidu eemaldamine ning ei anna üksi lõplikku hinnangut metsamajanduse kestlikkusele."
+            : "SMI järgi oli 2018/2019–2022/2023 viie raiehooaja keskmine raiemaht 11,2 miljonit tihumeetrit.",
           citations: [fiveYearCitation, methodCitation, handbookCitation].filter(Boolean),
         }] : []),
       ],

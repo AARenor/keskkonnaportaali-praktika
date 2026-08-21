@@ -1081,7 +1081,18 @@ test("forest harvest draft answers the root and temporal follow-up from multiple
     _answerEvidenceEligible: true,
     summary: "Stored official landing-page text without the structured JSON-stat observation projection. ".repeat(4),
     content: "Stored official page body without the structured year-value tuples. ".repeat(8),
-  }, ...documents]);
+  }, ...documents.slice(2, 4).map((document) => ({
+    id: `navigation-${document.id}`,
+    title: document.title,
+    url: document.url,
+    summary: "Federated discovery alias that must stay navigation-only.",
+    content: "Federated discovery alias body.",
+    sourceTier: "official",
+    retrieval: "official-federated-search",
+    delivery: "federated-discovery",
+    evidencePolicy: "route-only",
+    _answerEvidenceEligible: false,
+  })), ...documents]);
   let generatedFollowUps = 0;
   const collisionSafeResponse = await searchEnvironmentLive(followQuestion, {
     deadlineAt: Date.now() + 1_000,

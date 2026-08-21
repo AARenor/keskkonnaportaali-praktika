@@ -259,6 +259,12 @@ function mergeDuplicate(current, candidate) {
     _evidenceVersion: richerEvidence._evidenceVersion,
     _evidenceStatusAt: richerEvidence._evidenceStatusAt,
     freshness: richerEvidence.freshness,
+    // Retrieval and delivery are evidence-policy inputs too. Assign them
+    // atomically with the retained body: an absent delivery field on a vetted
+    // structured source must clear a federated-discovery alias value inherited
+    // through the fallback spread above.
+    retrieval: richerEvidence.retrieval,
+    delivery: richerEvidence.delivery,
     // Spreads above can inherit an invalid structured projection from either
     // alias. Assign this field explicitly so a failed version/schema check
     // removes it instead of letting another alias confer eligibility on it.

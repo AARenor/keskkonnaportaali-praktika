@@ -535,8 +535,9 @@ test("canonical duplicate merging cannot launder a missing-policy body through a
 });
 
 test("an explicit navigation alias cannot suppress or contaminate independently validated canonical evidence", () => {
-  const validated = officialServiceCatalogueDocuments()
+  const validatedSource = officialServiceCatalogueDocuments()
     .find((source) => source.id === "forest-stock-stable");
+  const { delivery: _delivery, ...validated } = validatedSource;
   for (const retrieval of ["official-federated-search", "catalogue-directory"]) {
     const navigation = {
       id: `${retrieval}-navigation-alias`,
@@ -557,6 +558,8 @@ test("an explicit navigation alias cannot suppress or contaminate independently 
       const [merged] = deduplicateResults(input);
       assert.equal(merged.evidencePolicy, validated.evidencePolicy);
       assert.equal(merged._answerEvidenceEligible, true);
+      assert.equal(merged.delivery, undefined);
+      assert.equal(merged.retrieval, validated.retrieval);
       assert.equal(sourceEvidenceEligibility(merged).eligible, true);
       assert.equal(evidenceDocumentsFromListing({ items: [merged] }).length, 1);
       assert.doesNotMatch(`${merged.title} ${merged.summary} ${merged.content} ${(merged.topics || []).join(" ")}`, /NAVIGATION_\w+_SENTINEL/u);
