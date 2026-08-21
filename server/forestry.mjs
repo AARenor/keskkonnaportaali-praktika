@@ -521,10 +521,35 @@ export function getForestrySuggestions(query, limit = 5) {
   const clean = String(query || "").replace(/\s+/g, " ").trim().slice(0, 80);
   const safeLimit = Math.max(1, Math.min(Number(limit) || 5, 5));
   if (!clean || isBroadForestryQuestion(clean)) return BROAD_SUGGESTIONS.slice(0, safeLimit);
-  if (!isForestryQuestion(clean)) return [];
-  return retrieveForestryDocuments(clean, safeLimit)
+  const normalized = normalizeForestryText(clean);
+  const normalizedTokens = normalized.match(/[0-9a-zõäöüšž]+/giu) || [];
+  const aliasMatches = KNOWLEDGE.documents
+    .flatMap((document, documentIndex) => (document.question_aliases || []).map((value, aliasIndex) => ({
+      value,
+      documentIndex,
+      aliasIndex,
+    })))
+    .map((item) => {
+      const alias = normalizeForestryText(item.value);
+      const aliasTokens = alias.match(/[0-9a-zõäöüšž]+/giu) || [];
+      const prefixMatches = normalizedTokens.filter((token) => aliasTokens.some((aliasToken) => (
+        aliasToken.startsWith(token) || token.startsWith(aliasToken)
+      ))).length;
+      const score = alias.startsWith(normalized) ? 100
+        : normalizedTokens.length && prefixMatches === normalizedTokens.length ? 60 + prefixMatches
+          : 0;
+      return { ...item, score };
+    })
+    .filter((item) => item.score > 0)
+    .sort((left, right) => right.score - left.score
+      || left.documentIndex - right.documentIndex
+      || left.aliasIndex - right.aliasIndex)
+    .map((item) => item.value);
+  const semanticMatches = retrieveForestryDocuments(clean, safeLimit)
     .filter((item) => item.score >= 0.22)
     .map((item) => item.document.question_aliases[0] || item.document.title)
+    .filter(Boolean);
+  return [...aliasMatches, ...semanticMatches]
     .filter((value, index, values) => value && values.indexOf(value) === index)
     .slice(0, safeLimit);
 }

@@ -30,7 +30,7 @@ import {
   textHasQueryRoot,
 } from "./search.mjs";
 
-export const SEARCH_RESPONSE_REVISION = "answer-v29-forestry-evidence-locator";
+export const SEARCH_RESPONSE_REVISION = "answer-v31-claim-complete-witnesses";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 
 function rankPortalDocuments(query, documents) {
@@ -225,11 +225,12 @@ function uniqueCitations(sources = []) {
 }
 
 function safeSourcePassages(source = {}) {
-  return [source.summary, source.content]
+  return [source.evidenceExcerpt, source.summary, source.answer, source.content]
     .filter(Boolean)
     .flatMap((value) => splitTextPassages(sanitizeLlmEvidenceText(value)))
     .map((value) => value.replace(/\s+/gu, " ").trim())
-    .filter((value) => value.length >= 20 && hasCompleteSentenceEnding(value));
+    .filter((value) => value.length >= 20)
+    .map((value) => hasCompleteSentenceEnding(value) ? value : `${value}.`);
 }
 
 function forestAreaMeasurementPassage(source) {
@@ -361,27 +362,14 @@ function composeForestDepletionFallback(query, plannedEvidence, sources = [], pr
   };
 }
 
-function passageTokenSet(value) {
-  return new Set(normalize(value).split(" ").filter((token) => token.length >= 4));
-}
-
-function passagesAreNearDuplicates(left, right) {
-  const normalizedLeft = normalize(left);
-  const normalizedRight = normalize(right);
-  if (!normalizedLeft || !normalizedRight) return false;
-  if (normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)) return true;
-  const leftTokens = passageTokenSet(left);
-  const rightTokens = passageTokenSet(right);
-  const smaller = Math.min(leftTokens.size, rightTokens.size);
-  if (smaller < 5) return false;
-  const shared = [...leftTokens].filter((token) => rightTokens.has(token)).length;
-  return shared / smaller >= 0.72;
-}
-
 function distinctPassages(passages = []) {
   const distinct = [];
+  const seen = new Set();
   for (const passage of passages) {
-    if (!distinct.some((candidate) => passagesAreNearDuplicates(candidate, passage))) distinct.push(passage);
+    const key = normalize(passage);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    distinct.push(passage);
   }
   return distinct;
 }
@@ -395,8 +383,6 @@ function composeOfficialForestryEvidenceFallback(query, plannedEvidence, sources
     || !plannedEvidence?.passagesByDocument
     || ["forest-area", "forest-depletion", "forest-data-sources"].includes(plannedEvidence.kind)) return null;
   const byId = new Map((sources || []).map((source) => [source.id, source]));
-  const queryRoots = queryTerms(query);
-  const evidenceTerms = (plannedEvidence.evidenceGroups || []).flatMap((group) => group).map(normalize).filter(Boolean);
   const bundles = (plannedEvidence.supportingDocumentIds || []).flatMap((documentId) => {
     const source = byId.get(documentId);
     const citation = sourceCitation(source);
@@ -409,31 +395,11 @@ function composeOfficialForestryEvidenceFallback(query, plannedEvidence, sources
         const complete = hasCompleteSentenceEnding(value) ? value : `${value}.`;
         return `${complete.charAt(0).toLocaleUpperCase("et")}${complete.slice(1)}`;
       });
-    const selectedKeys = new Set(selectedPassages.map(normalize));
-    const selectedLength = selectedPassages.join(" ").length;
-    // Methodology and time-series answers must remain exactly traceable to the
-    // passages the evidence planner selected. Pulling extra same-document
-    // sentences used to append unrelated forest-area or harvesting facts
-    // merely because those sentences repeated a query word.
-    const supplementaryLimit = ["increment-method", "clearcut-over-time"].includes(plannedEvidence.kind)
-      ? 0
-      : selectedLength < 240 ? 2 : selectedLength < 480 ? 1 : 0;
-    const supplementary = safeSourcePassages(source)
-      .filter((passage) => !selectedKeys.has(normalize(passage)))
-      .filter((passage) => !(/\blagerai\w*|keskkonnamoju\w*/u.test(normalize(passage))
-        && !/\blagerai\w*|keskkonnamoju\w*/u.test(normalize(query))))
-      .map((passage, index) => ({
-        passage,
-        index,
-        score: queryRoots.filter((root) => textHasQueryRoot(passage, root)).length * 18
-          + evidenceTerms.filter((term) => normalize(passage).includes(term)).length * 8
-          + (/\d/u.test(passage) && /\b(?:kui|mitu|palju|protsent|aasta)\w*\b/u.test(normalize(query)) ? 8 : 0),
-      }))
-      .filter((candidate) => candidate.score > 0)
-      .sort((left, right) => right.score - left.score || left.index - right.index)
-      .slice(0, supplementaryLimit)
-      .map((candidate) => candidate.passage);
-    const unique = distinctPassages([...selectedPassages, ...supplementary]);
+    // Once the evidence planner has satisfied the intent contract, render
+    // exactly those passages. Adding merely similar text from the same page
+    // can silently change the subject (for example harvest volume to clearcut
+    // area) even though the citation number remains unchanged.
+    const unique = distinctPassages(selectedPassages);
     const text = unique.reduce((result, passage) => {
       const joined = [result, passage].filter(Boolean).join(" ");
       return joined.length <= 680 ? joined : result;
@@ -456,16 +422,253 @@ function composeOfficialForestryEvidenceFallback(query, plannedEvidence, sources
   };
 }
 
+function answerEvidenceDocuments(documents = [], plannedEvidence, forestBalance) {
+  if (forestBalance || !plannedEvidence?.strong) return documents;
+  if (plannedEvidence.kind === "forest-data-sources") {
+    const direct = documents.find((document) => document.id === plannedEvidence.directDocumentId);
+    const smiMethod = documents.find((document) => document.id !== direct?.id && hasSmiNationalRole(document));
+    const registry = documents.find((document) => document.id !== direct?.id
+      && document.id !== smiMethod?.id
+      && hasForestRegisterRole(document));
+    const comparisonSet = [direct, smiMethod, registry].filter(Boolean);
+    if (comparisonSet.length === 3) return comparisonSet;
+  }
+  const ids = [...new Set([
+    plannedEvidence.directDocumentId,
+    ...(plannedEvidence.supportingDocumentIds || []),
+  ].filter(Boolean))];
+  const byId = new Map((documents || []).map((document) => [document.id, document]));
+  const selected = ids.map((id) => byId.get(id)).filter(Boolean);
+  return selected.length ? selected : documents;
+}
+
+function boundedEvidenceExcerpt(passages = []) {
+  const seen = new Set();
+  const sanitized = passages
+    .map(sanitizeLlmEvidenceText)
+    .map((value) => value.replace(/\s+/gu, " ").trim())
+    .filter((value) => value.length >= 20)
+    .map((value) => hasCompleteSentenceEnding(value) ? value : `${value}.`)
+    .map((value) => `${value.charAt(0).toLocaleUpperCase("et")}${value.slice(1)}`)
+    .filter((value) => {
+      const key = normalize(value);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  return sanitized.reduce((result, passage) => {
+    const joined = [result, passage].filter(Boolean).join(" ");
+    return joined.length <= 900 ? joined : result;
+  }, "");
+}
+
+function answerCitationNumbers(answer = {}) {
+  return new Set([
+    ...(answer.introCitations || []),
+    ...(answer.parts || []).flatMap((part) => part.citations || []),
+  ].map(Number).filter(Number.isFinite));
+}
+
+function answerClaimForCitation(answer = {}, citation) {
+  return [
+    (answer.introCitations || []).map(Number).includes(citation) ? answer.intro : "",
+    ...(answer.parts || []).flatMap((part) => (
+      (part.citations || []).map(Number).includes(citation) ? [part.title, part.text] : []
+    )),
+  ].filter(Boolean).join(" ");
+}
+
+function answerClaims(answer = {}) {
+  return [
+    {
+      text: String(answer.intro || "").trim(),
+      citations: (answer.introCitations || []).map(Number).filter(Number.isFinite),
+    },
+    ...(answer.parts || []).map((part) => ({
+      text: [part.title, part.text].filter(Boolean).join(" ").trim(),
+      citations: (part.citations || []).map(Number).filter(Number.isFinite),
+    })),
+  ].filter((claim) => claim.text);
+}
+
+function canonicalClaimNumbers(value) {
+  return [...String(value || "").normalize("NFKC").matchAll(/(?<![\p{L}\p{N}])(\d+(?:[.,]\d+)?)(?:\s*%)?(?![\p{L}\p{N}])/gu)]
+    .map((match) => match[1].replace(",", ".").replace(/^0+(?=\d)/u, ""));
+}
+
+function claimWitnessCoverage(claim, witness) {
+  const roots = queryTerms(claim);
+  const matchedRoots = roots.filter((root) => textHasQueryRoot(witness, root));
+  const expectedNumbers = canonicalClaimNumbers(claim);
+  const witnessedNumbers = new Set(canonicalClaimNumbers(witness));
+  const matchedNumbers = expectedNumbers.filter((number) => witnessedNumbers.has(number));
+  return {
+    roots,
+    matchedRoots,
+    expectedNumbers,
+    matchedNumbers,
+  };
+}
+
+function claimHasVisibleWitness(claim, witness) {
+  const coverage = claimWitnessCoverage(claim, witness);
+  if (coverage.matchedNumbers.length !== coverage.expectedNumbers.length) return false;
+  if (!coverage.roots.length) return true;
+  const requiredRoots = coverage.roots.length <= 2
+    ? coverage.roots.length
+    : Math.max(2, Math.ceil(coverage.roots.length * 0.4));
+  return coverage.matchedRoots.length >= requiredRoots;
+}
+
+function claimCoveringPassages(claim, passages = []) {
+  const remaining = passages.map((passage, index) => ({ passage, index }));
+  const selected = [];
+  let witness = "";
+  while (remaining.length && selected.length < 8 && !claimHasVisibleWitness(claim, witness)) {
+    const before = claimWitnessCoverage(claim, witness);
+    const ranked = remaining.map((candidate) => {
+      const combined = [witness, candidate.passage].filter(Boolean).join(" ");
+      const after = claimWitnessCoverage(claim, combined);
+      const numberGain = after.matchedNumbers.length - before.matchedNumbers.length;
+      const rootGain = after.matchedRoots.length - before.matchedRoots.length;
+      return {
+        ...candidate,
+        gain: numberGain * 100 + rootGain * 10 + passageQueryCoverage(claim, candidate.passage),
+      };
+    }).sort((left, right) => right.gain - left.gain || left.index - right.index);
+    const best = ranked[0];
+    if (!best || best.gain <= 0) break;
+    selected.push(best.passage);
+    witness = [witness, best.passage].filter(Boolean).join(" ");
+    const removeIndex = remaining.findIndex((candidate) => candidate.index === best.index);
+    remaining.splice(removeIndex, 1);
+  }
+  return selected;
+}
+
+function answerClaimsHaveVisibleWitnesses(draft = {}) {
+  const sourcesByCitation = new Map((draft.sources || []).map((source) => [Number(source.citation), source]));
+  return answerClaims(draft.answer).every((claim) => {
+    const witness = claim.citations
+      .map((citation) => sourcesByCitation.get(citation)?.evidenceExcerpt || "")
+      .filter(Boolean)
+      .join(" ");
+    return Boolean(witness) && claimHasVisibleWitness(claim.text, witness);
+  });
+}
+
+function claimHasVisibleWitnessInDraft(draft, claim) {
+  if (!claim?.text || !claim.citations?.length) return false;
+  const wanted = new Set(claim.citations.map(Number));
+  const witness = (draft.sources || [])
+    .filter((source) => wanted.has(Number(source.citation)))
+    .map((source) => source.evidenceExcerpt || "")
+    .filter(Boolean)
+    .join(" ");
+  return Boolean(witness) && claimHasVisibleWitness(claim.text, witness);
+}
+
+function finalizeVisibleAnswerWitnesses(draft, query, plannedEvidence) {
+  const attached = attachEvidenceExcerpts(draft, query, plannedEvidence);
+  if (answerClaimsHaveVisibleWitnesses(attached)) return attached;
+
+  const introClaim = {
+    text: String(attached.answer?.intro || "").trim(),
+    citations: (attached.answer?.introCitations || []).map(Number).filter(Number.isFinite),
+  };
+  if (!claimHasVisibleWitnessInDraft(attached, introClaim)) {
+    return {
+      ...attached,
+      clarification: "Leitud allikad ei kata vastuse kõiki väiteid piisavalt selge nähtava väljavõttega.",
+      answer: {
+        ...attached.answer,
+        eyebrow: "Täpsustust on vaja",
+        intro: "Leitud ametlike allikate põhjal ei saanud koostada väitehaaval kontrollitava viitega vastust. Täpsusta näitajat, aastat või võrdlust.",
+        introCitations: [],
+        parts: [],
+        note: "Allikad on kuvatud allpool, kuid neist ei koostatud osaliselt viidatud faktivastust.",
+      },
+      evidence: {
+        ...attached.evidence,
+        answerable: false,
+      },
+    };
+  }
+
+  const parts = (attached.answer?.parts || []).filter((part) => claimHasVisibleWitnessInDraft(attached, {
+    text: [part.title, part.text].filter(Boolean).join(" ").trim(),
+    citations: (part.citations || []).map(Number).filter(Number.isFinite),
+  }));
+  const reduced = {
+    ...attached,
+    answer: {
+      ...attached.answer,
+      parts,
+    },
+  };
+  return attachEvidenceExcerpts(reduced, query, plannedEvidence);
+}
+
+function attachEvidenceExcerpts(draft, _query, plannedEvidence) {
+  const usedCitations = answerCitationNumbers(draft?.answer);
+  const claims = answerClaims(draft?.answer);
+  return {
+    ...draft,
+    sources: (draft.sources || []).map((source) => {
+      if (!usedCitations.has(Number(source.citation))) return source;
+      const plannedPassages = plannedEvidence?.passagesByDocument?.[source.id] || [];
+      const claimText = answerClaimForCitation(draft.answer, Number(source.citation));
+      const sourcePassages = distinctPassages([...plannedPassages, ...safeSourcePassages(source)]);
+      const sourceClaims = claims.filter((claim) => claim.citations.includes(Number(source.citation)));
+      const claimPassages = distinctPassages(sourceClaims.flatMap((claim) => (
+        claimCoveringPassages(claim.text, sourcePassages)
+      )));
+      // The deterministic planner already returns passages in explanatory
+      // order. Preserve that order for its accepted draft; the claim-ranked
+      // passages become authoritative when rebinding a later model answer.
+      const primaryPassages = plannedPassages.length
+        ? distinctPassages(plannedPassages)
+        : claimPassages;
+      const selectedKeys = new Set([...primaryPassages, ...claimPassages].map(normalize));
+      const fallbackPassages = sourcePassages
+        .filter((passage) => !selectedKeys.has(normalize(passage)))
+        .map((passage, index) => ({
+          passage,
+          index,
+          coverage: passageQueryCoverage(claimText, passage),
+        }))
+        .sort((left, right) => right.coverage - left.coverage || left.index - right.index)
+        .map((candidate) => candidate.passage);
+      const evidenceExcerpt = boundedEvidenceExcerpt([
+        ...primaryPassages,
+        ...claimPassages,
+        ...fallbackPassages,
+      ]);
+      return evidenceExcerpt ? { ...source, evidenceExcerpt } : source;
+    }),
+  };
+}
+
 export function publicResponse(draft) {
   const { evidence: _evidence, ...response } = draft;
+  const usedCitations = answerCitationNumbers(response.answer);
+  const visibleSources = usedCitations.size
+    ? (response.sources || []).filter((source) => usedCitations.has(Number(source.citation)))
+    : (response.sources || []);
   return {
     ...response,
-    sources: (response.sources || []).map((source) => ({
-      ...Object.fromEntries([
-        "id", "citation", "title", "organization", "type", "published", "url", "summary", "locator", "tags", "sourceTier",
-      ].filter((key) => source[key] !== undefined).map((key) => [key, source[key]])),
-      id: stablePublicResultId(source),
-    })),
+    sources: visibleSources.map((source) => {
+      const publicKeys = [
+        "id", "citation", "title", "organization", "type", "published", "url", "evidenceExcerpt", "locator", "tags", "sourceTier",
+      ];
+      if (!source.evidenceExcerpt) publicKeys.splice(7, 0, "summary");
+      return {
+        ...Object.fromEntries(publicKeys
+          .filter((key) => source[key] !== undefined)
+          .map((key) => [key, source[key]])),
+        id: stablePublicResultId(source),
+      };
+    }),
   };
 }
 
@@ -554,13 +757,14 @@ export async function createPortalDraft(query, {
       supportingDocumentIds: plannedEvidence.supportingDocumentIds,
     }
     : conventionalQuality;
+  const answerDocuments = answerEvidenceDocuments(reranked, plannedEvidence, forestBalance);
   const direct = quality.strong
-    ? reranked.find((document) => document.id === quality.directDocumentId)
+    ? answerDocuments.find((document) => document.id === quality.directDocumentId)
     : null;
   const directCitation = direct
-    ? reranked.findIndex((document) => document.id === direct.id) + 1
+    ? answerDocuments.findIndex((document) => document.id === direct.id) + 1
     : 0;
-  const draft = composeSearchResponse(query, reranked, {
+  const draft = composeSearchResponse(query, answerDocuments, {
     answerable: Boolean(forestBalance) || quality.strong,
     clarification: forestBalance || quality.strong
       ? null
@@ -606,7 +810,9 @@ export async function createPortalDraft(query, {
     draft.answer.intro = directExtract;
     draft.answer.introCitations = [directCitation];
   }
-  return draft;
+  return draft.evidence?.answerable === true
+    ? finalizeVisibleAnswerWitnesses(draft, retrievalQuery, plannedEvidence)
+    : attachEvidenceExcerpts(draft, retrievalQuery, plannedEvidence);
 }
 
 export function searchListingRevision(listing = {}) {
@@ -712,8 +918,12 @@ async function searchWithinBudget(cleanQuery, {
     throwIfRequestAborted(signal);
     onDraft(publicResponse(draft));
   }
+  // Keep the accepted deterministic result detached from both the provider
+  // input and any streamed consumer. A ready model answer must rebind its
+  // visible citation witnesses before it can replace this snapshot.
+  const deterministicDraft = structuredClone(draft);
   const llmResult = canGenerate && llmBudget >= 500
-    ? await generateAnswer(cleanQuery, draft, {
+    ? await generateAnswer(cleanQuery, structuredClone(draft), {
       timeoutMs: llmBudget,
       signal,
       conversationContext,
@@ -722,7 +932,18 @@ async function searchWithinBudget(cleanQuery, {
     : { answer: null, status: "not-applicable", provider: "deterministic-current-evidence" };
   throwIfRequestAborted(signal);
 
-  if (llmResult.answer) draft.answer = llmResult.answer;
+  if (llmResult.answer) {
+    const modelDraft = attachEvidenceExcerpts({
+      ...structuredClone(deterministicDraft),
+      answer: structuredClone(llmResult.answer),
+    }, retrievalQuery, null);
+    // Validation proves that a model claim is grounded in the internal
+    // evidence pack. This second boundary proves that the same claim is also
+    // supported by the bounded excerpt a reader can actually inspect.
+    draft = answerClaimsHaveVisibleWitnesses(modelDraft) ? modelDraft : deterministicDraft;
+  } else {
+    draft = deterministicDraft;
+  }
   if (llmResult.related?.length) draft.related = mergeRelatedQuestions(llmResult.related, draft.related, 6);
   draft.generatedAt = new Date().toISOString();
   const response = publicResponse(draft);

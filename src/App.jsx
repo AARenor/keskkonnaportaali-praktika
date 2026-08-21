@@ -27,7 +27,11 @@ import {
   Youtube,
 } from "lucide-react";
 import { safeExternalHref } from "./url-safety.js";
-import { shouldFetchRemoteSuggestions, suggestionsForValue } from "./search-suggestions.js";
+import {
+  REVIEWED_SEARCH_SUGGESTIONS,
+  shouldFetchRemoteSuggestions,
+  suggestionsForValue,
+} from "./search-suggestions.js";
 import { readSearchStream } from "./search-stream.js";
 
 const SOURCE = "https://keskkonnaportaal.ee";
@@ -279,16 +283,6 @@ const featureLinks = [
   },
 ];
 
-const searchSuggestions = [
-  "metsade seisund Eestis",
-  "metsa looduskaitsepiirangud",
-  "Eesti kliima muutumine",
-  "põhjavee seisund",
-  "õhukvaliteet Tallinnas",
-  "keskkonna avaandmed",
-  "jäätmete ringlussevõtt",
-];
-
 function formatDate() {
   return new Intl.DateTimeFormat("et-EE", {
     weekday: "short",
@@ -361,7 +355,7 @@ function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoF
   }, [value]);
 
   const suggestions = useMemo(() => {
-    return suggestionsForValue(value, remoteSuggestions, searchSuggestions, 5);
+    return suggestionsForValue(value, remoteSuggestions, REVIEWED_SEARCH_SUGGESTIONS, 5);
   }, [remoteSuggestions, value]);
 
   useEffect(() => setActiveIndex(-1), [value, suggestions.length]);
@@ -809,11 +803,48 @@ function Citation({ number, sources = [] }) {
       className="citation"
       href={source?.url}
       title={source
-        ? [source.title, source.organization, source.locator ? `Vaata: ${source.locator}` : ""].filter(Boolean).join(" — ")
+        ? [
+          source.title,
+          source.organization,
+          source.evidenceExcerpt ? `Tõend: ${source.evidenceExcerpt.slice(0, 320)}` : "",
+          source.locator ? `Vaata: ${source.locator}` : "",
+        ].filter(Boolean).join(" — ")
         : `Allikas ${number}`}
     >
       <span>{number}</span><span>{label}</span>
     </ExternalAnchor>
+  );
+}
+
+function AnswerEvidenceSources({ answer, sources = [], compact = false }) {
+  const used = new Set([
+    ...(answer?.introCitations || []),
+    ...(answer?.parts || []).flatMap((part) => part.citations || []),
+  ].map(Number));
+  const citedSources = sources
+    .filter((source) => used.has(Number(source.citation)))
+    .sort((left, right) => Number(left.citation) - Number(right.citation));
+  if (!citedSources.length) return null;
+  return (
+    <details className={`answer-evidence${compact ? " answer-evidence--compact" : ""}`}>
+      <summary>
+        <span>Vastuses kasutatud allikad ({citedSources.length})</span>
+        <ChevronDown aria-hidden="true" size={17} />
+      </summary>
+      <div className="answer-evidence__list">
+        {citedSources.map((source) => (
+          <section className="answer-evidence__source" key={`${source.citation}-${source.id}`}>
+            <ExternalAnchor href={source.url}>
+              <span>{source.citation}</span>
+              <strong>{source.title}</strong>
+              <ExternalLink aria-hidden="true" size={14} />
+            </ExternalAnchor>
+            {source.evidenceExcerpt || source.summary ? <p>{source.evidenceExcerpt || source.summary}</p> : null}
+            {source.locator ? <small><strong>Vaata allikast:</strong> {source.locator}</small> : null}
+          </section>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -1099,6 +1130,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
                 ))}
               </div>
               {result.answer.note && !isRedundantAnswerNote(result.answer.note) ? <div className="answer-note"><ShieldCheck size={18} /><p>{result.answer.note}</p></div> : null}
+              <AnswerEvidenceSources answer={result.answer} sources={result.sources} />
               {result.clarification ? (
                 <div className="answer-clarification">
                   <strong>Täpsusta soovi korral</strong>
@@ -1118,6 +1150,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
                           {(turn.result.answer.parts || []).map((part, partIndex) => (
                             <p key={partIndex}>{part.text}{" "}{(part.citations || []).map((citation) => <Citation key={citation} number={citation} sources={turn.result.sources} />)}</p>
                           ))}
+                          <AnswerEvidenceSources answer={turn.result.answer} compact sources={turn.result.sources} />
                         </div>
                       </section>
                     );

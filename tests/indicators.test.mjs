@@ -196,7 +196,7 @@ test("forest balance synthesis answers directly from four separately cited offic
   assert.match(direct.answer.intro, /9,1 miljonit m³ koorega/u);
   assert.match(direct.answer.intro, /hinnangulisena/u);
   assert.deepEqual(direct.answer.introCitations, [1]);
-  assert.deepEqual(direct.answer.parts.flatMap((part) => part.citations), [2, 3, 4, 3]);
+  assert.deepEqual(direct.answer.parts.flatMap((part) => part.citations), [2, 3, 4, 3, 2]);
 
   const followUp = composeForestHarvestBalanceAnswer(
     "Mida see viimase 5 aasta jooksul tähendab Kas raiemaht ületab juurdekasvu?",

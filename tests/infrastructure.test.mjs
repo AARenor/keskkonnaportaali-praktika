@@ -96,7 +96,11 @@ import {
 import { publicDeploymentRevision } from "../server/version.mjs";
 import { validateLlmProviderUrl } from "../server/provider-policy.mjs";
 import { safeExternalHref } from "../src/url-safety.js";
-import { shouldFetchRemoteSuggestions, suggestionsForValue } from "../src/search-suggestions.js";
+import {
+  REVIEWED_SEARCH_SUGGESTIONS,
+  shouldFetchRemoteSuggestions,
+  suggestionsForValue,
+} from "../src/search-suggestions.js";
 import { forestHarvestBalanceDocumentsFromJson } from "../server/indicators.mjs";
 
 function explicitEvidenceSource(source = {}) {
@@ -895,6 +899,19 @@ test("autocomplete never renders a late response under a newer query", () => {
   };
   assert.deepEqual(suggestionsForValue("vesi", lateFirstResponse, ["põhjavee seisund"]), []);
   assert.deepEqual(suggestionsForValue("mets", lateFirstResponse, []), lateFirstResponse.items);
+  const reviewed = [
+    "Kui suur osa Eestist on kaetud metsaga?",
+    "Kuidas mõjutab kliimamuutus metsi?",
+    "Kuidas arvutatakse juurdekasvu?",
+    "Mis vahe on SMI-l ja metsaregistril?",
+    "Kas Eestis saab mets otsa?",
+  ];
+  assert.equal(suggestionsForValue("", {}, reviewed).length, 5);
+  assert.equal(REVIEWED_SEARCH_SUGGESTIONS.length, 18);
+  assert.ok(suggestionsForValue("m", {}, reviewed).every((item) => item.value.endsWith("?")));
+  assert.deepEqual(suggestionsForValue("me", {}, ["How is forest increment calculated?"]), []);
+  const rawClimate = { query: "kliima", items: [{ value: "kliima", count: 42 }, { value: "kliimamuutused", count: 18 }] };
+  assert.equal(suggestionsForValue("kliima", rawClimate, reviewed)[0].value, "Kuidas mõjutab kliimamuutus metsi?");
 });
 
 test("autocomplete skips requests outside the server suggestion length contract", () => {
@@ -1142,7 +1159,7 @@ test("degraded SMI comparison fallback gives visible-source roles instead of a c
   assert.equal(validatedReplacement.intro, validLunaReplacement);
 });
 
-test("forest depletion answer uses three visible evidence roles and never cites the Majakivi phrase match", async () => {
+test("forest depletion answer uses only its visible evidence roles and never cites the Majakivi phrase match", async () => {
   const query = "kas eestis saab mets otsa";
   const sourceIds = new Set(["forest-stock-stable", "forest-area", "forest-condition-review"]);
   const officialSources = officialServiceCatalogueDocuments().filter((source) => sourceIds.has(source.id));
@@ -1171,7 +1188,6 @@ test("forest depletion answer uses three visible evidence roles and never cites 
   ]);
   assert.deepEqual(draft.sources.map((source) => source.id), [
     "forest-stock-stable",
-    "forest-area",
     "forest-condition-review",
   ]);
   assert.equal(draft.sources.some((source) => source.id === majakivi.id), false);
@@ -1206,7 +1222,7 @@ test("forest depletion answer uses three visible evidence roles and never cites 
   const modelIntro = "Praegused ametlikud SMI näitajad ei viita sellele, et Eesti mets oleks otsa saamas. Metsa püsimist ja seisundit ei kirjelda üks näitaja: metsamaa pindala, tagavara ja vanuseline struktuur on eri tahud.";
   const modelAnswer = validateGroundedAnswer({
     intro: modelIntro,
-    intro_citations: [1, 3],
+    intro_citations: [1, 2],
     parts: [],
     related_questions: [],
   }, draft, query);
@@ -1215,7 +1231,7 @@ test("forest depletion answer uses three visible evidence roles and never cites 
   const providerIntro = "Praegused andmed ei toeta järeldust, et Eesti mets võiks peagi otsa saada. Metsa püsimist ja seisundit ei kirjelda üks näitaja: metsamaa pindala, tagavara ja vanuseline struktuur on eri tahud.";
   const providerAnswer = validateGroundedAnswer({
     intro: providerIntro,
-    intro_citations: [1, 3],
+    intro_citations: [1, 2],
     parts: [],
     related_questions: [],
   }, draft, query);
@@ -1227,7 +1243,7 @@ test("forest depletion answer uses three visible evidence roles and never cites 
   ]) {
     assert.doesNotThrow(() => validateGroundedAnswer({
       intro: `${boundedForm} Metsa püsimist ja seisundit ei kirjelda üks näitaja: metsamaa pindala, tagavara ja vanuseline struktuur on eri tahud.`,
-      intro_citations: [1, 3],
+      intro_citations: [1, 2],
       parts: [],
       related_questions: [],
     }, draft, query));
@@ -1243,7 +1259,7 @@ test("forest depletion answer uses three visible evidence roles and never cites 
   for (const falseTrend of ["langes", "suurenes"]) {
     assert.throws(() => validateGroundedAnswer({
       intro: `Praegused ametlikud näitajad ei viita sellele, et Eesti mets oleks otsa saamas. SMI 2025 järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast ning kasvava metsa tagavara ${falseTrend} 466 miljoni m³ juurde. Metsa püsimist ja seisundit ei kirjelda üks näitaja: metsamaa pindala, tagavara ja vanuseline struktuur on eri tahud.`,
-      intro_citations: [1, 3],
+      intro_citations: [1, 2],
       parts: [],
       related_questions: [],
     }, draft, query), /polarity/iu);
@@ -1851,7 +1867,7 @@ test("Luna uses the Responses API with strict structured output", () => {
 });
 
 test("Luna evidence includes reviewed claims tied to each displayed citation", () => {
-  const evidence = buildBoundedEvidence({
+  const draft = {
     answer: {
       title: "Metsade vanusjaotus",
       intro: "Noorte ja vanade metsade pindala suurenes.",
@@ -1859,11 +1875,15 @@ test("Luna evidence includes reviewed claims tied to each displayed citation", (
       parts: [{ title: "Mis on SMI?", text: "SMI tähendab statistilist metsainventuuri.", citations: [1] }],
     },
     sources: [{ citation: 1, title: "Ametlik SMI kokkuvõte", summary: "Algallika asukoht." }],
-  });
+  };
+  const evidence = buildBoundedEvidence(draft);
   assert.equal(evidence.length, 1);
   assert.match(evidence[0].content, /Läbi vaadatud/iu);
   assert.match(evidence[0].content, /Noorte ja vanade metsade pindala suurenes/iu);
   assert.match(evidence[0].content, /statistilist metsainventuuri/iu);
+  const validatorEvidence = buildBoundedEvidence(draft, "", { includeDraftClaims: false });
+  assert.match(validatorEvidence[0].content, /Algallika asukoht/u);
+  assert.doesNotMatch(validatorEvidence[0].content, /Noorte ja vanade|statistilist metsainventuuri/iu);
 });
 
 test("Luna request construction independently caps source count and evidence text", () => {
@@ -3142,7 +3162,7 @@ test("a requested year's direct measurement stays ahead of grounded side statist
 
   assert.equal(answer.intro, directIntro);
   assert.deepEqual(answer.introCitations, [1]);
-  assert.match(answer.parts.map((part) => part.text).join(" "), /63,9%/u);
+  assert.deepEqual(answer.parts, []);
 });
 
 test("a current forest-area draft keeps its verified measurement while Luna adds grounded context", () => {
@@ -3355,7 +3375,7 @@ test("citation metadata cannot ground a claim and unrelated cited parts are omit
       {
         citation: 1,
         title: "Natura ehitamise juhis",
-        content: "Natura alal sõltub ehitamine kaitse-eeskirjast. Natura alal võib ehitamine vajada Keskkonnaameti nõusolekut.",
+        content: "Natura alal sõltub ehitamine kaitse-eeskirjast. Natura alal võib ehitamine vajada Keskkonnaameti nõusolekut. Metsaregister sisaldab inventeerimisandmeid ja metsateatisi.",
         ...sourceProfile,
       },
       {
@@ -3375,6 +3395,16 @@ test("citation metadata cannot ground a claim and unrelated cited parts are omit
     }],
   }, groundedDraft, query);
   assert.deepEqual(filtered.parts, []);
+
+  const directCitationSideFact = validateGroundedAnswer({
+    intro: "Natura alal sõltub ehitamine kaitse-eeskirjast.",
+    intro_citations: [1],
+    parts: [{
+      text: "Metsaregister sisaldab inventeerimisandmeid ja metsateatisi.",
+      citations: [1],
+    }],
+  }, groundedDraft, query);
+  assert.deepEqual(directCitationSideFact.parts, []);
 
   const retained = validateGroundedAnswer({
     intro: "Natura alal sõltub ehitamine kaitse-eeskirjast.",
@@ -3622,6 +3652,7 @@ test("hydrated source text stays internal and public output uses an allowlist", 
     summary: "Avalik kokkuvõte.",
     answer: "Serverisisene kontrollitud väide.",
     content: "Täispikk serverisisene tõenditekst.",
+    evidenceExcerpt: "Vastuses kasutatud lühike kontrollitud tõendilõik.",
     excerpt: "Otsingukaardi väljavõte.",
     retrieval: "live-discovery",
     stale: false,
@@ -3634,6 +3665,7 @@ test("hydrated source text stays internal and public output uses an allowlist", 
   assert.equal(visible.sources[0].content, undefined);
   assert.equal(visible.sources[0].answer, undefined);
   assert.equal(visible.sources[0].excerpt, undefined);
+  assert.match(visible.sources[0].evidenceExcerpt, /lühike kontrollitud tõendilõik/u);
   assert.equal(visible.sources[0].retrieval, undefined);
   assert.equal(visible.sources[0].stale, undefined);
   assert.match(visible.sources[0].id, /^official-[a-f0-9]{16}$/u);
@@ -3780,6 +3812,36 @@ test("a provider timeout or failure preserves a detached accepted deterministic 
     assert.equal(result.sources[result.answer.introCitations[0] - 1]?.id, "increment-method", outcome);
     assert.notEqual(result.answer.eyebrow, "Otsing võttis liiga kaua", outcome);
   }
+});
+
+test("a ready model answer rebinds every cited final claim to the visible source witness", async () => {
+  const query = "Kui suur osa metsadest on kaitse all?";
+  const source = officialServiceCatalogueDocuments().find((item) => item.id === "protected-forest-share");
+  assert.ok(source);
+  const startedAt = Date.now();
+  const result = await searchEnvironmentLive(query, {
+    startedAt,
+    deadlineAt: startedAt + 3_000,
+    useCache: false,
+    searchResults: { total: 1, items: [source] },
+    generateAnswer(providerQuery, providerDraft) {
+      const answer = validateGroundedAnswer({
+        intro: providerDraft.answer.intro,
+        intro_citations: [1],
+        parts: [{
+          title: "Kinnistu kontroll",
+          text: "Konkreetse kinnistu kaitserežiim tuleb kontrollida ruumiandmetest ja kehtivast õigusaktist.",
+          citations: [1],
+        }],
+        related_questions: [],
+      }, providerDraft, providerQuery);
+      return { answer, status: "ready", provider: "test-provider" };
+    },
+  });
+
+  assert.match(result.answer.parts[0]?.text || "", /kaitserežiim tuleb kontrollida/iu);
+  const witness = result.sources.find((item) => item.citation === 1)?.evidenceExcerpt || "";
+  assert.match(witness, /kaitserežiim tuleb kontrollida ruumiandmetest ja kehtivast õigusaktist/iu);
 });
 
 test("source failures degrade without turning an outage into an absence claim", () => {
@@ -4132,12 +4194,14 @@ test("public page uses the complete Terrapoint application and permits only its 
   assert.match(server, /frame-src 'self' https:\/\/www\.openstreetmap\.org https:\/\/terrapoint\.ee/);
 });
 
-test("answer citations link directly to their source instead of duplicating a source list", async () => {
+test("answer citations link directly to their source and expose a compact evidence disclosure", async () => {
   const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
   const citation = app.match(/function Citation[\s\S]*?function sourceTierLabel/u)?.[0] || "";
   assert.match(citation, /<ExternalAnchor/u);
   assert.match(citation, /href=\{source\?\.url\}/u);
   assert.match(citation, /source\.locator \? `Vaata: \$\{source\.locator\}`/u);
+  assert.match(app, /function AnswerEvidenceSources[\s\S]*Vastuses kasutatud allikad/u);
+  assert.match(app, /source\.evidenceExcerpt \|\| source\.summary/u);
   assert.match(app, /className="broad-result__locator"[\s\S]*?Vaata allikast:/u);
   assert.doesNotMatch(app, /function EvidenceLocatorLink|Ava andmetabel/u);
 });

@@ -629,17 +629,22 @@ export function selectAnswerEvidence(query, documents = []) {
       && evidenceRoles.context
       && new Set(Object.values(evidenceRoles).filter(Boolean)).size >= 2)
     : Boolean(direct);
+  const supportingDocumentIds = intent.kind === "forest-depletion"
+    ? [...new Set(Object.values(evidenceRoles).filter(Boolean))]
+    : candidates
+      .filter((candidate) => candidate.satisfies)
+      .slice(0, 3)
+      .map((candidate) => candidate.document.id);
   return {
     kind: intent.kind,
     strong,
     directDocumentId: direct?.document?.id || null,
     passages: direct?.passages || [],
-    supportingDocumentIds: intent.kind === "forest-depletion"
-      ? [...new Set(Object.values(evidenceRoles).filter(Boolean))]
-      : candidates
-        .filter((candidate) => candidate.satisfies)
-        .slice(0, 3)
-        .map((candidate) => candidate.document.id),
+    supportingDocumentIds,
+    passagesByDocument: Object.fromEntries(supportingDocumentIds.map((documentId) => [
+      documentId,
+      candidates.find((candidate) => candidate.document.id === documentId)?.passages || [],
+    ])),
     evidenceRoles,
   };
 }

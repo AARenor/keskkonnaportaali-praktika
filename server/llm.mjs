@@ -276,7 +276,7 @@ function sourceEvidence(draft, citations, query = "", validationContext) {
   // query-ranked windows; validating against an older generic truncation can
   // reject a correctly grounded current answer or, worse, validate a claim
   // against evidence the model did not receive.
-  const evidence = buildBoundedEvidence(draft, query)
+  const evidence = buildBoundedEvidence(draft, query, { includeDraftClaims: false })
     .filter((source) => allowed.has(Number(source.citation)))
     // Citation metadata helps users identify a source, but it is not factual
     // evidence. Validate generated claims only against the bounded body that
@@ -1784,10 +1784,10 @@ export function validateGroundedAnswer(payload, draft, query) {
       return false;
     }
   });
-  const queryRelevantParts = groundedParts.filter((part) => (
-    answerPartAddressesQuery(part, query)
-    || directDraftCitations.some((citation) => part.citations.includes(citation))
-  ));
+  // A citation proves provenance, not relevance. A side statistic from the
+  // direct source must still answer the user's actual question before it can
+  // enter the public response.
+  const queryRelevantParts = groundedParts.filter((part) => answerPartAddressesQuery(part, query));
   const promotableParts = queryRelevantParts.filter((part) => {
     if (directDraftCitations.length
       && !directDraftCitations.some((citation) => part.citations.includes(citation))) {
@@ -1940,7 +1940,7 @@ function selectEvidenceWindows(source, query, reviewedText, limit) {
   return selected.sort((left, right) => left.order - right.order).map((candidate) => candidate.passage).join("\n");
 }
 
-export function buildBoundedEvidence(draft, query = "") {
+export function buildBoundedEvidence(draft, query = "", options = {}) {
   const queryAware = Boolean(String(query || "").trim());
   const maxSources = queryAware ? QUERY_AWARE_MAX_EVIDENCE_SOURCES : LEGACY_MAX_EVIDENCE_SOURCES;
   const maxChars = queryAware ? QUERY_AWARE_MAX_EVIDENCE_CHARS : LEGACY_MAX_EVIDENCE_CHARS;
@@ -1988,7 +1988,7 @@ export function buildBoundedEvidence(draft, query = "") {
     : preparedSources.length === 1
       ? 2_000
       : Math.min(2_200, Math.max(750, Math.floor(remaining / Math.max(1, preparedSources.length))));
-  const includeDraftClaims = !draft.evidence?.syntheticFallback;
+  const includeDraftClaims = options.includeDraftClaims !== false && !draft.evidence?.syntheticFallback;
   const entries = preparedSources.map(({ source, metadata }, index) => {
     const citation = Number(source.citation);
     const reviewedClaims = [];

@@ -12,11 +12,11 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     organization: "Keskkonnaagentuur / Keskkonnaportaal",
     type: "Metoodikaaruanne",
     published: "05.01.2026",
-    url: "https://keskkonnaportaal.ee/et/statistilise-metsainventuuri-smi-ja-maakasutuse-maakasutuse-muutuse-ja-metsanduse-lulucf-andmehoive",
+    url: "https://keskkonnaportaal.ee/sites/default/files/2026-01/SMI%20arendamine%202025%20L%C3%95PPARUANNE_T%C3%9C%20MSI.pdf#page=22",
     tags: ["mets", "SMI", "juurdekasv", "netojuurdekasv", "proovitükid", "mudel", "metoodika"],
     summary: "SMI 2025 metoodikaaruanne selgitab juurdekasvu mõisteid ja kahte hindamisviisi: mudelipõhist meetodit ning mitmest imputeerimist. Mõlemad alustavad mudelpuude andmetest, liiguvad alalistele proovitükkidele ja sealt ajutistele proovitükkidele.",
     content: "Kogujuurdekasv on kõigi kasvavate puude tagavara muutus aasta jooksul ehk puistu poolt aastas kasvatatav puidukogus ning seda väljendatakse tavaliselt tihumeetrites hektari kohta aastas (tm/ha/a). Netojuurdekasv saadakse, kui kogujuurdekasvust arvatakse maha aasta jooksul surnud ehk looduslikult väljalangenud puude maht. SMI andmetel juurdekasvu hindamiseks pakub 2025. aasta metoodikaaruanne välja kaks viisi: mudelipõhise meetodi ja mitmese imputeerimise. Mõlemad lähtuvad mudelpuude andmetest, liiguvad alalistele proovitükkidele ja sealt juhumetsa meetodiga ajutistele proovitükkidele; tulemuseks on kogujuurdekasvu hinnang hektari kohta aastas. Mudelipõhine meetod kasutab uut puu kõrguse mudelit ja kõrguse muudu mudelit. Mitmene imputeerimine arvutab samale proovitükile prognooside seeria, mis võimaldab hinnata ka arvutuse viga. Need olid aruandes välja pakutud meetodid, mitte väide, et iga Eesti puud mõõdetakse igal aastal eraldi.",
-    locator: "Tulemuste lühikokkuvõte „Puistu juurdekasvu ja suremuse mudelite loomine”; lõpparuande lk 22.",
+    locator: "Lk 22, peatükk 3 „Puistu juurdekasvu ja suremuse mudelite loomine”.",
     _publishedAt: "2026-01-05",
     _forestryIntentKinds: ["increment-method", "smi-method-comparison", "forest-stock-uncertainty"],
   },
@@ -29,10 +29,10 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     url: "https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI%20tulemused%202025/SMI%202025%20tulemused.xlsx",
     tags: ["mets", "SMI", "lageraie", "raiete pindala", "aegrida", "2014–2024"],
     summary: "SMI 2025 andmetabelis kõikus lageraie pindala aastatel 2014–2024 vahemikus 27,1–35,6 tuhat hektarit: 2014. aastal 29,7 ja 2024. aastal 34,0 tuhat hektarit. Aegrida ei näita ühtlast kasvu.",
-    content: "SMI 2025 tulemuste töövihiku järgi oli lageraie pindala aastati järgmine: 2014 – 29,7, 2015 – 31,6, 2016 – 32,4, 2017 – 35,6, 2018 – 34,6, 2019 – 29,7, 2020 – 29,7, 2021 – 27,1, 2022 – 32,6, 2023 – 32,0 ja 2024 – 34,0 tuhat hektarit. Perioodi väikseim hinnang oli 27,1 tuhat hektarit 2021. aastal ja suurim 35,6 tuhat hektarit 2017. aastal. 2014. ja 2024. aasta otspunktide vahe oli ligikaudu 4,3 tuhat hektarit, kuid vahepealsed tõusud ja langused tähendavad, et seda ei saa kirjeldada ühtlase kasvutrendina. Tegu on SMI aastahinnangutega ning nende liitmine ei näita tingimata kordumatut maa-ala, sest sama ala võib eri aastatel uuesti arvestusse sattuda.",
+    content: "SMI 2025 tulemuste töövihiku järgi oli lageraie pindala aastati järgmine: 2014 – 29,7, 2015 – 31,6, 2016 – 32,4, 2017 – 35,6, 2018 – 34,6, 2019 – 29,7, 2020 – 29,7, 2021 – 27,1, 2022 – 32,6, 2023 – 32,0 ja 2024 – 34,0 tuhat hektarit. Viimase kümne avaldatud aastahinnangu ehk 2015–2024 lageraie pindala väärtused olid 2015 – 31,6, 2016 – 32,4, 2017 – 35,6, 2018 – 34,6, 2019 – 29,7, 2020 – 29,7, 2021 – 27,1, 2022 – 32,6, 2023 – 32,0 ja 2024 – 34,0 tuhat hektarit. Selle kümneaastase rea aritmeetiline summa on 319,3 tuhat hektarit, kuid see ei kirjelda tingimata kordumatut maa-ala, sest sama ala võib eri aastatel uuesti arvestusse sattuda. Perioodi 2014–2024 väikseim hinnang oli 27,1 tuhat hektarit 2021. aastal ja suurim 35,6 tuhat hektarit 2017. aastal. 2014. ja 2024. aasta otspunktide vahe oli ligikaudu 4,3 tuhat hektarit, kuid vahepealsed tõusud ja langused tähendavad, et seda ei saa kirjeldada ühtlase kasvutrendina. Tegu on SMI aastahinnangutega ning nende liitmine ei näita tingimata kordumatut maa-ala, sest sama ala võib eri aastatel uuesti arvestusse sattuda.",
     locator: "Tööleht 33 „Raiete pindala raieliigiti aastail 1999–2024”, rida „Lageraie”, veerud 2014–2024.",
     _publishedAt: "2026-08-18",
-    _forestryIntentKinds: ["clearcut-over-time"],
+    _forestryIntentKinds: ["clearcut-over-time", "clearcut-last-ten-years"],
   },
   {
     id: "forest-balance-kaur-methodology",
@@ -140,7 +140,7 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     content: "SMI 2025 aastahinnang koondab ligikaudu 28 000 proovitükki ja viie aasta mõõtmised ning üks proovitükk esindab keskmiselt 156,2 hektarit. Valikuuringu tulemused üldistatakse kogu Eestile ning hinnangutega kaasneb valimist tulenev statistiline viga. 2025. aastal muudeti puude kõrguse, tagavara, alla 8 cm puude mahu, juurdekasvu, suremuse ja netojuurdekasvu arvutusmetoodikat; esitlus hoiatab, et seetõttu muutuvad kõik mahuhinnangud ja eri metoodikaga avaldatud arve ei tohi käsitleda täiesti võrreldavana. Uue metoodikaga oli metsamaa pindala 2 360,2 tuhat hektarit ehk 52,1% Eesti pindalast ning kasvava metsa tagavara 466 miljonit m³. Metsamaast oli 20,2% mittemajandatav, 10,4% majanduspiiranguga ja 69,4% majandusmets. Enamuspuuliigi järgi moodustasid mänd 29%, kuusk 19% ja kask 30% metsamaa pindalast. Nii noorte kui ka vanade metsade pindala suurenes, puistute keskmine vanus oli 55 aastat ning 2025. aasta raiemahu eksperthinnang 11,0 miljonit m³.",
     locator: "SMI 2025 tulemuste esitlus: valimi maht ja üldistamine, metoodikamuutus, pindala, tagavara, majanduskategooriad, puuliigid, vanusjaotus ja raiemaht.",
     _publishedAt: "2026-08-18",
-    _forestryIntentKinds: ["smi-method-comparison", "forest-stock-uncertainty", "sample-size-and-precision", "increment-method", "stock-versus-harvestable", "protected-forest-share", "forest-age-trend", "pine-versus-spruce", "harvest-over-time"],
+    _forestryIntentKinds: ["smi-method-comparison", "forest-stock-uncertainty", "sample-size-and-precision", "increment-method", "increment-estimate-2024", "stock-versus-harvestable", "protected-forest-share", "forest-management-category-share", "forest-age-trend", "pine-versus-spruce", "harvest-over-time"],
   },
   {
     id: "forest-smi-methodology-20-years",
@@ -179,10 +179,10 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     url: "https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/Mets%202023.pdf",
     tags: ["mets", "SMI", "raiemaht", "lageraie", "aegrida", "2013–2022", "2002", "2022"],
     summary: "Aastaraamatu tabeli 3.2.2.1 SMI aastahinnangute järgi oli lageraie pindala 2013.–2022. aastal kokku 311,7 tuhat hektarit; see on kümne avaldatud aastahinnangu aritmeetiline summa.",
-    content: "Aastaraamatu Mets 2023 tabelis 3.2.2.1 on SMI lageraie pindala aastahinnangud 2013.–2022. aasta kohta vastavalt 28,7; 29,7; 31,6; 32,4; 35,6; 34,6; 29,7; 29,7; 27,1 ja 32,6 tuhat hektarit. Nende kümne avaldatud aastahinnangu aritmeetiline summa on 311,7 tuhat hektarit; üksikute aastate hinnangud jäid 27,1 ja 35,6 tuhande hektari vahele. Summa ei ole eraldi aastaraamatu näitaja ega kirjelda tingimata igal aastal uut teineteisega kattumatut maa-ala. Sama aastaraamatu SMI raiemahu tabelis on 2002. aasta hinnang 10,157 ja 2022. aasta hinnang 12,077 miljonit m³ ehk 2022. aasta väärtus oli umbes 1,92 miljonit m³ ehk 18,9% suurem; kahe otspunkti võrdlus ei tähenda ühtlast kasvutrendi nende vahel. Aastaraamat märgib, et eri andmeallikate ja meetoditega koostatud raiestatistika read ei ole alati üks-ühele võrreldavad.",
+    content: "Aastaraamatu Mets 2023 tabelis 3.2.2.1 on SMI lageraie pindala aastahinnangud 2013.–2022. aasta kohta: 2013 – 28,7, 2014 – 29,7, 2015 – 31,6, 2016 – 32,4, 2017 – 35,6, 2018 – 34,6, 2019 – 29,7, 2020 – 29,7, 2021 – 27,1 ja 2022 – 32,6 tuhat hektarit. Nende kümne avaldatud aastahinnangu aritmeetiline summa on 311,7 tuhat hektarit; üksikute aastate hinnangud jäid 27,1 ja 35,6 tuhande hektari vahele. Summa ei ole eraldi aastaraamatu näitaja ega kirjelda tingimata igal aastal uut teineteisega kattumatut maa-ala. Sama aastaraamatu SMI raiemahu tabelis on 2002. aasta hinnang 10,157 ja 2022. aasta hinnang 12,077 miljonit m³ ehk 2022. aasta väärtus oli umbes 1,92 miljonit m³ ehk 18,9% suurem; kahe otspunkti võrdlus ei tähenda ühtlast kasvutrendi nende vahel. Aastaraamat märgib, et eri andmeallikate ja meetoditega koostatud raiestatistika read ei ole alati üks-ühele võrreldavad.",
     locator: "Tabel 3.2.2.1, lk 131: lageraie pindala 2013–2022; raiemahu tabel, lk 133: SMI 2002 ja 2022; metoodikamärkused lk 128.",
     _publishedAt: "2025-06-01",
-    _forestryIntentKinds: ["clearcut-over-time", "harvest-over-time"],
+    _forestryIntentKinds: ["clearcut-over-time", "clearcut-2013-2022", "harvest-over-time"],
   },
   {
     id: "forest-climate-adaptation-report",
@@ -319,16 +319,45 @@ const INTENTS = {
     ],
     minimumSupportingDocuments: 1,
   },
-  "protected-forest-share": {
-    serviceDocumentIds: ["protected-forest-share", "forest-condition-review", "forest-smi-2025-presentation"],
-    discoveryQueries: ["kaitsealuse metsamaa osakaal 2024", "rangelt kaitstav metsamaa osakaal"],
+  "increment-estimate-2024": {
+    serviceDocumentIds: ["forest-area", "increment-method"],
+    discoveryQueries: ["SMI 2024 juurdekasv 15,4303 miljonit tihumeetrit", "SMI juurdekasvu arvutamise metoodika"],
     evidenceGroups: [
-      ["28,4%", "20,2%", "19,7%"],
-      ["16,8%", "10,4%", "10,1%"],
-      ["kaitse all", "rangelt kaitstav", "mittemajandatav", "majanduspiiranguga"],
-      ["õigusliku kaitse", "ruumianalüüsi", "teistsugust jaotust", "majanduskategooriad"],
+      ["15,4303 miljonit tihumeetrit"],
+      ["aastas"],
+      ["6,6 tihumeetrit hektari kohta"],
+      ["±1,4%", "1,4%"],
+      ["mudeli alusel arvutatud"],
+      ["kogujuurdekasv"],
+      ["netojuurdekasv"],
+      ["mudelipõhise meetodi", "mitmese imputeerimise"],
     ],
     minimumSupportingDocuments: 2,
+  },
+  "protected-forest-share": {
+    serviceDocumentIds: ["protected-forest-share", "forest-condition-review"],
+    discoveryQueries: ["kaitsealuse metsamaa osakaal 2024", "rangelt kaitstav metsamaa osakaal"],
+    evidenceGroups: [
+      ["28,4%"],
+      ["16,8%"],
+      ["kaitse all"],
+      ["rangelt kaitstav"],
+      ["õigusliku kaitse", "ruumianalüüsi"],
+    ],
+    minimumSupportingDocuments: 1,
+  },
+  "forest-management-category-share": {
+    serviceDocumentIds: ["forest-smi-2025-presentation"],
+    discoveryQueries: ["SMI 2025 mittemajandatav majanduspiiranguga metsamaa osakaal", "metsamaa majanduskategooriad"],
+    evidenceGroups: [
+      ["20,2%"],
+      ["10,4%"],
+      ["69,4%"],
+      ["mittemajandatav"],
+      ["majanduspiiranguga"],
+      ["majandusmets"],
+    ],
+    minimumSupportingDocuments: 1,
   },
   "climate-impact": {
     serviceDocumentIds: ["forest-condition-review", "forest-climate-adaptation-report"],
@@ -372,7 +401,7 @@ const INTENTS = {
       ["12,077"],
       ["ei tähenda ühtlast", "võrreldavad"],
     ],
-    minimumSupportingDocuments: 2,
+    minimumSupportingDocuments: 1,
   },
   "forest-age-trend": {
     serviceDocumentIds: ["forest-smi-2025-presentation", "forest-stock-stable", "forest-smi-2024-summary", "forest-condition-review"],
@@ -390,11 +419,38 @@ const INTENTS = {
     discoveryQueries: ["SMI lageraie pindala aegrida", "lageraie pindala kümme aastat"],
     evidenceGroups: [
       ["lageraie"],
-      ["2014.–2024", "2014–2024", "2013.–2022", "2013–2022", "kümne avaldatud"],
-      ["34,0", "311,7"],
-      ["2015 – 31,6", "aritmeetiline summa"],
-      ["ei näita ühtlast", "ei ole eraldi", "ei tohi lihtsalt", "ei kirjelda tingimata"],
-      ["sama ala", "kattumatut maa-ala"],
+      ["2014.–2024", "2014–2024"],
+      ["2014 – 29,7"],
+      ["2024 – 34,0"],
+      ["ei saa kirjeldada ühtlase kasvutrendina", "ei näita ühtlast kasvu"],
+      ["Tegu on SMI aastahinnangutega"],
+    ],
+    minimumSupportingDocuments: 1,
+  },
+  "clearcut-last-ten-years": {
+    serviceDocumentIds: ["clearcut-over-time"],
+    discoveryQueries: ["SMI lageraie pindala viimased kümme aastat 2015–2024"],
+    evidenceGroups: [
+      ["lageraie"],
+      ["viimase kümne avaldatud aastahinnangu"],
+      ["2015–2024"],
+      ["31,6"],
+      ["34,0"],
+      ["319,3"],
+      ["ei kirjelda tingimata kordumatut maa-ala"],
+    ],
+    minimumSupportingDocuments: 1,
+  },
+  "clearcut-2013-2022": {
+    serviceDocumentIds: ["forest-yearbook-2023-fellings"],
+    discoveryQueries: ["Aastaraamat Mets 2023 lageraie pindala 2013–2022"],
+    evidenceGroups: [
+      ["lageraie"],
+      ["2013.–2022", "2013–2022"],
+      ["28,7"],
+      ["32,6"],
+      ["311,7"],
+      ["ei kirjelda tingimata", "kattumatut maa-ala"],
     ],
     minimumSupportingDocuments: 1,
   },
@@ -432,15 +488,15 @@ const INTENTS = {
     ],
   },
   "clearcut-value-judgement": {
-    serviceDocumentIds: ["forest-condition-review", "forest-law", "nature-conservation-law", "forest-climate-adaptation-report"],
+    serviceDocumentIds: ["forest-condition-review", "forest-climate-adaptation-report"],
     discoveryQueries: ["lageraie keskkonnamõju metsaseadus", "lageraie mõju elurikkus veerežiim"],
     evidenceGroups: [
       ["lageraie", "raie"],
-      ["ökosüsteemi kaitse", "ökoloogiline seisund", "keskkonnamõju"],
-      ["sõltub", "konkreetne", "asukoht"],
-      ["õiguslik", "kaitse-eeskiri", "säästev majandamine"],
+      ["keskkonnamõju", "ökoloogiline"],
+      ["mõju sõltub", "sõltub metsa asukohast"],
+      ["ei ole mõõdetav üksikfakt", "ei ole alati"],
     ],
-    minimumSupportingDocuments: 2,
+    minimumSupportingDocuments: 1,
   },
   "old-forest-protection": {
     serviceDocumentIds: ["nature-conservation-law", "forest-register-workflow", "forest-spatial-data", "metsaregister"],
@@ -611,8 +667,15 @@ export function resolvePublicForestryIntent(query) {
     || (/\b2002\b/u.test(text) && /\b(?:vordl\w*|vorr\w*|rohkem|vahem|muut\w*|2022|2023|2024|2025)\b/u.test(text)))) {
     return resolved("harvest-over-time");
   }
-  if (hasClearcut && (/\b(?:10|kumme|kumne)\s*(?:a|aasta\w*)\b/u.test(text)
-    || /\b(?:kumnend\w*|aastakumn\w*|2013\s*2022|2014\s*2024)\b/u.test(text)
+  if (hasClearcut && /\b2013\s*2022\b/u.test(text)) {
+    return resolved("clearcut-2013-2022");
+  }
+  if (hasClearcut && (/\b(?:viimase\s+)?(?:10|kumme|kumne)\s*(?:a|aasta\w*)\b/u.test(text)
+    || /\bkumnend\w*\b/u.test(text))
+    && !/\b2014\s*2024\b/u.test(text)) {
+    return resolved("clearcut-last-ten-years");
+  }
+  if (hasClearcut && (/\b(?:aastakumn\w*|2014\s*2024)\b/u.test(text)
     || /\btrend\w*\b[\s\S]{0,40}\b(?:19|20)\d{2}\b/u.test(text))) {
     return resolved("clearcut-over-time");
   }
@@ -625,7 +688,9 @@ export function resolvePublicForestryIntent(query) {
     && /\b(?:kaitse\w*|kaitst\w*|kaitsestaatus\w*|tohib\w*|rai\w*)\b/u.test(text)) return resolved("old-forest-protection");
   if (/\bpuistu\w*\b[\s\S]{0,65}\b(?:100|saja)\s+aasta\w*\b/u.test(text)
     && /\bkaitsestaatus\w*|kaitse\w*\b/u.test(text)) return resolved("old-forest-protection");
-  if (hasForest && /\b(?:kaitse\s+all|kaitstud|kaitsealuse|rangelt\s+kaitstav|mittemajandatav\w*|majanduspiirang\w*|piiranguga\s+metsamaa)\b/u.test(text)
+  if (hasForest && /\b(?:mittemajandatav\w*|majanduspiirang\w*|piiranguga\s+metsamaa)\b/u.test(text)
+    && /\b(?:kui\s+suur|kui\s+palju|mitu|osa|osakaal|protsent\w*)\b/u.test(text)) return resolved("forest-management-category-share");
+  if (hasForest && /\b(?:kaitse\s+all|kaitstud|kaitsealuse|rangelt\s+kaitstav)\b/u.test(text)
     && /\b(?:kui\s+suur|kui\s+palju|mitu|osa|osakaal|protsent\w*)\b/u.test(text)) return resolved("protected-forest-share");
   if (hasProtection && (hasHarvest || hasNotice)) return resolved("logging-in-protected-areas");
   if (hasNotice || (/\braiekavatsus\w*\b/u.test(text) && /\blubav\w*\s+mar(?:k|g)\w*\b/u.test(text))) return resolved("forest-notice");
@@ -642,7 +707,7 @@ export function resolvePublicForestryIntent(query) {
     && /\b(?:kestlik\w*|jatkusuutlik\w*)\b/u.test(text)
     && /\b(?:toesta\w*|automaats\w*)\b/u.test(text)) return resolved("forest-harvest-balance");
   if (/\b15(?:\s+|[,.])4303\b/u.test(text) && /\b(?:kasvuhinnang\w*|tm|tihumeet)\b/u.test(text)) {
-    return resolved("increment-method");
+    return resolved("increment-estimate-2024");
   }
   if (hasIncrement && /\b(?:kuidas|arvuta\w*|mudel\w*|tekib|moodet\w*|hinnat\w*|metoodik\w*)\b/u.test(text) && !hasHarvest) {
     return resolved("increment-method");

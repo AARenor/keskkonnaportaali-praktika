@@ -111,10 +111,14 @@ export const FORESTRY_VARIANT_GROUPS = Object.freeze({
     "Noorte ja vanade metsade trend",
   ],
   "clearcut-over-time": [
-    "Lageraie pindala kümnendiga",
+  ],
+  "clearcut-2013-2022": [
     "2013–2022 lageraiete summa",
-    "Lageraie 10a",
+  ],
+  "clearcut-last-ten-years": [
+    "Lageraie pindala kümnendiga",
     "Kui palju lageraiuti kümne aastaga?",
+    "Lageraie 10a",
   ],
   "pine-versus-spruce": [
     "Männikud vs kuusikud",
@@ -160,4 +164,3 @@ export const FORESTRY_NEGATIVE_COLLISIONS = Object.freeze([
   "Kuidas uuendada juhiluba?",
   "Millal makstakse perehüvitist?",
 ]);
-
