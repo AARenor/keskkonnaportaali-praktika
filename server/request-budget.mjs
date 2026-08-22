@@ -2,6 +2,8 @@ export const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 export const JSON_SEARCH_DEADLINE_CEILING_MS = 12_000;
 export const DEFAULT_SEARCH_CONCURRENCY = 8;
 export const DEFAULT_SEARCH_QUEUE = 32;
+const DEFAULT_PROGRESSIVE_LISTING_BUDGET_MS = 3_500;
+const SLOW_STRUCTURED_LISTING_BUDGET_MS = 7_000;
 
 export function configuredSearchBudgetMs(
   value = process.env.SEARCH_DEADLINE_MS,
@@ -13,6 +15,13 @@ export function configuredSearchBudgetMs(
 
 export function searchDeadline(startedAt, ceilingMs = DEFAULT_SEARCH_DEADLINE_MS, value = process.env.SEARCH_DEADLINE_MS) {
   return Number(startedAt) + configuredSearchBudgetMs(value, ceilingMs);
+}
+
+export function progressiveListingBudgetMs({ remainingMs, slowStructured = false } = {}) {
+  const maximum = slowStructured
+    ? SLOW_STRUCTURED_LISTING_BUDGET_MS
+    : DEFAULT_PROGRESSIVE_LISTING_BUDGET_MS;
+  return Math.max(1, Math.min(Number(remainingMs) || 1, maximum));
 }
 
 export function configuredSearchConcurrency(value = process.env.SEARCH_MAX_CONCURRENCY) {

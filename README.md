@@ -2,8 +2,8 @@
 
 Keskkonnaportaali visuaalsel keelel põhinev praktikaprojekt, mille kaks põhiosa on:
 
-- vastus-enne-allikaid otsing, kus OpenAI Agents SDK manager kasutab Luna relevantsus- ja tõendispetsialiste ainult sama päringu värskel, filtreeritud ja järjestatud ametlikul tõendipakil ning lisab nummerdatud viited;
-- PostgreSQL-i korpus koos portaali sitemapilehtede, otsingukaartide ja valitud täistekstidega; tulemusi täiendavad päringu ajal Keskkonnaameti, Keskkonnaagentuuri ja Kliimaministeeriumi tasuta ametlikud otsinguliidesed;
+- vastus-enne-allikaid otsing, kus OpenAI Agents SDK manager käivitab mitme allika korral järjest nii Luna relevantsus- kui ka tõendikriitiku ainult sama päringu värskel, filtreeritud ja järjestatud ametlikul tõendipakil ning lisab nummerdatud viited;
+- PostgreSQL-i korpus koos portaali sitemapilehtede, otsingukaartide ja valitud täistekstidega; tulemusi täiendavad päringu ajal ametlikud otsinguliidesed, skeemi-, aja- ja ühikukontrolliga Ilmateenistuse vaatlus- ja prognoosi-XML, täpse jaama ja näitajaga Keskkonnaagentuuri hüdroloogia- ning Jõgeva ajaloolised kliimaandmed, EELISe fikseeritud Emajõe avaliku vooluveekogu WFS-kirje ning Statistikaameti fikseeritud KK048 veevõtu, KK25 BHT7 ja KK068 ohtlike jäätmete JSON-stat2 päringud 2024. aasta Eesti koonditele;
 - allika-, sisutüübi-, aasta- ja järjestusfiltrid ning kuni neli iga kord uue tõendiotsingu tegevat viidatud jätkuküsimust;
 - portaali sees töötav kogu `terrapoint.ee` rakendus, mis on üldotsingust täielikult eraldatud.
 

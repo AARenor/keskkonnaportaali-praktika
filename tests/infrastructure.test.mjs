@@ -16,9 +16,16 @@ import {
   resolveDatabaseTls,
   restoreCachedResponse,
   sanitizeCachedResponse,
+  SEARCH_CACHE_CAPACITY_SQL,
+  SEARCH_CACHE_MAX_ROWS,
   SEARCH_CACHE_READ_SQL,
   SEARCH_DATA_PURGE_SQL,
+  SEARCH_PERSISTENCE_ADVISORY_LOCK,
+  SEARCH_RETENTION_BATCH_SIZE,
+  SEARCH_RUN_CAPACITY_SQL,
+  SEARCH_RUN_MAX_ROWS,
 } from "../server/database.mjs";
+import { createCoalescedTtlSnapshot } from "../server/corpus.mjs";
 import {
   createRollingLlmBudget,
   createClientScopedLlmBudget,
@@ -70,6 +77,10 @@ import {
   composeSearchResponse,
   officialServiceCatalogueDocuments,
 } from "../server/search.mjs";
+import {
+  getReviewedSearchSuggestions,
+  REVIEWED_ENVIRONMENT_SUGGESTIONS,
+} from "../server/suggestions.mjs";
 import { localEmbedding } from "../server/qdrant.mjs";
 import {
   aggregateClientAddress,
@@ -91,6 +102,7 @@ import {
   configuredSearchConcurrency,
   configuredSearchPerClientConcurrency,
   JSON_SEARCH_DEADLINE_CEILING_MS,
+  progressiveListingBudgetMs,
   searchDeadline,
 } from "../server/request-budget.mjs";
 import { publicDeploymentRevision } from "../server/version.mjs";
@@ -102,10 +114,28 @@ import {
   suggestionsForValue,
 } from "../src/search-suggestions.js";
 import {
+  composeLatestPublishedHydrologyResponse,
+  currentWeatherObservationFromXml,
+  CURRENT_WEATHER_OBSERVATIONS_XML_URL,
   forestHarvestBalanceDocumentsFromJson,
   FOREST_BALANCE_EUROSTAT_API_URL,
+  LATEST_HYDROLOGY_API_URL,
+  latestPublishedHydrologyFromJson,
+  nationalWeatherForecastFromXml,
+  requiresExtendedStructuredListingBudget,
+  WEATHER_FORECAST_XML_URL,
 } from "../server/indicators.mjs";
-import { contextualRetrievalQuery, deduplicateResults } from "../server/retrieval.mjs";
+import {
+  composeEelisEmajogiPublicWatercourseResponse,
+  EELIS_EMAJOGI_PUBLIC_WATERCOURSE_WFS_URL,
+  eelisEmajogiPublicWatercourseFromGeoJson,
+} from "../server/eelis.mjs";
+import {
+  contextualRetrievalQuery,
+  deduplicateResults,
+  evidenceDocumentsFromListing,
+} from "../server/retrieval.mjs";
+import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
 
 function explicitEvidenceSource(source = {}) {
   return {
@@ -394,8 +424,9 @@ test("API admission precedes JSON parsing and HTTP receive budgets are explicit"
     readFile(new URL("../server/corpus.mjs", import.meta.url), "utf8"),
   ]);
   const admission = index.indexOf('app.use("/api", createFixedWindowRateLimiter');
-  const parser = index.indexOf('app.use(express.json({ limit: "32kb", strict: true, inflate: false }))');
+  const parser = index.indexOf('app.use("/api", express.json({ limit: "32kb", strict: true, inflate: false }))');
   assert.ok(admission >= 0 && parser > admission);
+  assert.doesNotMatch(index, /app\.use\(express\.json/u);
   assert.match(index, /scope: "search"/u);
   assert.match(index, /scope: "suggestions"/u);
   assert.match(index, /scope: "terrapoint"/u);
@@ -412,8 +443,67 @@ test("API admission precedes JSON parsing and HTTP receive budgets are explicit"
   assert.match(cadastre, /readBoundedResponseJson\(response, MAX_RESPONSE_BYTES/u);
   assert.doesNotMatch(cadastre, /response\.arrayBuffer\(\)|response\.json\(\)/u);
   assert.match(corpus, /requestApprovedPublicHttpsText/u);
-  assert.match(corpus, /maximumBytes: MAX_FETCH_BYTES/u);
+  assert.match(corpus, /maximumBytes: byteLimit/u);
+  assert.match(corpus, /Math\.trunc\(Number\(maximumBytes\) \|\| MAX_FETCH_BYTES\)[\s\S]*?MAX_FETCH_BYTES/u);
   assert.doesNotMatch(corpus, /response\.arrayBuffer\(\)|response\.json\(\)/u);
+});
+
+test("public corpus statistics are coalesced, deadline-bound and fairly admitted", async () => {
+  const [index, corpus, database] = await Promise.all([
+    readFile(new URL("../server/index.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../server/corpus.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../server/database.mjs", import.meta.url), "utf8"),
+  ]);
+  assert.match(index, /app\.use\("\/api\/corpus", createFixedWindowRateLimiter\(\{[\s\S]*?maxRequests: 20,[\s\S]*?scope: "corpus"/u);
+  assert.match(index, /const corpusStatsAdmission = createFairSearchAdmission\(\{[\s\S]*?maximumActivePerClient: 1,[\s\S]*?maximumQueuedPerClient: 1/u);
+  assert.match(corpus, /const corpusStatsBackendAdmission = createFairSearchAdmission\(\{[\s\S]*?maximumActive: 2,[\s\S]*?capacityCode: "CORPUS_CAPACITY"/u);
+  assert.match(corpus, /acquireWork: \(\{ clientKey, signal \}\) => corpusStatsBackendAdmission\.acquire/u);
+  assert.match(index, /app\.get\("\/api\/corpus"[\s\S]*?bindRequestAbort\(request, response\)[\s\S]*?corpusStatsAdmission\.acquire[\s\S]*?corpusStats\(\{[\s\S]*?signal: lifecycle\.controller\.signal,[\s\S]*?deadlineAt,[\s\S]*?clientKey/u);
+  assert.match(index, /corpusStatsAdmission\.close\(\)/u);
+  assert.match(index, /closeCorpusStatsBackendAdmission\(/u);
+  const corpusStatsReader = corpus.match(/async function readCorpusStats[\s\S]*?const corpusStatsSnapshot/u)?.[0] || "";
+  assert.match(corpusStatsReader, /const queryOptions = \{ signal, deadlineAt, ensureSearchSchema: false \}/u);
+  assert.match(corpusStatsReader, /databaseQuery\([\s\S]*?\[\], queryOptions\)[\s\S]*?databaseQuery\([\s\S]*?\[\], queryOptions\)/u);
+  assert.doesNotMatch(corpusStatsReader, /ensureCorpusSchema\(/u);
+  assert.match(index, /stats\.status === "degraded" \? "no-store"/u);
+  assert.match(database, /practice_search_cache_expires_at_hash_idx[\s\S]*?\(expires_at ASC, query_hash ASC\)/u);
+  assert.match(database, /practice_search_cache_created_at_hash_idx[\s\S]*?\(created_at ASC, query_hash ASC\)/u);
+  assert.match(database, /practice_search_runs_created_at_id_idx[\s\S]*?\(created_at ASC, id ASC\)/u);
+  const schema = database.match(/schemaPromise = poolInstance\.query\(`([\s\S]*?)`\)\.then/u)?.[1] || "";
+  assert.doesNotMatch(schema, /DELETE FROM practice_search_(?:cache|runs)|UPDATE practice_search_runs/u);
+  assert.match(schema, /TRUNCATE TABLE practice_search_cache/u);
+  assert.match(schema, /ALTER TABLE practice_search_cache[\s\S]*?DROP COLUMN IF EXISTS query_text/u);
+  assert.match(schema, /ALTER TABLE practice_search_runs[\s\S]*?DROP COLUMN IF EXISTS query_text/u);
+  const newCacheDefinition = schema.match(/CREATE TABLE IF NOT EXISTS practice_search_cache \(([\s\S]*?)\);/u)?.[1] || "";
+  const newRunDefinition = schema.match(/CREATE TABLE IF NOT EXISTS practice_search_runs \(([\s\S]*?)\);/u)?.[1] || "";
+  assert.doesNotMatch(newCacheDefinition, /query_text/u);
+  assert.doesNotMatch(newRunDefinition, /query_text/u);
+});
+
+test("live suggestions use per-client fair admission while preserving query coalescing", async () => {
+  const [index, integrations] = await Promise.all([
+    readFile(new URL("../server/index.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../server/integrations.mjs", import.meta.url), "utf8"),
+  ]);
+  assert.match(integrations, /const officialSuggestionAdmission = createFairSearchAdmission\(\{[\s\S]*?maximumActive: MAX_CONCURRENT_SUGGESTIONS,[\s\S]*?maximumActivePerClient: 1,[\s\S]*?maximumQueuedPerClient: 2/u);
+  assert.match(integrations, /suggestionInflight\.get\(cacheKey\)[\s\S]*?officialSuggestionAdmission\.acquire\(options\.clientKey[\s\S]*?finally \{\s*release\(\);/u);
+  assert.match(index, /getKeskkonnaportaalSuggestions\(query, 5, \{[\s\S]*?clientKey: requestRateLimitAddress\(request, proxyConfiguration\.trustedProxyCidrs/u);
+});
+
+test("reviewed autocomplete fallback surfaces structured environmental sources without forestry noise", () => {
+  assert.equal(REVIEWED_ENVIRONMENT_SUGGESTIONS.length, 8);
+  const hazardousWaste = getReviewedSearchSuggestions("ohtlikud jäätmed", 5);
+  assert.deepEqual(hazardousWaste, ["Kui palju tekkis Eestis 2024. aastal ohtlikke jäätmeid?"]);
+  assert.doesNotMatch(hazardousWaste.join(" "), /mets|raie|SMI/iu);
+  assert.equal(
+    getReviewedSearchSuggestions("BHT7", 5)[0],
+    "Kui suur oli BHT7 heitveekoormus Eestis 2024. aastal?",
+  );
+  assert.equal(
+    getReviewedSearchSuggestions("veevõtt", 5)[0],
+    "Kui suur oli Eesti veevõtt 2024. aastal?",
+  );
+  assert.ok(getReviewedSearchSuggestions("mets", 5).every((value) => /mets|raie|SMI|juurdekasv/iu.test(value)));
 });
 
 test("fair search admission reserves global capacity for another client", async () => {
@@ -573,6 +663,26 @@ test("the all-at-once search keeps transport margin under load", () => {
   assert.equal(configuredSearchBudgetMs("9000", JSON_SEARCH_DEADLINE_CEILING_MS), 9_000);
   assert.equal(configuredSearchBudgetMs("100", JSON_SEARCH_DEADLINE_CEILING_MS), 1_000);
   assert.equal(searchDeadline(50_000, JSON_SEARCH_DEADLINE_CEILING_MS, "15000"), 62_000);
+});
+
+test("the progressive stream gives only recognized slow structured data a larger listing window", () => {
+  assert.equal(progressiveListingBudgetMs({ remainingMs: 15_000 }), 3_500);
+  assert.equal(progressiveListingBudgetMs({ remainingMs: 15_000, slowStructured: true }), 7_000);
+  assert.equal(progressiveListingBudgetMs({ remainingMs: 2_000, slowStructured: true }), 2_000);
+  assert.equal(progressiveListingBudgetMs({ remainingMs: -1, slowStructured: true }), 1);
+  for (const query of [
+    "Mis on viimane avaldatud Emajõe veetase Tartu jaamas?",
+    "Kas Emajõgi on EELISe avaliku kirje järgi avalikult kasutatav veekogu?",
+    "Kui palju vett võeti Eestis 2024?",
+    "Mis oli Jõgeva ööpäeva keskmine õhutemperatuur 21. augustil 2025?",
+    "Mitu tonni bioloogilist hapnikutarvet (BHT7) juhiti 2024. aastal Eestis pinnaveekogudesse?",
+    "Kui palju ohtlikke jäätmeid tekkis Eestis 2024. aastal?",
+  ]) assert.equal(requiresExtendedStructuredListingBudget(query), true, query);
+  for (const query of [
+    "vesi",
+    "Mis on Tallinna temperatuur praegu?",
+    "Kui palju põhjavett võeti Eestis 2024?",
+  ]) assert.equal(requiresExtendedStructuredListingBudget(query), false, query);
 });
 
 test("the listing endpoint shares the global search capacity boundary", async () => {
@@ -1722,10 +1832,10 @@ test("successful LLM work consumes one process-wide rolling allowance", () => {
     tokens: 4_712,
   });
   assert.deepEqual(estimatedLlmBudgetUsage({ orchestrated: true, maxTokens: 3_200 }), {
-    requests: 12,
-    tokens: 23_400,
+    requests: 4,
+    tokens: 7_800,
   });
-  assert.equal(estimatedLlmBudgetTokens({ orchestrated: true, maxTokens: 3_200 }), 23_400);
+  assert.equal(estimatedLlmBudgetTokens({ orchestrated: true, maxTokens: 3_200 }), 7_800);
 });
 
 test("rolling LLM reservations reconcile aggregate agent usage without erasing partial work", () => {
@@ -3538,6 +3648,183 @@ test("answer draft is built from the supplied current ranked result set", async 
   assert.equal(draft.evidence.kind, "ranked-search-results");
 });
 
+test("the reviewed soil-monitoring extract answers without turning sampled sites into all Estonian soils", async () => {
+  const query = "mullaseire tulemused Eestis";
+  const source = officialServiceCatalogueDocuments()
+    .find((document) => document.id === "soil-monitoring-results");
+  assert.ok(source);
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    signal: new AbortController().signal,
+    searchResults: { total: 1, items: [source] },
+  });
+  assert.equal(draft.evidence.kind, "ranked-search-results");
+  assert.deepEqual(draft.answer.introCitations, [1]);
+  assert.match(draft.answer.intro, /pH püsis stabiilne/u);
+  assert.match(draft.answer.intro, /raskmetallide sisaldused jäid alla sihtarvude/u);
+  assert.match(draft.sources[0].evidenceExcerpt, /seiratud põllumuldasid/u);
+  assert.match(draft.answer.intro, /mitte kõigi Eesti muldade/u);
+});
+
+test("the reviewed KOTKAS route explains how to check status without inventing a proceeding state", async () => {
+  const query = "KOTKAS keskkonnaloa menetluse staatus";
+  const source = officialServiceCatalogueDocuments()
+    .find((document) => document.id === "environmental-permits");
+  assert.ok(source);
+  assert.equal(source._answerEvidenceEligible, true);
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    signal: new AbortController().signal,
+    searchResults: { total: 1, items: [source] },
+  });
+  assert.equal(draft.evidence.kind, "ranked-search-results");
+  assert.deepEqual(draft.answer.introCitations, [1]);
+  assert.match(draft.answer.intro, /Taotluste ja menetluste registr/u);
+  assert.match(draft.answer.intro, /menetluse numbri järgi/u);
+  assert.match(draft.answer.intro, /kaevandamisloa menetlusjuhend/u);
+  assert.match(draft.sources[0].evidenceExcerpt, /Teise loaliigi menetluskäigu kohta/u);
+  assert.match(draft.sources[0].evidenceExcerpt, /portaal ise konkreetset menetlusseisu ei määra/iu);
+  assert.doesNotMatch(draft.answer.intro, /(?:heaks kiidetud|rahuldatud|tagasi lükatud)/u);
+  assert.match(draft.sources[0].url, /keskkonnaamet\.ee\/[\s\S]*kaevandamisloa-taotluse-menetlus/u);
+  assert.equal(draft.sources[0].actionUrl, "https://kotkas.envir.ee/permits/public_index");
+  assert.match(draft.sources[0].actionLabel, /Ava KOTKASes/u);
+  const visible = publicResponse(draft).sources[0];
+  assert.equal(visible.url, draft.sources[0].url);
+  assert.equal(visible.actionUrl, draft.sources[0].actionUrl);
+});
+
+test("the reviewed well-permit guide separates general legal requirements from a specific well's status", async () => {
+  const query = "Kas uue puurkaevu rajamiseks on vaja ehitusluba?";
+  const source = officialServiceCatalogueDocuments()
+    .find((document) => document.id === "well-permit-guidance");
+  assert.ok(source);
+  assert.equal(source._answerEvidenceEligible, true);
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    signal: new AbortController().signal,
+    searchResults: { total: 1, items: [source] },
+  });
+  assert.equal(draft.evidence.kind, "ranked-search-results");
+  assert.deepEqual(draft.answer.introCitations, [1]);
+  assert.match(draft.answer.intro, /ehitusprojekti/u);
+  assert.match(draft.answer.intro, /kohalikult omavalitsuselt ehitusluba/u);
+  assert.match(draft.sources[0].evidenceExcerpt, /üldjuhend ei tõenda/u);
+  assert.match(draft.sources[0].evidenceExcerpt, /registrikirjet/u);
+  assert.equal(draft.sources[0].url, "https://keskkonnaamet.ee/keskkonnakasutus-kiirgus/vesi/salv-puurkaevud-ja-heitvesi");
+  assert.match(draft.sources[0].actionUrl, /register\.keskkonnaportaal\.ee/u);
+  assert.doesNotMatch(draft.answer.intro, /(?:luba on olemas|luba puudub)/u);
+  const visible = publicResponse(draft).sources[0];
+  assert.equal(visible.url, draft.sources[0].url);
+  assert.equal(visible.actionUrl, draft.sources[0].actionUrl);
+
+  const existingWellDraft = await createPortalDraft("Kas kinnistul oleva puurkaevu jaoks on luba vaja?", {
+    deadlineAt: Date.now(),
+    signal: new AbortController().signal,
+    searchResults: { total: 1, items: [source] },
+  });
+  assert.equal(existingWellDraft.evidence.kind, "insufficient-evidence");
+  assert.equal(existingWellDraft.evidence.answerable, false);
+  assert.match(existingWellDraft.clarification, /konkreetne objekt/iu);
+});
+
+test("the reviewed pond guide keeps its sub-hectare answer conditional on location and design", async () => {
+  const query = "Kas alla ühe hektari suuruse maismaatiigi rajamiseks on keskkonnaluba vaja?";
+  const source = officialServiceCatalogueDocuments()
+    .find((document) => document.id === "pond-permit-guidance");
+  assert.ok(source);
+  assert.equal(source._answerEvidenceEligible, true);
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    signal: new AbortController().signal,
+    searchResults: { total: 1, items: [source] },
+  });
+  assert.equal(draft.evidence.kind, "ranked-search-results");
+  assert.deepEqual(draft.answer.introCitations, [1]);
+  assert.match(draft.answer.intro, /alla ühe hektari/u);
+  assert.match(draft.answer.intro, /olemasoleva veekoguga ühendamata/u);
+  assert.match(draft.answer.intro, /ehitusseadustiku/u);
+  assert.match(draft.sources[0].evidenceExcerpt, /kaldajoone või veerežiimi muutmist/u);
+  assert.match(source.content, /Pelgalt sõna „väike” ei tõenda/u);
+});
+
+test("the waste-facilities route stays navigation-only while the full pipeline cites its safe map procedure", async () => {
+  const query = "jäätmekäitluskohad Pärnumaal";
+  const catalogue = officialServiceCatalogueDocuments();
+  const map = catalogue.find((document) => document.id === "waste-facilities-map");
+  const reporting = catalogue.find((document) => document.id === "waste-reporting-data");
+  assert.ok(map);
+  assert.ok(reporting);
+  assert.equal(map.evidencePolicy, "route-only");
+  assert.equal(sourceEvidenceEligibility(map).eligible, false);
+  assert.deepEqual(evidenceDocumentsFromListing({ items: [map] }), []);
+  let modelCalls = 0;
+  const startedAt = Date.now();
+  const draft = await searchEnvironmentLive(query, {
+    startedAt,
+    deadlineAt: startedAt + 2_000,
+    useCache: false,
+    signal: new AbortController().signal,
+    searchResults: { total: 2, items: [map, reporting] },
+    async generateAnswer() {
+      modelCalls += 1;
+      throw new Error("navigation response must not reach a model");
+    },
+  });
+  assert.equal(modelCalls, 0);
+  assert.equal(draft.sources[0].id, "waste-facilities-map");
+  assert.equal(draft.sources.length, 1);
+  assert.deepEqual(draft.answer.introCitations, [1]);
+  assert.match(draft.answer.intro, /vali sobiv jäätmekäitluskohtade kiht/u);
+  assert.match(draft.answer.intro, /Pärnumaa/u);
+  assert.match(draft.answer.note, /ei kinnita[\s\S]*kehtivust[\s\S]*vastuvõetavaid jäätmeliike/u);
+  assert.doesNotMatch(draft.answer.intro, /Pärnumaal (?:on|asub) \d+/u);
+  assert.equal(draft.sources[0].url, "https://register.keskkonnaportaal.ee/register");
+  assert.equal(draft.sources[0].locator, "https://keskkonnaportaal.ee/et/abi");
+
+  const timedOut = searchTimeoutFallback(query, {
+    searchResults: { total: 2, items: [map, reporting] },
+  });
+  assert.deepEqual(timedOut.sources.map((source) => source.id), ["waste-facilities-map"]);
+  assert.equal(timedOut.answer.intro, draft.answer.intro);
+  assert.equal(timedOut.answer.note, draft.answer.note);
+});
+
+test("waste-facilities navigation respects filters and rejects factual facility demands", async () => {
+  const catalogue = officialServiceCatalogueDocuments();
+  const map = catalogue.find((document) => document.id === "waste-facilities-map");
+  const reporting = catalogue.find((document) => document.id === "waste-reporting-data");
+  assert.ok(map);
+  assert.ok(reporting);
+  const filteredStartedAt = Date.now();
+  const filtered = await searchEnvironmentLive("jäätmekäitluskohad Pärnumaal", {
+    startedAt: filteredStartedAt,
+    deadlineAt: filteredStartedAt + 2_000,
+    useCache: false,
+    filters: { category: "Avaandmestik" },
+    searchResults: { total: 2, items: [map, reporting] },
+    generateAnswer: async () => ({ status: "unavailable" }),
+  });
+  assert.equal(filtered.sources.some((source) => source.id === "waste-facilities-map"), false);
+
+  for (const query of [
+    "Millised jäätmekäitluskohad on Pärnumaal praegu avatud?",
+    "Kas jäätmekäitluskoht võtab Pärnumaal vastu külmkapi?",
+    "Mitu jäätmekäitluskohta Pärnumaal on?",
+    "Mis aadressil on lähim jäätmekäitluskoht Pärnumaal?",
+  ]) {
+    const startedAt = Date.now();
+    const response = await searchEnvironmentLive(query, {
+      startedAt,
+      deadlineAt: startedAt + 2_000,
+      useCache: false,
+      searchResults: { total: 2, items: [map, reporting] },
+      generateAnswer: async () => ({ status: "unavailable" }),
+    });
+    assert.equal(response.sources.some((source) => source.id === "waste-facilities-map"), false, query);
+    assert.doesNotMatch(response.answer.intro, /Ava Andmed ja kaart/u, query);
+  }
+});
+
 test("source instructions cannot alter the query, source set or deterministic fallback", async () => {
   const query = "Kas vanu rehve tohib põletada?";
   const officialUrl = "https://keskkonnaamet.ee/jaatmete-poletamine";
@@ -3662,6 +3949,257 @@ test("a filter cannot leave a hidden live source cited outside the visible listi
   });
   assert.equal(result.sources.some((source) => /ohuseire\.ee/u.test(source.url)), false);
   assert.match(result.clarification, /filtrid välistavad/u);
+});
+
+test("the production pipeline answers a current city measurement from the visible fresh XML source", async () => {
+  const now = Date.now();
+  const timestamp = Math.floor((now - 60_000) / 1_000);
+  const query = "Mis on praegune temperatuur Tallinnas?";
+  const xml = `<observations timestamp="${timestamp}"><station>
+    <name>Tallinn-Harku</name><longitude>24.6029</longitude><latitude>59.3981</latitude>
+    <precipitations>0</precipitations><airpressure>1008.4</airpressure>
+    <relativehumidity>85</relativehumidity><airtemperature>14.2</airtemperature>
+    <windspeed>2.5</windspeed><windspeedmax>4.1</windspeedmax>
+  </station></observations>`;
+  const [source] = currentWeatherObservationFromXml(query, xml, { now });
+  assert.ok(source);
+  const result = await searchEnvironmentLive(query, {
+    startedAt: now,
+    deadlineAt: now + 1_000,
+    useCache: false,
+    searchResults: {
+      total: 1,
+      items: [source],
+    },
+  });
+
+  assert.equal(result.answer.title, "Tallinn: õhutemperatuur 14,2 °C");
+  assert.match(result.answer.intro, /Tallinn-Harku[\s\S]*14,2 °C/u);
+  assert.deepEqual(result.answer.introCitations, [1]);
+  assert.equal(result.sources.length, 1);
+  assert.equal(result.sources[0].url, CURRENT_WEATHER_OBSERVATIONS_XML_URL);
+  assert.match(result.sources[0].evidenceExcerpt, /Tallinn-Harku/u);
+});
+
+test("the production pipeline routes current city humidity and pressure variants to the XML source", async () => {
+  const now = Date.now();
+  const timestamp = Math.floor((now - 60_000) / 1_000);
+  const xml = `<observations timestamp="${timestamp}"><station>
+    <name>Tallinn-Harku</name><longitude>24.6029</longitude><latitude>59.3981</latitude>
+    <precipitations>0</precipitations><airpressure>1008.4</airpressure>
+    <relativehumidity>85</relativehumidity><airtemperature>14.2</airtemperature>
+    <windspeed>2.5</windspeed><windspeedmax>4.1</windspeedmax>
+  </station></observations>`;
+  const cases = [
+    ["Mis on praegune õhurõhk Tallinnas?", "Tallinn: õhurõhk 1008,4 hPa"],
+    ["Kui suur on niiskus Tallinnas praegu?", "Tallinn: suhteline õhuniiskus 85%"],
+    ["Milline on õhuniiskus Tallinnas praegu?", "Tallinn: suhteline õhuniiskus 85%"],
+  ];
+
+  for (const [query, expectedTitle] of cases) {
+    const [source] = currentWeatherObservationFromXml(query, xml, { now });
+    assert.ok(source, query);
+    const result = await searchEnvironmentLive(query, {
+      startedAt: now,
+      deadlineAt: now + 1_000,
+      useCache: false,
+      searchResults: { total: 1, items: [source] },
+    });
+    assert.equal(result.answer.title, expectedTitle, query);
+    assert.equal(result.sources[0].url, CURRENT_WEATHER_OBSERVATIONS_XML_URL, query);
+  }
+});
+
+test("the production pipeline never substitutes an air observation for water temperature", async () => {
+  const now = Date.now();
+  const timestamp = Math.floor((now - 60_000) / 1_000);
+  const xml = `<observations timestamp="${timestamp}"><station>
+    <name>Tallinn-Harku</name><longitude>24.6029</longitude><latitude>59.3981</latitude>
+    <precipitations>0</precipitations><airpressure>1008.4</airpressure>
+    <relativehumidity>85</relativehumidity><airtemperature>14.2</airtemperature>
+    <windspeed>2.5</windspeed><windspeedmax>4.1</windspeedmax>
+  </station></observations>`;
+  const [airSource] = currentWeatherObservationFromXml("Mis on õhutemperatuur Tallinnas?", xml, { now });
+  assert.ok(airSource);
+
+  for (const query of [
+    "Mis on põhjavee temperatuur Tallinnas?",
+    "Mis on merevee temperatuur Tallinnas?",
+    "Mis on järvevee temperatuur Tallinnas?",
+    "Mis on suplusvee temperatuur Tallinnas?",
+  ]) {
+    const result = await searchEnvironmentLive(query, {
+      startedAt: now,
+      deadlineAt: now + 1_000,
+      useCache: false,
+      searchResults: { total: 1, items: [airSource] },
+    });
+    assert.notEqual(result.evidence?.kind, "structured-current-weather", query);
+    assert.doesNotMatch(result.answer.title, /õhutemperatuur 14,2 °C/u, query);
+    assert.doesNotMatch(result.answer.intro, /õhutemperatuur 14,2 °C/u, query);
+  }
+});
+
+test("the production pipeline answers a national tomorrow forecast from the visible fresh XML version", async () => {
+  const now = Date.now();
+  const query = "Milline on ilm Eestis homme?";
+  const dateParts = Object.fromEntries(new Intl.DateTimeFormat("en", {
+    timeZone: "Europe/Tallinn",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(now)).map((part) => [part.type, part.value]));
+  const localDate = Date.UTC(Number(dateParts.year), Number(dateParts.month) - 1, Number(dateParts.day));
+  const tomorrow = new Date(localDate + 24 * 60 * 60_000).toISOString().slice(0, 10);
+  const blocks = Array.from({ length: 4 }, (_value, index) => {
+    const date = new Date(localDate + index * 24 * 60 * 60_000)
+      .toISOString().slice(0, 10);
+    return `<forecast date="${date}">
+      <night><tempmin>${5 + index}</tempmin><tempmax>${10 + index}</tempmax><text>Öösel sajab mitmel pool vihma ja puhub mõõdukas tuul.</text></night>
+      <day><tempmin>${12 + index}</tempmin><tempmax>${18 + index}</tempmax><text>Päeval on vahelduva pilvisusega ilm ja kohati sajab hoovihma.</text></day>
+    </forecast>`;
+  }).join("");
+  const [source] = nationalWeatherForecastFromXml(query, `<forecasts>${blocks}</forecasts>`, {
+    now,
+    fetchedAt: now - 60_000,
+  });
+  assert.ok(source);
+  const result = await searchEnvironmentLive(query, {
+    startedAt: now,
+    deadlineAt: now + 1_000,
+    useCache: false,
+    searchResults: { total: 1, items: [source] },
+  });
+
+  assert.equal(result.answer.title, `Eesti ilmaprognoos ${tomorrow}`);
+  assert.match(result.answer.intro, /6…11 °C[\s\S]*13…19 °C/u);
+  assert.equal(result.sources[0].url, WEATHER_FORECAST_XML_URL);
+  assert.match(result.answer.note, /mitte linnapõhine/u);
+});
+
+test("the production pipeline answers only an exact latest-published hydrology question from the API row", async () => {
+  const now = Date.now();
+  const latestHour = Math.floor((now - 12 * 60 * 60_000) / (60 * 60_000)) * 60 * 60_000;
+  const latestHourText = new Date(latestHour).toISOString().slice(0, 19);
+  const previousHourText = new Date(latestHour - 60 * 60_000).toISOString().slice(0, 19);
+  const query = "Mis oli Emajõe Tartu jaama viimati avaldatud veetase?";
+  const body = JSON.stringify([
+    {
+      jaam_kood: 41025,
+      jaam_nimi: "Tartu",
+      jaam_taisnimi: "Tartu hüdromeetriajaam",
+      veekogu_nimi: "Emajõgi",
+      valgala_nimi: "Emajõgi",
+      jaam_laiuskraad: 58.380022,
+      jaam_pikkuskraad: 26.726181,
+      timeline_ts_utc: latestHourText,
+      aegrida_nimi: "WL avg",
+      vaartus: 33,
+    },
+    {
+      jaam_kood: 41025,
+      jaam_nimi: "Tartu",
+      jaam_taisnimi: "Tartu hüdromeetriajaam",
+      veekogu_nimi: "Emajõgi",
+      valgala_nimi: "Emajõgi",
+      jaam_laiuskraad: 58.380022,
+      jaam_pikkuskraad: 26.726181,
+      timeline_ts_utc: previousHourText,
+      aegrida_nimi: "WL avg",
+      vaartus: 33.4,
+    },
+  ]);
+  const [source] = latestPublishedHydrologyFromJson(query, body, { now });
+  assert.ok(source);
+  const result = await searchEnvironmentLive(query, {
+    startedAt: now,
+    deadlineAt: now + 1_000,
+    useCache: false,
+    searchResults: { total: 1, items: [source] },
+  });
+
+  assert.equal(result.answer.title, "Emajõgi, Tartu: veetaseme tunni keskmine 33 cm");
+  assert.match(result.answer.intro, new RegExp(`andmeaeg ${latestHourText.slice(0, 16).replace("T", " ")} UTC`, "u"));
+  assert.equal(new URL(result.sources[0].url).origin + new URL(result.sources[0].url).pathname, LATEST_HYDROLOGY_API_URL);
+  assert.match(result.answer.note, /mitte reaalajanäit/u);
+  assert.match(result.answer.parts[0].text, /graafiku nulli \(29,77 m EH2000\)/u);
+  assert.equal(result.sources.length, 1);
+  assert.equal(draftMatchesListingAndFilters(
+    composeLatestPublishedHydrologyResponse(query, [source], { now }),
+    { items: [source] },
+    { source: "official" },
+  ), true);
+  assert.equal(draftMatchesListingAndFilters(
+    composeLatestPublishedHydrologyResponse(query, [source], { now }),
+    { items: [source] },
+    { category: "Uudis" },
+  ), false);
+
+  const liveQuestion = await searchEnvironmentLive("Mis on Emajõe veetase praegu?", {
+    startedAt: now,
+    deadlineAt: now + 1_000,
+    useCache: false,
+    searchResults: { total: 1, items: [source] },
+  });
+  assert.notEqual(liveQuestion.evidence?.kind, "structured-latest-published-hydrology");
+  assert.doesNotMatch(liveQuestion.answer.intro, /33 cm/u);
+});
+
+test("the production pipeline exposes the exact EELIS Emajõgi classification without turning it into legal advice", async () => {
+  const now = Date.now();
+  const query = "Kas Emajõgi on avalik veekogu?";
+  const body = JSON.stringify({
+    type: "FeatureCollection",
+    features: [{
+      type: "Feature",
+      id: "avalikud_vooluveekogud.46",
+      geometry: null,
+      properties: {
+        sys_id: 44,
+        versioon: 1720477283496,
+        kkr_kood: "VEE1023600",
+        nimi: "Emajõgi",
+        avalik: "Jah",
+        avalik_kas: "Avalik",
+        markus: "",
+      },
+    }],
+    totalFeatures: 1,
+    numberMatched: 1,
+    numberReturned: 1,
+    timeStamp: new Date(now - 30_000).toISOString(),
+    crs: null,
+  });
+  const [source] = eelisEmajogiPublicWatercourseFromGeoJson(query, body, {
+    now,
+    fetchedAt: now - 20_000,
+  });
+  assert.ok(source);
+  const result = await searchEnvironmentLive(query, {
+    startedAt: now,
+    deadlineAt: now + 1_000,
+    useCache: false,
+    searchResults: { total: 1, items: [source] },
+  });
+
+  assert.match(result.answer.title, /Emajõgi[\s\S]*avalik „Jah”[\s\S]*avalik kasutus „Avalik”/u);
+  assert.match(result.answer.note, /mitte individuaalne õigusnõu[\s\S]*eramaa/u);
+  assert.equal(result.sources.length, 1);
+  assert.equal(result.sources[0].url, EELIS_EMAJOGI_PUBLIC_WATERCOURSE_WFS_URL);
+  assert.equal(draftMatchesListingAndFilters(
+    composeEelisEmajogiPublicWatercourseResponse(query, [source], { now }),
+    { items: [source] },
+    { source: "official" },
+  ), true);
+
+  const legalQuestion = await searchEnvironmentLive("Kas ma tohin üle eramaa Emajõe äärde minna?", {
+    startedAt: now,
+    deadlineAt: now + 1_000,
+    useCache: false,
+    searchResults: { total: 1, items: [source] },
+  });
+  assert.doesNotMatch(legalQuestion.answer.title, /avalik „Jah”/u);
+  assert.equal(legalQuestion.sources.some((item) => item.url === EELIS_EMAJOGI_PUBLIC_WATERCOURSE_WFS_URL), false);
 });
 
 test("the production pipeline routes each current-water intent to its matching live service", async () => {
@@ -3858,6 +4396,255 @@ test("an abort during a database write rolls the transaction back and never comm
   assert.equal(queries.some((query) => query === "ROLLBACK"), true);
 });
 
+test("search persistence evicts only a bounded victim set before admitting a new run", async () => {
+  const queries = [];
+  const client = {
+    async query(text, values = []) {
+      const sql = String(text);
+      queries.push({ sql, values });
+      if (sql.includes("pg_try_advisory_xact_lock")) return { rows: [{ acquired: true }] };
+      if (sql === SEARCH_DATA_PURGE_SQL) return { rows: [{ deleted_cache: 0, deleted_runs: 0 }] };
+      if (sql === SEARCH_RUN_CAPACITY_SQL) return { rows: [{ victim: "41" }] };
+      if (sql.includes("DELETE FROM practice_search_runs WHERE id = ANY")) return { rows: [], rowCount: 1 };
+      if (sql.includes("INSERT INTO practice_search_runs")) return { rows: [{ id: "42" }], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    },
+  };
+  const result = await runSearchPersistenceTransaction(client, {
+    hash: "bounded-run",
+    safeResponse: null,
+    cacheResponse: false,
+    ttlMinutes: 20,
+    answerProvider: "test",
+    response: { sources: [] },
+    durationMs: 1,
+    provenance: {},
+    deadlineAt: Date.now() + 5_000,
+  });
+  assert.deepEqual(result, { cacheStored: false, runStored: true, limited: false });
+  const deletion = queries.find(({ sql }) => sql.includes("DELETE FROM practice_search_runs WHERE id = ANY"));
+  assert.deepEqual(deletion.values, [["41"]]);
+  assert.ok(queries.some(({ sql }) => sql.includes("INSERT INTO practice_search_runs")));
+  assert.equal(queries.at(-1).sql, "COMMIT");
+});
+
+test("legacy persistence debt is drained in one bounded batch and cannot grow", async () => {
+  const queries = [];
+  const debt = Array.from({ length: SEARCH_RETENTION_BATCH_SIZE + 1 }, (_value, index) => ({
+    victim: String(index + 1),
+  }));
+  const client = {
+    async query(text, values = []) {
+      const sql = String(text);
+      queries.push({ sql, values });
+      if (sql.includes("pg_try_advisory_xact_lock")) return { rows: [{ acquired: true }] };
+      if (sql === SEARCH_DATA_PURGE_SQL) return { rows: [{ deleted_cache: 0, deleted_runs: 0 }] };
+      if (sql === SEARCH_RUN_CAPACITY_SQL) return { rows: debt };
+      if (sql.includes("DELETE FROM practice_search_runs WHERE id = ANY")) {
+        return { rows: [], rowCount: values[0].length };
+      }
+      return { rows: [], rowCount: 0 };
+    },
+  };
+  const result = await runSearchPersistenceTransaction(client, {
+    hash: "bounded-debt",
+    safeResponse: null,
+    cacheResponse: false,
+    ttlMinutes: 20,
+    answerProvider: "test",
+    response: { sources: [] },
+    durationMs: 1,
+    provenance: {},
+    deadlineAt: Date.now() + 5_000,
+  });
+  assert.deepEqual(result, { cacheStored: false, runStored: false, limited: true });
+  const deletion = queries.find(({ sql }) => sql.includes("DELETE FROM practice_search_runs WHERE id = ANY"));
+  assert.equal(deletion.values[0].length, SEARCH_RETENTION_BATCH_SIZE);
+  assert.equal(queries.some(({ sql }) => sql.includes("INSERT INTO practice_search_runs")), false);
+  assert.equal(queries.at(-1).sql, "COMMIT");
+});
+
+test("persistence lock contention skips all optional database writes", async () => {
+  const queries = [];
+  const result = await runSearchPersistenceTransaction({
+    async query(text) {
+      const sql = String(text);
+      queries.push(sql);
+      if (sql.includes("pg_try_advisory_xact_lock")) return { rows: [{ acquired: false }] };
+      return { rows: [], rowCount: 0 };
+    },
+  }, {
+    hash: "lock-contention",
+    safeResponse: { sources: [] },
+    cacheResponse: true,
+    ttlMinutes: 20,
+    answerProvider: "deterministic-current-evidence",
+    response: { sources: [] },
+    durationMs: 1,
+    provenance: {},
+    deadlineAt: Date.now() + 5_000,
+  });
+  assert.deepEqual(result, { cacheStored: false, runStored: false, limited: true });
+  assert.equal(queries.some((sql) => /practice_search_(?:cache|runs)/u.test(sql)), false);
+  assert.equal(queries.at(-1), "ROLLBACK");
+});
+
+test("an existing cache key refreshes without consuming new cardinality", async () => {
+  const queries = [];
+  const result = await runSearchPersistenceTransaction({
+    async query(text) {
+      const sql = String(text);
+      queries.push(sql);
+      if (sql.includes("pg_try_advisory_xact_lock")) return { rows: [{ acquired: true }] };
+      if (sql === SEARCH_DATA_PURGE_SQL) return { rows: [{ deleted_cache: 0, deleted_runs: 0 }] };
+      if (sql.startsWith("UPDATE practice_search_cache")) return { rows: [{ query_hash: "existing" }], rowCount: 1 };
+      if (sql === SEARCH_RUN_CAPACITY_SQL) return { rows: [] };
+      if (sql.includes("INSERT INTO practice_search_runs")) return { rows: [{ id: "1" }], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    },
+  }, {
+    hash: "existing",
+    safeResponse: { sources: [] },
+    cacheResponse: true,
+    ttlMinutes: 20,
+    answerProvider: "deterministic-current-evidence",
+    response: { sources: [] },
+    durationMs: 1,
+    provenance: {},
+    deadlineAt: Date.now() + 5_000,
+  });
+  assert.deepEqual(result, { cacheStored: true, runStored: true, limited: false });
+  assert.equal(queries.includes(SEARCH_CACHE_CAPACITY_SQL), false);
+  assert.equal(queries.some((sql) => sql.includes("INSERT INTO practice_search_cache")), false);
+});
+
+test("corpus statistics snapshots coalesce bursts and abort only after the final waiter leaves", async () => {
+  let calls = 0;
+  let resolveLoad;
+  const snapshot = createCoalescedTtlSnapshot({
+    ttlMs: 1_000,
+    timeoutMs: 1_000,
+    load: async () => {
+      calls += 1;
+      await new Promise((resolve) => { resolveLoad = resolve; });
+      return { status: "ready", documents: 7 };
+    },
+  });
+  const burst = Array.from({ length: 240 }, () => snapshot.get());
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls, 1);
+  assert.equal(snapshot.stats().waiters, 240);
+  resolveLoad();
+  const results = await Promise.all(burst);
+  assert.ok(results.every((value) => value.documents === 7));
+  assert.equal((await snapshot.get()).documents, 7);
+  assert.equal(calls, 1);
+
+  let internalSignal;
+  let resolveSecond;
+  const shared = createCoalescedTtlSnapshot({
+    ttlMs: 1_000,
+    timeoutMs: 1_000,
+    load: ({ signal }) => {
+      internalSignal = signal;
+      return new Promise((resolve, reject) => {
+        resolveSecond = resolve;
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+    },
+  });
+  const firstController = new AbortController();
+  const secondController = new AbortController();
+  const first = shared.get({ signal: firstController.signal });
+  const second = shared.get({ signal: secondController.signal });
+  await new Promise((resolve) => setImmediate(resolve));
+  firstController.abort();
+  await assert.rejects(first, (error) => error?.name === "AbortError");
+  assert.equal(internalSignal.aborted, false);
+  resolveSecond({ status: "ready", documents: 8 });
+  assert.equal((await second).documents, 8);
+
+  const finalController = new AbortController();
+  let finalSignal;
+  const abandoned = createCoalescedTtlSnapshot({
+    timeoutMs: 1_000,
+    load: ({ signal }) => {
+      finalSignal = signal;
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+    },
+  });
+  const finalWaiter = abandoned.get({ signal: finalController.signal });
+  await new Promise((resolve) => setImmediate(resolve));
+  finalController.abort();
+  await assert.rejects(finalWaiter, (error) => error?.name === "AbortError");
+  assert.equal(finalSignal.aborted, true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(abandoned.stats().inflight, false);
+
+  let nonCooperativeCalls = 0;
+  const nonCooperative = createCoalescedTtlSnapshot({
+    timeoutMs: 100,
+    load: () => {
+      nonCooperativeCalls += 1;
+      if (nonCooperativeCalls === 1) return new Promise(() => undefined);
+      return { status: "ready", documents: 9 };
+    },
+  });
+  await assert.rejects(nonCooperative.get(), (error) => error?.name === "TimeoutError");
+  assert.equal(nonCooperative.stats().inflight, false);
+  assert.equal((await nonCooperative.get()).documents, 9);
+  assert.equal(nonCooperativeCalls, 2);
+});
+
+test("corpus backend admission stays held until non-cooperative work actually settles", async () => {
+  const backendAdmission = createFairSearchAdmission({
+    maximumActive: 2,
+    maximumActivePerClient: 1,
+    maximumQueue: 2,
+    maximumQueuedPerClient: 1,
+    maximumWaitMs: 100,
+    capacityCode: "CORPUS_CAPACITY",
+  });
+  let calls = 0;
+  let resolveFirst;
+  const snapshot = createCoalescedTtlSnapshot({
+    timeoutMs: 100,
+    acquireWork: ({ clientKey, signal }) => backendAdmission.acquire(
+      clientKey,
+      { signal, maximumWaitMs: 100 },
+    ),
+    load: () => {
+      calls += 1;
+      if (calls === 1) return new Promise((resolve) => { resolveFirst = resolve; });
+      return { status: "ready", documents: 11 };
+    },
+  });
+
+  await assert.rejects(
+    snapshot.get({ clientKey: "198.51.100.12" }),
+    (error) => error?.name === "TimeoutError",
+  );
+  assert.equal(snapshot.stats().inflight, false);
+  assert.equal(backendAdmission.stats().active, 1);
+
+  await assert.rejects(
+    snapshot.get({ clientKey: "198.51.100.12" }),
+    (error) => error?.name === "TimeoutError",
+  );
+  assert.equal(calls, 1);
+  assert.equal(backendAdmission.stats().active, 1);
+  assert.equal(backendAdmission.stats().queued, 0);
+
+  resolveFirst({ status: "ready", documents: 10 });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(backendAdmission.stats().active, 0);
+  assert.equal((await snapshot.get({ clientKey: "198.51.100.12" })).documents, 11);
+  assert.equal(calls, 2);
+  backendAdmission.close();
+});
+
 test("deadline fallback never turns a timeout into an absence claim", () => {
   const result = searchTimeoutFallback("kiirgusseire tulemused Eestis");
   assert.equal(result.answer.eyebrow, "Otsing võttis liiga kaua");
@@ -3910,12 +4697,14 @@ test("a ready model answer rebinds every cited final claim to the visible source
   const source = officialServiceCatalogueDocuments().find((item) => item.id === "protected-forest-share");
   assert.ok(source);
   const startedAt = Date.now();
+  let reviewedRelated = [];
   const result = await searchEnvironmentLive(query, {
     startedAt,
     deadlineAt: startedAt + 3_000,
     useCache: false,
     searchResults: { total: 1, items: [source] },
     generateAnswer(providerQuery, providerDraft) {
+      reviewedRelated = structuredClone(providerDraft.related || []);
       const answer = validateGroundedAnswer({
         intro: providerDraft.answer.intro,
         intro_citations: [1],
@@ -3926,13 +4715,20 @@ test("a ready model answer rebinds every cited final claim to the visible source
         }],
         related_questions: [],
       }, providerDraft, providerQuery);
-      return { answer, status: "ready", provider: "test-provider" };
+      return {
+        answer,
+        related: ["INJECTED_UNCITED_RELATED_QUESTION?"],
+        status: "ready",
+        provider: "test-provider",
+      };
     },
   });
 
   assert.match(result.answer.parts[0]?.text || "", /kaitserežiim tuleb kontrollida/iu);
   const witness = result.sources.find((item) => item.citation === 1)?.evidenceExcerpt || "";
   assert.match(witness, /kaitserežiim tuleb kontrollida ruumiandmetest ja kehtivast õigusaktist/iu);
+  assert.deepEqual(result.related, reviewedRelated);
+  assert.doesNotMatch(JSON.stringify(result.related), /INJECTED_UNCITED/u);
 });
 
 test("source failures degrade without turning an outage into an absence claim", () => {
@@ -3977,6 +4773,8 @@ test("cached responses never retain raw query text", async () => {
       published: "2026",
       url: "https://keskkonnaagentuur.ee/seire",
       summary: "Ametliku seire tulemused.",
+      actionUrl: "https://register.keskkonnaportaal.ee/register",
+      actionLabel: "Ava ametlik register",
       tags: ["seire"],
       sourceTier: "official",
       hidden: query,
@@ -3997,6 +4795,8 @@ test("cached responses never retain raw query text", async () => {
   assert.equal("hidden" in safe.answer, false);
   assert.equal("hidden" in safe.answer.parts[0], false);
   assert.equal("hidden" in safe.sources[0], false);
+  assert.equal(safe.sources[0].actionUrl, "https://register.keskkonnaportaal.ee/register");
+  assert.equal(safe.sources[0].actionLabel, "Ava ametlik register");
   assert.equal(response.answer.title, query);
   const restored = restoreCachedResponse(safe, query);
   assert.equal(restored.query, query);
@@ -4177,9 +4977,15 @@ test("cached responses never retain raw query text", async () => {
   assert.equal(isSearchCacheEnabled("false"), false);
   assert.equal(isSearchCacheEnabled("true"), true);
   assert.match(SEARCH_CACHE_READ_SQL, /response_schema = 'privacy-safe-v5'/u);
-  assert.match(SEARCH_CACHE_READ_SQL, /DELETE FROM practice_search_cache[\s\S]*expires_at <= NOW\(\)/u);
-  assert.match(SEARCH_DATA_PURGE_SQL, /DELETE FROM practice_search_cache[\s\S]*expires_at <= NOW\(\)/u);
-  assert.match(SEARCH_DATA_PURGE_SQL, /DELETE FROM practice_search_runs[\s\S]*INTERVAL '30 days'/u);
+  assert.doesNotMatch(SEARCH_CACHE_READ_SQL, /\b(?:DELETE|UPDATE|INSERT)\b/iu);
+  assert.match(SEARCH_DATA_PURGE_SQL, /practice_search_cache[\s\S]*expires_at <= NOW\(\)[\s\S]*LIMIT \$1[\s\S]*FOR UPDATE/u);
+  assert.match(SEARCH_DATA_PURGE_SQL, /practice_search_runs[\s\S]*INTERVAL '30 days'[\s\S]*LIMIT \$1[\s\S]*FOR UPDATE/u);
+  assert.match(SEARCH_CACHE_CAPACITY_SQL, /LIMIT \$2 OFFSET \$1[\s\S]*FOR UPDATE/u);
+  assert.match(SEARCH_RUN_CAPACITY_SQL, /LIMIT \$2 OFFSET \$1[\s\S]*FOR UPDATE/u);
+  assert.equal(SEARCH_CACHE_MAX_ROWS, 5_000);
+  assert.equal(SEARCH_RUN_MAX_ROWS, 50_000);
+  assert.equal(SEARCH_RETENTION_BATCH_SIZE, 250);
+  assert.equal(SEARCH_PERSISTENCE_ADVISORY_LOCK, 1_838_461_027);
 });
 
 test("persisted search identifiers use a secret HMAC instead of a reversible plain hash", () => {
@@ -4285,14 +5091,16 @@ test("public page uses the complete Terrapoint application and permits only its 
   assert.match(server, /frame-src 'self' https:\/\/www\.openstreetmap\.org https:\/\/terrapoint\.ee/);
 });
 
-test("answer citations link directly to their source and expose a compact evidence disclosure", async () => {
+test("answer citations link directly to their source without a duplicate cited-sources panel", async () => {
   const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
-  const citation = app.match(/function Citation[\s\S]*?function sourceTierLabel/u)?.[0] || "";
+  const citation = app.match(/function Citation[\s\S]*?function isRedundantAnswerNote/u)?.[0] || "";
   assert.match(citation, /<ExternalAnchor/u);
   assert.match(citation, /href=\{source\?\.url\}/u);
   assert.match(citation, /source\.locator \? `Vaata: \$\{source\.locator\}`/u);
-  assert.match(app, /function AnswerEvidenceSources[\s\S]*Vastuses kasutatud allikad/u);
-  assert.match(app, /source\.evidenceExcerpt \|\| source\.summary/u);
+  assert.match(citation, /source\.evidenceExcerpt \? `Tõend:/u);
+  assert.match(app, /function SourceActions[\s\S]*?safeExternalHref\(source\?\.actionUrl\)[\s\S]*?<ExternalAnchor href=\{source\.actionUrl\}/u);
+  assert.match(app, /<SourceActions sources=\{result\.sources\} \/>/u);
+  assert.doesNotMatch(app, /AnswerEvidenceSources|answer-evidence|Vastuses kasutatud allikad/u);
   assert.match(app, /className="broad-result__locator"[\s\S]*?Vaata allikast:/u);
   assert.doesNotMatch(app, /function EvidenceLocatorLink|Ava andmetabel/u);
 });

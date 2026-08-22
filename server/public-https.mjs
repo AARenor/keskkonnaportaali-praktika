@@ -117,6 +117,8 @@ function requestOnce(url, {
   maximumBytes,
   lookupImpl,
   requestImpl,
+  method = "GET",
+  body = "",
 } = {}) {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -128,7 +130,7 @@ function requestOnce(url, {
     };
     const fail = (error) => finish(reject, error);
     const request = requestImpl(url, {
-      method: "GET",
+      method,
       headers: {
         Accept: "text/html,application/xhtml+xml,text/plain,text/csv;q=0.9,*/*;q=0.5",
         "Accept-Encoding": "identity",
@@ -178,6 +180,7 @@ function requestOnce(url, {
         body: Buffer.concat(chunks, size).toString("utf8"),
         headers: Object.freeze({
           "content-type": String(response.headers?.["content-type"] || "").slice(0, 240),
+          "content-profile": String(response.headers?.["content-profile"] || "").slice(0, 120),
           "x-robots-tag": String(response.headers?.["x-robots-tag"] || "").slice(0, 240),
         }),
       }));
@@ -193,7 +196,7 @@ function requestOnce(url, {
       else socket.once("secureConnect", validatePeer);
     });
     request.once("error", fail);
-    request.end();
+    request.end(body || undefined);
   });
 }
 
@@ -207,7 +210,11 @@ export async function requestApprovedPublicHttpsText(value, {
   requestImpl = httpsRequest,
 } = {}) {
   const byteLimit = Math.max(1, Math.min(Number(maximumBytes) || 4_000_000, 8_000_000));
-  const redirectLimit = Math.max(0, Math.min(Number(maximumRedirects) || 3, 5));
+  const configuredRedirectLimit = Number(maximumRedirects);
+  const redirectLimit = Math.max(0, Math.min(
+    Number.isFinite(configuredRedirectLimit) ? configuredRedirectLimit : 3,
+    5,
+  ));
   let current = validateApprovedPublicHttpsUrl(value, approvedOrigins);
   for (let redirects = 0; redirects <= redirectLimit; redirects += 1) {
     const result = await requestOnce(current, {
@@ -224,4 +231,49 @@ export async function requestApprovedPublicHttpsText(value, {
     current = validateApprovedPublicHttpsUrl(new URL(result.location, current), approvedOrigins);
   }
   throw new Error("Outbound response redirected too many times");
+}
+
+export async function requestApprovedPublicHttpsJsonPost(value, {
+  approvedOrigins,
+  body,
+  signal,
+  maximumBytes = 256_000,
+  lookupImpl = dnsLookup,
+  requestImpl = httpsRequest,
+} = {}) {
+  const current = validateApprovedPublicHttpsUrl(value, approvedOrigins);
+  const requestBody = typeof body === "string" ? body : "";
+  const requestBytes = Buffer.byteLength(requestBody, "utf8");
+  if (!requestBody || requestBytes > 64_000) {
+    throw new Error("Outbound JSON request body is missing or too large");
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(requestBody);
+  } catch {
+    throw new Error("Outbound JSON request body is invalid");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Outbound JSON request body must be an object");
+  }
+  const byteLimit = Math.max(1, Math.min(Number(maximumBytes) || 256_000, 1_000_000));
+  const result = await requestOnce(current, {
+    method: "POST",
+    body: requestBody,
+    headers: {
+      Accept: "application/json",
+      "Accept-Encoding": "identity",
+      "Content-Type": "application/json",
+      "Content-Length": String(requestBytes),
+      "User-Agent": "Keskkonnaportaali-praktika/4.0 (+https://praktika.arleserver.cfd)",
+    },
+    signal,
+    maximumBytes: byteLimit,
+    lookupImpl,
+    requestImpl,
+  });
+  if (REDIRECT_STATUSES.has(result.status)) {
+    throw new Error("Outbound JSON POST redirects are not allowed");
+  }
+  return { ...result, url: current.toString() };
 }

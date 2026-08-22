@@ -8,9 +8,11 @@ import {
   readBoundedResponseText as readBoundedText,
 } from "./upstream.mjs";
 import {
+  requestApprovedPublicHttpsJsonPost,
   requestApprovedPublicHttpsText,
   validateApprovedPublicHttpsUrl,
 } from "./public-https.mjs";
+import { createFairSearchAdmission } from "./request-budget.mjs";
 import { canonicalizePublicSearchQuery } from "./search.mjs";
 import { sourceEvidenceEligibility } from "./source-registry.mjs";
 
@@ -166,7 +168,15 @@ export function createAbortableConcurrencyGate(maximum = 1, { maximumQueue = 64 
 // lehed ei jääks koormuspiigi ajal Node'i event loop'i taha ootama.
 const officialDiscoveryGate = createAbortableConcurrencyGate(MAX_CONCURRENT_OFFICIAL_DISCOVERIES);
 const officialHydrationGate = createAbortableConcurrencyGate(MAX_CONCURRENT_HYDRATIONS, { maximumQueue: 48 });
-const officialSuggestionGate = createAbortableConcurrencyGate(MAX_CONCURRENT_SUGGESTIONS, { maximumQueue: 16 });
+const officialSuggestionAdmission = createFairSearchAdmission({
+  maximumActive: MAX_CONCURRENT_SUGGESTIONS,
+  maximumActivePerClient: 1,
+  maximumQueue: 16,
+  maximumQueuedPerClient: 2,
+  maximumWaitMs: 1_200,
+  capacityCode: "SUGGESTION_CAPACITY",
+  capacityLabel: "Official suggestion admission",
+});
 const hydrationInflight = new Map();
 const suggestionInflight = new Map();
 
@@ -229,7 +239,7 @@ export function officialHydrationStats() {
 
 export function officialSuggestionStats() {
   return {
-    ...officialSuggestionGate.stats(),
+    ...officialSuggestionAdmission.stats(),
     inflight: suggestionInflight.size,
     cache: responseCache.stats(),
   };
@@ -246,10 +256,17 @@ function sourceId(prefix, value) {
   return `${prefix}-${createHash("sha256").update(String(value)).digest("hex").slice(0, 16)}`;
 }
 
-function cacheResponse(url, body, finalUrl = url) {
+function cacheResponse(url, body, finalUrl = url, headers = {}) {
   const bytes = Buffer.byteLength(String(body), "utf8");
   const savedAt = Date.now();
-  responseCache.set(url, { body, finalUrl, bytes, savedAt });
+  responseCache.set(url, {
+    body,
+    finalUrl,
+    bytes,
+    savedAt,
+    contentType: String(headers?.["content-type"] || "").slice(0, 240),
+    contentProfile: String(headers?.["content-profile"] || "").slice(0, 120),
+  });
   return savedAt;
 }
 
@@ -290,19 +307,40 @@ function throwIfRequestAborted(signal) {
 
 async function fetchCached(url, {
   accept,
+  requestHeaders = {},
+  requiredContentProfile = "",
+  requiredContentTypePrefixes = [],
   ttlMs = 5 * 60_000,
   staleMs = 24 * 60 * 60_000,
   timeoutMs = 7_000,
   signal: externalSignal,
   requestText = requestApprovedPublicHttpsText,
+  requestBody = "",
+  cacheDiscriminator = "",
+  maximumBytes = MAX_UPSTREAM_BYTES,
+  maximumRedirects = 3,
   requireSameResource = false,
 } = {}) {
   throwIfRequestAborted(externalSignal);
   const canonicalUrl = validatedOfficialUrl(url).toString();
+  const cacheKey = cacheDiscriminator
+    ? `${canonicalUrl}::${String(cacheDiscriminator).slice(0, 160)}`
+    : canonicalUrl;
   const now = Date.now();
-  const cached = responseCache.get(canonicalUrl);
+  const cached = responseCache.get(cacheKey);
   const cachedFinalUrl = cached?.finalUrl || canonicalUrl;
-  const cachedMatches = !requireSameResource || hydrationResourceMatches(canonicalUrl, cachedFinalUrl);
+  const cachedResourceMatches = !requireSameResource || hydrationResourceMatches(canonicalUrl, cachedFinalUrl);
+  const requiredTypes = [...new Set((requiredContentTypePrefixes || [])
+    .map((value) => String(value || "").trim().toLocaleLowerCase("en-US"))
+    .filter(Boolean))];
+  const contentTypeMatches = (value) => !requiredTypes.length || requiredTypes
+    .some((prefix) => String(value || "").toLocaleLowerCase("en-US").startsWith(prefix));
+  const profileContentTypeMatches = (value) => !requiredContentProfile
+    || String(value || "").toLocaleLowerCase("en-US").startsWith("application/json");
+  const cachedContractMatches = contentTypeMatches(cached?.contentType)
+    && profileContentTypeMatches(cached?.contentType)
+    && (!requiredContentProfile || cached?.contentProfile === requiredContentProfile);
+  const cachedMatches = cachedResourceMatches && cachedContractMatches;
   if (cached && cachedMatches && now - cached.savedAt < ttlMs) {
     return {
       body: cached.body,
@@ -326,18 +364,28 @@ async function fetchCached(url, {
         Accept: accept || "text/html,application/xhtml+xml",
         "Accept-Encoding": "identity",
         "User-Agent": "Keskkonnaportaali-praktika/3.0 (+https://praktika.arleserver.cfd)",
+        ...requestHeaders,
       },
       signal,
-      maximumBytes: MAX_UPSTREAM_BYTES,
-      maximumRedirects: 3,
+      body: requestBody,
+      maximumBytes: Math.max(1, Math.min(Number(maximumBytes) || MAX_UPSTREAM_BYTES, MAX_UPSTREAM_BYTES)),
+      maximumRedirects: Math.max(0, Math.min(Number(maximumRedirects) || 0, 5)),
     });
     if (upstream.status < 200 || upstream.status >= 300) throw new Error(`Upstream returned ${upstream.status}`);
+    if (requiredTypes.length || requiredContentProfile) {
+      const contentType = String(upstream.headers?.["content-type"] || "").toLocaleLowerCase("en-US");
+      const contentProfile = String(upstream.headers?.["content-profile"] || "").trim();
+      if (!contentTypeMatches(contentType) || !profileContentTypeMatches(contentType)
+        || (requiredContentProfile && contentProfile !== requiredContentProfile)) {
+        throw new Error("Official API returned an unexpected content contract");
+      }
+    }
     const body = String(upstream.body || "");
     const finalUrl = validatedOfficialUrl(upstream.url || canonicalUrl).toString();
     if (requireSameResource && !hydrationResourceMatches(canonicalUrl, finalUrl)) {
       throw new Error("Official hydration redirected to a different resource");
     }
-    const fetchedAt = cacheResponse(canonicalUrl, body, finalUrl);
+    const fetchedAt = cacheResponse(cacheKey, body, finalUrl, upstream.headers);
     return { body, finalUrl, fetchedAt, cache: "miss", stale: false };
   } catch (error) {
     throwIfRequestAborted(externalSignal);
@@ -370,6 +418,61 @@ export async function fetchOfficialJsonDataset(url, options = {}) {
     ...options,
     accept: "application/json",
     ttlMs: options.ttlMs ?? 15 * 60_000,
+    staleMs: options.staleMs ?? 24 * 60 * 60_000,
+  });
+}
+
+export async function fetchOfficialGeoJsonDataset(url, options = {}) {
+  return fetchCached(url, {
+    ...options,
+    accept: "application/geo+json,application/json;q=0.9",
+    requiredContentTypePrefixes: ["application/geo+json", "application/json"],
+    requireSameResource: true,
+    ttlMs: options.ttlMs ?? 60 * 60_000,
+    staleMs: options.staleMs ?? 2 * 60 * 60_000,
+  });
+}
+
+export async function fetchOfficialXmlDataset(url, options = {}) {
+  return fetchCached(url, {
+    ...options,
+    accept: "application/xml,text/xml;q=0.9",
+    ttlMs: options.ttlMs ?? 5 * 60_000,
+    staleMs: options.staleMs ?? 30 * 60_000,
+  });
+}
+
+export async function fetchOfficialPostgrestDataset(url, options = {}) {
+  const profile = "apijahiala";
+  return fetchCached(url, {
+    ...options,
+    accept: "application/json",
+    requestHeaders: { "Accept-Profile": profile },
+    requiredContentProfile: profile,
+    requireSameResource: true,
+    ttlMs: options.ttlMs ?? 5 * 60_000,
+    staleMs: options.staleMs ?? 40 * 60 * 60_000,
+  });
+}
+
+export async function fetchOfficialPxwebDataset(url, payload, options = {}) {
+  const requestBody = JSON.stringify(payload);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)
+    || Buffer.byteLength(requestBody, "utf8") > 16_000) {
+    throw new Error("PXWeb request contract is invalid");
+  }
+  const fingerprint = createHash("sha256").update(requestBody).digest("hex");
+  return fetchCached(url, {
+    ...options,
+    accept: "application/json",
+    requestText: options.requestText || requestApprovedPublicHttpsJsonPost,
+    requestBody,
+    cacheDiscriminator: `pxweb-post-${fingerprint}`,
+    requiredContentTypePrefixes: ["application/json"],
+    requireSameResource: true,
+    maximumBytes: options.maximumBytes ?? 256_000,
+    maximumRedirects: 0,
+    ttlMs: options.ttlMs ?? 12 * 60 * 60_000,
     staleMs: options.staleMs ?? 24 * 60 * 60_000,
   });
 }
@@ -722,13 +825,23 @@ export async function getKeskkonnaportaalSuggestions(query, limit = 5, options =
   if (!entry) {
     const controller = new AbortController();
     entry = { controller, promise: null, settled: false, waiters: 0 };
-    entry.promise = officialSuggestionGate.run(() => fetchCached(cacheKey, {
-      accept: "application/json",
-      ttlMs: 10 * 60_000,
-      timeoutMs: 4_500,
-      signal: controller.signal,
-      requestText: options.requestText,
-    }), { signal: controller.signal });
+    entry.promise = (async () => {
+      const release = await officialSuggestionAdmission.acquire(options.clientKey, {
+        signal: controller.signal,
+        maximumWaitMs: 1_200,
+      });
+      try {
+        return await fetchCached(cacheKey, {
+          accept: "application/json",
+          ttlMs: 10 * 60_000,
+          timeoutMs: 4_500,
+          signal: controller.signal,
+          requestText: options.requestText,
+        });
+      } finally {
+        release();
+      }
+    })();
     suggestionInflight.set(cacheKey, entry);
     void entry.promise.finally(() => {
       entry.settled = true;

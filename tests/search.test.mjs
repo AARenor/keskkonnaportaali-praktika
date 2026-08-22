@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   SEARCH_DOCUMENTS,
+  analyzePublicSearchQuery,
   assessEvidence,
   assessSearchQuery,
   buildDiscoveryQuery,
@@ -11,6 +12,10 @@ import {
   normalize,
   searchEnvironment,
 } from "../server/search.mjs";
+import {
+  isCurrentWeatherObservationQuery,
+  isLatestPublishedHydrologyQuery,
+} from "../server/indicators.mjs";
 
 test("normalize handles Estonian diacritics", () => {
   assert.equal(normalize("ÕHUKVALITEET ja jäätmed"), "ohukvaliteet ja jaatmed");
@@ -112,9 +117,20 @@ test("deterministic query gate separates answerable, clarification, weather and 
     ["Mis on Katri talu katastritunnus?", "needs-clarification"],
     ["mis ilm homme Tallinnas tuleb", "live-weather"],
     ["Milline on ilm Tallinnas?", "live-weather"],
+    ["Mis on praegune temperatuur Tallinnas?", "live-weather"],
+    ["Mis on praegune õhurõhk Tallinnas?", "live-weather"],
+    ["Kui suur on niiskus Tallinnas praegu?", "live-weather"],
+    ["Milline on õhuniiskus Tallinnas praegu?", "live-weather"],
+    ["Mis on õhurõhk Valgas?", "live-weather"],
+    ["Mis on temperatuur Valgas?", "live-weather"],
+    ["Milline on ilm Eestis homme?", "live-weather"],
     ["Milline oli ilm Tallinnas 2023. aastal?", "answerable"],
     ["Milline on praegune õhukvaliteet Tallinnas?", "live-air"],
     ["Mis on Emajõe veetase praegu?", "live-water"],
+    ["Mis oli Emajõe Tartu jaama viimati avaldatud veetase?", "answerable"],
+    ["Kui suur oli Eesti veevõtt 2024. aastal?", "answerable"],
+    ["Mis oli Jõgeva ööpäeva keskmine õhutemperatuur 21. augustil 2025?", "answerable"],
+    ["Mitu tonni bioloogilist hapnikutarvet (BHT7) juhiti 2024. aastal Eestis pinnaveekogudesse?", "answerable"],
     ["Mis on Pärnu merevee temperatuur praegu?", "live-water"],
     ["Kas Liivi lahes on praegu jääd?", "live-water"],
     ["Kas Pirita suplusvesi on täna ohutu?", "live-water"],
@@ -126,6 +142,72 @@ test("deterministic query gate separates answerable, clarification, weather and 
   ];
   for (const [query, expected] of cases) {
     assert.equal(assessSearchQuery(query).kind, expected, query);
+  }
+});
+
+test("Jõgeva historical air-temperature intent stays a climate observation rather than a river query", () => {
+  const query = "Mis oli Jõgeva ööpäeva keskmine õhutemperatuur 21. augustil 2025?";
+  const analysis = analyzePublicSearchQuery(query);
+
+  assert.equal(assessSearchQuery(query).topic, "temperatuur");
+  assert.equal(analysis.candidateRouteClasses.includes("official_historical_observation"), true);
+  assert.equal(analysis.candidateRouteClasses.includes("official_live_water"), false);
+});
+
+test("the exact BHT7 discharge question stays a historical water observation", () => {
+  const query = "Mitu tonni bioloogilist hapnikutarvet (BHT7) juhiti 2024. aastal Eestis pinnaveekogudesse?";
+  const analysis = analyzePublicSearchQuery(query);
+
+  assert.equal(assessSearchQuery(query).topic, "vesi");
+  assert.equal(analysis.candidateRouteClasses.includes("official_historical_observation"), true);
+  assert.equal(analysis.candidateRouteClasses.includes("official_live_water"), false);
+});
+
+test("last-published hydrology stays distinct from genuine live-water routing", () => {
+  const latest = "Mis oli Emajõe Tartu jaama viimati avaldatud veetase?";
+  assert.equal(isLatestPublishedHydrologyQuery(latest), true);
+  assert.equal(assessSearchQuery(latest).kind, "answerable");
+  assert.equal(analyzePublicSearchQuery(latest).candidateRouteClasses.includes("official_live_water"), false);
+  assert.equal(isLatestPublishedHydrologyQuery("Mis on Emajõe veetase praegu?"), false);
+  assert.equal(assessSearchQuery("Mis on Emajõe veetase praegu?").kind, "live-water");
+});
+
+test("every supported structured current-weather phrasing survives the public query gate", () => {
+  const queries = [
+    "Mis on praegune õhurõhk Tallinnas?",
+    "Mis on õhutemperatuur Tallinnas?",
+    "Kui suur on suhteline õhuniiskus Tallinnas praegu?",
+    "Kui palju sooja on Tallinnas?",
+    "Kui külm on Tallinnas?",
+    "Mis on baromeetrirõhk Tallinnas?",
+    "What is the humidity in Tallinn now?",
+    "What is the pressure in Tallinn now?",
+    "How strong is the wind in Tallinn now?",
+    "How much rain in Tallinn now?",
+  ];
+  for (const query of queries) {
+    assert.equal(isCurrentWeatherObservationQuery(query), true, query);
+    assert.equal(assessSearchQuery(query).kind, "live-weather", query);
+  }
+});
+
+test("water-temperature intents never enter the current-air observation route", () => {
+  const queries = [
+    "Mis on põhjavee temperatuur Tallinnas?",
+    "Mis on merevee temperatuur Tallinnas?",
+    "Mis on järvevee temperatuur Tallinnas?",
+    "Mis on suplusvee temperatuur Tallinnas?",
+    "Mis on Emajõe temperatuur Tartus?",
+    "Mis on Pirita jõe temperatuur Tallinnas?",
+    "What is the water temperature in Tallinn?",
+  ];
+  for (const query of queries) {
+    assert.equal(isCurrentWeatherObservationQuery(query), false, query);
+    assert.equal(
+      analyzePublicSearchQuery(query).candidateRouteClasses.includes("official_live_weather"),
+      false,
+      query,
+    );
   }
 });
 
@@ -226,6 +308,8 @@ test("official source catalogue covers monitoring, APIs, spatial data, weather, 
     "municipal-waste-recycling",
     "protected-area-construction",
     "groundwater-status",
+    "well-permit-guidance",
+    "pond-permit-guidance",
     "well-register",
     "marine-observations",
     "marine-ice-map",

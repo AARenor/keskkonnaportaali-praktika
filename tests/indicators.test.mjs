@@ -1,15 +1,29 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  composeCurrentWeatherObservationResponse,
   composeForestHarvestBalanceAnswer,
+  composeNationalWeatherForecastResponse,
+  currentWeatherObservationFromXml,
+  CURRENT_WEATHER_OBSERVATIONS_XML_URL,
   forestBalanceObservations,
   forestHarvestBalanceDocumentsFromJson,
   FOREST_BALANCE_EUROSTAT_API_URL,
   isForestHarvestBalanceQuery,
+  isCurrentWeatherObservationQuery,
+  isLatestPublishedHydrologyQuery,
+  isNationalWeatherForecastQuery,
   isMunicipalWasteRecyclingRateQuery,
   loadStructuredIndicatorDocuments,
+  LATEST_HYDROLOGY_API_URL,
+  LATEST_HYDROLOGY_INFO_URL,
+  latestPublishedHydrologyFromJson,
+  latestPublishedHydrologyQueryUrl,
+  composeLatestPublishedHydrologyResponse,
   municipalWasteIndicatorFromCsv,
   MUNICIPAL_WASTE_RECYCLING_CSV_URL,
+  nationalWeatherForecastFromXml,
+  WEATHER_FORECAST_XML_URL,
 } from "../server/indicators.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
 
@@ -37,6 +51,360 @@ const fixture = `Aasta,Measure Names,Eesti/EL õige,% Eesti (copy),% Eesti,% EL 
 2024,Euroopa Liit (EL),,,,48.1,48.1
 `;
 
+function weatherFixture(timestamp, {
+  temperature = "14.2",
+  humidity = "85",
+  pressure = "1008.4",
+  wind = "2.5",
+  windMax = "4.1",
+  precipitation = "0",
+  duplicate = false,
+} = {}) {
+  const station = `<station>
+    <name>Tallinn-Harku</name><wmocode>26038</wmocode>
+    <longitude>24.6028916666</longitude><latitude>59.3981222223</latitude>
+    <phenomenon>Clear</phenomenon><visibility>35.0</visibility>
+    <precipitations>${precipitation}</precipitations><airpressure>${pressure}</airpressure>
+    <relativehumidity>${humidity}</relativehumidity><airtemperature>${temperature}</airtemperature>
+    <winddirection>180</winddirection><windspeed>${wind}</windspeed><windspeedmax>${windMax}</windspeedmax>
+    <waterlevel></waterlevel><waterlevel_eh2000></waterlevel_eh2000><watertemperature></watertemperature>
+    <uvindex></uvindex><sunshineduration></sunshineduration><globalradiation></globalradiation>
+  </station>`;
+  return `<?xml version="1.0" encoding="UTF-8"?><observations timestamp="${timestamp}">${station}${duplicate ? station : ""}</observations>`;
+}
+
+function forecastFixture(startDate = "2026-08-21") {
+  const start = Date.parse(`${startDate}T00:00:00Z`);
+  const blocks = Array.from({ length: 4 }, (_value, index) => {
+    const date = new Date(start + index * 24 * 60 * 60_000).toISOString().slice(0, 10);
+    const nightMin = 5 + index;
+    const nightMax = 10 + index;
+    const dayMin = 12 + index;
+    const dayMax = 18 + index;
+    return `<forecast date="${date}">
+      <night><phenomenon>Moderate rain</phenomenon><tempmin>${nightMin}</tempmin><tempmax>${nightMax}</tempmax><text>Öösel sajab mitmel pool vihma ja puhub mõõdukas tuul.</text></night>
+      <day><phenomenon>Variable clouds</phenomenon><tempmin>${dayMin}</tempmin><tempmax>${dayMax}</tempmax><text>Päeval on vahelduva pilvisusega ilm ja kohati sajab hoovihma.</text></day>
+    </forecast>`;
+  }).join("");
+  return `<?xml version="1.0"?><forecasts>${blocks}</forecasts>`;
+}
+
+function hydrologyFixture({
+  stationCode = 41025,
+  stationName = "Tartu",
+  stationFullName = "Tartu hüdromeetriajaam",
+  waterbody = "Emajõgi",
+  catchment = "Emajõgi",
+  latitude = 58.380022,
+  longitude = 26.726181,
+  series = "WL avg",
+  value = 33,
+  latest = "2026-08-20T20:00:00",
+  previous = "2026-08-20T19:00:00",
+} = {}) {
+  const row = (timestamp, measurement) => ({
+    jaam_kood: stationCode,
+    jaam_nimi: stationName,
+    jaam_taisnimi: stationFullName,
+    veekogu_nimi: waterbody,
+    valgala_nimi: catchment,
+    jaam_laiuskraad: latitude,
+    jaam_pikkuskraad: longitude,
+    timeline_ts_utc: timestamp,
+    aegrida_nimi: series,
+    vaartus: measurement,
+  });
+  return JSON.stringify([row(latest, value), row(previous, value + 0.4)]);
+}
+
+test("current-weather XML adapter binds a fresh measurement to station, time and unit", () => {
+  const now = Date.parse("2026-08-21T22:30:00Z");
+  const timestamp = Math.floor((now - 2 * 60_000) / 1_000);
+  const query = "Mis on praegune temperatuur Tallinnas?";
+  const [document] = currentWeatherObservationFromXml(query, weatherFixture(timestamp), { now });
+
+  assert.equal(isCurrentWeatherObservationQuery(query), true);
+  assert.equal(document.id, "current-weather-observations");
+  assert.equal(document.url, CURRENT_WEATHER_OBSERVATIONS_XML_URL);
+  assert.equal(document.retrieval, "official-structured-weather-xml");
+  assert.match(document.summary, /Tallinn-Harku[\s\S]*2026-08-21 22:28 UTC[\s\S]*14,2 °C/u);
+  assert.match(document.content, /suhteline õhuniiskus 85%/u);
+  assert.match(document.content, /viimase tunni sademete hulk 0 mm/u);
+  assert.equal(document._weatherObservation.measurements.precipitation, 0);
+  assert.equal(sourceEvidenceEligibility(document, { now }).eligible, true);
+
+  const response = composeCurrentWeatherObservationResponse(query, [document], { now, total: 4 });
+  assert.equal(response.answer.title, "Tallinn: õhutemperatuur 14,2 °C");
+  assert.deepEqual(response.answer.introCitations, [1]);
+  assert.equal(response.sources[0].url, CURRENT_WEATHER_OBSERVATIONS_XML_URL);
+  assert.match(response.sources[0].evidenceExcerpt, /nimetatud ilmajaama/u);
+  assert.equal(response.evidence.kind, "structured-current-weather");
+});
+
+test("current-weather adapter preserves missing values and fails closed on ambiguous or stale XML", () => {
+  const now = Date.parse("2026-08-21T22:30:00Z");
+  const fresh = Math.floor((now - 60_000) / 1_000);
+  const query = "Kui tugev on tuul Tallinnas praegu?";
+  const [document] = currentWeatherObservationFromXml(query, weatherFixture(fresh, { humidity: "" }), { now });
+  assert.equal(document._weatherObservation.measurements.humidity, null);
+  assert.doesNotMatch(document.content, /õhuniiskus/u);
+  assert.match(document.summary, /tuulekiirus 2,5 m\/s/u);
+
+  const invalid = [
+    weatherFixture(Math.floor((now - 16 * 60_000) / 1_000)),
+    weatherFixture(Math.floor((now + 6 * 60_000) / 1_000)),
+    weatherFixture(fresh, { duplicate: true }),
+    weatherFixture(fresh, { temperature: "NaN" }),
+    `<!DOCTYPE observations [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>${weatherFixture(fresh)}`,
+  ];
+  for (const xml of invalid) {
+    assert.deepEqual(currentWeatherObservationFromXml(query, xml, { now }), []);
+  }
+  assert.deepEqual(currentWeatherObservationFromXml(query, weatherFixture(fresh), { now, stale: true }), []);
+  assert.equal(isCurrentWeatherObservationQuery("Milline on ilm Tallinnas homme?"), false);
+  assert.equal(isCurrentWeatherObservationQuery("Milline on ilm Eestis praegu?"), false);
+  assert.equal(isCurrentWeatherObservationQuery("Milline on õhuniiskus Tallinnas praegu?"), true);
+  assert.equal(isCurrentWeatherObservationQuery("Kui suur on suhteline õhuniiskus Tallinnas praegu?"), true);
+  assert.equal(isCurrentWeatherObservationQuery("Mis on õhurõhk Valgas?"), true);
+  assert.equal(isCurrentWeatherObservationQuery("Mis on õhutemperatuur Tallinnas?"), true);
+  for (const waterQuery of [
+    "Mis on põhjavee temperatuur Tallinnas?",
+    "Mis on merevee temperatuur Tallinnas?",
+    "Mis on järvevee temperatuur Tallinnas?",
+    "Mis on suplusvee temperatuur Tallinnas?",
+    "Mis on Emajõe temperatuur Tartus?",
+    "What is the water temperature in Tallinn?",
+  ]) {
+    assert.equal(isCurrentWeatherObservationQuery(waterQuery), false, waterQuery);
+    assert.deepEqual(currentWeatherObservationFromXml(waterQuery, weatherFixture(fresh), { now }), [], waterQuery);
+    assert.equal(composeCurrentWeatherObservationResponse(waterQuery, [document], { now }), null, waterQuery);
+  }
+
+  const tampered = structuredClone(document);
+  tampered._weatherObservation.measurements.wind = 999;
+  tampered._weatherObservation.primaryText = "keskmine tuulekiirus 999 m/s";
+  tampered.summary = tampered.summary.replace("2,5", "999");
+  assert.equal(composeCurrentWeatherObservationResponse(query, [tampered], { now }), null);
+});
+
+test("structured loader calls the weather XML feed only for a supported current observation", async () => {
+  const now = Date.parse("2026-08-21T22:30:00Z");
+  const timestamp = Math.floor((now - 60_000) / 1_000);
+  let calls = 0;
+  const fetchXmlDataset = async (url) => {
+    calls += 1;
+    assert.equal(url, CURRENT_WEATHER_OBSERVATIONS_XML_URL);
+    return { body: weatherFixture(timestamp), stale: false, fetchedAt: now };
+  };
+  const current = await loadStructuredIndicatorDocuments("praegune õhurõhk Tallinnas", {
+    now,
+    fetchXmlDataset,
+  });
+  assert.equal(current[0]?._weatherObservation.primaryMetric, "pressure");
+  assert.equal(calls, 1);
+
+  const forecast = await loadStructuredIndicatorDocuments("Milline on ilm Tallinnas homme?", {
+    now,
+    fetchXmlDataset,
+  });
+  assert.deepEqual(forecast, []);
+  assert.equal(calls, 1);
+});
+
+test("national forecast XML adapter selects tomorrow in Estonia and preserves forecast scope", () => {
+  const now = Date.parse("2026-08-21T10:00:00Z");
+  const fetchedAt = now - 60_000;
+  const query = "Milline on ilm Eestis homme?";
+  const [document] = nationalWeatherForecastFromXml(query, forecastFixture(), { now, fetchedAt });
+
+  assert.equal(isNationalWeatherForecastQuery(query, { now }), true);
+  assert.equal(document.url, WEATHER_FORECAST_XML_URL);
+  assert.equal(document.retrieval, "official-structured-forecast-xml");
+  assert.match(document.summary, /2026-08-22[\s\S]*6…11 °C[\s\S]*13…19 °C/u);
+  assert.equal(sourceEvidenceEligibility(document, { now }).eligible, true);
+  const response = composeNationalWeatherForecastResponse(query, [document], { now });
+  assert.equal(response.answer.title, "Eesti ilmaprognoos 2026-08-22");
+  assert.equal(response.answer.parts.length, 2);
+  assert.match(response.answer.note, /Eesti üldprognoos, mitte linnapõhine/u);
+  assert.equal(response.evidence.kind, "structured-national-weather-forecast");
+});
+
+test("national forecast adapter rejects stale, partial, nonconsecutive and city-misattributed feeds", () => {
+  const now = Date.parse("2026-08-21T10:00:00Z");
+  const query = "Milline on ilm Eestis homme?";
+  const fresh = { now, fetchedAt: now - 60_000 };
+  const complete = forecastFixture();
+  const invalid = [
+    complete.replace(/<forecast date="2026-08-24">[\s\S]*?<\/forecast>/u, ""),
+    complete.replace('date="2026-08-23"', 'date="2026-08-25"'),
+    complete.replace("<tempmin>6</tempmin><tempmax>11</tempmax>", "<tempmin>20</tempmin><tempmax>11</tempmax>"),
+    `<!DOCTYPE forecasts [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>${complete}`,
+  ];
+  for (const xml of invalid) {
+    assert.deepEqual(nationalWeatherForecastFromXml(query, xml, fresh), []);
+  }
+  assert.deepEqual(nationalWeatherForecastFromXml(query, complete, {
+    now,
+    fetchedAt: now - 16 * 60_000,
+  }), []);
+  assert.deepEqual(nationalWeatherForecastFromXml("Milline on ilm Tartus homme?", complete, fresh), []);
+  assert.equal(isNationalWeatherForecastQuery("Milline on ilm Eestis ülehomme?", { now }), false);
+});
+
+test("latest-published hydrology adapter binds an exact station, series, source time and unit", () => {
+  const now = Date.parse("2026-08-21T22:30:00Z");
+  const query = "Mis oli Emajõe Tartu jaama viimati avaldatud veetase?";
+  const url = latestPublishedHydrologyQueryUrl(query, { now });
+  const parsedUrl = new URL(url);
+  assert.equal(parsedUrl.origin + parsedUrl.pathname, LATEST_HYDROLOGY_API_URL);
+  assert.equal(parsedUrl.searchParams.get("jaam_kood"), "eq.41025");
+  assert.equal(parsedUrl.searchParams.get("aegrida_nimi"), "eq.WL avg");
+  assert.equal(parsedUrl.searchParams.get("limit"), "2");
+  assert.equal(isLatestPublishedHydrologyQuery(query), true);
+
+  const [document] = latestPublishedHydrologyFromJson(query, hydrologyFixture(), { now });
+  assert.equal(document.url, url);
+  assert.match(document.locator, new RegExp(LATEST_HYDROLOGY_INFO_URL.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
+  assert.match(document.locator, /tartu-kvissentali-hudromeetriajaam/u);
+  assert.equal(document._hydrologyObservation.stationCode, 41025);
+  assert.equal(document._hydrologyObservation.series, "WL avg");
+  assert.equal(document._hydrologyObservation.observedAt, "2026-08-20T20:00:00.000Z");
+  assert.match(document.summary, /Emajõe Tartu jaamas[\s\S]*veetaseme tunni keskmine 33 cm[\s\S]*andmeaeg 2026-08-20 20:00 UTC/u);
+  assert.equal(document._hydrologyObservation.graphZeroEh2000, 29.77);
+  assert.equal(sourceEvidenceEligibility(document, { now }).eligible, true);
+
+  const response = composeLatestPublishedHydrologyResponse(query, [document], { now });
+  assert.equal(response.answer.title, "Emajõgi, Tartu: veetaseme tunni keskmine 33 cm");
+  assert.deepEqual(response.answer.introCitations, [1]);
+  assert.match(response.answer.note, /mitte reaalajanäit/u);
+  assert.match(response.answer.parts[0].text, /graafiku nulli \(29,77 m EH2000\)[\s\S]*mitte ühise absoluutkõrgusena/u);
+  assert.match(response.answer.parts[1].text, /operatiivsete toorandmetena[\s\S]*lõplikku kontrolli/u);
+  assert.deepEqual(response.answer.parts.flatMap((part) => part.citations), [1, 1]);
+  assert.equal(response.sources.length, 1);
+  assert.equal(response.sources[0].id, document.id);
+  assert.match(response.sources[0].evidenceExcerpt, /graafiku nulli[\s\S]*operatiivsed toorandmed/u);
+  assert.equal(response.evidence.kind, "structured-latest-published-hydrology");
+});
+
+test("latest-published hydrology supports bounded metrics but rejects live, ambiguous and malformed claims", () => {
+  const now = Date.parse("2026-08-21T22:30:00Z");
+  const temperatureQuery = "Mis oli Kloostrimetsa jaamas viimati avaldatud veetemperatuur?";
+  const dischargeQuery = "Mis oli Emajõe Tartu jaama uusim avaldatud äravool?";
+  assert.equal(isLatestPublishedHydrologyQuery(temperatureQuery), true);
+  assert.equal(isLatestPublishedHydrologyQuery(dischargeQuery), true);
+  assert.equal(
+    latestPublishedHydrologyFromJson(
+      dischargeQuery,
+      hydrologyFixture({ series: "Äravool avg", value: 29.592 }),
+      { now },
+    )[0]?._hydrologyObservation.primaryText,
+    "arvutusliku äravoolu tunni keskmine 29,592 m³/s",
+  );
+  for (const query of [
+    "Mis on Emajõe veetase praegu?",
+    "Mis oli Emajõe viimati avaldatud veetase?",
+    "Mis oli Tartu jaama viimati avaldatud veetase?",
+    "Mis oli Emajõe Tartu jaama 2025. aasta veetase?",
+    "Mis oli Emajõe Tartu jaama viimati avaldatud veetase eile?",
+    "Mis oli Emajõe Tartu jaama viimati avaldatud veetase üleeile?",
+    "Mis oli Emajõe Tartu jaama viimati avaldatud veetase eelmisel nädalal?",
+    "Mis oli Emajõe Tartu jaama viimati avaldatud veetase 20. augustil?",
+    "Mis oli Emajõe Tartu jaama viimati avaldatud veetase 20.08?",
+    "Mis oli Emajõe Tartu jaama viimati avaldatud maksimaalne veetase?",
+  ]) assert.equal(isLatestPublishedHydrologyQuery(query), false, query);
+
+  const kloostrimetsa = hydrologyFixture({
+    stationCode: 41157,
+    stationName: "Kloostrimetsa",
+    stationFullName: "Kloostrimetsa hüdromeetriajaam",
+    waterbody: "Pirita j.",
+    catchment: "Pirita jõgi",
+    latitude: 59.466291,
+    longitude: 24.879519,
+    series: "WT avg",
+    value: 15.2,
+  });
+  assert.equal(
+    latestPublishedHydrologyFromJson(temperatureQuery, kloostrimetsa, { now })[0]?._hydrologyObservation.primaryText,
+    "vee temperatuuri tunni keskmine 15,2 °C",
+  );
+  const [temperatureDocument] = latestPublishedHydrologyFromJson(temperatureQuery, kloostrimetsa, { now });
+  const temperatureResponse = composeLatestPublishedHydrologyResponse(temperatureQuery, [temperatureDocument], { now });
+  assert.match(temperatureResponse.answer.parts[0].text, /jõesängi põhja lähedal[\s\S]*ei ole veepinna ega suplusvee temperatuur/u);
+
+  const invalid = [
+    hydrologyFixture({ stationCode: 99999 }),
+    hydrologyFixture({ series: "WL max" }),
+    hydrologyFixture({ value: 99_999 }),
+    hydrologyFixture({ latest: "2026-08-20T20:30:00" }),
+    hydrologyFixture({ latest: "2026-08-21T23:00:00" }),
+    hydrologyFixture({ latest: "2026-08-20T09:00:00", previous: "2026-08-20T08:00:00" }),
+    hydrologyFixture({ latest: "2026-08-20T20:00:00", previous: "2026-08-20T20:00:00" }),
+    "{}",
+    "not-json",
+  ];
+  for (const body of invalid) {
+    assert.deepEqual(latestPublishedHydrologyFromJson(
+      "Mis oli Emajõe Tartu jaama viimati avaldatud veetase?",
+      body,
+      { now },
+    ), []);
+  }
+  assert.deepEqual(latestPublishedHydrologyFromJson(
+    "Mis oli Emajõe Tartu jaama viimati avaldatud veetase?",
+    hydrologyFixture(),
+    { now, stale: true },
+  ), []);
+});
+
+test("structured loader calls the hydrology API only for a last-published exact-station query", async () => {
+  const now = Date.parse("2026-08-21T22:30:00Z");
+  let calls = 0;
+  const fetchPostgrestDataset = async (url) => {
+    calls += 1;
+    assert.equal(url, latestPublishedHydrologyQueryUrl(
+      "Mis oli Emajõe Tartu jaama viimati avaldatud veetase?",
+      { now },
+    ));
+    return { body: hydrologyFixture(), stale: false, fetchedAt: now };
+  };
+  const latest = await loadStructuredIndicatorDocuments(
+    "Mis oli Emajõe Tartu jaama viimati avaldatud veetase?",
+    { now, fetchPostgrestDataset },
+  );
+  assert.equal(latest[0]?._hydrologyObservation.stationCode, 41025);
+  assert.equal(calls, 1);
+
+  const current = await loadStructuredIndicatorDocuments("Mis on Emajõe veetase praegu?", {
+    now,
+    fetchPostgrestDataset,
+  });
+  assert.deepEqual(current, []);
+  assert.equal(calls, 1);
+});
+
+test("structured loader fetches the national forecast feed without conflating a city forecast", async () => {
+  const now = Date.parse("2026-08-21T10:00:00Z");
+  let calls = 0;
+  const fetchXmlDataset = async (url) => {
+    calls += 1;
+    assert.equal(url, WEATHER_FORECAST_XML_URL);
+    return { body: forecastFixture(), stale: false, fetchedAt: now - 60_000 };
+  };
+  const documents = await loadStructuredIndicatorDocuments("Milline on ilm Eestis homme?", {
+    now,
+    fetchXmlDataset,
+  });
+  assert.equal(documents[0]?._weatherForecast.targetDate, "2026-08-22");
+  assert.equal(calls, 1);
+  const city = await loadStructuredIndicatorDocuments("Milline on ilm Tartus homme?", {
+    now,
+    fetchXmlDataset,
+  });
+  assert.deepEqual(city, []);
+  assert.equal(calls, 1);
+});
+
 test("municipal-waste rate adapter reads the requested year from official Tableau CSV", () => {
   const documents = municipalWasteIndicatorFromCsv("jäätmete ringlussevõtu määr Eestis 2023", fixture);
   assert.equal(documents.length, 1);
@@ -52,6 +420,44 @@ test("municipal-waste adapter uses the latest complete observation and abstains 
   assert.deepEqual(municipalWasteIndicatorFromCsv("olmejäätmete ringlussevõtu määr 2030", fixture), []);
   assert.deepEqual(municipalWasteIndicatorFromCsv("jäätmete põletamine", fixture), []);
   assert.equal(isMunicipalWasteRecyclingRateQuery("ringlussevõtu määr Eestis"), false);
+});
+
+test("municipal-waste adapter accepts only the reviewed Tableau duplicate-column shape and paired future placeholders", () => {
+  const currentTableauCsv = [
+    "Aasta,Measure Names,Eesti/EL õige,% Eesti (copy),% Eesti,% EL (copy),% EL",
+    "2023,Eesti,*,37.9,37.9,,",
+    "2024,Eesti,*,36.4,36.4,,",
+    "2025,Eesti,Eesti,,,,",
+    "2030,Eesti,Eesti,,,,",
+    "2023,Euroopa Liit (EL),,,,47.9,47.9",
+    "2024,Euroopa Liit (EL),,,,48.1,48.1",
+    "2025,Euroopa Liit (EL),,,,,",
+    "2030,Euroopa Liit (EL),,,,,",
+    "",
+  ].join("\n");
+  const now = Date.parse("2026-08-22T00:00:00Z");
+  const [document] = municipalWasteIndicatorFromCsv(
+    "jäätmete ringlussevõtu määr Eestis 2023",
+    currentTableauCsv,
+    { now },
+  );
+  assert.match(document.summary, /2023\. aastal oli 37,9%/u);
+  assert.match(document.summary, /Euroopa Liidus 47,9%/u);
+
+  for (const invalid of [
+    currentTableauCsv.replace("37.9,37.9", "38.0,37.9"),
+    currentTableauCsv.replace("2025,Euroopa Liit (EL),,,,,\n", ""),
+    currentTableauCsv.replace("2030,Eesti,Eesti,,,,", "2030,Eesti,*,40,40,,"),
+    currentTableauCsv.replace("2025,Eesti,Eesti,,,,", "2022,Eesti,Eesti,,,,")
+      .replace("2025,Euroopa Liit (EL),,,,,", "2022,Euroopa Liit (EL),,,,,"),
+    currentTableauCsv.replace("Eesti/EL õige", "Eesti/EL muu"),
+  ]) {
+    assert.deepEqual(municipalWasteIndicatorFromCsv(
+      "jäätmete ringlussevõtu määr Eestis 2023",
+      invalid,
+      { now },
+    ), []);
+  }
 });
 
 test("municipal-waste CSV fails closed on malformed, ambiguous or impossible observations", () => {

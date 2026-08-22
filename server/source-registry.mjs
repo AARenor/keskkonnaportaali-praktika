@@ -16,21 +16,27 @@ const ROUTE_CLASS_IDS = Object.freeze({
   official_data_or_api: new Set([
     "open-data", "kese-monitoring", "official-data-services", "open-data-downloader",
     "official-geoserver", "kaia-service", "statistics-pxweb", "waste-reporting-data",
-    "forest-spatial-data", "official-cadastre-wfs", "official-forest-register-wfs",
+    "forest-spatial-data", "official-cadastre-wfs", "official-forest-register-wfs", "latest-published-hydrology",
+    "eelis-emajogi-public-watercourse", "statistics-water-abstraction-2024",
+    "statistics-wastewater-bht7-2024", "statistics-hazardous-waste-2024",
+    "climate-jogeva-daily-mean",
   ]),
   official_spatial_or_register: new Set([
     "environment-register", "official-geoserver", "waste-facilities-map", "well-register",
     "metsaregister", "forest-spatial-data", "official-cadastre-wfs", "official-forest-register-wfs",
     "forest-catalogue", "biodiversity", "tallinn-noise-map", "tartu-noise-map",
+    "eelis-emajogi-public-watercourse",
   ]),
-  official_live_weather: new Set(["weather-forecast", "kaia-service"]),
+  official_live_weather: new Set(["weather-forecast", "current-weather-observations", "kaia-service"]),
   official_live_air: new Set(["air-quality-live"]),
   official_live_water: new Set([
     "current-hydrology-observations", "marine-observations", "marine-ice-map", "bathing-water-quality",
   ]),
   official_historical_observation: new Set([
     "historical-weather-data", "historical-hydrology-data", "marine-observations",
-    "marine-ice-map", "kese-monitoring", "water-monitoring",
+    "marine-ice-map", "kese-monitoring", "water-monitoring", "latest-published-hydrology",
+    "statistics-water-abstraction-2024", "statistics-wastewater-bht7-2024", "statistics-hazardous-waste-2024",
+    "climate-jogeva-daily-mean",
   ]),
   official_indicator_or_report: new Set([
     "climate-atlas", "water-monitoring", "radiation-monitoring", "soil-monitoring-results",
@@ -38,6 +44,7 @@ const ROUTE_CLASS_IDS = Object.freeze({
     "groundwater-status", "marine-strategy-status", "bathing-water-quality",
     "groundwater-pesticide-monitoring", "wildlife-status-2025", "electric-vehicle-lifecycle",
     "baltic-sea-litter", "ida-viru-groundwater",
+    "statistics-water-abstraction-2024", "statistics-wastewater-bht7-2024", "statistics-hazardous-waste-2024",
     "forest-area", "forest-stock-stable", "forest-condition-review", "protected-forest-share",
     "forest-smi-2024-summary", "forest-smi-2025-presentation", "forest-yearbook-2023-fellings",
     "forest-climate-adaptation-report", "increment-method", "clearcut-over-time",
@@ -73,10 +80,13 @@ const ROUTE_CLASS_IDS = Object.freeze({
 const STRUCTURED_SOURCE_IDS = new Set([
   "statistics-pxweb", "official-geoserver", "official-cadastre-wfs", "official-forest-register-wfs",
   "historical-weather-data", "historical-hydrology-data", "kese-monitoring", "official-data-services",
-  "open-data-downloader", "waste-reporting-data",
+  "open-data-downloader", "waste-reporting-data", "current-weather-observations", "weather-forecast",
+  "latest-published-hydrology", "eelis-emajogi-public-watercourse",
+  "statistics-water-abstraction-2024", "statistics-wastewater-bht7-2024", "statistics-hazardous-waste-2024",
+  "climate-jogeva-daily-mean",
 ]);
 const LIVE_SOURCE_IDS = new Set([
-  "weather-forecast", "kaia-service", "air-quality-live", "marine-observations", "marine-ice-map",
+  "weather-forecast", "current-weather-observations", "kaia-service", "air-quality-live", "marine-observations", "marine-ice-map",
   "bathing-water-quality",
 ]);
 const EVIDENCE_POLICIES = new Set([

@@ -3,7 +3,11 @@ import test from "node:test";
 import {
   articleText,
   createAbortableConcurrencyGate,
+  fetchOfficialGeoJsonDataset,
   fetchOfficialJsonDataset,
+  fetchOfficialPostgrestDataset,
+  fetchOfficialPxwebDataset,
+  fetchOfficialXmlDataset,
   getKeskkonnaportaalSuggestions,
   hydrationResourceMatches,
   hydrateOfficialDocuments,
@@ -18,6 +22,141 @@ import {
 } from "../server/terrapoint.mjs";
 import { createByteBoundedLruCache } from "../server/upstream.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
+
+test("official PostgREST retrieval pins and verifies the live API profile", async () => {
+  let requestHeaders;
+  const accepted = await fetchOfficialPostgrestDataset(
+    "https://keskkonnaandmed.envir.ee/f_hydroseire?jaam_kood=eq.41025&limit=1&test=profile-ok",
+    {
+      requestText: async (_url, options) => {
+        requestHeaders = options.headers;
+        return {
+          status: 200,
+          body: "[]",
+          url: _url,
+          headers: {
+            "content-type": "application/json; charset=utf-8",
+            "content-profile": "apijahiala",
+          },
+        };
+      },
+    },
+  );
+  assert.equal(accepted.body, "[]");
+  assert.equal(requestHeaders.Accept, "application/json");
+  assert.equal(requestHeaders["Accept-Profile"], "apijahiala");
+
+  for (const [suffix, headers] of [
+    ["wrong-profile", { "content-type": "application/json", "content-profile": "apijahialad" }],
+    ["wrong-type", { "content-type": "text/html", "content-profile": "apijahiala" }],
+  ]) {
+    await assert.rejects(fetchOfficialPostgrestDataset(
+      `https://keskkonnaandmed.envir.ee/f_hydroseire?jaam_kood=eq.41025&limit=1&test=${suffix}`,
+      { requestText: async (url) => ({ status: 200, body: "[]", url, headers }) },
+    ), /unexpected content contract/u);
+  }
+
+  const sharedUrl = "https://keskkonnaandmed.envir.ee/f_hydroseire?jaam_kood=eq.41025&limit=1&test=cache-contract";
+  await fetchOfficialJsonDataset(sharedUrl, {
+    requestText: async (url) => ({
+      status: 200,
+      body: '[{"unprofiled":true}]',
+      url,
+      headers: { "content-type": "application/json" },
+    }),
+  });
+  let profiledCalls = 0;
+  const profiled = await fetchOfficialPostgrestDataset(sharedUrl, {
+    requestText: async (url) => {
+      profiledCalls += 1;
+      return {
+        status: 200,
+        body: "[]",
+        url,
+        headers: { "content-type": "application/json", "content-profile": "apijahiala" },
+      };
+    },
+  });
+  assert.equal(profiledCalls, 1);
+  assert.equal(profiled.body, "[]");
+});
+
+test("official GeoJSON retrieval pins content type and exact WFS resource", async () => {
+  const base = `https://gsavalik.envir.ee/geoserver/eelis/ows?service=WFS&request=GetFeature&test=${Date.now()}`;
+  let accept;
+  const accepted = await fetchOfficialGeoJsonDataset(base, {
+    requestText: async (url, options) => {
+      accept = options.headers.Accept;
+      return {
+        status: 200,
+        body: '{"type":"FeatureCollection","features":[]}',
+        url,
+        headers: { "content-type": "application/json;charset=UTF-8" },
+      };
+    },
+  });
+  assert.match(accept, /application\/geo\+json/u);
+  assert.match(accepted.body, /FeatureCollection/u);
+
+  await assert.rejects(fetchOfficialGeoJsonDataset(`${base}-html`, {
+    requestText: async (url) => ({
+      status: 200,
+      body: "<html></html>",
+      url,
+      headers: { "content-type": "text/html" },
+    }),
+  }), /unexpected content contract/u);
+  await assert.rejects(fetchOfficialGeoJsonDataset(`${base}-redirect`, {
+    requestText: async (url) => ({
+      status: 200,
+      body: '{"type":"FeatureCollection","features":[]}',
+      url: `${url}&different=1`,
+      headers: { "content-type": "application/geo+json" },
+    }),
+  }), /different resource/u);
+});
+
+test("official PXWeb retrieval posts a fingerprinted fixed JSON contract", async () => {
+  const url = `https://andmed.stat.ee/api/v1/et/stat/KK048.PX?transport-test=${Date.now()}`;
+  const payload = {
+    query: [{ code: "Aasta", selection: { filter: "item", values: ["2024"] } }],
+    response: { format: "json-stat2" },
+  };
+  let observed;
+  const accepted = await fetchOfficialPxwebDataset(url, payload, {
+    requestText: async (requestedUrl, options) => {
+      observed = { requestedUrl, options };
+      return {
+        status: 200,
+        url: requestedUrl,
+        body: '{"class":"dataset","value":[654301]}',
+        headers: { "content-type": "application/json; charset=utf-8" },
+      };
+    },
+  });
+  assert.match(accepted.body, /654301/u);
+  assert.equal(observed.requestedUrl, url);
+  assert.deepEqual(JSON.parse(observed.options.body), payload);
+  assert.equal(observed.options.maximumBytes, 256_000);
+  assert.equal(observed.options.maximumRedirects, 0);
+
+  await assert.rejects(fetchOfficialPxwebDataset(`${url}-html`, payload, {
+    requestText: async (requestedUrl) => ({
+      status: 200,
+      url: requestedUrl,
+      body: "<html></html>",
+      headers: { "content-type": "text/html" },
+    }),
+  }), /unexpected content contract/u);
+  await assert.rejects(fetchOfficialPxwebDataset(`${url}-redirect`, payload, {
+    requestText: async (requestedUrl) => ({
+      status: 200,
+      url: `${requestedUrl}&different=1`,
+      body: '{"class":"dataset"}',
+      headers: { "content-type": "application/json" },
+    }),
+  }), /different resource/u);
+});
 
 test("official discovery concurrency gate limits work and removes an aborted queued request", async () => {
   const gate = createAbortableConcurrencyGate(2);
@@ -357,6 +496,26 @@ test("an already aborted official request never returns a fresh or stale cache e
     assert.equal(calls, 2);
 });
 
+test("official XML datasets use a bounded XML-only retrieval profile", async () => {
+  const url = `https://www.ilmateenistus.ee/ilma_andmed/xml/test-${Date.now()}.php`;
+  let observed;
+  const result = await fetchOfficialXmlDataset(url, {
+    requestText: async (requestedUrl, options) => {
+      observed = { requestedUrl, options };
+      return {
+        status: 200,
+        url: requestedUrl,
+        body: '<?xml version="1.0"?><observations timestamp="1787351000"></observations>',
+      };
+    },
+  });
+  assert.match(observed.options.headers.Accept, /^application\/xml,text\/xml/u);
+  assert.equal(observed.options.headers["Accept-Encoding"], "identity");
+  assert.equal(observed.options.maximumBytes, 2_000_000);
+  assert.equal(observed.options.maximumRedirects, 3);
+  assert.match(result.body, /<observations/u);
+});
+
 test("official fetch targets reject non-HTTPS and off-list redirect destinations", () => {
   assert.equal(
     validatedOfficialUrl("/et/mets", "https://keskkonnaportaal.ee/").toString(),
@@ -465,14 +624,17 @@ test("autocomplete coalesces identical work, bounds concurrency and aborts its l
     const duplicate = `mets-${nonce}`;
     const beforeDuplicate = calls;
     const [left, right] = await Promise.all([
-      getKeskkonnaportaalSuggestions(duplicate, 5, { requestText }),
-      getKeskkonnaportaalSuggestions(duplicate, 5, { requestText }),
+      getKeskkonnaportaalSuggestions(duplicate, 5, { requestText, clientKey: "client-a" }),
+      getKeskkonnaportaalSuggestions(duplicate, 5, { requestText, clientKey: "client-b" }),
     ]);
     assert.equal(calls - beforeDuplicate, 1);
     assert.deepEqual(left.suggestions, right.suggestions);
 
     await Promise.all(Array.from({ length: 5 }, (_value, index) => (
-      getKeskkonnaportaalSuggestions(`ohk-${nonce}-${index}`, 5, { requestText })
+      getKeskkonnaportaalSuggestions(`ohk-${nonce}-${index}`, 5, {
+        requestText,
+        clientKey: `load-client-${index}`,
+      })
     )));
     assert.ok(maximumActive <= 2, `maximum autocomplete concurrency was ${maximumActive}`);
 
@@ -488,6 +650,68 @@ test("autocomplete coalesces identical work, bounds concurrency and aborts its l
     assert.ok(aborted >= 1);
     assert.equal(officialSuggestionStats().inflight, 0);
     assert.ok(officialSuggestionStats().cache.retainedBytes <= officialSuggestionStats().cache.maximumBytes);
+});
+
+test("autocomplete reserves capacity for another client and bounds one client's queue", async () => {
+  const nonce = `${Date.now()}-${Math.random()}`;
+  const pending = new Map();
+  const started = [];
+  const requestText = (url, options = {}) => {
+    const query = new URL(url).searchParams.get("q");
+    started.push(query);
+    return new Promise((resolve, reject) => {
+      const finish = () => resolve({
+        status: 200,
+        body: `[{"value":"${query}","label":"<span class=results-count>1</span>"}]`,
+      });
+      pending.set(query, finish);
+      options.signal?.addEventListener("abort", () => reject(options.signal.reason), { once: true });
+    });
+  };
+  const waitFor = async (predicate) => {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if (predicate()) return;
+      await new Promise((resolve) => setTimeout(resolve, 2));
+    }
+    assert.fail("autocomplete fairness condition did not become true");
+  };
+  const names = {
+    a1: `a1-${nonce}`,
+    a2: `a2-${nonce}`,
+    a3: `a3-${nonce}`,
+    a4: `a4-${nonce}`,
+    b1: `b1-${nonce}`,
+  };
+  const a1 = getKeskkonnaportaalSuggestions(names.a1, 5, { requestText, clientKey: "client-a" });
+  await waitFor(() => pending.has(names.a1));
+  const a2 = getKeskkonnaportaalSuggestions(names.a2, 5, { requestText, clientKey: "client-a" });
+  const a3 = getKeskkonnaportaalSuggestions(names.a3, 5, { requestText, clientKey: "client-a" });
+  await waitFor(() => officialSuggestionStats().queued >= 2);
+  await assert.rejects(
+    getKeskkonnaportaalSuggestions(names.a4, 5, { requestText, clientKey: "client-a" }),
+    (error) => error?.code === "SUGGESTION_CAPACITY",
+  );
+
+  const b1 = getKeskkonnaportaalSuggestions(names.b1, 5, { requestText, clientKey: "client-b" });
+  await waitFor(() => pending.has(names.b1));
+  assert.equal(started.includes(names.a2), false);
+  assert.equal(started.includes(names.a3), false);
+  pending.get(names.b1)();
+  assert.equal((await b1).suggestions[0].value, names.b1);
+
+  pending.get(names.a1)();
+  await a1;
+  await waitFor(() => pending.has(names.a2) || pending.has(names.a3));
+  const next = pending.has(names.a2) ? names.a2 : names.a3;
+  pending.get(next)();
+  await (next === names.a2 ? a2 : a3);
+  const last = next === names.a2 ? names.a3 : names.a2;
+  await waitFor(() => pending.has(last));
+  pending.get(last)();
+  await (last === names.a2 ? a2 : a3);
+  await waitFor(() => officialSuggestionStats().active === 0 && officialSuggestionStats().queued === 0);
+  assert.equal(officialSuggestionStats().active, 0);
+  assert.equal(officialSuggestionStats().queued, 0);
 });
 
 test("autocomplete uses the canonical bounded query and rejects NFKC expansion", async () => {

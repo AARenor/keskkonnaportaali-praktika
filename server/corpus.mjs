@@ -10,6 +10,7 @@ import {
   requestApprovedPublicHttpsText,
   validateApprovedPublicHttpsUrl,
 } from "./public-https.mjs";
+import { createFairSearchAdmission } from "./request-budget.mjs";
 import { canonicalizePublicSearchQuery } from "./search.mjs";
 
 const PORTAL_BASE = "https://keskkonnaportaal.ee";
@@ -18,6 +19,14 @@ const PORTAL_SITEMAP = `${PORTAL_BASE}/et/sitemap.xml`;
 const PORTAL_ROBOTS = `${PORTAL_BASE}/robots.txt`;
 const CRAWLER_PRODUCT = "keskkonnaportaali-praktika-corpus";
 const MAX_FETCH_BYTES = 4_000_000;
+const MAX_ROBOTS_BYTES = 64_000;
+const MAX_ROBOTS_LINES = 2_000;
+const MAX_ROBOTS_GROUPS = 32;
+const MAX_ROBOTS_RULES = 256;
+const MAX_ROBOTS_LINE_BYTES = 512;
+const MAX_ROBOTS_PATTERN_LENGTH = 256;
+const MAX_ROBOTS_WILDCARDS = 8;
+const MAX_ROBOTS_TARGET_LENGTH = 2_048;
 const DEFAULT_PAGE_SIZE = 12;
 const MAX_PAGE_SIZE = 50;
 const PORTAL_PAGE_SIZE = 50;
@@ -35,6 +44,21 @@ const OFFICIAL_DISCOVERY_MAX_ROWS = Math.max(
   1_000,
   Math.min(Math.trunc(Number(process.env.OFFICIAL_DISCOVERY_MAX_ROWS) || 20_000), 100_000),
 );
+const PORTAL_UNAVAILABLE_RETENTION_HOURS = Math.max(
+  24,
+  Math.min(Math.trunc(Number(process.env.PORTAL_UNAVAILABLE_RETENTION_HOURS) || 720), 8_760),
+);
+const CORPUS_MAX_ROWS = Math.max(
+  20_000,
+  Math.min(Math.trunc(Number(process.env.CORPUS_MAX_ROWS) || 150_000), 250_000),
+);
+const CORPUS_MAX_BYTES = Math.max(
+  256_000_000,
+  Math.min(Math.trunc(Number(process.env.CORPUS_MAX_BYTES) || 2_000_000_000), 12_000_000_000),
+);
+const CORPUS_RUN_MAX_ROWS = 1_000;
+const CORPUS_RETENTION_DELETE_BATCH = 10_000;
+const CORPUS_RETENTION_MAX_BATCHES = 20;
 const OFFICIAL_DISCOVERY_PROCESS_URL_BUDGET = Math.max(
   100,
   Math.min(
@@ -49,6 +73,15 @@ const OFFICIAL_DISCOVERY_CLIENT_URL_BUDGET = Math.max(
     OFFICIAL_DISCOVERY_PROCESS_URL_BUDGET,
   ),
 );
+const corpusStatsBackendAdmission = createFairSearchAdmission({
+  maximumActive: 2,
+  maximumActivePerClient: 1,
+  maximumQueue: 8,
+  maximumQueuedPerClient: 1,
+  maximumWaitMs: 500,
+  capacityCode: "CORPUS_CAPACITY",
+  capacityLabel: "Corpus statistics backend work",
+});
 const OFFICIAL_HOSTS = new Set([
   "keskkonnaportaal.ee",
   "www.keskkonnaportaal.ee",
@@ -114,6 +147,51 @@ export const OFFICIAL_DISCOVERY_DELETE_SQL = `
   DELETE FROM practice_corpus_documents
   WHERE source_key = 'official-live-search'
     AND last_seen_at < NOW() - make_interval(hours => $1)
+`;
+
+export const PORTAL_UNAVAILABLE_DELETE_SQL = `
+  WITH stale AS (
+    SELECT id
+    FROM practice_corpus_documents
+    WHERE is_available = FALSE
+      AND source_key IN ('portal-sitemap', 'portal-catalog', 'official-page-hydration')
+      AND last_seen_at < NOW() - make_interval(hours => $1)
+    ORDER BY last_seen_at ASC, id ASC
+    LIMIT $2
+  )
+  DELETE FROM practice_corpus_documents document
+  USING stale
+  WHERE document.id = stale.id
+`;
+
+export const CORPUS_OVERFLOW_DELETE_SQL = `
+  WITH totals AS (
+    SELECT
+      GREATEST(COUNT(*) - $1, 0)::BIGINT AS excess_rows,
+      GREATEST(COALESCE(SUM(pg_column_size(document)), 0) - $2, 0)::BIGINT AS excess_bytes
+    FROM practice_corpus_documents document
+  ), ordered AS (
+    SELECT
+      document.id,
+      pg_column_size(document)::BIGINT AS row_bytes,
+      ROW_NUMBER() OVER (ORDER BY document.last_seen_at ASC, document.id ASC) AS row_position,
+      COALESCE(SUM(pg_column_size(document)) OVER (
+        ORDER BY document.last_seen_at ASC, document.id ASC
+        ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+      ), 0)::BIGINT AS bytes_before
+    FROM practice_corpus_documents document
+    WHERE document.is_available = FALSE
+  ), victims AS (
+    SELECT ordered.id
+    FROM ordered CROSS JOIN totals
+    WHERE ordered.row_position <= totals.excess_rows
+       OR ordered.bytes_before < totals.excess_bytes
+    ORDER BY ordered.row_position
+    LIMIT $3
+  )
+  DELETE FROM practice_corpus_documents document
+  USING victims
+  WHERE document.id = victims.id
 `;
 
 function officialDiscoveryQueueKey(document = {}) {
@@ -295,18 +373,49 @@ export function hydrationResourceMatches(requestedValue, finalValue) {
   return Boolean(requested && finalResource && requested === finalResource);
 }
 
-function robotsPatternRegex(pattern) {
+function robotsPatternMatches(pattern, target) {
   const endAnchored = pattern.endsWith("$");
-  const body = (endAnchored ? pattern.slice(0, -1) : pattern)
-    .replace(/[.+?^${}()|[\]\\]/gu, "\\$&")
-    .replace(/\*/gu, ".*");
-  return new RegExp(`^${body}${endAnchored ? "$" : ""}`, "u");
+  const body = endAnchored ? pattern.slice(0, -1) : pattern;
+  if (!body.includes("*")) return endAnchored ? target === body : target.startsWith(body);
+
+  const segments = body.split("*");
+  let position = 0;
+  if (!body.startsWith("*")) {
+    const first = segments.shift() || "";
+    if (!target.startsWith(first)) return false;
+    position = first.length;
+  }
+
+  let endLimit = target.length;
+  if (endAnchored && !body.endsWith("*")) {
+    const last = segments.pop() || "";
+    if (!target.endsWith(last)) return false;
+    endLimit = target.length - last.length;
+  }
+
+  for (const segment of segments) {
+    if (!segment) continue;
+    const found = target.indexOf(segment, position);
+    if (found < 0 || found + segment.length > endLimit) return false;
+    position = found + segment.length;
+  }
+  return position <= endLimit;
 }
 
 export function parseRobotsTxt(value = "", product = CRAWLER_PRODUCT) {
+  const input = String(value);
+  if (Buffer.byteLength(input, "utf8") > MAX_ROBOTS_BYTES) {
+    throw new Error("robots.txt exceeds the configured byte limit");
+  }
+  const lines = input.split(/\r?\n/u);
+  if (lines.length > MAX_ROBOTS_LINES) throw new Error("robots.txt has too many lines");
   const groups = [];
   let group;
-  for (const rawLine of String(value).split(/\r?\n/u)) {
+  let ruleCount = 0;
+  for (const rawLine of lines) {
+    if (Buffer.byteLength(rawLine, "utf8") > MAX_ROBOTS_LINE_BYTES) {
+      throw new Error("robots.txt contains an oversized line");
+    }
     const line = rawLine.replace(/#.*$/u, "").trim();
     if (!line) continue;
     const separator = line.indexOf(":");
@@ -315,16 +424,27 @@ export function parseRobotsTxt(value = "", product = CRAWLER_PRODUCT) {
     const directive = line.slice(separator + 1).trim();
     if (key === "user-agent") {
       if (!group || group.hasDirectives) {
+        if (groups.length >= MAX_ROBOTS_GROUPS) throw new Error("robots.txt has too many groups");
         group = { agents: [], rules: [], hasDirectives: false };
         groups.push(group);
       }
-      group.agents.push(directive.toLocaleLowerCase("en"));
+      if (group.agents.length < 8) group.agents.push(directive.slice(0, 120).toLocaleLowerCase("en"));
       continue;
     }
     if (!group || !["allow", "disallow"].includes(key)) continue;
     group.hasDirectives = true;
     if (directive || key === "allow") {
-      group.rules.push({ type: key, pattern: directive });
+      if (directive.length > MAX_ROBOTS_PATTERN_LENGTH
+        || (directive.match(/\*/gu) || []).length > MAX_ROBOTS_WILDCARDS) {
+        throw new Error("robots.txt contains an over-complex rule");
+      }
+      ruleCount += 1;
+      if (ruleCount > MAX_ROBOTS_RULES) throw new Error("robots.txt has too many rules");
+      group.rules.push({
+        type: key,
+        pattern: directive,
+        specificity: directive.replace(/[\*$]/gu, "").length,
+      });
     }
   }
   const normalizedProduct = String(product).toLocaleLowerCase("en");
@@ -341,9 +461,11 @@ export function robotsAllowsUrl(url, rules = []) {
   } catch {
     return false;
   }
+  if (target.length > MAX_ROBOTS_TARGET_LENGTH || rules.length > MAX_ROBOTS_RULES) return false;
   const matches = rules
-    .filter(({ pattern }) => pattern && robotsPatternRegex(pattern).test(target))
-    .sort((left, right) => right.pattern.replace(/[\*$]/gu, "").length - left.pattern.replace(/[\*$]/gu, "").length
+    .filter(({ pattern }) => pattern && robotsPatternMatches(pattern, target))
+    .sort((left, right) => (right.specificity ?? right.pattern.replace(/[\*$]/gu, "").length)
+      - (left.specificity ?? left.pattern.replace(/[\*$]/gu, "").length)
       || Number(right.type === "allow") - Number(left.type === "allow"));
   return matches.length === 0 || matches[0].type === "allow";
 }
@@ -388,7 +510,29 @@ function externalId(url) {
 function parsePortalDate(value) {
   const match = cleanText(value).match(/^(\d{2})\.(\d{2})\.(\d{4})$/u);
   if (!match) return null;
-  return `${match[3]}-${match[2]}-${match[1]}`;
+  return canonicalIsoDate(`${match[3]}-${match[2]}-${match[1]}`);
+}
+
+function canonicalIsoDate(value) {
+  const text = String(value || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(text)) return null;
+  const parsed = new Date(`${text}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === text
+    ? text
+    : null;
+}
+
+function canonicalIsoTimestamp(value) {
+  const text = String(value || "").trim();
+  if (!text || text.length > 64) return null;
+  const dateOnly = canonicalIsoDate(text);
+  if (dateOnly) return `${dateOnly}T00:00:00.000Z`;
+  const match = text.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(Z|[+-](\d{2}):(\d{2}))$/u);
+  if (!match || !canonicalIsoDate(match[1])) return null;
+  if (Number(match[2]) > 23 || Number(match[3]) > 59 || Number(match[4] || 0) > 59) return null;
+  if (match[5] !== "Z" && (Number(match[6]) > 23 || Number(match[7]) > 59)) return null;
+  const parsed = new Date(text);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
 }
 
 function placeholderTitle(url) {
@@ -420,9 +564,9 @@ function normalizeDocument(document) {
     content,
     category: boundedText(document.category, 200),
     organization: boundedText(document.organization, 200),
-    publishedAt: document.publishedAt || null,
+    publishedAt: canonicalIsoDate(document.publishedAt),
     publishedLabel: boundedText(document.publishedLabel || document.publishedAt, 80),
-    modifiedAt: document.modifiedAt || null,
+    modifiedAt: canonicalIsoTimestamp(document.modifiedAt),
     topics,
     sourceTier,
     language: boundedText(document.language || "et", 12),
@@ -692,6 +836,9 @@ async function ensureCorpusSchema() {
           ON practice_corpus_documents (published_at DESC NULLS LAST);
         CREATE INDEX IF NOT EXISTS practice_corpus_tier_idx
           ON practice_corpus_documents (source_tier, is_available);
+        CREATE INDEX IF NOT EXISTS practice_corpus_available_source_idx
+          ON practice_corpus_documents (source_key, last_seen_at DESC)
+          WHERE is_available = TRUE;
         CREATE INDEX IF NOT EXISTS practice_corpus_live_seen_idx
           ON practice_corpus_documents (last_seen_at)
           WHERE source_key = 'official-live-search';
@@ -767,6 +914,7 @@ async function ensureCorpusSchema() {
         END
         $$;
       `);
+      await enforceCorpusRetention(client);
       return true;
     }).catch((error) => {
       corpusSchemaPromise = undefined;
@@ -783,13 +931,141 @@ function throwIfCorpusAborted(signal) {
     : new DOMException("Corpus indexing was aborted", "AbortError");
 }
 
-async function upsertDocuments(client, rawDocuments, runId, { signal, discoveryOnly = false } = {}) {
+async function enforceCorpusRetention(client, { signal } = {}) {
+  throwIfCorpusAborted(signal);
+  await client.query("BEGIN");
+  try {
+    await client.query("SET LOCAL statement_timeout = '10000ms'");
+    // Every replica and both ingestion paths share one database-scoped lock,
+    // so retention and cumulative capacity decisions cannot race each other.
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('practice-corpus-retention-capacity'))");
+    let unavailableDeleted = 0;
+    for (let batch = 0; batch < CORPUS_RETENTION_MAX_BATCHES; batch += 1) {
+      throwIfCorpusAborted(signal);
+      const deleted = await client.query(PORTAL_UNAVAILABLE_DELETE_SQL, [
+        PORTAL_UNAVAILABLE_RETENTION_HOURS,
+        CORPUS_RETENTION_DELETE_BATCH,
+      ]);
+      unavailableDeleted += Number(deleted.rowCount || 0);
+      if (Number(deleted.rowCount || 0) < CORPUS_RETENTION_DELETE_BATCH) break;
+    }
+
+    let overflowDeleted = 0;
+    for (let batch = 0; batch < CORPUS_RETENTION_MAX_BATCHES; batch += 1) {
+      throwIfCorpusAborted(signal);
+      const deleted = await client.query(CORPUS_OVERFLOW_DELETE_SQL, [
+        CORPUS_MAX_ROWS,
+        CORPUS_MAX_BYTES,
+        CORPUS_RETENTION_DELETE_BATCH,
+      ]);
+      overflowDeleted += Number(deleted.rowCount || 0);
+      if (Number(deleted.rowCount || 0) < CORPUS_RETENTION_DELETE_BATCH) break;
+    }
+
+    const runsDeleted = await client.query(`
+      WITH old_runs AS (
+        SELECT id
+        FROM practice_corpus_runs
+        WHERE status <> 'running'
+        ORDER BY id DESC
+        OFFSET $1
+      )
+      DELETE FROM practice_corpus_runs run
+      USING old_runs
+      WHERE run.id = old_runs.id
+    `, [CORPUS_RUN_MAX_ROWS]);
+    await client.query("COMMIT");
+    return {
+      unavailableDeleted,
+      overflowDeleted,
+      runsDeleted: Number(runsDeleted.rowCount || 0),
+    };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  }
+}
+
+function estimatedCorpusDocumentBytes(document) {
+  try {
+    // The JSON representation includes every variable-width field. Eight KiB
+    // of tuple/index overhead makes this deliberately larger than the stored
+    // row estimate used by the aggregate cap.
+    return Buffer.byteLength(JSON.stringify(document) || "", "utf8") + 8_192;
+  } catch {
+    return Number.MAX_SAFE_INTEGER;
+  }
+}
+
+export function limitCorpusDocumentsByAggregateCapacity(
+  documents = [],
+  existingUrls = [],
+  currentRowCount = 0,
+  currentBytes = 0,
+  maximumRows = CORPUS_MAX_ROWS,
+  maximumBytes = CORPUS_MAX_BYTES,
+) {
+  const existing = new Set(existingUrls.map((value) => String(value || "")));
+  const safeMaximumRows = Math.max(0, Math.trunc(Number(maximumRows) || 0));
+  const safeMaximumBytes = Math.max(0, Math.trunc(Number(maximumBytes) || 0));
+  let newRowSlots = Math.max(0, safeMaximumRows - Math.max(0, Math.trunc(Number(currentRowCount) || 0)));
+  let remainingBytes = Math.max(0, safeMaximumBytes - Math.max(0, Math.trunc(Number(currentBytes) || 0)));
+  return documents.filter((document) => {
+    const url = String(document?.url || "");
+    const isExisting = existing.has(url);
+    const estimatedBytes = estimatedCorpusDocumentBytes(document);
+    if (estimatedBytes > remainingBytes || (!isExisting && newRowSlots <= 0)) return false;
+    remainingBytes -= estimatedBytes;
+    if (!isExisting) newRowSlots -= 1;
+    return true;
+  });
+}
+
+async function upsertDocuments(
+  client,
+  rawDocuments,
+  runId,
+  { signal, discoveryOnly = false, inTransaction = false } = {},
+) {
   const documents = deduplicateCorpusDocuments(rawDocuments);
   let indexed = 0;
+  let capacityDropped = 0;
   for (let offset = 0; offset < documents.length; offset += 250) {
     throwIfCorpusAborted(signal);
     const batch = documents.slice(offset, offset + 250);
-    const result = await client.query(`
+    const ownsTransaction = !inTransaction;
+    if (ownsTransaction) await client.query("BEGIN");
+    try {
+      if (ownsTransaction) await client.query("SET LOCAL statement_timeout = '10000ms'");
+      // Full sync, live discovery and retention all take this transaction lock.
+      // Aggregate admission therefore observes a stable capacity snapshot and
+      // no replica can insert between the count and the write.
+      await client.query("SELECT pg_advisory_xact_lock(hashtext('practice-corpus-retention-capacity'))");
+      const capacityResult = await client.query(`
+        SELECT COUNT(*)::BIGINT AS total_rows,
+               COALESCE(SUM(pg_column_size(document)), 0)::BIGINT AS total_bytes
+        FROM practice_corpus_documents AS document
+      `);
+      const existingResult = await client.query(`
+        SELECT canonical_url
+        FROM practice_corpus_documents
+        WHERE canonical_url = ANY($1::TEXT[])
+      `, [batch.map((document) => document.url)]);
+      throwIfCorpusAborted(signal);
+      const admittedBatch = limitCorpusDocumentsByAggregateCapacity(
+        batch,
+        existingResult.rows.map((row) => row.canonical_url),
+        capacityResult.rows[0]?.total_rows,
+        capacityResult.rows[0]?.total_bytes,
+        CORPUS_MAX_ROWS,
+        CORPUS_MAX_BYTES,
+      );
+      capacityDropped += batch.length - admittedBatch.length;
+      if (!admittedBatch.length) {
+        if (ownsTransaction) await client.query("COMMIT");
+        continue;
+      }
+      const result = await client.query(`
       INSERT INTO practice_corpus_documents AS current (
         external_id, source_key, canonical_url, title, summary, content, category,
         organization, published_at, published_label, modified_at, topics, source_tier,
@@ -923,7 +1199,7 @@ async function upsertDocuments(client, rawDocuments, runId, { signal, discoveryO
         is_available = TRUE
       ${discoveryOnly ? "WHERE current.source_key = 'official-live-search'" : ""}
       RETURNING id
-    `, [JSON.stringify(batch.map((document) => ({
+    `, [JSON.stringify(admittedBatch.map((document) => ({
       external_id: document.externalId,
       source_key: document.sourceKey,
       canonical_url: document.url,
@@ -942,10 +1218,15 @@ async function upsertDocuments(client, rawDocuments, runId, { signal, discoveryO
       metadata: document.metadata,
       content_hash: document.contentHash,
     }))), runId]);
-    throwIfCorpusAborted(signal);
-    indexed += result.rowCount;
+      throwIfCorpusAborted(signal);
+      indexed += result.rowCount;
+      if (ownsTransaction) await client.query("COMMIT");
+    } catch (error) {
+      if (ownsTransaction) await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    }
   }
-  return indexed;
+  return { indexed, capacityDropped };
 }
 
 async function retireStaleOfficialDiscoveryDocuments(client, signal) {
@@ -1010,9 +1291,9 @@ export async function indexOfficialDiscoveryDocuments(rawDocuments = [], { signa
       await client.query("BEGIN");
       try {
         await client.query("SET LOCAL statement_timeout = '2000ms'");
-        // Serialize capacity admission across application replicas. Retirement
-        // runs in the same transaction before the count, so new public-search
-        // rows can never grow the retained live corpus past its hard ceiling.
+        // Aggregate capacity is always locked first, then the narrower live
+        // ceiling. This order is shared across replicas and prevents deadlocks.
+        await client.query("SELECT pg_advisory_xact_lock(hashtext('practice-corpus-retention-capacity'))");
         await client.query("SELECT pg_advisory_xact_lock(hashtext('practice-official-discovery-capacity'))");
         const maintenance = retireStale || documents.length
           ? await retireStaleOfficialDiscoveryDocuments(client, signal)
@@ -1038,14 +1319,19 @@ export async function indexOfficialDiscoveryDocuments(rawDocuments = [], { signa
             OFFICIAL_DISCOVERY_MAX_ROWS,
           );
         }
-        const indexed = admittedDocuments.length
-          ? await upsertDocuments(client, admittedDocuments, null, { signal, discoveryOnly: true })
-          : 0;
+        const upsert = admittedDocuments.length
+          ? await upsertDocuments(client, admittedDocuments, null, {
+            signal,
+            discoveryOnly: true,
+            inTransaction: true,
+          })
+          : { indexed: 0, capacityDropped: 0 };
         throwIfCorpusAborted(signal);
         await client.query("COMMIT");
         return {
-          indexed,
-          capacityDropped: Math.max(0, documents.length - admittedDocuments.length),
+          indexed: upsert.indexed,
+          capacityDropped: Math.max(0, documents.length - admittedDocuments.length)
+            + upsert.capacityDropped,
           ...maintenance,
         };
       } catch (error) {
@@ -1091,12 +1377,17 @@ export async function fetchCorpusText(url, {
   timeoutMs = 15_000,
   retries = 2,
   accept = "text/html,application/xhtml+xml,application/xml,text/xml",
+  maximumBytes = MAX_FETCH_BYTES,
   requestText = requestApprovedPublicHttpsText,
   lookupImpl,
   requestImpl,
 } = {}) {
   const requestedUrl = validateApprovedPublicHttpsUrl(url, CORPUS_HTTPS_ORIGINS).toString();
   const approvedOrigins = corpusOriginsForUrl(requestedUrl);
+  const byteLimit = Math.max(1_024, Math.min(
+    Math.trunc(Number(maximumBytes) || MAX_FETCH_BYTES),
+    MAX_FETCH_BYTES,
+  ));
   const maximumRetries = Math.max(0, Math.min(Number.isFinite(Number(retries)) ? Math.trunc(Number(retries)) : 2, 3));
   let lastError;
   for (let attempt = 0; attempt <= maximumRetries; attempt += 1) {
@@ -1112,7 +1403,7 @@ export async function fetchCorpusText(url, {
           "User-Agent": "Keskkonnaportaali-praktika-corpus/1.0 (+https://praktika.arleserver.cfd)",
         },
         signal: controller.signal,
-        maximumBytes: MAX_FETCH_BYTES,
+        maximumBytes: byteLimit,
         maximumRedirects: 3,
         lookupImpl,
         requestImpl,
@@ -1125,7 +1416,7 @@ export async function fetchCorpusText(url, {
         approvedOrigins,
       ).toString();
       const body = String(response.body || "");
-      if (Buffer.byteLength(body, "utf8") > MAX_FETCH_BYTES) {
+      if (Buffer.byteLength(body, "utf8") > byteLimit) {
         throw new Error("Corpus source response is too large");
       }
       return {
@@ -1149,6 +1440,7 @@ async function assertPortalRobotsAllowed(url) {
     portalRobotsPromise = fetchCorpusText(PORTAL_ROBOTS, {
       accept: "text/plain",
       retries: 1,
+      maximumBytes: MAX_ROBOTS_BYTES,
     }).then((response) => {
       portalRobotsFetchedAt = Date.now();
       return parseRobotsTxt(response.text);
@@ -1300,6 +1592,59 @@ async function wikipediaDocuments() {
   return responses.flatMap((result) => result.status === "fulfilled" && result.value ? [result.value] : []);
 }
 
+export async function persistHydratedCorpusDocument(
+  client,
+  { url, title, content, contentHash, metadata, runId },
+  { signal, maximumBytes = CORPUS_MAX_BYTES } = {},
+) {
+  const byteCeiling = Math.max(0, Math.trunc(Number(maximumBytes) || 0));
+  throwIfCorpusAborted(signal);
+  await client.query("BEGIN");
+  try {
+    await client.query("SET LOCAL statement_timeout = '10000ms'");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('practice-corpus-retention-capacity'))");
+    const updated = await client.query(`
+      UPDATE practice_corpus_documents
+      SET title = CASE WHEN $2 <> '' THEN $2 ELSE title END,
+          source_key = 'official-page-hydration',
+          summary = LEFT($3, 500),
+          content = $3,
+          topics = ARRAY[]::TEXT[],
+          content_hash = $4,
+          metadata = (metadata - 'robots_noindex') || $5::JSONB,
+          metadata_quality = GREATEST(metadata_quality, 3),
+          fetched_at = NOW(),
+          last_seen_at = NOW(),
+          last_seen_run = $6,
+          is_available = TRUE
+      WHERE canonical_url = $1
+      RETURNING id
+    `, [url, title, content, contentHash, metadata, runId]);
+    throwIfCorpusAborted(signal);
+    if (!updated.rowCount) {
+      await client.query("COMMIT");
+      return false;
+    }
+    // Measure the actual replacement, including the generated search vector,
+    // while the shared capacity lock excludes every insert and hydration in
+    // every replica. Rollback makes an over-cap update completely invisible.
+    const aggregate = await client.query(`
+      SELECT COALESCE(SUM(pg_column_size(document)), 0)::BIGINT AS total_bytes
+      FROM practice_corpus_documents AS document
+    `);
+    throwIfCorpusAborted(signal);
+    if (Math.max(0, Number(aggregate.rows[0]?.total_bytes) || 0) > byteCeiling) {
+      await client.query("ROLLBACK");
+      return false;
+    }
+    await client.query("COMMIT");
+    return true;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  }
+}
+
 async function hydrateUrls(client, urls, runId, { limit = 0, concurrency = 3, delayMs = 100, onProgress } = {}) {
   const rawCandidates = [...new Set(urls)].filter((url) => {
     try {
@@ -1339,6 +1684,12 @@ async function hydrateUrls(client, urls, runId, { limit = 0, concurrency = 3, de
   let hydrated = 0;
   let skipped = 0;
   let errors = 0;
+  let databaseMutationQueue = Promise.resolve();
+  const serializeDatabaseMutation = (operation) => {
+    const queued = databaseMutationQueue.then(operation, operation);
+    databaseMutationQueue = queued.catch(() => undefined);
+    return queued;
+  };
   for (let offset = 0; offset < candidates.length; offset += concurrency) {
     const batch = candidates.slice(offset, offset + concurrency);
     const results = await Promise.allSettled(batch.map(async (url) => {
@@ -1351,36 +1702,27 @@ async function hydrateUrls(client, urls, runId, { limit = 0, concurrency = 3, de
       if (!hydrationResourceMatches(url, response.finalUrl)) return false;
       const robots = pageRobotsPolicy(response.text, response.robotsTag);
       if (robots.noindex) {
-        await client.query(`
+        await serializeDatabaseMutation(() => client.query(`
           UPDATE practice_corpus_documents
           SET content = '', content_hash = $2, is_available = FALSE, fetched_at = NOW(),
               metadata = metadata || $3::JSONB
           WHERE canonical_url = $1
-        `, [url, hash(JSON.stringify([url, "robots-noindex"])), JSON.stringify({ robots_noindex: true })]);
+        `, [url, hash(JSON.stringify([url, "robots-noindex"])), JSON.stringify({ robots_noindex: true })]));
         return false;
       }
       const extracted = extractReadablePage(response.text, url);
       if (extracted.content.length < 80) return false;
-      await client.query(`
-        UPDATE practice_corpus_documents
-        SET title = CASE WHEN $2 <> '' THEN $2 ELSE title END,
-            source_key = 'official-page-hydration',
-            summary = LEFT($3, 500),
-            content = $3,
-            topics = ARRAY[]::TEXT[],
-            content_hash = $4,
-            metadata = (metadata - 'robots_noindex') || $5::JSONB,
-            metadata_quality = GREATEST(metadata_quality, 3),
-            fetched_at = NOW(),
-            last_seen_at = NOW(),
-            last_seen_run = $6,
-            is_available = TRUE
-        WHERE canonical_url = $1
-      `, [url, extracted.title, extracted.content, hash(extracted.content), JSON.stringify({
-        hydrated: true,
-        source_kind: "official-page-hydration",
-      }), runId]);
-      return true;
+      return serializeDatabaseMutation(() => persistHydratedCorpusDocument(client, {
+        url,
+        title: extracted.title,
+        content: extracted.content,
+        contentHash: hash(extracted.content),
+        metadata: JSON.stringify({
+          hydrated: true,
+          source_kind: "official-page-hydration",
+        }),
+        runId,
+      }));
     }));
     hydrated += results.filter((result) => result.status === "fulfilled" && result.value).length;
     skipped += results.filter((result) => result.status === "fulfilled" && !result.value).length;
@@ -1457,7 +1799,14 @@ export async function syncPortalCorpus({
     const lock = await client.query("SELECT pg_try_advisory_lock(hashtext('practice-corpus-sync')) AS locked");
     if (!lock.rows[0]?.locked) return { status: "busy", indexed: 0, discovered: 0, hydrated: 0, skipped: 0, errors: 0 };
     let runId;
-    const totals = { discovered: 0, indexed: 0, hydrated: 0, skipped: 0, errors: 0 };
+    const totals = {
+      discovered: 0,
+      indexed: 0,
+      capacityDropped: 0,
+      hydrated: 0,
+      skipped: 0,
+      errors: 0,
+    };
     const details = {
       sitemapPages: 0,
       catalogTotal: 0,
@@ -1476,14 +1825,18 @@ export async function syncPortalCorpus({
       const sitemapDocuments = sitemap.documents;
       details.sitemapPages = sitemap.pages;
       totals.discovered += sitemapDocuments.length;
-      totals.indexed += await upsertDocuments(client, sitemapDocuments, runId);
+      const sitemapUpsert = await upsertDocuments(client, sitemapDocuments, runId);
+      totals.indexed += sitemapUpsert.indexed;
+      totals.capacityDropped += sitemapUpsert.capacityDropped;
       onProgress?.({ stage: "sitemap", discovered: sitemapDocuments.length, indexed: totals.indexed });
 
       let catalogUrls = [];
       if (includeCatalog) {
         const catalog = await crawlPortalSearch("", async (documents, page) => {
           totals.discovered += documents.length;
-          totals.indexed += await upsertDocuments(client, documents, runId);
+          const catalogUpsert = await upsertDocuments(client, documents, runId);
+          totals.indexed += catalogUpsert.indexed;
+          totals.capacityDropped += catalogUpsert.capacityDropped;
           onProgress?.({ stage: "catalog", page: page + 1, discovered: totals.discovered, indexed: totals.indexed });
         });
         details.catalogTotal = catalog.total;
@@ -1496,7 +1849,9 @@ export async function syncPortalCorpus({
         if (!query) continue;
         const snapshot = await crawlPortalSearch(query, async (documents, page) => {
           totals.discovered += documents.length;
-          totals.indexed += await upsertDocuments(client, documents, runId);
+          const seedUpsert = await upsertDocuments(client, documents, runId);
+          totals.indexed += seedUpsert.indexed;
+          totals.capacityDropped += seedUpsert.capacityDropped;
           onProgress?.({ stage: "seed-query", query, page: page + 1, indexed: totals.indexed });
         });
         details.seedQueries[query] = {
@@ -1523,7 +1878,9 @@ export async function syncPortalCorpus({
           const wikipedia = await wikipediaDocuments();
           details.wikipedia = wikipedia.length;
           totals.discovered += wikipedia.length;
-          totals.indexed += await upsertDocuments(client, wikipedia, runId);
+          const wikipediaUpsert = await upsertDocuments(client, wikipedia, runId);
+          totals.indexed += wikipediaUpsert.indexed;
+          totals.capacityDropped += wikipediaUpsert.capacityDropped;
         } catch {
           totals.errors += 1;
         }
@@ -1554,6 +1911,8 @@ export async function syncPortalCorpus({
         `, [runId]);
         details.unavailableMarked = retired.rowCount;
       }
+
+      details.retention = await enforceCorpusRetention(client);
 
       await client.query(`
         UPDATE practice_corpus_runs
@@ -1995,10 +2354,158 @@ export async function broadSearchResults(query, options = {}) {
   return livePortalSearchResults(query, options);
 }
 
-export async function corpusStats() {
+function snapshotAbortError(signal, message = "The corpus statistics request was aborted") {
+  return signal?.reason instanceof Error
+    ? signal.reason
+    : new DOMException(message, "AbortError");
+}
+
+export function createCoalescedTtlSnapshot({
+  load,
+  acquireWork,
+  ttlMs = 60_000,
+  timeoutMs = 1_500,
+  shouldCache = () => true,
+  now = Date.now,
+  setTimer = setTimeout,
+  clearTimer = clearTimeout,
+} = {}) {
+  if (typeof load !== "function") throw new TypeError("A snapshot loader is required");
+  const safeTtlMs = Math.max(100, Math.min(Number(ttlMs) || 60_000, 5 * 60_000));
+  const safeTimeoutMs = Math.max(100, Math.min(Number(timeoutMs) || 1_500, 5_000));
+  let snapshot = null;
+  let inflight = null;
+
+  function startRefresh(startOptions = {}) {
+    const controller = new AbortController();
+    const deadlineAt = now() + safeTimeoutMs;
+    const entry = {
+      controller,
+      deadlineAt,
+      promise: null,
+      settled: false,
+      waiters: 0,
+      timer: null,
+    };
+    entry.timer = setTimer(() => {
+      controller.abort(new DOMException("Corpus statistics refresh timed out", "TimeoutError"));
+    }, safeTimeoutMs);
+    entry.timer?.unref?.();
+    const loaderPromise = Promise.resolve()
+      .then(async () => {
+        const releaseWork = typeof acquireWork === "function"
+          ? await acquireWork({
+            clientKey: startOptions.clientKey,
+            signal: controller.signal,
+            deadlineAt,
+          })
+          : () => undefined;
+        try {
+          return await load({ signal: controller.signal, deadlineAt });
+        } finally {
+          releaseWork();
+        }
+      });
+    let detachInternalAbort = () => undefined;
+    const internalAbort = new Promise((_resolve, reject) => {
+      const onAbort = () => reject(snapshotAbortError(
+        controller.signal,
+        "Corpus statistics refresh was aborted",
+      ));
+      detachInternalAbort = () => controller.signal.removeEventListener("abort", onAbort);
+      if (controller.signal.aborted) onAbort();
+      else controller.signal.addEventListener("abort", onAbort, { once: true });
+    });
+    // An abort must retire the shared entry even if an underlying driver has
+    // not observed the signal yet. Promise.race installs a rejection handler
+    // on the loader, so a late failure remains consumed after the entry is
+    // detached and a later request can create a fresh bounded attempt.
+    entry.promise = Promise.race([loaderPromise, internalAbort])
+      .then((value) => {
+        if (!controller.signal.aborted && shouldCache(value)) {
+          snapshot = { value, expiresAt: now() + safeTtlMs };
+        }
+        return value;
+      })
+      .finally(() => {
+        detachInternalAbort();
+        entry.settled = true;
+        if (entry.timer) clearTimer(entry.timer);
+        if (inflight === entry) inflight = null;
+      });
+    // A caller always attaches synchronously below, but retain a rejection
+    // handler so a final-waiter abort cannot create an unhandled rejection.
+    void entry.promise.catch(() => undefined);
+    inflight = entry;
+    return entry;
+  }
+
+  function waitForRefresh(entry, { signal, deadlineAt } = {}) {
+    if (signal?.aborted) return Promise.reject(snapshotAbortError(signal));
+    entry.waiters += 1;
+    return new Promise((resolve, reject) => {
+      let complete = false;
+      let deadlineTimer;
+      const finish = (callback, value) => {
+        if (complete) return;
+        complete = true;
+        if (deadlineTimer) clearTimer(deadlineTimer);
+        signal?.removeEventListener("abort", onAbort);
+        entry.waiters = Math.max(0, entry.waiters - 1);
+        if (!entry.waiters && !entry.settled && !entry.controller.signal.aborted) {
+          entry.controller.abort(new DOMException("All corpus statistics clients disconnected", "AbortError"));
+        }
+        callback(value);
+      };
+      const onAbort = () => finish(reject, snapshotAbortError(signal));
+      signal?.addEventListener("abort", onAbort, { once: true });
+      if (Number.isFinite(deadlineAt)) {
+        const remainingMs = Math.max(0, Number(deadlineAt) - now());
+        if (!remainingMs) {
+          finish(reject, new DOMException("Corpus statistics deadline expired", "TimeoutError"));
+          return;
+        }
+        deadlineTimer = setTimer(
+          () => finish(reject, new DOMException("Corpus statistics deadline expired", "TimeoutError")),
+          remainingMs,
+        );
+        deadlineTimer?.unref?.();
+      }
+      entry.promise.then(
+        (value) => finish(resolve, value),
+        (error) => finish(reject, error),
+      );
+    });
+  }
+
+  return {
+    get(options = {}) {
+      if (options.signal?.aborted) return Promise.reject(snapshotAbortError(options.signal));
+      if (snapshot && snapshot.expiresAt > now()) return Promise.resolve(snapshot.value);
+      return waitForRefresh(inflight || startRefresh(options), options);
+    },
+    clear() {
+      snapshot = null;
+      if (inflight && !inflight.controller.signal.aborted) {
+        inflight.controller.abort(new DOMException("Corpus statistics snapshot cleared", "AbortError"));
+      }
+    },
+    stats: () => ({
+      cached: Boolean(snapshot && snapshot.expiresAt > now()),
+      inflight: Boolean(inflight),
+      waiters: inflight?.waiters || 0,
+    }),
+  };
+}
+
+async function readCorpusStats({ signal, deadlineAt } = {}) {
   if (!databaseEnabled()) return { enabled: false, status: "disabled", documents: 0, hydrated: 0 };
   try {
-    await ensureCorpusSchema();
+    if (signal?.aborted) throw snapshotAbortError(signal);
+    // A public status request must never initiate DDL or migrations. Startup,
+    // synchronization and indexing own corpus schema creation; if that has not
+    // completed yet, the read-only queries below degrade within their deadline.
+    const queryOptions = { signal, deadlineAt, ensureSearchSchema: false };
     const result = await databaseQuery(`
       SELECT
         COUNT(*)::INTEGER AS documents,
@@ -2017,13 +2524,13 @@ export async function corpusStats() {
           source_key <> 'official-live-search'
           OR last_seen_at >= NOW() - make_interval(hours => ${OFFICIAL_DISCOVERY_RETENTION_HOURS})
         )
-    `);
+    `, [], queryOptions);
     const lastRun = await databaseQuery(`
       SELECT status, finished_at, details
       FROM practice_corpus_runs
       ORDER BY started_at DESC
       LIMIT 1
-    `);
+    `, [], queryOptions);
     const row = result.rows[0];
     return {
       enabled: true,
@@ -2048,6 +2555,32 @@ export async function corpusStats() {
   } catch {
     return { enabled: true, status: "degraded", documents: 0, hydrated: 0 };
   }
+}
+
+const corpusStatsSnapshot = createCoalescedTtlSnapshot({
+  load: readCorpusStats,
+  acquireWork: ({ clientKey, signal }) => corpusStatsBackendAdmission.acquire(
+    clientKey,
+    { signal, maximumWaitMs: 500 },
+  ),
+  ttlMs: 60_000,
+  timeoutMs: 1_500,
+  shouldCache: (value) => value?.status === "ready",
+});
+
+export async function corpusStats(options = {}) {
+  if (!databaseEnabled()) return { enabled: false, status: "disabled", documents: 0, hydrated: 0 };
+  try {
+    return await corpusStatsSnapshot.get(options);
+  } catch (error) {
+    if (error?.code === "CORPUS_CAPACITY") throw error;
+    return { enabled: true, status: "degraded", documents: 0, hydrated: 0 };
+  }
+}
+
+export function closeCorpusStatsBackendAdmission(reason) {
+  corpusStatsSnapshot.clear();
+  return corpusStatsBackendAdmission.close(reason);
 }
 
 export async function startCorpusSyncIfStale() {

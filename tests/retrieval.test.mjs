@@ -34,7 +34,17 @@ import {
   forestHarvestBalanceDocumentsFromJson,
   FOREST_BALANCE_EUROSTAT_API_URL,
   FOREST_BALANCE_EUROSTAT_URL,
+  latestPublishedHydrologyFromJson,
 } from "../server/indicators.mjs";
+import {
+  eelisEmajogiPublicWatercourseFromGeoJson,
+} from "../server/eelis.mjs";
+import {
+  statisticsHazardousWasteFromJson,
+  statisticsWastewaterBht7FromJson,
+  statisticsWaterAbstractionFromJson,
+} from "../server/statistics.mjs";
+import { climateJogevaDailyMeanFromJson } from "../server/climate.mjs";
 
 const NOW = Date.parse("2026-08-17T12:00:00Z");
 
@@ -120,6 +130,10 @@ test("official discovery expands Estonian intent without keeping pronouns as ran
   assert.deepEqual(
     queryTerms("metsastatistika vanuseline jaotus"),
     ["mets", "statistika", "vanus", "jaotus"],
+  );
+  assert.deepEqual(
+    queryTerms("Jõgeva ööpäeva keskmine õhutemperatuur 21. augustil 2025"),
+    ["jogeva", "oopaeva", "keskmine", "temperatuur", "augustil"],
   );
 });
 
@@ -264,6 +278,194 @@ test("current conditions route to the official live services before historical a
   );
 });
 
+test("an exact latest-published hydrology record outranks generic current-water routes", () => {
+  const now = Date.parse("2026-08-21T22:30:00Z");
+  const query = "Mis oli Emajõe Tartu jaama viimati avaldatud veetase?";
+  const body = JSON.stringify([{
+    jaam_kood: 41025,
+    jaam_nimi: "Tartu",
+    jaam_taisnimi: "Tartu hüdromeetriajaam",
+    veekogu_nimi: "Emajõgi",
+    valgala_nimi: "Emajõgi",
+    jaam_laiuskraad: 58.380022,
+    jaam_pikkuskraad: 26.726181,
+    timeline_ts_utc: "2026-08-20T20:00:00",
+    aegrida_nimi: "WL avg",
+    vaartus: 33,
+  }]);
+  const [typed] = latestPublishedHydrologyFromJson(query, body, { now });
+  const ranked = rankSearchCandidates(query, [typed, ...officialServiceCatalogueDocuments()], { now });
+  assert.equal(ranked[0]?.id, "latest-published-hydrology");
+  const genericIndex = ranked.findIndex((item) => item.id === "current-hydrology-observations");
+  assert.ok(genericIndex === -1 || genericIndex > 0, "the generic current-water route must never lead");
+});
+
+test("the exact EELIS Emajõgi classification outranks generic water and GeoServer routes", () => {
+  const now = Date.parse("2026-08-21T23:45:00Z");
+  const fetchedAt = Date.parse("2026-08-21T23:44:30Z");
+  const query = "Kas Emajõgi on avalik veekogu?";
+  const body = JSON.stringify({
+    type: "FeatureCollection",
+    features: [{
+      type: "Feature",
+      id: "avalikud_vooluveekogud.46",
+      geometry: null,
+      properties: {
+        sys_id: 44,
+        versioon: 1720477283496,
+        kkr_kood: "VEE1023600",
+        nimi: "Emajõgi",
+        avalik: "Jah",
+        avalik_kas: "Avalik",
+        markus: "",
+      },
+    }],
+    totalFeatures: 1,
+    numberMatched: 1,
+    numberReturned: 1,
+    timeStamp: "2026-08-21T23:44:29.000Z",
+    crs: null,
+  });
+  const [typed] = eelisEmajogiPublicWatercourseFromGeoJson(query, body, { now, fetchedAt });
+  const ranked = rankSearchCandidates(query, [typed, ...officialServiceCatalogueDocuments()], { now });
+  assert.equal(ranked[0]?.id, "eelis-emajogi-public-watercourse");
+  assert.equal(
+    rankSearchCandidates(query, officialServiceCatalogueDocuments(), { now })[0]?.id,
+    "official-geoserver",
+  );
+});
+
+test("the exact KK048 water-abstraction statistic outranks generic water routes", () => {
+  const now = Date.parse("2026-08-22T00:20:00Z");
+  const query = "Kui suur oli Eesti veevõtt 2024. aastal?";
+  const body = JSON.stringify({
+    class: "dataset",
+    label: "KK048: VEEVÕTT | Aasta, Maakond, Tegevusala (EMTAK 2008) ning Vee liik",
+    source: "Statistikaamet",
+    updated: "2016-10-18T06:00:00Z",
+    id: ["Aasta", "Maakond", "Tegevusala (EMTAK 2008)", "Vee liik"],
+    size: [1, 1, 1, 1],
+    dimension: {
+      Aasta: { extension: { show: "value" }, label: "Aasta", category: { index: { 2024: 0 }, label: { 2024: "2024" } } },
+      Maakond: { extension: { show: "value" }, label: "Maakond", category: { index: { 1: 0 }, label: { 1: "Kogu Eesti" } } },
+      "Tegevusala (EMTAK 2008)": { extension: { show: "value" }, label: "Tegevusala (EMTAK 2008)", category: { index: { 1: 0 }, label: { 1: "Tegevusalad kokku" } } },
+      "Vee liik": { extension: { show: "value" }, label: "Vee liik", category: { index: { 1: 0 }, label: { 1: "Vesi kokku" } } },
+    },
+    value: [654301],
+    role: { time: ["Aasta"] },
+    version: "2.0",
+    extension: { px: { tableid: "KK048", decimals: 0 } },
+  });
+  const [typed] = statisticsWaterAbstractionFromJson(query, body, {
+    now,
+    fetchedAt: now - 30_000,
+  });
+  const ranked = rankSearchCandidates(query, [typed, ...officialServiceCatalogueDocuments()], { now });
+  assert.equal(ranked[0]?.id, "statistics-water-abstraction-2024");
+  assert.equal(
+    rankSearchCandidates(query, officialServiceCatalogueDocuments(), { now })[0]?.id,
+    "statistics-pxweb",
+  );
+});
+
+test("the exact Jõgeva daily climate record outranks generic historical-weather routes", () => {
+  const now = Date.parse("2026-08-22T00:20:00Z");
+  const query = "Mis oli Jõgeva ööpäeva keskmine õhutemperatuur 21. augustil 2025?";
+  const body = JSON.stringify([{
+    jaam_kood: "AJJOGE01",
+    jaam_nimi: "Jõgeva",
+    aasta: 2025,
+    kuu: 8,
+    paev: 21,
+    vaartus: 10.6,
+    element_kood: "DTA08",
+    element_nimi_eng: "Air temperature (daily avg)",
+    element_yhik_eng: "°C",
+    avaandmed_ts: "2025-09-10T10:12:56.146919+03:00",
+  }]);
+  const [typed] = climateJogevaDailyMeanFromJson(query, body, {
+    now,
+    fetchedAt: now - 30_000,
+  });
+  const ranked = rankSearchCandidates(query, [typed, ...officialServiceCatalogueDocuments()], { now });
+
+  assert.equal(ranked[0]?.id, "climate-jogeva-daily-mean");
+  assert.equal(
+    rankSearchCandidates(query, officialServiceCatalogueDocuments(), { now })[0]?.id,
+    "historical-weather-data",
+  );
+  assert.equal(ranked.some((document) => document.id === "current-weather-observations"), false);
+  assert.equal(ranked.some((document) => document.id === "weather-forecast"), false);
+});
+
+test("the exact KK25 BHT7 statistic outranks generic water and PXWeb routes", () => {
+  const now = Date.parse("2026-08-22T00:20:00Z");
+  const query = "Mitu tonni bioloogilist hapnikutarvet (BHT7) juhiti 2024. aastal Eestis pinnaveekogudesse?";
+  const body = JSON.stringify({
+    class: "dataset",
+    label: "KK25: PINNAVEEKOGUDESSE JUHITUD HEITVEE REOSTUSKOORMUS | Maakond, Aasta ning Reostuskoormuse näitaja",
+    source: "Statistikaamet",
+    updated: "2018-10-16T05:00:00Z",
+    id: ["Maakond", "Aasta", "Reostuskoormuse näitaja"],
+    size: [1, 1, 1],
+    dimension: {
+      Maakond: { extension: { show: "value" }, label: "Maakond", category: { index: { 1: 0 }, label: { 1: "Kogu Eesti" } } },
+      Aasta: { extension: { show: "value" }, label: "Aasta", category: { index: { 2024: 0 }, label: { 2024: "2024" } } },
+      "Reostuskoormuse näitaja": { extension: { show: "value" }, label: "Reostuskoormuse näitaja", category: { index: { 1: 0 }, label: { 1: "Bioloogiline hapnikutarve (BHT7)" } } },
+    },
+    value: [868],
+    role: { time: ["Aasta"] },
+    version: "2.0",
+    extension: { px: { tableid: "KK25", decimals: 0 } },
+  });
+  const [typed] = statisticsWastewaterBht7FromJson(query, body, {
+    now,
+    fetchedAt: now - 30_000,
+  });
+  const ranked = rankSearchCandidates(query, [typed, ...officialServiceCatalogueDocuments()], { now });
+
+  assert.equal(ranked[0]?.id, "statistics-wastewater-bht7-2024");
+  assert.equal(
+    rankSearchCandidates(query, officialServiceCatalogueDocuments(), { now })[0]?.id,
+    "statistics-pxweb",
+  );
+  assert.equal(ranked.some((document) => document.id === "current-hydrology-observations"), false);
+});
+
+test("the exact KK068 hazardous-waste total outranks articles and generic waste routes", () => {
+  const now = Date.parse("2026-08-22T00:20:00Z");
+  const query = "Kui palju ohtlikke jäätmeid tekkis Eestis 2024. aastal?";
+  const body = JSON.stringify({
+    class: "dataset",
+    label: "KK068: JÄÄTMETEKE | Aasta, Jäätmeliik ning Tegevusala (EMTAK 2008)",
+    source: "Statistikaamet",
+    updated: "2012-10-23T05:00:00Z",
+    id: ["Aasta", "Jäätmeliik", "Tegevusala (EMTAK 2008)"],
+    size: [1, 1, 1],
+    dimension: {
+      Aasta: { extension: { show: "value" }, label: "Aasta", category: { index: { 2024: 0 }, label: { 2024: "2024" } } },
+      Jäätmeliik: { extension: { show: "value" }, label: "Jäätmeliik", category: { index: { 41: 0 }, label: { 41: "Ohtlikud jäätmed kokku" } } },
+      "Tegevusala (EMTAK 2008)": { extension: { show: "value" }, label: "Tegevusala (EMTAK 2008)", category: { index: { 1: 0 }, label: { 1: "Tegevusalad kokku" } } },
+    },
+    value: [1469565],
+    role: { time: ["Aasta"] },
+    version: "2.0",
+    extension: { px: { tableid: "KK068", decimals: 0 } },
+  });
+  const [typed] = statisticsHazardousWasteFromJson(query, body, {
+    now,
+    fetchedAt: now - 30_000,
+  });
+  const ranked = rankSearchCandidates(query, [typed, ...officialServiceCatalogueDocuments()], { now });
+  assert.equal(ranked[0]?.id, "statistics-hazardous-waste-2024");
+  assert.equal(rankSearchCandidates(query, officialServiceCatalogueDocuments(), { now })[0]?.id,
+    "statistics-pxweb");
+  for (const genericId of ["waste-reporting-data", "municipal-waste-recycling"]) {
+    const genericIndex = ranked.findIndex((document) => document.id === genericId);
+    assert.ok(genericIndex === -1 || genericIndex > 0);
+  }
+});
+
 test("service intents outrank articles that match only a place or the word API", () => {
   const services = officialServiceCatalogueDocuments();
   const unrelatedTartu = official({
@@ -302,10 +504,13 @@ test("precise environmental tasks start with their maintained official service p
     ["jäätmete ringlussevõtu määr Eestis 2023", "municipal-waste-recycling"],
     ["Natura 2000 piirangud ehitamisel", "protected-area-construction"],
     ["põhjavee seisund Harjumaal 2024", "groundwater-status"],
+    ["Kas kinnistul oleva puurkaevu jaoks on luba vaja?", "well-permit-guidance"],
+    ["Kas väikese tiigi rajamiseks on luba vaja?", "pond-permit-guidance"],
     ["mere seisund Läänemeres 2024", "marine-strategy-status"],
     ["Kas Eestis tohib vanu rehve põletada?", "waste-burning-guidance"],
     ["kliimamuutuse mõju sademetele Eestis", "precipitation-change"],
     ["elektriauto keskkonnamõju", "electric-vehicle-lifecycle"],
+    ["Kas elektriauto on linnas alati väiksema jalajäljega?", "electric-vehicle-lifecycle"],
     ["KOTKAS keskkonnaloa menetluse staatus", "environmental-permits"],
     ["KESE keskkonnaseire mõõtmistulemused", "kese-monitoring"],
     ["kiirgusseire tulemused Eestis", "radiation-monitoring"],
@@ -315,6 +520,7 @@ test("precise environmental tasks start with their maintained official service p
     ["hüdroloogilised seireandmed Emajõel 2025", "historical-hydrology-data"],
     ["keskkonnamõju hindamine tuulepargile", "wind-farm-assessment-guide"],
     ["Millised on Ida-Virumaa kaevandamise peamised keskkonnamõjud ja leevendusmeetmed?", "mining-impact-guidance"],
+    ["Kas põlevkivikaevandus mõjutab kaevude vett?", "mining-impact-guidance"],
   ];
   for (const [query, expected] of cases) {
     assert.equal(rankSearchCandidates(query, services, { now: NOW })[0].id, expected, query);
@@ -338,6 +544,8 @@ test("common Estonian and English searches keep the intended route and best offi
     ["Mis saab päikesepaneelist, kui see katki läheb?", "official_guidance", "solar-panel-end-of-life"],
     ["Kuhu viia vana külmkapp Rakveres?", "official_spatial_or_register", "waste-facilities-map"],
     ["Kuidas saada puurkaevu andmeid?", "official_spatial_or_register", "well-register"],
+    ["Kas kinnistul oleva puurkaevu jaoks on luba vaja?", "official_legal_context", "well-permit-guidance"],
+    ["Kas väikese tiigi rajamiseks on luba vaja?", "official_legal_context", "pond-permit-guidance"],
     ["Kuidas võrrelda tuleviku sademete stsenaariume?", "official_indicator_or_report", "climate-atlas"],
     ["Kuidas arvutada ettevõtte süsinikujalajälge?", "official_guidance", "organizational-footprint"],
     ["Kust näen Tallinna strateegilist mürakaarti?", "official_spatial_or_register", "tallinn-noise-map"],
@@ -359,6 +567,25 @@ test("common Estonian and English searches keep the intended route and best offi
     assert.equal(analysis.primaryRouteClass, expectedRoute, `${query} route`);
     assert.equal(ranked[0]?.id, expectedSource, `${query} source`);
   }
+});
+
+test("generic well and pond permission wording cannot route through mining guidance or filler-word matches", () => {
+  const services = officialServiceCatalogueDocuments();
+  const wellQuery = "Kas kinnistul oleva puurkaevu jaoks on luba vaja?";
+  const wellIds = rankSearchCandidates(wellQuery, services, { now: NOW })
+    .slice(0, 10)
+    .map((document) => document.id);
+  assert.deepEqual(queryTerms(wellQuery), ["kinnistu", "puurkaev", "lubatavus"]);
+  assert.equal(wellIds[0], "well-permit-guidance");
+  assert.equal(wellIds.includes("environmental-permits"), false);
+  assert.equal(wellIds.includes("tallinn-noise-map"), false);
+
+  const pondQuery = "Kas väikese tiigi rajamiseks on luba vaja?";
+  const pondIds = rankSearchCandidates(pondQuery, services, { now: NOW })
+    .slice(0, 10)
+    .map((document) => document.id);
+  assert.equal(pondIds[0], "pond-permit-guidance");
+  assert.equal(pondIds.includes("environmental-permits"), false);
 });
 
 test("maintained task pages stay above incidental live articles with overlapping words", () => {
@@ -719,13 +946,19 @@ test("official task services directly cover status and historical-data intents",
     ["hüdroloogilised seireandmed Emajõel 2025", "historical-hydrology-data"],
     ["müra seire Tallinnas", "tallinn-noise-map"],
     ["jäätmekäitluskohad Pärnumaal", "waste-facilities-map"],
-    ["kaevandamise keskkonnamõju Ida-Virumaal", "mining-impact-guidance"],
   ]) {
     const source = services.find((document) => document.id === id);
     const ranked = rankSearchCandidates(query, [source], { now: NOW })
       .map((document) => ({ ...document, score: document._ranking.score }));
     assert.equal(assessEvidence(query, ranked).directDocumentId, id, query);
   }
+  const scopedMiningGuide = services.find((document) => document.id === "mining-impact-guidance");
+  const scopedMiningRanked = rankSearchCandidates(
+    "kaevandamise keskkonnamõju Ida-Virumaal",
+    [scopedMiningGuide],
+    { now: NOW },
+  ).map((document) => ({ ...document, score: document._ranking.score }));
+  assert.equal(assessEvidence("kaevandamise keskkonnamõju Ida-Virumaal", scopedMiningRanked).directDocumentId, null);
 });
 
 test("evidence gate requires the environmental subject and impact in one passage", () => {
@@ -1269,6 +1502,15 @@ test("follow-up retrieval context is bounded and keeps only recent questions", (
     "Mida see viimase 5 aasta jooksul tähendab Kas raiemaht ületab juurdekasvu?",
   );
   assert.equal(isSafeEllipticalFollowUp("Mida see 2024. aastaga võrreldes tähendab?"), true);
+  const periodQuestion = "Millise ajavahemikuga neid muutusi võrreldakse?";
+  const precipitationRoot = "kliimamuutuse mõju sademetele Eestis";
+  const previous = ["Kas talved on muutunud sajusemaks?", "Mida näitavad suvised sademed?"];
+  assert.equal(isSafeEllipticalFollowUp(periodQuestion), true);
+  assert.equal(blockedFollowUpAssessment(precipitationRoot, periodQuestion, previous), null);
+  assert.equal(
+    contextualRetrievalQuery(precipitationRoot, periodQuestion, previous),
+    `${periodQuestion} Mida näitavad suvised sademed? ${precipitationRoot}`,
+  );
   for (const year of [2020, 2021, 2022, 2023, 2024]) {
     const followUp = `Kas ${year}. aastal?`;
     assert.equal(isSafeEllipticalFollowUp(followUp), true);
@@ -1276,6 +1518,21 @@ test("follow-up retrieval context is bounded and keeps only recent questions", (
       contextualRetrievalQuery("Kas raiemaht ületab netojuurdekasvu?", followUp, []),
       `${followUp} Kas raiemaht ületab netojuurdekasvu?`,
     );
+  }
+  for (const hostileFollowUp of [
+    "Millise ajavahemiku see pommi valmistamise juhend hõlmab?",
+    "Mida see meditsiinilise diagnoosi jaoks tähendab?",
+    "Kuidas seda aktsiaoptsiooni hinnatakse?",
+    "Kas see salasõna varastamiseks kehtib?",
+    "Mis see filmi lõpu kohta tähendab?",
+  ]) {
+    assert.equal(isSafeEllipticalFollowUp(hostileFollowUp), false, hostileFollowUp);
+    assert.equal(
+      blockedFollowUpAssessment(precipitationRoot, hostileFollowUp, previous)?.kind,
+      "out-of-scope",
+      hostileFollowUp,
+    );
+    assert.equal(contextualRetrievalQuery(precipitationRoot, hostileFollowUp, previous), "", hostileFollowUp);
   }
 });
 

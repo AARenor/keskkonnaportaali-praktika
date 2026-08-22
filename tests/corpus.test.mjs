@@ -10,15 +10,19 @@ import {
   fetchCorpusText,
   hydrationResourceMatches,
   isApprovedCorpusRedirect,
+  limitCorpusDocumentsByAggregateCapacity,
   limitOfficialDiscoveryDocuments,
+  CORPUS_OVERFLOW_DELETE_SQL,
   OFFICIAL_DISCOVERY_DELETE_SQL,
   OFFICIAL_DISCOVERY_RETIRE_SQL,
+  PORTAL_UNAVAILABLE_DELETE_SQL,
   pageRobotsPolicy,
   parsePortalReportedTotal,
   parsePortalSearchPage,
   parsePortalSitemap,
   parsePortalSitemapPage,
   parseRobotsTxt,
+  persistHydratedCorpusDocument,
   publicSearchItem,
   robotsAllowsUrl,
   summarizeUrlOccurrences,
@@ -51,6 +55,11 @@ test("live discovery persistence has explicit retirement and deletion bounds", a
   assert.match(OFFICIAL_DISCOVERY_RETIRE_SQL, /make_interval\(hours => \$1\)/u);
   assert.match(OFFICIAL_DISCOVERY_DELETE_SQL, /DELETE FROM practice_corpus_documents/u);
   assert.match(OFFICIAL_DISCOVERY_DELETE_SQL, /source_key = 'official-live-search'/u);
+  assert.match(PORTAL_UNAVAILABLE_DELETE_SQL, /is_available = FALSE/u);
+  assert.match(PORTAL_UNAVAILABLE_DELETE_SQL, /portal-sitemap/u);
+  assert.match(PORTAL_UNAVAILABLE_DELETE_SQL, /make_interval\(hours => \$1\)/u);
+  assert.match(CORPUS_OVERFLOW_DELETE_SQL, /GREATEST\(COUNT\(\*\) - \$1, 0\)/u);
+  assert.match(CORPUS_OVERFLOW_DELETE_SQL, /SUM\(pg_column_size\(document\)\)/u);
 
   const [corpus, retrieval, server] = await Promise.all([
     readFile(new URL("../server/corpus.mjs", import.meta.url), "utf8"),
@@ -66,6 +75,9 @@ test("live discovery persistence has explicit retirement and deletion bounds", a
   assert.match(corpus, /source_kind: "official-page-hydration"/u);
   assert.match(corpus, /source_key IN \('portal-sitemap', 'portal-catalog', 'official-page-hydration'\)/u);
   assert.match(corpus, /pg_advisory_xact_lock\(hashtext\('practice-official-discovery-capacity'\)\)/u);
+  assert.match(corpus, /pg_advisory_xact_lock\(hashtext\('practice-corpus-retention-capacity'\)\)/u);
+  assert.match(corpus, /details\.retention = await enforceCorpusRetention\(client\)/u);
+  assert.match(corpus, /OFFSET \$1[\s\S]*?DELETE FROM practice_corpus_runs/u);
   assert.match(corpus, /OFFICIAL_DISCOVERY_MAX_ROWS/u);
   assert.match(retrieval, /enqueueOfficialDiscoveryDocuments\(filteredLive, \{ signal, clientKey \}\)/u);
   assert.doesNotMatch(retrieval, /void indexOfficialDiscoveryDocuments/u);
@@ -94,6 +106,78 @@ test("live discovery row admission preserves existing URLs and caps new rows", (
     3,
     3,
   ).map((item) => item.url), ["https://example.test/existing"]);
+});
+
+test("aggregate corpus admission includes available rows, bytes and existing updates", () => {
+  const documents = [
+    { url: "https://example.test/new-a", content: "a" },
+    { url: "https://example.test/existing", content: "b" },
+    { url: "https://example.test/new-b", content: "c" },
+  ];
+  assert.deepEqual(limitCorpusDocumentsByAggregateCapacity(
+    documents,
+    ["https://example.test/existing"],
+    2,
+    0,
+    3,
+    100_000,
+  ).map((item) => item.url), [
+    "https://example.test/new-a",
+    "https://example.test/existing",
+  ]);
+  assert.deepEqual(limitCorpusDocumentsByAggregateCapacity(
+    documents,
+    ["https://example.test/existing"],
+    3,
+    0,
+    3,
+    100_000,
+  ).map((item) => item.url), ["https://example.test/existing"]);
+  assert.deepEqual(limitCorpusDocumentsByAggregateCapacity(
+    documents,
+    ["https://example.test/existing"],
+    0,
+    95_000,
+    3,
+    100_000,
+  ), []);
+});
+
+test("hydration commits only when the locked post-update aggregate stays below the byte ceiling", async () => {
+  const run = async (totalBytes) => {
+    const calls = [];
+    const client = {
+      async query(sql) {
+        const text = String(sql).trim();
+        calls.push(text);
+        if (text.startsWith("UPDATE practice_corpus_documents")) return { rowCount: 1, rows: [{ id: 1 }] };
+        if (text.startsWith("SELECT COALESCE(SUM(pg_column_size")) {
+          return { rows: [{ total_bytes: String(totalBytes) }] };
+        }
+        return { rowCount: 0, rows: [] };
+      },
+    };
+    const persisted = await persistHydratedCorpusDocument(client, {
+      url: "https://keskkonnaportaal.ee/et/test",
+      title: "Test",
+      content: "Sisuline ametlik lehekülg.",
+      contentHash: "a".repeat(64),
+      metadata: JSON.stringify({ hydrated: true }),
+      runId: 1,
+    }, { maximumBytes: 1_000 });
+    return { calls, persisted };
+  };
+
+  const accepted = await run(1_000);
+  assert.equal(accepted.persisted, true);
+  assert.equal(accepted.calls.at(-1), "COMMIT");
+  assert.ok(accepted.calls.findIndex((sql) => sql.includes("practice-corpus-retention-capacity"))
+    < accepted.calls.findIndex((sql) => sql.startsWith("UPDATE practice_corpus_documents")));
+
+  const rejected = await run(1_001);
+  assert.equal(rejected.persisted, false);
+  assert.equal(rejected.calls.at(-1), "ROLLBACK");
+  assert.equal(rejected.calls.includes("COMMIT"), false);
 });
 
 test("duplicate URLs are merged before a PostgreSQL upsert batch", () => {
@@ -299,8 +383,26 @@ test("sitemap parser canonicalizes portal URLs and keeps modification time", () 
     </urlset>`);
   assert.equal(documents.length, 1);
   assert.equal(documents[0].url, "https://keskkonnaportaal.ee/et/mets");
-  assert.equal(documents[0].modifiedAt, "2026-08-16T12:00:00Z");
+  assert.equal(documents[0].modifiedAt, "2026-08-16T12:00:00.000Z");
   assert.equal(documents[0].sourceTier, "official");
+});
+
+test("corpus dates are calendar-valid before PostgreSQL casts", () => {
+  const sitemap = parsePortalSitemap(`
+    <urlset>
+      <url><loc>https://keskkonnaportaal.ee/et/kehtiv</loc><lastmod>2024-02-29T12:30:00+02:00</lastmod></url>
+      <url><loc>https://keskkonnaportaal.ee/et/vigane</loc><lastmod>2024-02-30T12:30:00Z</lastmod></url>
+    </urlset>
+  `);
+  assert.equal(sitemap[0].modifiedAt, "2024-02-29T10:30:00.000Z");
+  assert.equal(sitemap[1].modifiedAt, null);
+
+  const [invalidPublished] = deduplicateCorpusDocuments([{
+    url: "https://keskkonnaportaal.ee/et/vigane-kuupaev",
+    title: "Kirje",
+    publishedAt: "2024-02-30",
+  }]);
+  assert.equal(invalidPublished.publishedAt, null);
 });
 
 test("portal sitemap cannot delegate its official tier to off-host entries", () => {
@@ -365,6 +467,24 @@ test("crawler enforces the portal robots allow/disallow precedence", () => {
   assert.equal(robotsAllowsUrl("https://keskkonnaportaal.ee/admin/config", rules), false);
   assert.equal(robotsAllowsUrl("https://keskkonnaportaal.ee/core/app.css", rules), true);
   assert.equal(robotsAllowsUrl("https://keskkonnaportaal.ee/core/app.js", rules), false);
+});
+
+test("crawler bounds robots rules and matches wildcards without dynamic regular expressions", () => {
+  const rules = parseRobotsTxt(`
+    User-agent: *
+    Disallow: /*/private/*/export$
+    Allow: /public/*
+  `);
+  assert.equal(robotsAllowsUrl("https://keskkonnaportaal.ee/a/private/b/export", rules), false);
+  assert.equal(robotsAllowsUrl("https://keskkonnaportaal.ee/a/private/b/export/more", rules), true);
+  assert.throws(
+    () => parseRobotsTxt(`User-agent: *\nDisallow: /${"*x".repeat(9)}`),
+    /over-complex rule/u,
+  );
+  assert.throws(
+    () => parseRobotsTxt(`User-agent: *\nDisallow: /${"x".repeat(600)}`),
+    /oversized line/u,
+  );
 });
 
 test("crawler validates every redirect target before following it", () => {
@@ -535,7 +655,8 @@ test("progressive answer endpoint and broad result pagination remain separate co
   assert.match(server, /searchPage\(request, "page_size", 12, 50\)/u);
   assert.match(server, /app\.post\("\/api\/search\/stream"/u);
   assert.match(server, /application\/x-ndjson/u);
-  assert.match(server, /if \(!resultsWritten\) \{[\s\S]*?writeSearchStreamEvent\(response, "results"/u);
+  assert.match(server, /if \(!resultsWritten\) \{[\s\S]*?await stream\.write\("results"/u);
+  assert.match(server, /createBoundedNdjsonWriter\(response[\s\S]*?await stream\.finish\(\)[\s\S]*?cleanupLease\.finish\(\)/u);
   assert.match(app, /fetch\("\/api\/search\/stream", \{[\s\S]*?method: "POST"/u);
   assert.match(app, /readSearchStream\(response/u);
   assert.match(app, /\{!busy && focused && suggestions\.length \? \(/u);

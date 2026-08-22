@@ -4,9 +4,18 @@ function boundedInteger(value, fallback, minimum, maximum) {
   return Math.max(minimum, Math.min(parsed, maximum));
 }
 
-export const AGENT_MANAGER_MAX_TURNS = 6;
+export const AGENT_MANAGER_MAX_TURNS = 2;
 export const AGENT_SPECIALIST_MAX_TURNS = 1;
 export const AGENT_SPECIALIST_MAX_TOKENS = 700;
+
+export function estimatedInputTokensFromBytes(inputBytes = 0) {
+  const boundedInputBytes = nonnegativeInteger(inputBytes) ?? 0;
+  // A UTF-8 byte cannot encode more than one complete tokenizer token. Charging
+  // one token per byte is therefore a tokenizer-independent upper bound even
+  // for adversarial, token-dense JSON; observed provider usage later replaces
+  // this reservation with the actual total.
+  return boundedInputBytes;
+}
 
 export function resolveLlmRollingBudget({
   windowMs = process.env.LLM_BUDGET_WINDOW_MS,
@@ -36,17 +45,16 @@ export function resolveLlmClientBudget({
 
 export function estimatedLlmBudgetUsage({ orchestrated = false, maxTokens = 3_200, inputBytes = 0 } = {}) {
   const managerTokens = boundedInteger(maxTokens, 3_200, 256, 4_000);
-  const boundedInputBytes = Math.min(nonnegativeInteger(inputBytes) ?? 0, 256_000);
-  const inputReservation = boundedInputBytes > 0 ? boundedInputBytes + 512 : 0;
+  const estimatedInputTokens = estimatedInputTokensFromBytes(inputBytes);
+  const inputReservation = estimatedInputTokens > 0 ? estimatedInputTokens + 512 : 0;
   if (!orchestrated) return { requests: 1, tokens: managerTokens + inputReservation };
 
-  // parallelToolCalls=false bounds a manager turn to one specialist call. A
-  // sixth (last) manager turn can still invoke a tool before maxTurns stops the
-  // run, so reserve one single-turn specialist for every possible manager turn.
+  // The manager has two bounded turns: one mandatory composite review tool and
+  // one final answer. The composite runs both one-turn specialists exactly once.
   return {
-    requests: AGENT_MANAGER_MAX_TURNS * (1 + AGENT_SPECIALIST_MAX_TURNS),
-    tokens: AGENT_MANAGER_MAX_TURNS
-      * (managerTokens + AGENT_SPECIALIST_MAX_TOKENS * AGENT_SPECIALIST_MAX_TURNS)
+    requests: AGENT_MANAGER_MAX_TURNS + 2 * AGENT_SPECIALIST_MAX_TURNS,
+    tokens: AGENT_MANAGER_MAX_TURNS * managerTokens
+      + 2 * AGENT_SPECIALIST_MAX_TOKENS * AGENT_SPECIALIST_MAX_TURNS
       + inputReservation,
   };
 }

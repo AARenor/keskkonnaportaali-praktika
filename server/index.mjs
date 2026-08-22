@@ -4,14 +4,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { purgeExpiredSearchData } from "./database.mjs";
 import {
+  closeCorpusStatsBackendAdmission,
   corpusStats,
   scheduleOfficialDiscoveryMaintenance,
   startCorpusSyncIfStale,
   stopOfficialDiscoveryIndexing,
 } from "./corpus.mjs";
-import { getForestrySuggestions } from "./forestry.mjs";
 import { createGracefulShutdown } from "./graceful-shutdown.mjs";
+import { createBoundedNdjsonWriter } from "./http-stream.mjs";
 import { getKeskkonnaportaalSuggestions } from "./integrations.mjs";
+import { requiresExtendedStructuredListingBudget } from "./indicators.mjs";
 import {
   createDeadlineCleanupLease,
   searchEnvironmentLive,
@@ -43,6 +45,7 @@ import {
   createFairSearchAdmission,
   configuredSearchConcurrency,
   JSON_SEARCH_DEADLINE_CEILING_MS,
+  progressiveListingBudgetMs,
   searchDeadline,
 } from "./request-budget.mjs";
 import {
@@ -54,6 +57,7 @@ import {
 } from "./terrapoint.mjs";
 import { requestApprovedPublicHttpsText } from "./public-https.mjs";
 import { publicDeploymentRevision } from "./version.mjs";
+import { getReviewedSearchSuggestions } from "./suggestions.mjs";
 import {
   assessSearchQuery,
   canonicalizePublicSearchQuery,
@@ -86,6 +90,15 @@ const SEARCH_TRANSPORT_RESERVE_MS = 250;
 const TERRAPOINT_OUTBOUND_ORIGINS = new Set(["https://terrapoint.ee"]);
 const MAX_ACTIVE_SEARCHES = configuredSearchConcurrency();
 const searchAdmission = createFairSearchAdmission({ maximumActive: MAX_ACTIVE_SEARCHES });
+const corpusStatsAdmission = createFairSearchAdmission({
+  maximumActive: 2,
+  maximumActivePerClient: 1,
+  maximumQueue: 8,
+  maximumQueuedPerClient: 1,
+  maximumWaitMs: 500,
+  capacityCode: "CORPUS_CAPACITY",
+  capacityLabel: "Corpus statistics admission",
+});
 const cache = createByteBoundedLruCache({
   maximumEntries: MAX_PROXY_CACHE_ENTRIES,
   maximumBytes: MAX_PROXY_CACHE_BYTES,
@@ -206,6 +219,14 @@ app.use("/api/suggestions", createFixedWindowRateLimiter({
   trustedProxyCidrs: proxyConfiguration.trustedProxyCidrs,
   ipv6PrefixBits: ipv6ClientPrefixBits,
 }));
+app.use("/api/corpus", createFixedWindowRateLimiter({
+  maxRequests: 20,
+  scope: "corpus",
+  store: requestWindows,
+  maxKeys: MAX_RATE_LIMIT_KEYS,
+  trustedProxyCidrs: proxyConfiguration.trustedProxyCidrs,
+  ipv6PrefixBits: ipv6ClientPrefixBits,
+}));
 app.use("/api/terrapoint", createFixedWindowRateLimiter({
   maxRequests: 30,
   scope: "terrapoint",
@@ -214,8 +235,9 @@ app.use("/api/terrapoint", createFixedWindowRateLimiter({
   trustedProxyCidrs: proxyConfiguration.trustedProxyCidrs,
   ipv6PrefixBits: ipv6ClientPrefixBits,
 }));
-// Admission control must run before Express buffers attacker-controlled JSON.
-app.use(express.json({ limit: "32kb", strict: true, inflate: false }));
+// Admission control must run before Express buffers attacker-controlled JSON,
+// and non-API paths must never pay the allocation/parsing cost at all.
+app.use("/api", express.json({ limit: "32kb", strict: true, inflate: false }));
 
 app.get("/api/health/container-readiness", (_request, response) => {
   if (containerReadiness !== "ready") {
@@ -387,12 +409,6 @@ async function handleSearch(request, response) {
 
 app.post("/api/search", handleSearch);
 
-function writeSearchStreamEvent(response, type, payload) {
-  if (response.writableEnded || response.destroyed) return false;
-  response.write(`${JSON.stringify({ type, ...payload })}\n`);
-  return true;
-}
-
 app.post("/api/search/stream", async (request, response) => {
   const queryInput = searchQuery(request);
   const query = queryInput.query;
@@ -424,49 +440,53 @@ app.post("/api/search/stream", async (request, response) => {
       cleanupLease.finish();
       return undefined;
     }
-    response.status(200);
+    response.status(503);
     response.setHeader("Cache-Control", "no-store");
     response.setHeader("Retry-After", "2");
-    response.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
-    response.setHeader("X-Accel-Buffering", "no");
-    response.flushHeaders?.();
-    const searchResults = emptySearchListing(filters, page, pageSize);
-    writeSearchStreamEvent(response, "results", { searchResults });
-    writeSearchStreamEvent(response, "answer", {
-      result: {
-        ...searchTimeoutFallback(query, { assessmentQuery: query, reason: "capacity" }),
-        searchResults,
-      },
-    });
-    response.end();
     cleanupLease.finish();
-    return undefined;
+    return response.json({
+      error: "Otsing on hetkel koormatud. Proovi mõne hetke pärast uuesti.",
+      code: "SEARCH_CAPACITY",
+    });
   }
 
   response.status(200);
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
   response.setHeader("X-Accel-Buffering", "no");
+  const stream = createBoundedNdjsonWriter(response, {
+    onFailure: (error) => {
+      if (!controller.signal.aborted) controller.abort(error);
+    },
+  });
   response.flushHeaders?.();
 
   let publicListing = emptySearchListing(filters, page, pageSize);
   let resultsWritten = false;
   try {
-    const listingDeadlineAt = Math.min(deadlineAt, Date.now() + 3_500);
+    // Most searches keep the fast progressive-listing target. Exact typed
+    // PostgREST, WFS and PXWeb queries may need their full bounded structured
+    // fetch window on a cold connection, without extending the overall limit.
+    // Pass the overall deadline into retrieval so its own 5.5 s upstream cap
+    // is not accidentally collapsed by this outer streaming phase.
+    const listingBudgetMs = progressiveListingBudgetMs({
+      remainingMs: deadlineAt - Date.now(),
+      slowStructured: requiresExtendedStructuredListingBudget(query),
+    });
     const searchResults = await settleWithinDeadline(prepareRankedSearchResults(query, {
       page,
       pageSize,
       filters,
-      deadlineAt: listingDeadlineAt,
+      deadlineAt,
       signal: controller.signal,
       clientKey: llmClientKey,
-    }), Math.max(1, listingDeadlineAt - Date.now()), null, controller, {
+    }), listingBudgetMs, null, controller, {
       onBackgroundCleanup: cleanupLease.track,
     });
     if (!searchResults) {
-      writeSearchStreamEvent(response, "results", { searchResults: publicListing });
+      await stream.write("results", { searchResults: publicListing });
       resultsWritten = true;
-      writeSearchStreamEvent(response, "answer", {
+      await stream.write("answer", {
         result: {
           ...searchTimeoutFallback(query, { assessmentQuery: query }),
           searchResults: publicListing,
@@ -475,7 +495,7 @@ app.post("/api/search/stream", async (request, response) => {
       return undefined;
     }
     publicListing = publicSearchListing(searchResults);
-    writeSearchStreamEvent(response, "results", { searchResults: publicListing });
+    await stream.write("results", { searchResults: publicListing });
     resultsWritten = true;
     const result = await searchEnvironmentLive(query, {
       startedAt,
@@ -485,24 +505,25 @@ app.post("/api/search/stream", async (request, response) => {
       signal: controller.signal,
       llmClientKey,
       onBackgroundCleanup: cleanupLease.track,
-      onDraft: (draft) => writeSearchStreamEvent(response, "draft", {
+      onDraft: (draft) => stream.enqueue("draft", {
         result: { ...draft, searchResults: publicListing },
       }),
     });
-    writeSearchStreamEvent(response, "answer", {
+    await stream.write("answer", {
       result: { ...result, searchResults: publicListing },
     });
   } catch (error) {
     if (!controller.signal.aborted && !response.destroyed) {
       if (!resultsWritten) {
-        writeSearchStreamEvent(response, "results", { searchResults: publicListing });
+        await stream.write("results", { searchResults: publicListing });
         resultsWritten = true;
       }
-      writeSearchStreamEvent(response, "answer", {
+      await stream.write("answer", {
         result: {
           ...searchTimeoutFallback(query, {
             assessmentQuery: query,
             searchResults: { items: publicListing.items || [] },
+            filters,
             reason: "source-error",
           }),
           searchResults: publicListing,
@@ -517,8 +538,14 @@ app.post("/api/search/stream", async (request, response) => {
       }));
     }
   } finally {
+    try {
+      await stream.finish();
+    } catch (error) {
+      if (!response.destroyed) response.destroy(error);
+    }
+    // Hold global/per-client search admission through transport close (or its
+    // bounded destruction), not merely through model/retrieval completion.
     cleanupLease.finish();
-    if (!response.writableEnded && !response.destroyed) response.end();
   }
   return undefined;
 });
@@ -694,10 +721,43 @@ app.post("/api/search/follow-up", async (request, response) => {
   }
 });
 
-app.get("/api/corpus", async (_request, response) => {
-  const stats = await corpusStats();
-  response.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
-  return response.json(stats);
+app.get("/api/corpus", async (request, response) => {
+  const lifecycle = bindRequestAbort(request, response);
+  const deadlineAt = Date.now() + 1_500;
+  const clientKey = requestRateLimitAddress(request, proxyConfiguration.trustedProxyCidrs, {
+    ipv6PrefixBits: ipv6ClientPrefixBits,
+  });
+  let release = () => undefined;
+  try {
+    release = await corpusStatsAdmission.acquire(
+      clientKey,
+      { signal: lifecycle.controller.signal, maximumWaitMs: 500 },
+    );
+    const stats = await corpusStats({
+      signal: lifecycle.controller.signal,
+      deadlineAt,
+      clientKey,
+    });
+    if (lifecycle.controller.signal.aborted || response.destroyed) return undefined;
+    response.setHeader(
+      "Cache-Control",
+      stats.status === "degraded" ? "no-store" : "public, max-age=60, stale-while-revalidate=300",
+    );
+    return response.json(stats);
+  } catch (error) {
+    if (response.destroyed) return undefined;
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("Retry-After", "1");
+    return response.status(error?.code === "CORPUS_CAPACITY" ? 429 : 503).json({
+      enabled: true,
+      status: "degraded",
+      documents: 0,
+      hydrated: 0,
+    });
+  } finally {
+    release();
+    lifecycle.cleanup();
+  }
 });
 
 async function handleSuggestions(request, response) {
@@ -709,11 +769,14 @@ async function handleSuggestions(request, response) {
     response.setHeader("Cache-Control", "no-store");
     return response.json({ suggestions: [] });
   }
-  const curated = getForestrySuggestions(query, 5).map((value) => ({ value, count: null }));
+  const curated = getReviewedSearchSuggestions(query, 5).map((value) => ({ value, count: null }));
   const lifecycle = bindRequestAbort(request, response);
   try {
     const result = await getKeskkonnaportaalSuggestions(query, 5, {
       signal: lifecycle.controller.signal,
+      clientKey: requestRateLimitAddress(request, proxyConfiguration.trustedProxyCidrs, {
+        ipv6PrefixBits: ipv6ClientPrefixBits,
+      }),
     });
     const seen = new Set();
     const suggestions = [...curated, ...result.suggestions]
@@ -967,6 +1030,8 @@ const gracefulShutdown = createGracefulShutdown(server, {
   onDrainStart: () => {
     containerReadiness = "draining";
     searchAdmission.close();
+    corpusStatsAdmission.close();
+    closeCorpusStatsBackendAdmission(new DOMException("Server is shutting down", "AbortError"));
     terrapointAdmission.close();
     if (corpusRefreshTimeout) clearTimeout(corpusRefreshTimeout);
     if (corpusRefreshInterval) clearInterval(corpusRefreshInterval);

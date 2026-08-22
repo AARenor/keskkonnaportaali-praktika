@@ -1,11 +1,23 @@
 import { createHash } from "node:crypto";
 import { readSearchCache, recordSearch } from "./database.mjs";
 import { answerCadastreQuestion } from "./cadastre.mjs";
+import { composeClimateJogevaDailyMeanResponse } from "./climate.mjs";
 import {
   hydrateOfficialDocuments,
 } from "./integrations.mjs";
 import { generateGroundedAnswer, sanitizeLlmEvidenceText } from "./llm.mjs";
-import { composeForestHarvestBalanceAnswer } from "./indicators.mjs";
+import { composeEelisEmajogiPublicWatercourseResponse } from "./eelis.mjs";
+import {
+  composeStatisticsHazardousWasteResponse,
+  composeStatisticsWastewaterBht7Response,
+  composeStatisticsWaterAbstractionResponse,
+} from "./statistics.mjs";
+import {
+  composeCurrentWeatherObservationResponse,
+  composeForestHarvestBalanceAnswer,
+  composeLatestPublishedHydrologyResponse,
+  composeNationalWeatherForecastResponse,
+} from "./indicators.mjs";
 import {
   canonicalResultUrl,
   evidenceDocumentsFromListing,
@@ -22,6 +34,7 @@ import {
   canonicalizePublicSearchQuery,
   composeScopeResponse,
   composeSearchResponse,
+  composeWasteFacilitiesNavigationResponse,
   forestryIntentServiceDocumentIds,
   hasCompleteSentenceEnding,
   normalize,
@@ -30,7 +43,7 @@ import {
   textHasQueryRoot,
 } from "./search.mjs";
 
-export const SEARCH_RESPONSE_REVISION = "answer-v31-claim-complete-witnesses";
+export const SEARCH_RESPONSE_REVISION = "answer-v38-structured-hazardous-waste";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 
 function rankPortalDocuments(query, documents) {
@@ -659,7 +672,7 @@ export function publicResponse(draft) {
     ...response,
     sources: visibleSources.map((source) => {
       const publicKeys = [
-        "id", "citation", "title", "organization", "type", "published", "url", "evidenceExcerpt", "locator", "tags", "sourceTier",
+        "id", "citation", "title", "organization", "type", "published", "url", "evidenceExcerpt", "locator", "actionUrl", "actionLabel", "tags", "sourceTier",
       ];
       if (!source.evidenceExcerpt) publicKeys.splice(7, 0, "summary");
       return {
@@ -821,6 +834,8 @@ export function searchListingRevision(listing = {}) {
     String(item.title || ""),
     String(item.summary || ""),
     String(item.locator || ""),
+    String(item.actionUrl || ""),
+    String(item.actionLabel || ""),
     String(item.published || ""),
     String(item.sourceTier || ""),
     String(item._contentHash || item.content || ""),
@@ -883,7 +898,33 @@ async function searchWithinBudget(cleanQuery, {
   }
 
   let draft;
-  if (assessment.kind !== "answerable") {
+  const structuredIndicatorCandidate = composeCurrentWeatherObservationResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+  }) || composeNationalWeatherForecastResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+  }) || composeLatestPublishedHydrologyResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+  }) || composeEelisEmajogiPublicWatercourseResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+  }) || composeStatisticsWaterAbstractionResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+  }) || composeStatisticsHazardousWasteResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+  }) || composeStatisticsWastewaterBht7Response(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+  }) || composeClimateJogevaDailyMeanResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+  }) || composeWasteFacilitiesNavigationResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+  });
+  const structuredIndicatorDraft = draftMatchesListingAndFilters(
+    structuredIndicatorCandidate,
+    searchResults,
+    filters,
+  ) ? structuredIndicatorCandidate : null;
+  if (structuredIndicatorDraft) {
+    draft = structuredIndicatorDraft;
+  } else if (assessment.kind !== "answerable") {
     draft = composeScopeResponse(cleanQuery, assessment);
     if (searchResults && !draftSourcesBelongToListing(draft, searchResults)) {
       const filteredDocuments = rankPortalDocuments(retrievalQuery, evidenceDocumentsFromListing(searchResults));
@@ -908,6 +949,20 @@ async function searchWithinBudget(cleanQuery, {
       retrievalQuery,
       searchResults,
       clientKey: llmClientKey,
+    });
+  }
+  if (!draftMatchesListingAndFilters(draft, searchResults, filters)) {
+    const filteredDocuments = rankPortalDocuments(
+      retrievalQuery,
+      evidenceDocumentsFromListing(searchResults)
+        .filter((document) => resultMatchesFilters(document, filters)),
+    );
+    draft = composeSearchResponse(cleanQuery, filteredDocuments, {
+      answerable: false,
+      clarification: "Valitud filtrid välistavad vastuse jaoks vajaliku tõendi või see puudub nähtavast tulemusehulgast. Lähtesta filter või täpsusta päringut.",
+      evidenceKind: "filtered-source-exclusion",
+      limit: 6,
+      total: Number(searchResults?.total || filteredDocuments.length),
     });
   }
   throwIfRequestAborted(signal);
@@ -944,7 +999,10 @@ async function searchWithinBudget(cleanQuery, {
   } else {
     draft = deterministicDraft;
   }
-  if (llmResult.related?.length) draft.related = mergeRelatedQuestions(llmResult.related, draft.related, 6);
+  // Related-question links are reviewed product copy, not answer content. A
+  // model may still emit the legacy schema field, but untrusted evidence must
+  // never turn that uncited field into public navigation or hidden-prompt text.
+  draft.related = mergeRelatedQuestions([], draft.related, 6);
   draft.generatedAt = new Date().toISOString();
   const response = publicResponse(draft);
   const durationMs = Date.now() - startedAt;
@@ -957,10 +1015,15 @@ async function searchWithinBudget(cleanQuery, {
     evidenceKind === "safe-abstention"
     || evidenceKind === "needs-clarification"
     || evidenceKind === "official-live-routing"
+    || evidenceKind === "structured-national-weather-forecast"
     || (evidenceKind === "structured-forest-balance" && !structuredStale)
     || (evidenceKind === "official-spatial-snapshot" && !spatialDegraded)
   );
-  const ttlMinutes = ["official-live-routing", "structured-forest-balance"].includes(evidenceKind) ? 5 : 20;
+  const ttlMinutes = [
+    "official-live-routing",
+    "structured-national-weather-forecast",
+    "structured-forest-balance",
+  ].includes(evidenceKind) ? 5 : 20;
 
   if (requestCanStillPersist({ signal, deadlineAt })) {
     void recordSearch({
@@ -983,10 +1046,53 @@ async function searchWithinBudget(cleanQuery, {
 export function searchTimeoutFallback(cleanQuery, {
   assessmentQuery = cleanQuery,
   searchResults,
+  filters = {},
   reason = "deadline",
 } = {}) {
   const assessment = assessSearchQuery(assessmentQuery);
-  if (assessment.kind !== "answerable") return publicResponse(composeScopeResponse(cleanQuery, assessment));
+  const structuredCandidate = composeCurrentWeatherObservationResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+  }) || composeNationalWeatherForecastResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+  }) || composeLatestPublishedHydrologyResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+  }) || composeEelisEmajogiPublicWatercourseResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+  }) || composeStatisticsWaterAbstractionResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+  }) || composeStatisticsHazardousWasteResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+  }) || composeStatisticsWastewaterBht7Response(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+  }) || composeClimateJogevaDailyMeanResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+  }) || composeWasteFacilitiesNavigationResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+  });
+  const structuredIndicator = draftMatchesListingAndFilters(
+    structuredCandidate,
+    searchResults,
+    filters,
+  ) ? structuredCandidate : null;
+  if (structuredIndicator) return publicResponse(structuredIndicator);
+  if (assessment.kind !== "answerable") {
+    const scopeDraft = composeScopeResponse(cleanQuery, assessment);
+    if (draftMatchesListingAndFilters(scopeDraft, searchResults, filters)) {
+      return publicResponse(scopeDraft);
+    }
+    const visible = rankPortalDocuments(
+      assessmentQuery,
+      evidenceDocumentsFromListing(searchResults)
+        .filter((document) => resultMatchesFilters(document, filters)),
+    );
+    return publicResponse(composeSearchResponse(cleanQuery, visible, {
+      answerable: false,
+      clarification: "Valitud filtrid välistavad selle küsimuse jaoks vajaliku reaalaja- või registriallika või see puudub nähtavast tulemusehulgast. Lähtesta filter või täpsusta päringut.",
+      evidenceKind: "filtered-scope-exclusion",
+      limit: 6,
+      total: Number(searchResults?.total || visible.length),
+    }));
+  }
   const sourceUnavailable = reason === "source-error";
   const capacityLimited = reason === "capacity";
   const ranked = searchResults?.items?.length

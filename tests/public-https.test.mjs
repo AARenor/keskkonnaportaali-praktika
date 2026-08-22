@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   createPublicOnlyLookup,
   isPublicIpAddress,
+  requestApprovedPublicHttpsJsonPost,
   requestApprovedPublicHttpsText,
   validateApprovedPublicHttpsUrl,
 } from "../server/public-https.mjs";
@@ -15,9 +16,9 @@ function mockHttpsRequest(responses, calls) {
   return (url, options, callback) => {
     const request = new EventEmitter();
     let response;
-    request.end = () => queueMicrotask(() => {
+    request.end = (body) => queueMicrotask(() => {
       const spec = responses.shift();
-      calls.push({ url: url.toString(), options });
+      calls.push({ url: url.toString(), options, body });
       response = spec.stream || Readable.from(spec.chunks || [spec.body || ""]);
       response.statusCode = spec.status;
       response.headers = spec.headers || {};
@@ -83,10 +84,11 @@ test("public HTTPS transport validates every redirect and bounds streamed bytes"
     maximumBytes: 32,
     requestImpl: mockHttpsRequest([
       { status: 302, headers: { location: "/next" } },
-      { status: 200, body: "safe evidence" },
+      { status: 200, body: "safe evidence", headers: { "content-profile": "apijahiala" } },
     ], calls),
   });
   assert.equal(safe.body, "safe evidence");
+  assert.equal(safe.headers["content-profile"], "apijahiala");
   assert.deepEqual(calls.map((call) => call.url), [
     "https://public.example/start",
     "https://public.example/next",
@@ -135,6 +137,40 @@ test("public HTTPS transport destroys redirect bodies instead of draining them",
   assert.equal(result.body, "ok");
   assert.equal(destroyed, true);
   assert.equal(reads, 0);
+});
+
+test("public HTTPS JSON POST pins method, body contract and forbids redirects", async () => {
+  const origins = new Set(["https://public.example"]);
+  const body = JSON.stringify({ query: [{ code: "Aasta", values: ["2024"] }] });
+  const calls = [];
+  const result = await requestApprovedPublicHttpsJsonPost("https://public.example/stat", {
+    approvedOrigins: origins,
+    body,
+    maximumBytes: 64,
+    requestImpl: mockHttpsRequest([
+      { status: 200, body: '{"value":[654301]}' },
+    ], calls),
+  });
+  assert.equal(result.body, '{"value":[654301]}');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.method, "POST");
+  assert.equal(calls[0].options.headers.Accept, "application/json");
+  assert.equal(calls[0].options.headers["Content-Type"], "application/json");
+  assert.equal(calls[0].options.headers["Content-Length"], String(Buffer.byteLength(body)));
+  assert.equal(calls[0].body, body);
+
+  await assert.rejects(requestApprovedPublicHttpsJsonPost("https://public.example/stat", {
+    approvedOrigins: origins,
+    body,
+    requestImpl: mockHttpsRequest([
+      { status: 307, headers: { location: "/other" } },
+    ], []),
+  }), /redirects are not allowed/u);
+  await assert.rejects(requestApprovedPublicHttpsJsonPost("https://public.example/stat", {
+    approvedOrigins: origins,
+    body: "not json",
+    requestImpl: mockHttpsRequest([], []),
+  }), /invalid/u);
 });
 
 test("grounding audit approves every HTTPS locator in the official source catalogue", () => {

@@ -1388,6 +1388,33 @@ h3 {
   color: #65757f;
 }
 
+.answer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.answer-actions a {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #9bb6c4;
+  border-radius: 999px;
+  padding: 8px 12px;
+  color: var(--brand-700);
+  font-size: 0.86rem;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.answer-actions a:hover,
+.answer-actions a:focus-visible {
+  border-color: var(--brand-700);
+  background: #eef7fa;
+  text-decoration: underline;
+}
+
 .answer-note svg {
   flex: 0 0 auto;
   color: #3d7f64;
@@ -1736,93 +1763,6 @@ h3 {
 .citation:hover > span:first-child {
   background: #fff;
   color: var(--brand-900);
-}
-
-.answer-evidence {
-  max-width: 780px;
-  margin-top: 24px;
-  border-top: 1px solid #dce8ed;
-  border-bottom: 1px solid #dce8ed;
-}
-
-.answer-evidence summary {
-  display: flex;
-  min-height: 48px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  color: #294453;
-  cursor: pointer;
-  font-size: 0.9rem;
-  font-weight: 700;
-  list-style: none;
-}
-
-.answer-evidence summary::-webkit-details-marker {
-  display: none;
-}
-
-.answer-evidence summary svg {
-  flex: 0 0 auto;
-  transition: transform 160ms ease;
-}
-
-.answer-evidence[open] summary svg {
-  transform: rotate(180deg);
-}
-
-.answer-evidence__list {
-  display: grid;
-  gap: 0;
-  padding-bottom: 6px;
-}
-
-.answer-evidence__source {
-  padding: 13px 0 15px;
-  border-top: 1px solid #edf2f4;
-}
-
-.answer-evidence__source > a {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) 16px;
-  align-items: start;
-  gap: 8px;
-  color: #005184;
-  text-decoration: none;
-}
-
-.answer-evidence__source > a > span {
-  display: grid;
-  width: 20px;
-  height: 20px;
-  place-items: center;
-  border-radius: 50%;
-  background: #dff1f7;
-  font-size: 0.74rem;
-}
-
-.answer-evidence__source p {
-  margin: 7px 24px 0 30px;
-  color: #445b66;
-  font-size: 0.88rem;
-  line-height: 1.52;
-}
-
-.answer-evidence__source small {
-  display: block;
-  margin: 6px 24px 0 30px;
-  color: #687b85;
-  font-size: 0.78rem;
-  line-height: 1.45;
-}
-
-.answer-evidence--compact {
-  margin-top: 14px;
-}
-
-.answer-evidence--compact summary {
-  min-height: 40px;
-  font-size: 0.84rem;
 }
 
 .answer-progress {

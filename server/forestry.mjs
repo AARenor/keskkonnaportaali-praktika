@@ -545,7 +545,7 @@ export function getForestrySuggestions(query, limit = 5) {
       || left.documentIndex - right.documentIndex
       || left.aliasIndex - right.aliasIndex)
     .map((item) => item.value);
-  const semanticMatches = retrieveForestryDocuments(clean, safeLimit)
+  const semanticMatches = (isForestryQuestion(clean) ? retrieveForestryDocuments(clean, safeLimit) : [])
     .filter((item) => item.score >= 0.22)
     .map((item) => item.document.question_aliases[0] || item.document.title)
     .filter(Boolean);

@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { isClimateJogevaDailyMeanQuery } from "./climate.mjs";
+import { isEelisEmajogiPublicWatercourseQuery } from "./eelis.mjs";
 import {
   enqueueOfficialDiscoveryDocuments,
   normalizeSearchFilters,
@@ -8,6 +10,7 @@ import { searchOfficialSites } from "./integrations.mjs";
 import {
   FOREST_BALANCE_EUROSTAT_API_URL,
   isForestHarvestBalanceQuery,
+  isLatestPublishedHydrologyQuery,
   loadStructuredIndicatorDocuments,
   validatedForestBalanceProjection,
 } from "./indicators.mjs";
@@ -29,6 +32,11 @@ import {
   textHasQueryRoot,
 } from "./search.mjs";
 import { sourceEvidenceEligibility, sourceSupportsRouteClass } from "./source-registry.mjs";
+import {
+  isStatisticsHazardousWasteQuery,
+  isStatisticsWastewaterBht7Query,
+  isStatisticsWaterAbstractionQuery,
+} from "./statistics.mjs";
 
 const PUBLIC_ITEM_FIELDS = [
   "id", "title", "url", "summary", "locator", "organization", "type", "published", "topics", "sourceTier",
@@ -171,6 +179,23 @@ function hasValidatedForestBalanceProjection(document) {
     && Boolean(validatedForestBalanceProjection(document));
 }
 
+const ADAPTER_BOUND_PROJECTION_FIELDS = new Map([
+  ["statistics-water-abstraction-2024", "_statisticsWaterAbstraction"],
+  ["statistics-wastewater-bht7-2024", "_statisticsWastewaterBht7"],
+  ["statistics-hazardous-waste-2024", "_statisticsHazardousWaste"],
+]);
+
+function hasAdapterBoundStructuredProjection(document) {
+  const projectionField = ADAPTER_BOUND_PROJECTION_FIELDS.get(document?.id);
+  return Boolean(projectionField)
+    && clean(document?.retrieval) === "official-structured-statistics-pxweb"
+    && hasIndependentEvidenceCapability(document)
+    && document?.[projectionField]
+    && typeof document[projectionField] === "object"
+    && !Array.isArray(document[projectionField])
+    && /^[a-f0-9]{64}$/u.test(clean(document?._contentHash));
+}
+
 function retainedForestBalanceFields(document) {
   const projection = hasValidatedForestBalanceProjection(document)
     ? validatedForestBalanceProjection(document)
@@ -186,7 +211,9 @@ function mergeDuplicate(current, candidate) {
   const candidatePriority = Number(candidate?._ranking?.servicePriority) || 0;
   const currentAnswerEligible = hasIndependentEvidenceCapability(current);
   const candidateAnswerEligible = hasIndependentEvidenceCapability(candidate);
-  const structuredCandidates = [current, candidate].filter(hasValidatedForestBalanceProjection);
+  const structuredCandidates = [current, candidate].filter((document) => (
+    hasValidatedForestBalanceProjection(document) || hasAdapterBoundStructuredProjection(document)
+  ));
   const structuredPreferred = structuredCandidates.length === 1 ? structuredCandidates[0] : null;
   // Prefer the richer display identity. Evidence eligibility is merged
   // separately and fail-closed below, so a route-only alias can never be
@@ -783,9 +810,26 @@ function liveServiceIntentScore(query, roots, document, analysis = analyzePublic
   return 0;
 }
 
+function isElectricVehicleImpactIntent(roots) {
+  return roots.includes("elektriauto")
+    && roots.some((root) => ["keskkonnamoju", "jalajalg", "aku", "elutsukkel"].includes(root));
+}
+
+function isMiningWaterImpactIntent(roots) {
+  return roots.includes("kaevandus")
+    && roots.some((root) => ["keskkonnamoju", "mojutab"].includes(root))
+    && roots.some((root) => ["vesi", "pohjavesi", "puurkaev", "joogivesi", "polevkivi"].includes(root));
+}
+
 function serviceIntentPriority(query, roots, document, analysis = analyzePublicSearchQuery(query)) {
   const liveScore = liveServiceIntentScore(query, roots, document, analysis);
   const normalizedQuery = normalize(query);
+  const latestPublishedHydrology = isLatestPublishedHydrologyQuery(query);
+  const eelisEmajogiPublicWatercourse = isEelisEmajogiPublicWatercourseQuery(query);
+  const statisticsWaterAbstraction = isStatisticsWaterAbstractionQuery(query);
+  const statisticsWastewaterBht7 = isStatisticsWastewaterBht7Query(query);
+  const statisticsHazardousWaste = isStatisticsHazardousWasteQuery(query);
+  const climateJogevaDailyMean = isClimateJogevaDailyMeanQuery(query);
   const requestsHistoricalYear = /\b(?:19|20)\d{2}\b/u.test(normalizedQuery);
   const requestsHistoricalObservations = requestsHistoricalYear
     || /\b(?:ajalool\w*|varasem\w*|arhiiv\w*|vanad?|endisaeg\w*|eelmisel|mullu|moodunud)\b/u.test(normalizedQuery);
@@ -797,6 +841,36 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
     if (document.id === "forest-balance-eurostat-handbook") return 5.5;
     if (document.id === "forest-balance-kaur-methodology") return 5;
     if (document.id === "forest-balance-kaur-five-year") return 4;
+  }
+  if (latestPublishedHydrology) {
+    if (document.id === "latest-published-hydrology") return 7;
+    // The generic current-observation view is useful for genuinely live water
+    // questions, but it must not displace the exact, timestamp-bound dataset.
+    if (document.id === "current-hydrology-observations") return 0;
+  }
+  if (eelisEmajogiPublicWatercourse) {
+    if (document.id === "eelis-emajogi-public-watercourse") return 7;
+    if (document.id === "official-geoserver") return 5;
+  }
+  if (statisticsWaterAbstraction) {
+    if (document.id === "statistics-water-abstraction-2024") return 7;
+    if (document.id === "statistics-pxweb") return 5;
+    if (["current-hydrology-observations", "historical-hydrology-data"].includes(document.id)) return 0;
+  }
+  if (statisticsWastewaterBht7) {
+    if (document.id === "statistics-wastewater-bht7-2024") return 7;
+    if (document.id === "statistics-pxweb") return 5;
+    if (["current-hydrology-observations", "historical-hydrology-data"].includes(document.id)) return 0;
+  }
+  if (statisticsHazardousWaste) {
+    if (document.id === "statistics-hazardous-waste-2024") return 7;
+    if (document.id === "statistics-pxweb") return 5;
+    if (["waste-reporting-data", "municipal-waste-recycling"].includes(document.id)) return 0;
+  }
+  if (climateJogevaDailyMean) {
+    if (document.id === "climate-jogeva-daily-mean") return 7;
+    if (["historical-weather-data", "official-data-services"].includes(document.id)) return 5;
+    if (["current-weather-observations", "weather-forecast"].includes(document.id)) return 0;
   }
   if (document.id === "weather-forecast"
     && /\bkas\b/u.test(normalizedQuery)
@@ -827,7 +901,11 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
   if (roots.includes("pais") && roots.includes("kala") && document.id === "river-dams-fish") return 5;
   if (roots.includes("rohevorgustik") && document.id === "green-network-planning-guide") return 5;
   if (roots.includes("voorliik") && document.id === "invasive-species-guidance") return 5;
-  if (roots.includes("jalajalg") && document.id === "organizational-footprint") return 5;
+  if (isElectricVehicleImpactIntent(roots) && document.id === "electric-vehicle-lifecycle") return 6;
+  if (roots.includes("jalajalg")
+    && !roots.includes("elektriauto")
+    && document.id === "organizational-footprint") return 5;
+  if (isMiningWaterImpactIntent(roots) && document.id === "mining-impact-guidance") return 6;
   if (roots.includes("margala")
     && roots.includes("taastamine")
     && document.id === "wetland-restoration") return 5;
@@ -894,7 +972,6 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
     return requestsClimateMap ? 2 : 3;
   }
   if (roots.includes("kliima") && roots.includes("sademed") && document.id === "climate-atlas") return 2;
-  if (roots.includes("elektriauto") && roots.includes("keskkonnamoju") && document.id === "electric-vehicle-lifecycle") return 3;
   if (roots.includes("kotkas")
     && roots.some((root) => ["keskkonnaluba", "menetluse", "menetlus", "staatus"].includes(root))
     && document.id === "environmental-permits") return 3;
@@ -1059,7 +1136,13 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
     || (coreCoverage === 1
       && (roots.length <= 1 || coherentCoverage >= 0.6));
   const offIntentDirectoryPenalty = document.id === "organizational-footprint"
-    && !roots.includes("jalajalg") ? 24 : 0;
+    && (!roots.includes("jalajalg") || isElectricVehicleImpactIntent(roots))
+    ? 24
+    : document.id === "well-register"
+      && isMiningWaterImpactIntent(roots)
+      && !roots.some((root) => ["register", "andmed"].includes(root))
+      ? 24
+      : 0;
   const broadGatewayPenalty = document.id === "climate-policy-data-gateway"
     && roots.includes("kasvuhoonegaas")
     && !/\b(?:ets|hks|jjm|prognoos\w*|eesmark\w*|kliimapoliitik\w*)\b/u.test(normalize(query))
@@ -1083,11 +1166,18 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
       && roots.includes("mets")
       && roots.includes("kaart")
       && roots.includes("ruumikiht"));
-  const primaryTopic = analysis.domainRoots[0] || assessSearchQuery(query).topic;
+  // Prefer the environmental object over routing context such as “permit”
+  // or “property”. A reviewed route class may bridge missing generic wording,
+  // but it must not make a mining-permit guide relevant to a pond or well.
+  const primarySubjectTopic = analysis.domainRoots.find((root) => ![
+    "kinnistu", "keskkonnaluba", "menetlus", "piirang", "lubatavus", "taotlemine",
+  ].includes(root));
+  const primaryTopic = primarySubjectTopic || analysis.domainRoots[0] || assessSearchQuery(query).topic;
   const primaryIntentMatched = !primaryTopic
     || fieldHasRoot(searchableText, primaryTopic)
     || liveService > 0
-    || routePriority > 0;
+    || servicePriority >= 3
+    || (!primarySubjectTopic && routePriority > 0);
   const semanticIntentMatched = forestryIntent?.kind !== "forest-depletion" || intentEvidence.score > 0;
   const specializedDirectoryIntentMatched = document.id !== "organizational-footprint"
     || roots.includes("jalajalg");
@@ -1142,7 +1232,11 @@ export function rankSearchCandidates(query, documents = [], { sort = "relevance"
       ...document,
       _ranking: scoreSearchCandidate(query, document, index, now, analysis),
     }))
-    .filter((document) => document._ranking.matched && document._ranking.score > 0)
+    // A reviewed, intent-specific service route is itself a deterministic
+    // match signal. Do not discard it merely because a terse directory card
+    // has too little lexical overlap to clear the generic numeric score.
+    .filter((document) => document._ranking.matched
+      && (document._ranking.score > 0 || document._ranking.servicePriority > 0))
     .sort((left, right) => {
       if (sort === "newest") {
         return right._ranking.answerEvidencePriority - left._ranking.answerEvidencePriority
@@ -1354,10 +1448,11 @@ export async function prepareRankedSearchResults(query, {
   const prefixLocalLimit = 50;
   const discoveryQueries = buildDiscoveryQueries(acceptedQuery, 3);
   const discoveryTimeout = Math.max(250, Math.min(2_200, remaining(deadlineAt, 12_000)));
-  // Structured official datasets are compact and high-value evidence. Give them
-  // a separate bounded slice: the live-site discovery reserve can intentionally
-  // collapse to 250 ms under the normal 12 s end-to-end production deadline.
-  const structuredTimeout = Math.max(250, Math.min(2_000, remaining(deadlineAt, 9_000)));
+  // Structured official datasets are compact and high-value evidence. The
+  // hydrology PostgREST endpoint currently responds in roughly four seconds,
+  // so keep a bounded 5.5 s slice while preserving nine seconds for ranking
+  // and answer composition under the normal 15 s request deadline.
+  const structuredTimeout = Math.max(250, Math.min(5_500, remaining(deadlineAt, 9_000)));
   const liveDiscovery = shouldUseLiveDiscovery(safePage)
     ? discoveryQueries.map((discoveryQuery) => searchOfficialSites(discoveryQuery, 6, {
       timeoutMs: discoveryTimeout,
@@ -1515,8 +1610,18 @@ export function isSafeEllipticalFollowUp(value) {
   // answer. Admit it only inside an already accepted conversation, where the
   // root supplies the indicator and subject.
   if (/^(?:aga\s+)?kas\s+(?:19|20)\d{2}\s+aastal$/u.test(normalized)) return true;
-  return /^(?:aga\s+)?(?:kas|kuidas|kui\s+suur|mida|mis)\s+(?:see|seda|selle|sellest|need|neid|nende)\b/u.test(normalized)
-    && normalized.split(" ").length <= 12;
+  // Ellipsis is a narrow full-string grammar, not a trusted prefix. Every
+  // residual token must be consumed here; otherwise an unrelated suffix could
+  // inherit an accepted environmental root and bypass the direct scope gate.
+  const pronoun = "(?:see|seda|selle|sellest|need|neid|nende)";
+  const bounded = normalized.split(" ").length <= 12;
+  if (!bounded) return false;
+  return new RegExp(`^(?:aga\\s+)?(?:mida|mis)\\s+${pronoun}\\s+(?:tähendab|näitab)$`, "u").test(normalized)
+    || new RegExp(`^(?:aga\\s+)?kui\\s+suur\\s+${pronoun}\\s+(?:on|oli)$`, "u").test(normalized)
+    || new RegExp(`^(?:aga\\s+)?kuidas\\s+${pronoun}\\s+(?:arvutatakse|hinnatakse|mõõdetakse|võrreldakse|saadi)$`, "u").test(normalized)
+    || new RegExp(`^(?:aga\\s+)?kas\\s+${pronoun}\\s+(?:on|oli|kehtib|muutus|suurenes|vähenes|kasvas)$`, "u").test(normalized)
+    || new RegExp(`^(?:aga\\s+)?(?:mida|mis)\\s+${pronoun}\\s+(?:(?:viimase|eelneva)\\s+(?:[1-9]|10|ühe|kahe|kolme|nelja|viie|kuue|seitsme|kaheksa|üheksa|kümne)\\s+aasta\\s+jooksul|(?:19|20)\\d{2}\\s+aastaga\\s+võrreldes)\\s+(?:tähendab|näitab)$`, "u").test(normalized)
+    || new RegExp(`^(?:aga\\s+)?millise\\s+aja(?:vahemiku|perioodi)(?:ga)?\\s+${pronoun}(?:\\s+muutusi)?\\s+(?:võrreldakse|hõlmab|katab)$`, "u").test(normalized);
 }
 
 export function blockedFollowUpAssessment(rootQuery, question, previousQuestions = []) {

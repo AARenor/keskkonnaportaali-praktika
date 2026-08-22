@@ -43,6 +43,9 @@ services:
       CORPUS_SYNC_INTERVAL_HOURS: ${CORPUS_SYNC_INTERVAL_HOURS:-24}
       CORPUS_SEED_QUERIES: ${CORPUS_SEED_QUERIES:-mets}
       CORPUS_STARTUP_HYDRATE_LIMIT: ${CORPUS_STARTUP_HYDRATE_LIMIT:-200}
+      PORTAL_UNAVAILABLE_RETENTION_HOURS: ${PORTAL_UNAVAILABLE_RETENTION_HOURS:-720}
+      CORPUS_MAX_ROWS: ${CORPUS_MAX_ROWS:-150000}
+      CORPUS_MAX_BYTES: ${CORPUS_MAX_BYTES:-2000000000}
       OFFICIAL_DISCOVERY_RETENTION_HOURS: ${OFFICIAL_DISCOVERY_RETENTION_HOURS:-168}
       OFFICIAL_DISCOVERY_MAX_ROWS: ${OFFICIAL_DISCOVERY_MAX_ROWS:-20000}
       OFFICIAL_DISCOVERY_PROCESS_URL_BUDGET: ${OFFICIAL_DISCOVERY_PROCESS_URL_BUDGET:-10000}
@@ -72,7 +75,7 @@ services:
         max-file: "3"
 
   postgres:
-    image: postgres:17-alpine
+    image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
     environment:
       POSTGRES_DB: keskkonnaportaal_practice
       POSTGRES_USER: practice_user
@@ -92,7 +95,7 @@ services:
         max-file: "3"
 
   qdrant:
-    image: qdrant/qdrant:v1.17.1
+    image: qdrant/qdrant:v1.17.1@sha256:94728574965d17c6485dd361aa3c0818b325b9016dac5ea6afec7b4b2700865f
     profiles: ["experimental-vector"]
     volumes:
       - practice-qdrant:/qdrant/storage

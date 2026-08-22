@@ -284,7 +284,6 @@ test("curated official registry has unique identities and explicit dynamic-sourc
     "current-weather-observations",
     "weather-warnings",
     "current-hydrology-observations",
-    "environmental-permits",
     "permitted-source-emissions",
     "pakis-register",
     "proto-register",
@@ -295,6 +294,19 @@ test("curated official registry has unique identities and explicit dynamic-sourc
     assert.equal(source.evidenceEligible, false, id);
     assert.ok(["route-only", "timestamped", "versioned"].includes(source.evidencePolicy), id);
   }
+  const permitProfile = registry.find((item) => item.id === "environmental-permits");
+  const permitDocument = documents.find((item) => item.id === "environmental-permits");
+  assert.equal(permitProfile.evidenceEligible, true);
+  assert.equal(permitProfile.evidencePolicy, "versioned");
+  assert.deepEqual(permitProfile.freshness, {
+    class: "reviewed-procedure-extract",
+    basis: "reviewed-at",
+    maxAgeMs: 31 * 24 * 60 * 60 * 1_000,
+    requiresSourceTimestamp: true,
+  });
+  assert.match(permitDocument.content, /Taotluste ja menetluste registrisse/u);
+  assert.match(permitDocument.summary, /portaal ise konkreetset menetlusseisu ei määra/u);
+  assert.doesNotMatch(permitDocument.content, /(?:heaks kiidetud|rahuldatud|tagasi lükatud)/u);
 });
 
 test("route-only and unversioned live records cannot cross the answer-evidence boundary", () => {

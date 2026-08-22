@@ -7,8 +7,35 @@ const databaseUrl = String(process.env.DATABASE_URL || "");
 const searchHashSecret = String(process.env.SEARCH_HASH_SECRET || "");
 export const SEARCH_HASH_VERSION = "hmac-sha256-v3";
 export const SEARCH_CACHE_RESPONSE_SCHEMA = "privacy-safe-v5";
+function boundedPersistenceInteger(value, fallback, minimum, maximum) {
+  return Math.max(minimum, Math.min(Math.trunc(Number(value) || fallback), maximum));
+}
+
+export const SEARCH_CACHE_MAX_ROWS = boundedPersistenceInteger(
+  process.env.SEARCH_CACHE_MAX_ROWS,
+  5_000,
+  100,
+  10_000,
+);
+export const SEARCH_RUN_MAX_ROWS = boundedPersistenceInteger(
+  process.env.SEARCH_RUN_MAX_ROWS,
+  50_000,
+  1_000,
+  100_000,
+);
+export const SEARCH_RETENTION_BATCH_SIZE = boundedPersistenceInteger(
+  process.env.SEARCH_RETENTION_BATCH_SIZE,
+  250,
+  10,
+  500,
+);
+// A database-scoped transaction lock keeps hard row ceilings atomic across
+// replicas. Persistence is optional, so contention fails closed without
+// delaying the public answer or consuming every pool connection.
+export const SEARCH_PERSISTENCE_ADVISORY_LOCK = 1_838_461_027;
 let pool;
 let schemaPromise;
+let searchDataMaintenancePromise;
 
 export function assertSafeDatabaseUrl(value) {
   if (!value) return true;
@@ -346,6 +373,8 @@ export function sanitizeCachedResponse(response, query) {
       url: boundedText(source?.url, 2_000),
       summary: boundedText(source?.summary, 2_000),
       locator: boundedText(source?.locator, 1_000),
+      ...(source?.actionUrl ? { actionUrl: boundedText(source.actionUrl, 2_000) } : {}),
+      ...(source?.actionLabel ? { actionLabel: boundedText(source.actionLabel, 180) } : {}),
       tags: (Array.isArray(source?.tags) ? source.tags : []).map((tag) => boundedText(tag, 120)).filter(Boolean).slice(0, 5),
       sourceTier: boundedText(source?.sourceTier, 40),
     })).filter((source) => source.id && source.title && source.url),
@@ -383,10 +412,6 @@ export function restoreCachedResponse(response, query) {
 }
 
 export const SEARCH_CACHE_READ_SQL = `
-  WITH expired AS (
-    DELETE FROM practice_search_cache
-    WHERE expires_at <= NOW()
-  )
   SELECT response
   FROM practice_search_cache
   WHERE query_hash = $1
@@ -396,19 +421,104 @@ export const SEARCH_CACHE_READ_SQL = `
 `;
 
 export const SEARCH_DATA_PURGE_SQL = `
-  WITH deleted_cache AS (
-    DELETE FROM practice_search_cache
+  WITH expired_cache_victims AS (
+    SELECT query_hash
+    FROM practice_search_cache
     WHERE expires_at <= NOW()
+      OR key_version <> 'hmac-sha256-v3'
+      OR response_schema <> 'privacy-safe-v5'
+    ORDER BY expires_at ASC, query_hash ASC
+    LIMIT $1
+    FOR UPDATE
+  ), deleted_cache AS (
+    DELETE FROM practice_search_cache AS cache
+    USING expired_cache_victims AS victims
+    WHERE cache.query_hash = victims.query_hash
     RETURNING 1
-  ), deleted_runs AS (
-    DELETE FROM practice_search_runs
+  ), expired_run_victims AS (
+    SELECT id
+    FROM practice_search_runs
     WHERE created_at < NOW() - INTERVAL '30 days'
+      OR COALESCE(provenance->>'hashVersion', '') <> 'hmac-sha256-v3'
+    ORDER BY created_at ASC, id ASC
+    LIMIT $1
+    FOR UPDATE
+  ), deleted_runs AS (
+    DELETE FROM practice_search_runs AS runs
+    USING expired_run_victims AS victims
+    WHERE runs.id = victims.id
     RETURNING 1
   )
   SELECT
     (SELECT COUNT(*)::INTEGER FROM deleted_cache) AS deleted_cache,
     (SELECT COUNT(*)::INTEGER FROM deleted_runs) AS deleted_runs
 `;
+
+export const SEARCH_CACHE_CAPACITY_SQL = `
+  SELECT query_hash AS victim
+  FROM practice_search_cache
+  ORDER BY created_at DESC, query_hash DESC
+  LIMIT $2 OFFSET $1
+  FOR UPDATE
+`;
+
+export const SEARCH_RUN_CAPACITY_SQL = `
+  SELECT id AS victim
+  FROM practice_search_runs
+  ORDER BY created_at DESC, id DESC
+  LIMIT $2 OFFSET $1
+  FOR UPDATE
+`;
+
+async function acquireSearchPersistenceLock(client) {
+  const result = await client.query(
+    "SELECT pg_try_advisory_xact_lock($1::integer) AS acquired",
+    [SEARCH_PERSISTENCE_ADVISORY_LOCK],
+  );
+  // Lightweight test clients may omit the synthetic lock row. Production
+  // PostgreSQL always returns it; only an explicit false means contention.
+  return result.rows?.[0]?.acquired !== false;
+}
+
+async function deleteVictims(client, kind, victims) {
+  if (!victims.length) return 0;
+  const result = kind === "cache"
+    ? await client.query(
+      "DELETE FROM practice_search_cache WHERE query_hash = ANY($1::text[])",
+      [victims.map(String)],
+    )
+    : await client.query(
+      "DELETE FROM practice_search_runs WHERE id = ANY($1::bigint[])",
+      [victims.map((value) => String(value))],
+    );
+  return Number(result.rowCount ?? victims.length);
+}
+
+async function trimSearchPersistenceCapacity(client, kind, { upcomingRows = 0 } = {}) {
+  const maximumRows = kind === "cache" ? SEARCH_CACHE_MAX_ROWS : SEARCH_RUN_MAX_ROWS;
+  const offset = Math.max(0, maximumRows - Math.max(0, Math.trunc(upcomingRows)));
+  const result = await client.query(
+    kind === "cache" ? SEARCH_CACHE_CAPACITY_SQL : SEARCH_RUN_CAPACITY_SQL,
+    [offset, SEARCH_RETENTION_BATCH_SIZE + 1],
+  );
+  const candidates = (result.rows || []).map((row) => row.victim).filter((value) => value !== undefined);
+  const victims = candidates.slice(0, SEARCH_RETENTION_BATCH_SIZE);
+  const deleted = await deleteVictims(client, kind, victims);
+  return {
+    deleted,
+    // The extra sentinel row proves that bounded cleanup could not yet make
+    // room. Skip optional persistence until a later maintenance pass.
+    canInsert: candidates.length <= SEARCH_RETENTION_BATCH_SIZE,
+  };
+}
+
+async function purgeExpiredSearchDataBatch(client) {
+  const result = await client.query(SEARCH_DATA_PURGE_SQL, [SEARCH_RETENTION_BATCH_SIZE]);
+  return {
+    deletedCache: Number(result.rows?.[0]?.deleted_cache || 0),
+    deletedRuns: Number(result.rows?.[0]?.deleted_runs || 0),
+  };
+}
 
 function getPool() {
   if (!databaseUrl) return null;
@@ -437,9 +547,9 @@ async function ensureSchema() {
   if (!poolInstance) return false;
   if (!schemaPromise) {
     schemaPromise = poolInstance.query(`
+      SELECT pg_advisory_xact_lock(1838461028);
       CREATE TABLE IF NOT EXISTS practice_search_cache (
         query_hash TEXT PRIMARY KEY,
-        query_text TEXT NOT NULL,
         response JSONB NOT NULL,
         key_version TEXT NOT NULL DEFAULT 'hmac-sha256-v3',
         response_schema TEXT NOT NULL DEFAULT 'privacy-safe-v5',
@@ -449,7 +559,6 @@ async function ensureSchema() {
       CREATE TABLE IF NOT EXISTS practice_search_runs (
         id BIGSERIAL PRIMARY KEY,
         query_hash TEXT NOT NULL,
-        query_text TEXT NOT NULL,
         answer_provider TEXT NOT NULL,
         source_count INTEGER NOT NULL,
         duration_ms INTEGER NOT NULL,
@@ -458,23 +567,46 @@ async function ensureSchema() {
       );
       CREATE INDEX IF NOT EXISTS practice_search_runs_created_at_idx
         ON practice_search_runs (created_at DESC);
+      CREATE INDEX IF NOT EXISTS practice_search_cache_expires_at_hash_idx
+        ON practice_search_cache (expires_at ASC, query_hash ASC);
+      CREATE INDEX IF NOT EXISTS practice_search_cache_created_at_hash_idx
+        ON practice_search_cache (created_at ASC, query_hash ASC);
+      CREATE INDEX IF NOT EXISTS practice_search_runs_created_at_id_idx
+        ON practice_search_runs (created_at ASC, id ASC);
       ALTER TABLE practice_search_cache
         ADD COLUMN IF NOT EXISTS key_version TEXT NOT NULL DEFAULT 'plain-sha256-v0';
       ALTER TABLE practice_search_cache
         ADD COLUMN IF NOT EXISTS response_schema TEXT NOT NULL DEFAULT 'legacy-v0';
+      DO $privacy_migration$
+      BEGIN
+        IF EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = current_schema()
+            AND table_name = 'practice_search_cache'
+            AND column_name = 'query_text'
+        ) OR EXISTS (
+          SELECT 1
+          FROM practice_search_cache
+          WHERE key_version <> 'hmac-sha256-v3'
+             OR response_schema <> 'privacy-safe-v5'
+             OR COALESCE(response->>'cacheSchema', '') <> 'privacy-safe-v5'
+          LIMIT 1
+        ) THEN
+          -- The cache is optional. A metadata-level reset removes every legacy
+          -- response before readiness without an unbounded row-by-row delete.
+          TRUNCATE TABLE practice_search_cache;
+        END IF;
+      END
+      $privacy_migration$;
+      ALTER TABLE practice_search_cache
+        DROP COLUMN IF EXISTS query_text;
+      ALTER TABLE practice_search_runs
+        DROP COLUMN IF EXISTS query_text;
       ALTER TABLE practice_search_cache
         ALTER COLUMN key_version SET DEFAULT 'hmac-sha256-v3';
       ALTER TABLE practice_search_cache
         ALTER COLUMN response_schema SET DEFAULT 'privacy-safe-v5';
-      DELETE FROM practice_search_cache
-        WHERE key_version <> 'hmac-sha256-v3' OR response_schema <> 'privacy-safe-v5';
-      DELETE FROM practice_search_runs
-        WHERE COALESCE(provenance->>'hashVersion', '') <> 'hmac-sha256-v3';
-      UPDATE practice_search_runs
-        SET query_text = '[redacted]'
-        WHERE query_text <> '[redacted]';
-      DELETE FROM practice_search_cache WHERE expires_at <= NOW();
-      DELETE FROM practice_search_runs WHERE created_at < NOW() - INTERVAL '30 days';
     `).then(() => true).catch((error) => {
       schemaPromise = undefined;
       throw error;
@@ -498,7 +630,7 @@ export async function withDatabaseClient(operation) {
 export async function databaseQuery(text, parameters = [], options = {}) {
   const poolInstance = getPool();
   if (!poolInstance) return null;
-  await ensureSchema();
+  if (options?.ensureSearchSchema !== false) await ensureSchema();
   const signal = options?.signal;
   const deadlineAt = Number(options?.deadlineAt);
   const requestScoped = Boolean(signal) || Number.isFinite(deadlineAt);
@@ -558,20 +690,44 @@ export async function readSearchCache(query, revision) {
   }
 }
 
-export async function purgeExpiredSearchData() {
-  const poolInstance = getPool();
-  if (!poolInstance) return { status: "disabled", deletedCache: 0, deletedRuns: 0 };
-  try {
-    await ensureSchema();
-    const result = await poolInstance.query(SEARCH_DATA_PURGE_SQL);
-    return {
-      status: "ready",
-      deletedCache: Number(result.rows[0]?.deleted_cache || 0),
-      deletedRuns: Number(result.rows[0]?.deleted_runs || 0),
-    };
-  } catch {
-    return { status: "degraded", deletedCache: 0, deletedRuns: 0 };
-  }
+export function purgeExpiredSearchData() {
+  if (searchDataMaintenancePromise) return searchDataMaintenancePromise;
+  searchDataMaintenancePromise = (async () => {
+    const poolInstance = getPool();
+    if (!poolInstance) return { status: "disabled", deletedCache: 0, deletedRuns: 0 };
+    let client;
+    let transactionOpen = false;
+    try {
+      await ensureSchema();
+      client = await poolInstance.connect();
+      await client.query("BEGIN");
+      transactionOpen = true;
+      await client.query("SELECT set_config('statement_timeout', $1, TRUE)", ["3000ms"]);
+      if (!await acquireSearchPersistenceLock(client)) {
+        await client.query("ROLLBACK");
+        transactionOpen = false;
+        return { status: "limited", deletedCache: 0, deletedRuns: 0 };
+      }
+      const expired = await purgeExpiredSearchDataBatch(client);
+      const cacheCapacity = await trimSearchPersistenceCapacity(client, "cache");
+      const runCapacity = await trimSearchPersistenceCapacity(client, "run");
+      await client.query("COMMIT");
+      transactionOpen = false;
+      return {
+        status: "ready",
+        deletedCache: expired.deletedCache + cacheCapacity.deleted,
+        deletedRuns: expired.deletedRuns + runCapacity.deleted,
+      };
+    } catch {
+      if (transactionOpen) await client?.query("ROLLBACK").catch(() => undefined);
+      return { status: "degraded", deletedCache: 0, deletedRuns: 0 };
+    } finally {
+      client?.release();
+    }
+  })().finally(() => {
+    searchDataMaintenancePromise = undefined;
+  });
+  return searchDataMaintenancePromise;
 }
 
 export function persistenceWindowOpen({ signal, deadlineAt, now = Date.now(), reserveMs = 0 } = {}) {
@@ -605,29 +761,68 @@ export async function runSearchPersistenceTransaction(client, {
       await client.query("SELECT set_config('statement_timeout', $1, TRUE)", [`${statementBudget}ms`]);
     }
     requirePersistenceWindow({ signal, deadlineAt }, 100);
+    if (!await acquireSearchPersistenceLock(client)) {
+      await client.query("ROLLBACK");
+      return { cacheStored: false, runStored: false, limited: true };
+    }
+    await purgeExpiredSearchDataBatch(client);
+    requirePersistenceWindow({ signal, deadlineAt }, 100);
+    let cacheStored = false;
+    let runStored = false;
+    let limited = false;
     if (cacheResponse && safeResponse && isPersistentResponseCacheProvider(answerProvider)) {
-      await client.query(
-        `INSERT INTO practice_search_cache (query_hash, query_text, response, expires_at, key_version, response_schema)
-         VALUES ($1, '[cache-key]', $2::jsonb, NOW() + ($3 * INTERVAL '1 minute'), 'hmac-sha256-v3', 'privacy-safe-v5')
-         ON CONFLICT (query_hash) DO UPDATE SET
-           query_text = '[cache-key]',
-           response = EXCLUDED.response,
-           key_version = EXCLUDED.key_version,
-           response_schema = EXCLUDED.response_schema,
-           created_at = NOW(),
-           expires_at = EXCLUDED.expires_at`,
+      const updated = await client.query(
+        `UPDATE practice_search_cache
+         SET response = $2::jsonb,
+             key_version = 'hmac-sha256-v3',
+             response_schema = 'privacy-safe-v5',
+             created_at = NOW(),
+             expires_at = NOW() + ($3 * INTERVAL '1 minute')
+         WHERE query_hash = $1
+         RETURNING query_hash`,
         [hash, JSON.stringify(safeResponse), Math.max(1, Math.min(Number(ttlMinutes) || 60, 24 * 60))],
       );
       requirePersistenceWindow({ signal, deadlineAt }, 100);
+      cacheStored = Number(updated.rowCount || 0) > 0;
+      if (!cacheStored) {
+        const capacity = await trimSearchPersistenceCapacity(client, "cache", { upcomingRows: 1 });
+        requirePersistenceWindow({ signal, deadlineAt }, 100);
+        if (capacity.canInsert) {
+          const inserted = await client.query(
+            `INSERT INTO practice_search_cache (query_hash, response, expires_at, key_version, response_schema)
+             VALUES ($1, $2::jsonb, NOW() + ($3 * INTERVAL '1 minute'), 'hmac-sha256-v3', 'privacy-safe-v5')
+             ON CONFLICT (query_hash) DO UPDATE SET
+               response = EXCLUDED.response,
+               key_version = EXCLUDED.key_version,
+               response_schema = EXCLUDED.response_schema,
+               created_at = NOW(),
+               expires_at = EXCLUDED.expires_at
+             RETURNING query_hash`,
+            [hash, JSON.stringify(safeResponse), Math.max(1, Math.min(Number(ttlMinutes) || 60, 24 * 60))],
+          );
+          cacheStored = Number(inserted.rowCount ?? 1) > 0;
+        } else {
+          limited = true;
+        }
+      }
     }
-    await client.query(
-      `INSERT INTO practice_search_runs
-        (query_hash, query_text, answer_provider, source_count, duration_ms, provenance)
-       VALUES ($1, '[redacted]', $2, $3, $4, $5::jsonb)`,
-      [hash, answerProvider, response?.sources?.length || 0, Math.round(durationMs), JSON.stringify(provenance)],
-    );
+    const runCapacity = await trimSearchPersistenceCapacity(client, "run", { upcomingRows: 1 });
+    requirePersistenceWindow({ signal, deadlineAt }, 100);
+    if (runCapacity.canInsert) {
+      const inserted = await client.query(
+        `INSERT INTO practice_search_runs
+          (query_hash, answer_provider, source_count, duration_ms, provenance)
+         VALUES ($1, $2, $3, $4, $5::jsonb)
+         RETURNING id`,
+        [hash, answerProvider, response?.sources?.length || 0, Math.round(durationMs), JSON.stringify(provenance)],
+      );
+      runStored = Number(inserted.rowCount ?? 1) > 0;
+    } else {
+      limited = true;
+    }
     requirePersistenceWindow({ signal, deadlineAt }, 100);
     await client.query("COMMIT");
+    return { cacheStored, runStored, limited };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
@@ -667,7 +862,7 @@ export async function recordSearch({
       documentIds: (documentIds || []).map(String).slice(0, 12),
     };
     const safeResponse = sanitizeCachedResponse(response, acceptedQuery);
-    await runSearchPersistenceTransaction(client, {
+    const persistence = await runSearchPersistenceTransaction(client, {
       hash,
       safeResponse,
       cacheResponse: cacheResponse && isPersistentResponseCacheProvider(answerProvider),
@@ -679,7 +874,7 @@ export async function recordSearch({
       signal,
       deadlineAt,
     });
-    return { status: "ready" };
+    return { status: persistence.limited ? "limited" : "ready", ...persistence };
   } catch (error) {
     return error?.name === "AbortError"
       ? { status: "cancelled" }
