@@ -4300,6 +4300,42 @@ test("hydrated source text stays internal and public output uses an allowlist", 
   assert.match(visible.sources[0].id, /^official-[a-f0-9]{16}$/u);
 });
 
+test("public output compacts sparse citations after removing uncited sources", () => {
+  const source = (citation, id) => ({
+    id,
+    citation,
+    title: `Allikas ${citation}`,
+    organization: "Keskkonnaagentuur",
+    type: "Ametlik allikas",
+    published: "2026",
+    url: `https://keskkonnaportaal.ee/et/${id}`,
+    evidenceExcerpt: `Allika ${citation} kontrollitud tõend.`,
+  });
+  const response = publicResponse({
+    query: "test",
+    answer: {
+      eyebrow: "Allikapõhine kokkuvõte",
+      title: "Test",
+      intro: "Teine allikas kannab sissejuhatust.",
+      introCitations: [2],
+      parts: [{
+        title: "Kolmas allikas",
+        text: "Kolmas allikas kannab lisaväidet.",
+        citations: [3],
+      }],
+      note: "",
+    },
+    sources: [source(1, "uncited"), source(2, "second"), source(3, "third")],
+    related: [],
+    clarification: null,
+    evidence: { kind: "test", answerable: true },
+  });
+  assert.deepEqual(response.answer.introCitations, [1]);
+  assert.deepEqual(response.answer.parts[0].citations, [2]);
+  assert.deepEqual(response.sources.map((item) => item.citation), [1, 2]);
+  assert.equal(response.sources.length, 2);
+});
+
 test("global deadline returns a controlled fallback and aborts remaining work", async () => {
   const controller = new AbortController();
   let cleanupCompleted = false;

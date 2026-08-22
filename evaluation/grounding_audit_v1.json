@@ -8,7 +8,7 @@
     { "id": "G04", "query": "kliimamuutuse mõju sademetele Eestis", "topSource": "precipitation-change" },
     { "id": "G05", "query": "mullaseire tulemused Eestis", "topSource": "soil-monitoring-results" },
     { "id": "G06", "query": "mere seisund Läänemeres 2024", "topSource": "marine-strategy-status" },
-    { "id": "G07", "query": "kaevandamise keskkonnamõju Ida-Virumaal", "topSource": "mining-impact-guidance" },
+    { "id": "G07", "query": "Kuidas tuleb karjäär pärast kaevandamist korrastada?", "topSource": "mined-land-restoration" },
     { "id": "G08", "query": "kiirgusseire tulemused Eestis", "topSource": "radiation-monitoring" },
     { "id": "G09", "query": "KOTKAS keskkonnaloa menetluse staatus", "topSource": "environmental-permits" },
     { "id": "G10", "query": "keskkonnamõju hindamine tuulepargile", "topSource": "wind-farm-assessment-guide" }

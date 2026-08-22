@@ -131,7 +131,7 @@ for (const item of qrels) {
     continue;
   }
   assertPublicContract(item, result);
-  const actual = result.body?.sources?.[0]?.id || null;
+  const actual = result.body?.searchResults?.items?.[0]?.id || null;
   check(actual === item.topSource, "unexpected rank-one source", {
     id: item.id,
     expected: item.topSource,

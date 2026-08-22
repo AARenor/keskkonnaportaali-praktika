@@ -668,9 +668,25 @@ export function publicResponse(draft) {
   const visibleSources = usedCitations.size
     ? (response.sources || []).filter((source) => usedCitations.has(Number(source.citation)))
     : (response.sources || []);
+  const citationMap = new Map(visibleSources.map((source, index) => [
+    Number(source.citation),
+    index + 1,
+  ]));
+  const compactCitations = (citations = []) => [...new Set(citations
+    .map(Number)
+    .map((citation) => citationMap.get(citation))
+    .filter(Number.isInteger))];
   return {
     ...response,
-    sources: visibleSources.map((source) => {
+    answer: response.answer ? {
+      ...response.answer,
+      introCitations: compactCitations(response.answer.introCitations),
+      parts: (response.answer.parts || []).map((part) => ({
+        ...part,
+        citations: compactCitations(part.citations),
+      })),
+    } : response.answer,
+    sources: visibleSources.map((source, index) => {
       const publicKeys = [
         "id", "citation", "title", "organization", "type", "published", "url", "evidenceExcerpt", "locator", "actionUrl", "actionLabel", "tags", "sourceTier",
       ];
@@ -680,6 +696,7 @@ export function publicResponse(draft) {
           .filter((key) => source[key] !== undefined)
           .map((key) => [key, source[key]])),
         id: stablePublicResultId(source),
+        citation: index + 1,
       };
     }),
   };
