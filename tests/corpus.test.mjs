@@ -12,6 +12,7 @@ import {
   isApprovedCorpusRedirect,
   limitCorpusDocumentsByAggregateCapacity,
   limitOfficialDiscoveryDocuments,
+  planCorpusDocumentAdmission,
   CORPUS_OVERFLOW_DELETE_SQL,
   OFFICIAL_DISCOVERY_DELETE_SQL,
   OFFICIAL_DISCOVERY_RETIRE_SQL,
@@ -25,6 +26,7 @@ import {
   persistHydratedCorpusDocument,
   publicSearchItem,
   robotsAllowsUrl,
+  shouldRetirePortalCatalog,
   summarizeUrlOccurrences,
 } from "../server/corpus.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
@@ -76,6 +78,10 @@ test("live discovery persistence has explicit retirement and deletion bounds", a
   assert.match(corpus, /source_key IN \('portal-sitemap', 'portal-catalog', 'official-page-hydration'\)/u);
   assert.match(corpus, /pg_advisory_xact_lock\(hashtext\('practice-official-discovery-capacity'\)\)/u);
   assert.match(corpus, /pg_advisory_xact_lock\(hashtext\('practice-corpus-retention-capacity'\)\)/u);
+  assert.match(corpus, /pg_column_size\(document\)::BIGINT AS existing_bytes/u);
+  assert.match(corpus, /last_seen_run = COALESCE\(\$2::BIGINT, last_seen_run\)/u);
+  assert.ok(corpus.indexOf("last_seen_run = COALESCE($2::BIGINT, last_seen_run)")
+    < corpus.indexOf("if (!admittedBatch.length)"));
   assert.match(corpus, /details\.retention = await enforceCorpusRetention\(client\)/u);
   assert.match(corpus, /OFFSET \$1[\s\S]*?DELETE FROM practice_corpus_runs/u);
   assert.match(corpus, /OFFICIAL_DISCOVERY_MAX_ROWS/u);
@@ -141,6 +147,80 @@ test("aggregate corpus admission includes available rows, bytes and existing upd
     3,
     100_000,
   ), []);
+});
+
+test("aggregate corpus admission charges existing rows only for conservative positive growth", () => {
+  const existing = { url: "https://example.test/existing", content: "replacement" };
+  const newDocument = { url: "https://example.test/new", content: "new" };
+  const estimatedExistingBytes = Buffer.byteLength(JSON.stringify(existing), "utf8") + 8_192;
+  const oldBytes = 1_000;
+  const positiveDelta = estimatedExistingBytes - oldBytes;
+
+  assert.deepEqual(limitCorpusDocumentsByAggregateCapacity(
+    [existing, newDocument],
+    [{ canonical_url: existing.url, existing_bytes: estimatedExistingBytes }],
+    1,
+    100_000,
+    2,
+    100_000,
+  ).map((item) => item.url), [existing.url]);
+
+  assert.deepEqual(limitCorpusDocumentsByAggregateCapacity(
+    [existing],
+    [{ canonical_url: existing.url, existing_bytes: oldBytes }],
+    1,
+    100_000 - positiveDelta,
+    2,
+    100_000,
+  ).map((item) => item.url), [existing.url]);
+
+  assert.deepEqual(limitCorpusDocumentsByAggregateCapacity(
+    [existing],
+    [{ canonical_url: existing.url, existing_bytes: oldBytes }],
+    1,
+    100_001 - positiveDelta,
+    2,
+    100_000,
+  ), []);
+
+  assert.deepEqual(limitCorpusDocumentsByAggregateCapacity(
+    [existing],
+    [existing.url],
+    1,
+    100_000,
+    2,
+    100_000,
+  ), []);
+});
+
+test("capacity rejection preserves only existing document liveness", () => {
+  const existingUrl = "https://example.test/existing";
+  const plan = planCorpusDocumentAdmission(
+    [
+      { url: existingUrl, content: "replacement" },
+      { url: "https://example.test/new", content: "new" },
+    ],
+    [{ canonical_url: existingUrl, existing_bytes: 0 }],
+    1,
+    100_000,
+    2,
+    100_000,
+  );
+  assert.deepEqual(plan.admittedDocuments, []);
+  assert.deepEqual(plan.livenessOnlyUrls, [existingUrl]);
+  assert.equal(plan.capacityDropped, 2);
+});
+
+test("authoritative portal retirement is suppressed only by truncated portal discovery", () => {
+  assert.equal(shouldRetirePortalCatalog({ includeCatalog: true }), true);
+  assert.equal(shouldRetirePortalCatalog({
+    includeCatalog: true,
+    authoritativeCapacityDropped: 1,
+  }), false);
+  assert.equal(shouldRetirePortalCatalog({
+    includeCatalog: false,
+    authoritativeCapacityDropped: 0,
+  }), false);
 });
 
 test("hydration commits only when the locked post-update aggregate stays below the byte ceiling", async () => {

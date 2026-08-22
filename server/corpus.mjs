@@ -999,26 +999,70 @@ function estimatedCorpusDocumentBytes(document) {
 
 export function limitCorpusDocumentsByAggregateCapacity(
   documents = [],
-  existingUrls = [],
+  existingDocuments = [],
   currentRowCount = 0,
   currentBytes = 0,
   maximumRows = CORPUS_MAX_ROWS,
   maximumBytes = CORPUS_MAX_BYTES,
 ) {
-  const existing = new Set(existingUrls.map((value) => String(value || "")));
+  return planCorpusDocumentAdmission(
+    documents,
+    existingDocuments,
+    currentRowCount,
+    currentBytes,
+    maximumRows,
+    maximumBytes,
+  ).admittedDocuments;
+}
+
+export function planCorpusDocumentAdmission(
+  documents = [],
+  existingDocuments = [],
+  currentRowCount = 0,
+  currentBytes = 0,
+  maximumRows = CORPUS_MAX_ROWS,
+  maximumBytes = CORPUS_MAX_BYTES,
+) {
+  const existing = new Map();
+  for (const value of existingDocuments) {
+    const isDescriptor = value && typeof value === "object";
+    const url = String(isDescriptor ? value.canonical_url || value.url || "" : value || "");
+    if (!url) continue;
+    const rawBytes = isDescriptor
+      ? value.existing_bytes ?? value.existingBytes ?? value.stored_bytes ?? value.storedBytes
+      : undefined;
+    const parsedBytes = Number(rawBytes);
+    existing.set(url, Number.isFinite(parsedBytes) && parsedBytes >= 0
+      ? Math.trunc(parsedBytes)
+      : undefined);
+  }
   const safeMaximumRows = Math.max(0, Math.trunc(Number(maximumRows) || 0));
   const safeMaximumBytes = Math.max(0, Math.trunc(Number(maximumBytes) || 0));
   let newRowSlots = Math.max(0, safeMaximumRows - Math.max(0, Math.trunc(Number(currentRowCount) || 0)));
   let remainingBytes = Math.max(0, safeMaximumBytes - Math.max(0, Math.trunc(Number(currentBytes) || 0)));
-  return documents.filter((document) => {
+  const admittedDocuments = [];
+  const livenessOnlyUrls = [];
+  for (const document of documents) {
     const url = String(document?.url || "");
     const isExisting = existing.has(url);
     const estimatedBytes = estimatedCorpusDocumentBytes(document);
-    if (estimatedBytes > remainingBytes || (!isExisting && newRowSlots <= 0)) return false;
-    remainingBytes -= estimatedBytes;
+    const existingBytes = existing.get(url);
+    const additionalBytes = isExisting && existingBytes !== undefined
+      ? Math.max(0, estimatedBytes - existingBytes)
+      : estimatedBytes;
+    if (additionalBytes > remainingBytes || (!isExisting && newRowSlots <= 0)) {
+      if (isExisting) livenessOnlyUrls.push(url);
+      continue;
+    }
+    remainingBytes -= additionalBytes;
     if (!isExisting) newRowSlots -= 1;
-    return true;
-  });
+    admittedDocuments.push(document);
+  }
+  return {
+    admittedDocuments,
+    livenessOnlyUrls,
+    capacityDropped: documents.length - admittedDocuments.length,
+  };
 }
 
 async function upsertDocuments(
@@ -1047,20 +1091,33 @@ async function upsertDocuments(
         FROM practice_corpus_documents AS document
       `);
       const existingResult = await client.query(`
-        SELECT canonical_url
-        FROM practice_corpus_documents
+        SELECT canonical_url,
+               pg_column_size(document)::BIGINT AS existing_bytes
+        FROM practice_corpus_documents AS document
         WHERE canonical_url = ANY($1::TEXT[])
       `, [batch.map((document) => document.url)]);
       throwIfCorpusAborted(signal);
-      const admittedBatch = limitCorpusDocumentsByAggregateCapacity(
+      const admission = planCorpusDocumentAdmission(
         batch,
-        existingResult.rows.map((row) => row.canonical_url),
+        existingResult.rows,
         capacityResult.rows[0]?.total_rows,
         capacityResult.rows[0]?.total_bytes,
         CORPUS_MAX_ROWS,
         CORPUS_MAX_BYTES,
       );
-      capacityDropped += batch.length - admittedBatch.length;
+      const admittedBatch = admission.admittedDocuments;
+      capacityDropped += admission.capacityDropped;
+      if (admission.livenessOnlyUrls.length) {
+        await client.query(`
+          UPDATE practice_corpus_documents
+          SET last_seen_at = NOW(),
+              last_seen_run = COALESCE($2::BIGINT, last_seen_run),
+              is_available = TRUE
+          WHERE canonical_url = ANY($1::TEXT[])
+          ${discoveryOnly ? "AND source_key = 'official-live-search'" : ""}
+        `, [admission.livenessOnlyUrls, runId]);
+        throwIfCorpusAborted(signal);
+      }
       if (!admittedBatch.length) {
         if (ownsTransaction) await client.query("COMMIT");
         continue;
@@ -1810,6 +1867,7 @@ export async function syncPortalCorpus({
     const details = {
       sitemapPages: 0,
       catalogTotal: 0,
+      authoritativeCapacityDropped: 0,
       seedQueries: {},
       wikipedia: 0,
       unavailableMarked: 0,
@@ -1828,6 +1886,7 @@ export async function syncPortalCorpus({
       const sitemapUpsert = await upsertDocuments(client, sitemapDocuments, runId);
       totals.indexed += sitemapUpsert.indexed;
       totals.capacityDropped += sitemapUpsert.capacityDropped;
+      details.authoritativeCapacityDropped += sitemapUpsert.capacityDropped;
       onProgress?.({ stage: "sitemap", discovered: sitemapDocuments.length, indexed: totals.indexed });
 
       let catalogUrls = [];
@@ -1837,6 +1896,7 @@ export async function syncPortalCorpus({
           const catalogUpsert = await upsertDocuments(client, documents, runId);
           totals.indexed += catalogUpsert.indexed;
           totals.capacityDropped += catalogUpsert.capacityDropped;
+          details.authoritativeCapacityDropped += catalogUpsert.capacityDropped;
           onProgress?.({ stage: "catalog", page: page + 1, discovered: totals.discovered, indexed: totals.indexed });
         });
         details.catalogTotal = catalog.total;
@@ -1897,7 +1957,10 @@ export async function syncPortalCorpus({
 
       // Only a fully completed catalogue run is authoritative enough to retire
       // disappeared portal records. Failed/partial runs never hide old data.
-      if (includeCatalog) {
+      if (shouldRetirePortalCatalog({
+        includeCatalog,
+        authoritativeCapacityDropped: details.authoritativeCapacityDropped,
+      })) {
         const retired = await client.query(`
           UPDATE practice_corpus_documents
           SET is_available = FALSE
@@ -1935,6 +1998,14 @@ export async function syncPortalCorpus({
       await client.query("SELECT pg_advisory_unlock(hashtext('practice-corpus-sync'))").catch(() => undefined);
     }
   });
+}
+
+export function shouldRetirePortalCatalog({
+  includeCatalog = false,
+  authoritativeCapacityDropped = 0,
+} = {}) {
+  return Boolean(includeCatalog)
+    && Math.max(0, Math.trunc(Number(authoritativeCapacityDropped) || 0)) === 0;
 }
 
 function formatPublished(row) {

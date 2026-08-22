@@ -914,6 +914,7 @@ async function searchWithinBudget(cleanQuery, {
     total: searchResults?.total,
   }) || composeClimateJogevaDailyMeanResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
+    now: startedAt,
   }) || composeWasteFacilitiesNavigationResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
   });
@@ -1048,6 +1049,7 @@ export function searchTimeoutFallback(cleanQuery, {
   searchResults,
   filters = {},
   reason = "deadline",
+  startedAt = Date.now(),
 } = {}) {
   const assessment = assessSearchQuery(assessmentQuery);
   const structuredCandidate = composeCurrentWeatherObservationResponse(cleanQuery, searchResults?.items, {
@@ -1066,6 +1068,7 @@ export function searchTimeoutFallback(cleanQuery, {
     total: searchResults?.total,
   }) || composeClimateJogevaDailyMeanResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
+    now: startedAt,
   }) || composeWasteFacilitiesNavigationResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
   });

@@ -176,6 +176,7 @@ test("climate response remains bound to the visible filtered listing", () => {
   const response = searchTimeoutFallback(QUERY, {
     searchResults: { items: [document], total: 1 },
     filters: {},
+    startedAt: NOW,
   });
   assert.deepEqual(response.sources.map((source) => source.id), [document.id]);
   assert.match(response.answer.title, /2025-08-21[\s\S]*10,6 °C/u);
@@ -183,6 +184,7 @@ test("climate response remains bound to the visible filtered listing", () => {
   const excluded = searchTimeoutFallback(QUERY, {
     searchResults: { items: [document], total: 1 },
     filters: { year: 2024 },
+    startedAt: NOW,
   });
   assert.doesNotMatch(excluded.answer.title, /10,6 °C/u);
   assert.doesNotMatch(excluded.answer.intro, /10,6 °C/u);
