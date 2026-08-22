@@ -1020,8 +1020,60 @@ function etYearList(years = []) {
 }
 
 function requestedYear(query) {
-  const match = String(query || "").match(/\b((?:19|20)\d{2})\b/u);
+  const match = String(query || "").match(/(?<!\d)((?:19|20)\d{2})(?!\d)/u);
   return match ? Number(match[1]) : null;
+}
+
+function requestedYears(query) {
+  return [...new Set(
+    [...String(query || "").matchAll(/(?<!\d)((?:19|20)\d{2})(?!\d)/gu)]
+      .map((match) => Number(match[1])),
+  )];
+}
+
+function hasUnsupportedMunicipalWasteRateIntent(query) {
+  const years = requestedYears(query);
+  if (years.length > 1) return true;
+  const year = years[0] ?? null;
+  const tokens = normalize(query).split(/\s+/u).filter(Boolean);
+  const hasEstonia = tokens.some((token) => /^eesti\w*$/u.test(token));
+  const hasEuropeanUnionName = tokens.some((token, index) => /^euroopa\w*$/u.test(token)
+    && /^(?:liit|liid)\w*$/u.test(tokens[index + 1] || ""));
+  const hasEuropeanUnion = hasEuropeanUnionName
+    || tokens.some((token) => /^el(?:i|iga|is|ist|il|ilt)?$/u.test(token));
+  const hasGeographicComparison = hasEstonia && hasEuropeanUnion;
+  const hasComparison = tokens.some((token) => /^(?:vordle|vordlus|vorreldes|vs|versus)\w*$/u.test(token));
+  const hasLatestPeriod = tokens.some((token) => /^(?:viimati|viima[ns]|uusim|varskeim)\w*$/u.test(token));
+  if ((hasComparison && !hasGeographicComparison)
+    || (year !== null && tokens.includes("aastaga") && hasComparison)
+    || (year !== null && hasLatestPeriod
+      && (hasComparison || tokens.includes("ja") || tokens.includes("ning")))) return true;
+  const commonToken = (token) => /^(?:kui|kuidas|mis|mida|milline|palju|kas|on|oli|ole|palun|mulle|sa|saad|voiksid|valja|soovin|teada|suur|korge|madal|tapne|umbes|koige)$/u.test(token)
+    || /^(?:utle|oelda|anna|naita|esita|too|leia)\w*$/u.test(token)
+    || /^(?:olme)?jaatm\w*$/u.test(token)
+    || /^ringlussev\w*$/u.test(token)
+    || /^(?:maar|protsent|osakaal|tase|naitaja|vaartus|number)\w*$/u.test(token)
+    || /^eesti\w*$/u.test(token)
+    || /^el(?:i|iga|is|ist|il|ilt)?$/u.test(token)
+    || /^(?:ja|ning|vs|versus|vordle|vordlus|vorreldes)\w*$/u.test(token)
+    || /^(?:viimati|viima[ns]|uusim|varskeim|teadaolev|avaldatud|kattesaadav)\w*$/u.test(token)
+    || /^(?:andm|allik|ametlik)\w*$/u.test(token)
+    || /^(?:jargi|kohta)$/u.test(token);
+  return tokens.some((token, index) => {
+    if (commonToken(token)) return false;
+    if (hasEuropeanUnionName && (/^euroopa\w*$/u.test(token) || /^(?:liit|liid)\w*$/u.test(token))) return false;
+    if (hasGeographicComparison && /^(?:suurem|korgem|madalam|vaiksem|rohkem|vahem|oma)\w*$/u.test(token)) return false;
+    if (year !== null && (token === String(year) || token === `${year}a`)) return false;
+    if (year !== null && /^(?:a|aasta|aastal|aastat|aastaga|kalendriaasta\w*|jooksul|loikes|seisuga)$/u.test(token)) return false;
+    if (index > 0 && tokens[index - 1] === "el" && /^(?:i|iga|is|ist|il|ilt)$/u.test(token)) return false;
+    return true;
+  });
+}
+
+function isCompletedMunicipalWasteYear(year, now) {
+  return Number.isInteger(year)
+    && year >= MIN_MUNICIPAL_WASTE_YEAR
+    && year < new Date(now).getUTCFullYear();
 }
 
 function municipalWasteStatement(projection) {
@@ -1039,7 +1091,8 @@ export function isMunicipalWasteRecyclingRateQuery(query) {
   const text = normalize(query);
   return /\b(?:olme ?)?jaatm\w*/u.test(text)
     && /\bringlussev\w*/u.test(text)
-    && /\b(?:maar|protsent|osakaal|tase)\w*/u.test(text);
+    && /\b(?:maar|protsent|osakaal|tase)\w*/u.test(text)
+    && !hasUnsupportedMunicipalWasteRateIntent(query);
 }
 
 export function municipalWasteIndicatorFromCsv(query, csv, options = {}) {
@@ -1061,7 +1114,8 @@ export function municipalWasteIndicatorFromCsv(query, csv, options = {}) {
   const byYear = new Map();
   const seen = new Set();
   const suppliedNow = Number(options.now);
-  const currentYear = new Date(Number.isFinite(suppliedNow) ? suppliedNow : Date.now()).getUTCFullYear();
+  const now = Number.isFinite(suppliedNow) ? suppliedNow : Date.now();
+  const currentYear = new Date(now).getUTCFullYear();
   const maximumPlaceholderYear = currentYear + MAX_MUNICIPAL_WASTE_PLACEHOLDER_YEARS;
   for (const row of rows.slice(1)) {
     if (row.length !== header.length) return [];
@@ -1078,7 +1132,7 @@ export function municipalWasteIndicatorFromCsv(query, csv, options = {}) {
       year,
       estonia: null,
       eu: null,
-      placeholders: new Set(),
+      unavailable: new Set(),
     };
     const estoniaText = String(row[estoniaIndex] || "").trim();
     const euText = String(row[euIndex] || "").trim();
@@ -1093,17 +1147,21 @@ export function municipalWasteIndicatorFromCsv(query, csv, options = {}) {
     }
     if (entity === "Eesti") {
       if (euText) return [];
-      if (!estoniaText) values.placeholders.add(entity);
+      if (!estoniaText) values.unavailable.add(entity);
       else {
-        values.estonia = municipalRate(estoniaText);
-        if (values.estonia === null || year > currentYear + 1) return [];
+        const rate = municipalRate(estoniaText);
+        if (rate === null || year > currentYear) return [];
+        if (isCompletedMunicipalWasteYear(year, now)) values.estonia = rate;
+        else values.unavailable.add(entity);
       }
     } else {
       if (estoniaText) return [];
-      if (!euText) values.placeholders.add(entity);
+      if (!euText) values.unavailable.add(entity);
       else {
-        values.eu = municipalRate(euText);
-        if (values.eu === null || year > currentYear + 1) return [];
+        const rate = municipalRate(euText);
+        if (rate === null || year > currentYear) return [];
+        if (isCompletedMunicipalWasteYear(year, now)) values.eu = rate;
+        else values.unavailable.add(entity);
       }
     }
     byYear.set(year, values);
@@ -1116,8 +1174,8 @@ export function municipalWasteIndicatorFromCsv(query, csv, options = {}) {
   const latestObservedYear = Math.max(...observedYears);
   for (const observation of byYear.values()) {
     if (observation.eu !== null && observation.estonia === null) return [];
-    if (observation.placeholders.size) {
-      if (observation.placeholders.size !== 2
+    if (observation.unavailable.size) {
+      if (observation.unavailable.size !== 2
         || observation.year <= latestObservedYear
         || observation.estonia !== null
         || observation.eu !== null) return [];
@@ -1163,11 +1221,12 @@ export function municipalWasteIndicatorFromCsv(query, csv, options = {}) {
 
 function validatedMunicipalWasteProjection(query, document, now = Date.now()) {
   const projection = document?._municipalWasteRecycling;
-  const queryYear = requestedYear(query);
-  const currentYear = new Date(now).getUTCFullYear();
+  const queryYears = requestedYears(query);
+  const queryYear = queryYears[0] ?? null;
   const contentHash = String(document?._contentHash || "").trim();
   const validRate = (value) => Number.isFinite(value) && value >= 0 && value <= 100;
   if (!isMunicipalWasteRecyclingRateQuery(query)
+    || hasUnsupportedMunicipalWasteRateIntent(query)
     || document?.id !== "municipal-waste-recycling"
     || document?.url !== MUNICIPAL_WASTE_RECYCLING_CSV_URL
     || document?.locator !== MUNICIPAL_WASTE_RECYCLING_LOCATOR
@@ -1181,8 +1240,8 @@ function validatedMunicipalWasteProjection(query, document, now = Date.now()) {
     || Object.keys(projection).length !== 3
     || !["year", "estoniaRate", "euRate"].every((key) => Object.hasOwn(projection, key))
     || !Number.isInteger(projection.year)
-    || projection.year < MIN_MUNICIPAL_WASTE_YEAR
-    || projection.year > currentYear + 1
+    || queryYears.length > 1
+    || !isCompletedMunicipalWasteYear(projection.year, now)
     || (queryYear !== null && projection.year !== queryYear)
     || !validRate(projection.estoniaRate)
     || !(projection.euRate === null || validRate(projection.euRate))

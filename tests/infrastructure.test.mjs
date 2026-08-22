@@ -1147,13 +1147,21 @@ test("municipal-waste pipeline cites only the validated CSV and keeps the page a
     "Aasta,Measure Names,Eesti/EL õige,% Eesti (copy),% Eesti,% EL (copy),% EL",
     "2023,Eesti,*,37.9,37.9,,",
     "2023,Euroopa Liit (EL),,,,47.9,47.9",
+    "2024,Eesti,*,36.4,36.4,,",
+    "2024,Euroopa Liit (EL),,,,48.1,48.1",
     "",
   ].join("\n");
   const startedAt = Date.now();
   const [source] = municipalWasteIndicatorFromCsv(query, csv, { now: startedAt });
+  const [latestSource] = municipalWasteIndicatorFromCsv(
+    "olmejäätmete ringlussevõtu määr Eestis",
+    csv,
+    { now: startedAt },
+  );
   const page = officialServiceCatalogueDocuments()
     .find((document) => document.id === "municipal-waste-recycling-page");
   assert.ok(source);
+  assert.ok(latestSource);
   assert.ok(page);
   let modelCalls = 0;
   const searchResults = { total: 2, items: [source, page] };
@@ -1181,6 +1189,31 @@ test("municipal-waste pipeline cites only the validated CSV and keeps the page a
   assert.equal(timedOut.sources[0].url, MUNICIPAL_WASTE_RECYCLING_CSV_URL);
   assert.match(timedOut.answer.intro, /Euroopa Liidus 47,9%/u);
 
+  for (const supportedQuery of [
+    "Kui suur oli olmejäätmete ringlussevõtu määr Eestis 2023. aasta jooksul?",
+    "Kas Eesti olmejäätmete ringlussevõtu määr oli 2023. aastal kõrgem kui ELis?",
+    "Kas Eesti olmejäätmete ringlussevõtu määr oli 2023. aastal madalam Euroopa Liidu omast?",
+    "Palun ütle mulle, kui suur oli olmejäätmete ringlussevõtu määr Eestis 2023. aastal?",
+    "Kas saad öelda, kui suur oli olmejäätmete ringlussevõtu määr Eestis 2023. aastal?",
+    "Mis on viimane teadaolev olmejäätmete ringlussevõtu määr Eestis?",
+  ]) {
+    const supported = await searchEnvironmentLive(supportedQuery, {
+      startedAt,
+      deadlineAt: startedAt + 2_000,
+      useCache: false,
+      searchResults: /viimane teadaolev/u.test(supportedQuery)
+        ? { total: 2, items: [latestSource, page] }
+        : searchResults,
+      generateAnswer: async () => ({ answer: null, status: "unavailable", provider: "test" }),
+    });
+    assert.deepEqual(supported.answer.introCitations, [1], supportedQuery);
+    if (/viimane teadaolev/u.test(supportedQuery)) {
+      assert.match(supported.answer.intro, /2024\. aastal oli 36,4%/u, supportedQuery);
+    } else {
+      assert.match(supported.answer.intro, /2023\. aastal oli 37,9%/u, supportedQuery);
+    }
+  }
+
   const filtered = await searchEnvironmentLive(query, {
     startedAt,
     deadlineAt: startedAt + 2_000,
@@ -1192,6 +1225,69 @@ test("municipal-waste pipeline cites only the validated CSV and keeps the page a
   assert.equal(filtered.sources.some((item) => item.id === source.id), false);
   assert.equal(filtered.answer.introCitations.length, 0);
   assert.equal(composeMunicipalWasteRecyclingResponse(query, [page], { now: startedAt }), null);
+
+  for (const unsupportedQuery of [
+    "Võrdle olmejäätmete ringlussevõtu määra 2023 ja 2024",
+    "Võrdle olmejäätmete ringlussevõtu määra 2023 ja 24",
+    "Võrdle olmejäätmete ringlussevõtu määra 2023a ja 24a",
+    "Võrdle olmejäätmete ringlussevõtu määra 23–24",
+    "Kuidas muutus olmejäätmete ringlussevõtu määr aastatel 2023–24?",
+    "Kuidas muutus olmejäätmete ringlussevõtu määr viimase kahe aasta jooksul?",
+    "Kuidas muutus olmejäätmete ringlussevõtu määr viimasel kahel aastal?",
+    "Kuidas muutus olmejäätmete ringlussevõtu määr viimaste aastate jooksul?",
+    "Kuidas muutus olmejäätmete ringlussevõtu määr viimase paari aasta jooksul?",
+    "Kuidas muutus olmejäätmete ringlussevõtu määr viimase poolteise aasta jooksul?",
+    "Olmejäätmete ringlussevõtu määr viimasel kümnendil",
+    "Kas olmejäätmete ringlussevõtu määr tõusis 2023. aastaga võrreldes?",
+    "Võrdle olmejäätmete ringlussevõtu määra 2023 võrreldes 24",
+    "Võrdle olmejäätmete ringlussevõtu määra enne ja pärast 2023. aastat",
+    "Olmejäätmete ringlussevõtu määr 2023. aastast saadik",
+    "Olmejäätmete ringlussevõtu määr 2023. aastani",
+    "Olmejäätmete ringlussevõtu määr 2023. aasta algusest",
+    "Võrdle viimati avaldatud olmejäätmete ringlussevõtu määra ja 2023. aasta näitajat",
+    "Kui kõrge on olmejäätmete ringlussevõtu määr 2023. aastaga võrreldes?",
+    "Kas Eesti olmejäätmete ringlussevõtu määr oli 2023. aastal kõrgem Euroopa tasemest?",
+    "Kui suur on olmejäätmete ringlussevõtu määr tänavu?",
+    "Kui suur on olmejäätmete ringlussevõtu määr järgmisel aastal?",
+    "Kui suur oli olmejäätmete ringlussevõtu määr möödunud aastal?",
+    "Kui suur oli olmejäätmete ringlussevõtu määr üleeelmisel aastal?",
+    "Kui suur on olmejäätmete ringlussevõtu määr praegusel aastal?",
+    "Kui suur on tänase seisuga olmejäätmete ringlussevõtu määr?",
+    "Kui suur on täna olmejäätmete ringlussevõtu määr?",
+    "Kui suur on hetkel olmejäätmete ringlussevõtu määr?",
+    "Kui suur on olmejäätmete ringlussevõtu määr käesoleva perioodi kohta?",
+  ]) {
+    const unsupported = await searchEnvironmentLive(unsupportedQuery, {
+      startedAt,
+      deadlineAt: startedAt + 2_000,
+      useCache: false,
+      searchResults,
+      generateAnswer: async () => ({ answer: null, status: "unavailable", provider: "test" }),
+    });
+    assert.deepEqual(unsupported.answer.introCitations, [], unsupportedQuery);
+    assert.doesNotMatch(unsupported.answer.intro, /37,9%|47,9%/u, unsupportedQuery);
+  }
+
+  const futureSource = {
+    ...source,
+    published: "2027",
+    summary: "Olmejäätmete ringlussevõtu määr Eestis 2027. aastal oli 55% ja Euroopa Liidus 60%.",
+    content: "Olmejäätmete ringlussevõtu määr Eestis 2027. aastal oli 55% ja Euroopa Liidus 60%. Andmed on loetud lehele manustatud ametliku Tableau vaate CSV-väljundist.",
+    _publishedAt: "2027-12-31",
+    _municipalWasteRecycling: { year: 2027, estoniaRate: 55, euRate: 60 },
+  };
+  const future = await searchEnvironmentLive(
+    "Kui suur oli olmejäätmete ringlussevõtu määr Eestis 2027?",
+    {
+      startedAt,
+      deadlineAt: startedAt + 2_000,
+      useCache: false,
+      searchResults: { total: 2, items: [futureSource, page] },
+      generateAnswer: async () => ({ answer: null, status: "unavailable", provider: "test" }),
+    },
+  );
+  assert.deepEqual(future.answer.introCitations, []);
+  assert.doesNotMatch(future.answer.intro, /55%|60%/u);
 });
 
 test("municipal-waste target answers stay separate from measurements and achievement claims", async () => {

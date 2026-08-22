@@ -491,6 +491,131 @@ test("municipal-waste adapter uses the latest complete observation and abstains 
   assert.equal(isMunicipalWasteRecyclingRateQuery("ringlussevõtu määr Eestis"), false);
 });
 
+test("municipal-waste adapter never collapses a multi-year comparison to one observation", () => {
+  const now = Date.parse("2026-08-22T00:00:00Z");
+  for (const query of [
+    "Kuidas muutus olmejäätmete ringlussevõtu määr 2023. ja 2024. aasta vahel?",
+    "Võrdle olmejäätmete ringlussevõtu määra 2024 ja 2023",
+    "Võrdle olmejäätmete ringlussevõtu määra 2023 ja 24",
+    "Võrdle olmejäätmete ringlussevõtu määra 2023a ja 24a",
+    "Võrdle olmejäätmete ringlussevõtu määra 23–24",
+    "Kuidas muutus olmejäätmete ringlussevõtu määr aastatel 2023–24?",
+    "Kuidas muutus olmejäätmete ringlussevõtu määr viimase kahe aasta jooksul?",
+    "Kuidas muutus olmejäätmete ringlussevõtu määr viimasel kahel aastal?",
+    "Kuidas muutus olmejäätmete ringlussevõtu määr viimaste aastate jooksul?",
+    "Kuidas muutus olmejäätmete ringlussevõtu määr viimase paari aasta jooksul?",
+    "Kuidas muutus olmejäätmete ringlussevõtu määr viimase poolteise aasta jooksul?",
+    "Olmejäätmete ringlussevõtu määr viimasel kümnendil",
+    "Võrdle olmejäätmete ringlussevõtu määra kahe aasta jooksul",
+    "Kuidas muutus olmejäätmete ringlussevõtu määr viimase aasta jooksul?",
+    "Kas olmejäätmete ringlussevõtu määr tõusis 2023. aastaga võrreldes?",
+    "Võrdle olmejäätmete ringlussevõtu määra 2023 võrreldes 24",
+    "Võrdle olmejäätmete ringlussevõtu määra enne ja pärast 2023. aastat",
+    "Olmejäätmete ringlussevõtu määr 2023. aastast saadik",
+    "Olmejäätmete ringlussevõtu määr 2023. aastani",
+    "Olmejäätmete ringlussevõtu määr 2023. aasta algusest",
+    "Võrdle viimati avaldatud olmejäätmete ringlussevõtu määra ja 2023. aasta näitajat",
+    "Kui kõrge on olmejäätmete ringlussevõtu määr 2023. aastaga võrreldes?",
+    "Kas Eesti olmejäätmete ringlussevõtu määr oli 2023. aastal kõrgem Euroopa tasemest?",
+    "Olmejäätmete ringlussevõtu määra trend",
+  ]) {
+    assert.equal(isMunicipalWasteRecyclingRateQuery(query), false, query);
+    assert.deepEqual(municipalWasteIndicatorFromCsv(query, fixture, { now }), [], query);
+    const [singleYearSource] = municipalWasteIndicatorFromCsv(
+      "olmejäätmete ringlussevõtu määr 2023",
+      fixture,
+      { now },
+    );
+    assert.equal(composeMunicipalWasteRecyclingResponse(
+      query,
+      [singleYearSource],
+      { now },
+    ), null, query);
+  }
+
+  for (const [query, year] of [
+    ["Olmejäätmete ringlussevõtu määr 2023. aastal", 2023],
+    ["Olmejäätmete ringlussevõtu määr 2023. aasta jooksul", 2023],
+    ["Olmejäätmete ringlussevõtu määr 2024. a", 2024],
+    ["Võrdle Eesti ja ELi olmejäätmete ringlussevõtu määra 2023", 2023],
+    ["Kas Eesti olmejäätmete ringlussevõtu määr oli 2023. aastal kõrgem kui ELis?", 2023],
+    ["Kas Eesti olmejäätmete ringlussevõtu määr oli 2023. aastal madalam Euroopa Liidu omast?", 2023],
+    ["Palun ütle mulle, kui suur oli olmejäätmete ringlussevõtu määr Eestis 2023. aastal?", 2023],
+    ["Kas saad öelda, kui suur oli olmejäätmete ringlussevõtu määr Eestis 2023. aastal?", 2023],
+    ["Mis on viimane teadaolev olmejäätmete ringlussevõtu määr Eestis?", 2024],
+  ]) {
+    assert.equal(isMunicipalWasteRecyclingRateQuery(query), true, query);
+    const [source] = municipalWasteIndicatorFromCsv(query, fixture, { now });
+    assert.equal(source._municipalWasteRecycling.year, year, query);
+  }
+});
+
+test("municipal-waste adapter rejects current and future numeric rows as completed observations", () => {
+  const now = Date.parse("2026-08-22T00:00:00Z");
+  const header = "Aasta,Measure Names,% Eesti,% EL";
+  for (const year of [2026, 2027]) {
+    const csv = [
+      header,
+      "2024,Eesti,36.4,",
+      `2024,Euroopa Liit (EL),,48.1`,
+      `${year},Eesti,55.0,`,
+      `${year},Euroopa Liit (EL),,60.0`,
+      "",
+    ].join("\n");
+    assert.deepEqual(municipalWasteIndicatorFromCsv(
+      `olmejäätmete ringlussevõtu määr Eestis ${year}`,
+      csv,
+      { now },
+    ), [], String(year));
+    const latestCompleted = municipalWasteIndicatorFromCsv(
+      "olmejäätmete ringlussevõtu määr Eestis",
+      csv,
+      { now },
+    );
+    if (year === 2026) {
+      assert.match(latestCompleted[0].summary, /2024\. aastal oli 36,4%/u);
+      assert.doesNotMatch(latestCompleted[0].summary, /55%|60%/u);
+    } else {
+      assert.deepEqual(latestCompleted, [], String(year));
+    }
+  }
+
+  for (const query of [
+    "Kui suur on olmejäätmete ringlussevõtu määr tänavu?",
+    "Kui suur on olmejäätmete ringlussevõtu määr järgmisel aastal?",
+    "Kui suur oli olmejäätmete ringlussevõtu määr mullu?",
+    "Kui suur oli olmejäätmete ringlussevõtu määr möödunud aastal?",
+    "Kui suur oli olmejäätmete ringlussevõtu määr üleeelmisel aastal?",
+    "Kui suur on olmejäätmete ringlussevõtu määr praegusel aastal?",
+    "Kui suur on tänase seisuga olmejäätmete ringlussevõtu määr?",
+    "Kui suur on täna olmejäätmete ringlussevõtu määr?",
+    "Kui suur on hetkel olmejäätmete ringlussevõtu määr?",
+    "Kui suur on olmejäätmete ringlussevõtu määr käesoleva perioodi kohta?",
+  ]) {
+    assert.equal(isMunicipalWasteRecyclingRateQuery(query), false, query);
+    assert.deepEqual(municipalWasteIndicatorFromCsv(query, fixture, { now }), [], query);
+  }
+
+  const [pastSource] = municipalWasteIndicatorFromCsv(
+    "olmejäätmete ringlussevõtu määr Eestis 2024",
+    fixture,
+    { now },
+  );
+  const futureSource = {
+    ...pastSource,
+    published: "2027",
+    summary: "Olmejäätmete ringlussevõtu määr Eestis 2027. aastal oli 55% ja Euroopa Liidus 60%.",
+    content: "Olmejäätmete ringlussevõtu määr Eestis 2027. aastal oli 55% ja Euroopa Liidus 60%. Andmed on loetud lehele manustatud ametliku Tableau vaate CSV-väljundist.",
+    _publishedAt: "2027-12-31",
+    _municipalWasteRecycling: { year: 2027, estoniaRate: 55, euRate: 60 },
+  };
+  assert.equal(composeMunicipalWasteRecyclingResponse(
+    "olmejäätmete ringlussevõtu määr Eestis 2027",
+    [futureSource],
+    { now },
+  ), null);
+});
+
 test("municipal-waste adapter accepts only the reviewed Tableau duplicate-column shape and paired future placeholders", () => {
   const currentTableauCsv = [
     "Aasta,Measure Names,Eesti/EL õige,% Eesti (copy),% Eesti,% EL (copy),% EL",

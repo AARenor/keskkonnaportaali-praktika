@@ -44,7 +44,7 @@ import {
   textHasQueryRoot,
 } from "./search.mjs";
 
-export const SEARCH_RESPONSE_REVISION = "answer-v39-structured-municipal-waste";
+export const SEARCH_RESPONSE_REVISION = "answer-v40-temporal-source-contracts";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 
 function rankPortalDocuments(query, documents) {

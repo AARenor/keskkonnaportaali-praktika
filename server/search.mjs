@@ -2816,6 +2816,11 @@ function passageMatchesTerms(passage, terms) {
 }
 
 function documentCanDirectlyAnswerQuery(query, document) {
+  // Typed CSV evidence is allowed to answer only through its validator and
+  // deterministic composer. If that contract rejects an incomplete temporal
+  // intent or impossible observation, the generic lexical fallback must not
+  // re-promote the same document from its prose fields.
+  if (document?.id === "municipal-waste-recycling") return false;
   if (document?.id !== "municipal-waste-recycling-page") return true;
   const text = normalize(query);
   const asksForTarget = /\b(?:sihttase|eesmark)\w*/u.test(text);
