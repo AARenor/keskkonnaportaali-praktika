@@ -865,7 +865,7 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
   if (statisticsHazardousWaste) {
     if (document.id === "statistics-hazardous-waste-2024") return 7;
     if (document.id === "statistics-pxweb") return 5;
-    if (["waste-reporting-data", "municipal-waste-recycling"].includes(document.id)) return 0;
+    if (["waste-reporting-data", "municipal-waste-recycling-page"].includes(document.id)) return 0;
   }
   if (climateJogevaDailyMean) {
     if (document.id === "climate-jogeva-daily-mean") return 7;
@@ -994,7 +994,8 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
   if (roots.includes("kasvuhoonegaas")
     && document.id === "greenhouse-gas-inventory"
     && !requestsHistoricalYear) return 3;
-  if (roots.includes("ringlussevott") && document.id === "municipal-waste-recycling") return 3;
+  if (roots.includes("ringlussevott")
+    && ["municipal-waste-recycling", "municipal-waste-recycling-page"].includes(document.id)) return 3;
   if (roots.includes("natura") && roots.includes("ehitamine") && document.id === "protected-area-construction") return 3;
   const requestsIdaViruOilShaleGroundwater = roots.includes("pohjavesi")
     && roots.includes("ida")

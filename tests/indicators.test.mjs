@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   composeCurrentWeatherObservationResponse,
   composeForestHarvestBalanceAnswer,
+  composeMunicipalWasteRecyclingResponse,
   composeNationalWeatherForecastResponse,
   currentWeatherObservationFromXml,
   CURRENT_WEATHER_OBSERVATIONS_XML_URL,
@@ -22,6 +23,7 @@ import {
   composeLatestPublishedHydrologyResponse,
   municipalWasteIndicatorFromCsv,
   MUNICIPAL_WASTE_RECYCLING_CSV_URL,
+  MUNICIPAL_WASTE_RECYCLING_PAGE_URL,
   nationalWeatherForecastFromXml,
   WEATHER_FORECAST_XML_URL,
 } from "../server/indicators.mjs";
@@ -409,10 +411,77 @@ test("municipal-waste rate adapter reads the requested year from official Tablea
   const documents = municipalWasteIndicatorFromCsv("jäätmete ringlussevõtu määr Eestis 2023", fixture);
   assert.equal(documents.length, 1);
   assert.equal(documents[0].id, "municipal-waste-recycling");
-  assert.equal(documents[0].locator, MUNICIPAL_WASTE_RECYCLING_CSV_URL);
+  assert.equal(documents[0].url, MUNICIPAL_WASTE_RECYCLING_CSV_URL);
+  assert.match(documents[0].locator, /ametliku Tableau vaate CSV-väljund/iu);
+  assert.equal(documents[0].actionUrl, MUNICIPAL_WASTE_RECYCLING_PAGE_URL);
+  assert.equal(documents[0].actionLabel, "Ava Keskkonnaportaali näitajaleht");
   assert.match(documents[0].summary, /2023\. aastal oli 37,9%/u);
   assert.match(documents[0].summary, /Euroopa Liidus 47,9%/u);
   assert.equal(documents[0].retrieval, "official-tableau-csv");
+  assert.deepEqual(documents[0]._municipalWasteRecycling, {
+    year: 2023,
+    estoniaRate: 37.9,
+    euRate: 47.9,
+  });
+});
+
+test("municipal-waste composer binds one validated CSV observation to its citation", () => {
+  const now = Date.parse("2026-08-22T00:00:00Z");
+  const query = "Kui suur oli olmejäätmete ringlussevõtu tase Eestis 2023?";
+  const [source] = municipalWasteIndicatorFromCsv(query, fixture, { now });
+  const page = {
+    id: "municipal-waste-recycling-page",
+    title: "Olmejäätmete ringlussevõtt",
+    url: MUNICIPAL_WASTE_RECYCLING_PAGE_URL,
+    sourceTier: "official",
+    evidencePolicy: "versioned",
+    _answerEvidenceEligible: true,
+    _evidenceVersion: "reviewed-page",
+  };
+  const response = composeMunicipalWasteRecyclingResponse(query, [source, page], { now, total: 2 });
+  assert.ok(response);
+  assert.match(response.answer.intro, /2023\. aastal oli 37,9%/u);
+  assert.match(response.answer.intro, /Euroopa Liidus 47,9%/u);
+  assert.deepEqual(response.answer.introCitations, [1]);
+  assert.equal(response.sources.length, 1);
+  assert.equal(response.sources[0].id, "municipal-waste-recycling");
+  assert.equal(response.sources[0].url, MUNICIPAL_WASTE_RECYCLING_CSV_URL);
+  assert.equal(response.sources[0].actionUrl, MUNICIPAL_WASTE_RECYCLING_PAGE_URL);
+  assert.match(response.sources[0].evidenceExcerpt, /ametliku Tableau vaate CSV-väljundist/u);
+});
+
+test("municipal-waste composer rejects ambiguous or provenance-mismatched evidence", () => {
+  const now = Date.parse("2026-08-22T00:00:00Z");
+  const query = "jäätmete ringlussevõtu määr Eestis 2023";
+  const [source] = municipalWasteIndicatorFromCsv(query, fixture, { now });
+  const invalid = [
+    { ...source, id: "municipal-waste-recycling-page" },
+    { ...source, url: MUNICIPAL_WASTE_RECYCLING_PAGE_URL },
+    { ...source, actionUrl: "https://keskkonnaportaal.ee/et/jaatmed" },
+    { ...source, retrieval: "official-service-directory" },
+    { ...source, _answerEvidenceEligible: false },
+    { ...source, _contentHash: "0".repeat(64) },
+    { ...source, _evidenceVersion: "0".repeat(64) },
+    { ...source, _municipalWasteRecycling: { ...source._municipalWasteRecycling, year: 2022 } },
+    {
+      ...source,
+      _municipalWasteRecycling: {
+        ...source._municipalWasteRecycling,
+        estoniaRate: source._municipalWasteRecycling.euRate,
+        euRate: source._municipalWasteRecycling.estoniaRate,
+      },
+    },
+    { ...source, _municipalWasteRecycling: { ...source._municipalWasteRecycling, extra: true } },
+  ];
+  for (const document of invalid) {
+    assert.equal(composeMunicipalWasteRecyclingResponse(query, [document], { now }), null);
+  }
+  assert.equal(composeMunicipalWasteRecyclingResponse(query, [source, { ...source }], { now }), null);
+  assert.equal(composeMunicipalWasteRecyclingResponse(
+    "olmejäätmete ringlussevõtu määr Eestis 2030",
+    [source],
+    { now },
+  ), null);
 });
 
 test("municipal-waste adapter uses the latest complete observation and abstains on missing years", () => {

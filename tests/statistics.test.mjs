@@ -12,8 +12,11 @@ import {
   isStatisticsWastewaterBht7Query,
   isStatisticsWaterAbstractionQuery,
   STATISTICS_HAZARDOUS_WASTE_API_URL,
+  STATISTICS_HAZARDOUS_WASTE_TABLE_URL,
   STATISTICS_WATER_ABSTRACTION_API_URL,
+  STATISTICS_WATER_ABSTRACTION_TABLE_URL,
   STATISTICS_WASTEWATER_BHT7_API_URL,
+  STATISTICS_WASTEWATER_BHT7_TABLE_URL,
   statisticsHazardousWasteFromJson,
   statisticsHazardousWasteRequest,
   statisticsWastewaterBht7FromJson,
@@ -129,6 +132,28 @@ function hazardousWasteFixture(overrides = {}) {
   return JSON.stringify({ ...payload, ...overrides });
 }
 
+test("PXWeb metadata-only GET bodies cannot become numeric evidence", () => {
+  const metadataOnly = JSON.stringify({
+    title: "PXWeb table metadata",
+    variables: [{ code: "Aasta", values: ["2024"] }],
+  });
+  assert.deepEqual(statisticsWaterAbstractionFromJson(
+    "Kui palju vett võeti Eestis kokku 2024. aastal?",
+    metadataOnly,
+    { now: NOW, fetchedAt: FETCHED_AT },
+  ), []);
+  assert.deepEqual(statisticsWastewaterBht7FromJson(
+    "Kui suur oli Eestis 2024. aastal pinnaveekogudesse juhitud heitvee BHT7 reostuskoormus?",
+    metadataOnly,
+    { now: NOW, fetchedAt: FETCHED_AT },
+  ), []);
+  assert.deepEqual(statisticsHazardousWasteFromJson(
+    "Kui palju ohtlikke jäätmeid tekkis Eestis 2024. aastal?",
+    metadataOnly,
+    { now: NOW, fetchedAt: FETCHED_AT },
+  ), []);
+});
+
 test("KK048 request and adapter bind one exact 2024 national total", () => {
   const query = "Kui palju vett võeti Eestis kokku 2024. aastal?";
   assert.equal(isStatisticsWaterAbstractionQuery(query), true);
@@ -147,8 +172,8 @@ test("KK048 request and adapter bind one exact 2024 national total", () => {
     fetchedAt: FETCHED_AT,
   });
   assert.ok(document);
-  assert.equal(document.url, STATISTICS_WATER_ABSTRACTION_API_URL);
-  assert.match(document.locator, /stat\.ee\/et\/avasta-statistikat[\s\S]*levitamispõhimõtted/u);
+  assert.equal(document.url, STATISTICS_WATER_ABSTRACTION_TABLE_URL);
+  assert.match(document.locator, /KK048\.PX[\s\S]*Aasta=2024[\s\S]*Maakond=1[\s\S]*Vee liik=1[\s\S]*levitamispõhimõtted/u);
   assert.equal(document._statisticsWaterAbstraction.valueThousandM3, 654301);
   assert.equal(document._statisticsWaterAbstraction.year, 2024);
   assert.equal(sourceEvidenceEligibility(document, { now: NOW }).eligible, true);
@@ -313,7 +338,8 @@ test("the production pipeline answers the exact KK048 question from its visible 
   });
   assert.equal(response.answer.title, "KK048 järgi oli 2024. aasta Eesti veevõtt 654,301 miljonit m³");
   assert.deepEqual(response.sources.map((source) => source.id), [document.id]);
-  assert.equal(response.sources[0].url, STATISTICS_WATER_ABSTRACTION_API_URL);
+  assert.equal(response.sources[0].url, STATISTICS_WATER_ABSTRACTION_TABLE_URL);
+  assert.doesNotMatch(response.sources[0].url, /\.PX$/u);
 });
 
 test("KK25 request and adapter bind one exact 2024 national BHT7 total", () => {
@@ -333,8 +359,8 @@ test("KK25 request and adapter bind one exact 2024 national BHT7 total", () => {
     fetchedAt: FETCHED_AT,
   });
   assert.ok(document);
-  assert.equal(document.url, STATISTICS_WASTEWATER_BHT7_API_URL);
-  assert.match(document.locator, /stat\.ee\/et\/avasta-statistikat[\s\S]*levitamispõhimõtted/u);
+  assert.equal(document.url, STATISTICS_WASTEWATER_BHT7_TABLE_URL);
+  assert.match(document.locator, /KK25\.PX[\s\S]*Maakond=1[\s\S]*Aasta=2024[\s\S]*Reostuskoormuse näitaja=1[\s\S]*levitamispõhimõtted/u);
   assert.equal(document._statisticsWastewaterBht7.valueTonnes, 868);
   assert.equal(document._statisticsWastewaterBht7.year, 2024);
   assert.equal(sourceEvidenceEligibility(document, { now: NOW }).eligible, true);
@@ -486,7 +512,8 @@ test("the production pipeline answers the exact KK25 question from its visible s
   });
   assert.equal(response.answer.title, "KK25 järgi oli 2024. aasta Eesti heitvee BHT7 reostuskoormus 868 tonni");
   assert.deepEqual(response.sources.map((source) => source.id), [document.id]);
-  assert.equal(response.sources[0].url, STATISTICS_WASTEWATER_BHT7_API_URL);
+  assert.equal(response.sources[0].url, STATISTICS_WASTEWATER_BHT7_TABLE_URL);
+  assert.doesNotMatch(response.sources[0].url, /\.PX$/u);
 });
 
 test("KK068 request and adapter bind one exact 2024 national hazardous-waste total", () => {
@@ -505,8 +532,8 @@ test("KK068 request and adapter bind one exact 2024 national hazardous-waste tot
     fetchedAt: FETCHED_AT,
   });
   assert.ok(document);
-  assert.equal(document.url, STATISTICS_HAZARDOUS_WASTE_API_URL);
-  assert.match(document.locator, /KK068[\s\S]*levitamispõhimõtted/u);
+  assert.equal(document.url, STATISTICS_HAZARDOUS_WASTE_TABLE_URL);
+  assert.match(document.locator, /KK068\.PX[\s\S]*Aasta=2024[\s\S]*Jäätmeliik=41[\s\S]*Tegevusala=1[\s\S]*levitamispõhimõtted/u);
   assert.equal(document._statisticsHazardousWaste.valueTonnes, 1469565);
   assert.equal(document._statisticsHazardousWaste.unit, "tonni (kuivkaal)");
   assert.equal(sourceEvidenceEligibility(document, { now: NOW }).eligible, true);
@@ -615,7 +642,7 @@ test("structured loader posts only the fixed KK068 request for the exact intent"
   assert.deepEqual(rejected, []);
 });
 
-test("KK068 timeout and production paths stay bound to the visible exact API record", async () => {
+test("KK068 timeout and production paths stay bound to the visible exact structured record", async () => {
   const now = Date.now();
   const query = "Kui palju ohtlikke jäätmeid tekkis Eestis 2024. aastal?";
   const [document] = statisticsHazardousWasteFromJson(query, hazardousWasteFixture(), { now, fetchedAt: now });
@@ -638,7 +665,8 @@ test("KK068 timeout and production paths stay bound to the visible exact API rec
   });
   assert.equal(response.answer.title, "KK068 järgi tekkis Eestis 2024. aastal 1 469 565 tonni ohtlikke jäätmeid");
   assert.deepEqual(response.sources.map((source) => source.id), [document.id]);
-  assert.equal(response.sources[0].url, STATISTICS_HAZARDOUS_WASTE_API_URL);
+  assert.equal(response.sources[0].url, STATISTICS_HAZARDOUS_WASTE_TABLE_URL);
+  assert.doesNotMatch(response.sources[0].url, /\.PX$/u);
 });
 
 test("an eligible same-URL alias cannot overwrite an adapter-bound Statistics Estonia record", () => {
@@ -651,8 +679,8 @@ test("an eligible same-URL alias cannot overwrite an adapter-bound Statistics Es
     organization: "Statistikaamet",
     type: "Ametlik valdkonnaülevaade",
     published: "27.11.2025",
-    url: STATISTICS_WASTEWATER_BHT7_API_URL,
-    locator: "Statistikaameti KK25 masinloetava tabeli metadata",
+    url: STATISTICS_WASTEWATER_BHT7_TABLE_URL,
+    locator: "Statistikaameti KK25 inimloetav tabel",
     summary: "Eestis 2024 pinnaveekogudesse juhitud heitvee BHT7 reostuskoormus. ".repeat(5),
     content: "Eestis 2024 pinnaveekogudesse juhitud heitvee BHT7 reostuskoormus. ".repeat(10),
     topics: ["vesi", "heitvesi", "BHT7"],

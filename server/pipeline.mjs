@@ -16,6 +16,7 @@ import {
   composeCurrentWeatherObservationResponse,
   composeForestHarvestBalanceAnswer,
   composeLatestPublishedHydrologyResponse,
+  composeMunicipalWasteRecyclingResponse,
   composeNationalWeatherForecastResponse,
 } from "./indicators.mjs";
 import {
@@ -43,7 +44,7 @@ import {
   textHasQueryRoot,
 } from "./search.mjs";
 
-export const SEARCH_RESPONSE_REVISION = "answer-v38-structured-hazardous-waste";
+export const SEARCH_RESPONSE_REVISION = "answer-v39-structured-municipal-waste";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 
 function rankPortalDocuments(query, documents) {
@@ -81,6 +82,27 @@ function rankPortalDocuments(query, documents) {
     if (!document?.id || seen.has(document.id)) return false;
     seen.add(document.id);
     return true;
+  });
+}
+
+function canonicalHydrationKey(document = {}) {
+  const canonical = canonicalResultUrl(document.url);
+  try {
+    const url = new URL(canonical);
+    if (url.protocol !== "https:" || !url.hostname || url.username || url.password) return "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
+export function reassociateHydratedDocuments(candidates = [], hydratedDocuments = []) {
+  const hydratedByUrl = new Map(hydratedDocuments
+    .map((document) => [canonicalHydrationKey(document), document])
+    .filter(([key]) => key));
+  return candidates.map((document) => {
+    const key = canonicalHydrationKey(document);
+    return (key && hydratedByUrl.get(key)) || document;
   });
 }
 
@@ -664,10 +686,63 @@ function attachEvidenceExcerpts(draft, _query, plannedEvidence) {
 
 export function publicResponse(draft) {
   const { evidence: _evidence, ...response } = draft;
-  const usedCitations = answerCitationNumbers(response.answer);
+  const sources = Array.isArray(response.sources) ? response.sources : [];
+  const answer = response.answer && typeof response.answer === "object" && !Array.isArray(response.answer)
+    ? response.answer
+    : null;
+  const rawCitations = [];
+  let validCitationShape = Boolean(answer || response.answer == null);
+  const collectCitations = (citations) => {
+    if (citations === undefined) return;
+    if (!Array.isArray(citations)) {
+      validCitationShape = false;
+      return;
+    }
+    rawCitations.push(...citations);
+  };
+  collectCitations(answer?.introCitations);
+  const answerParts = answer?.parts === undefined ? [] : answer.parts;
+  if (!Array.isArray(answerParts)) validCitationShape = false;
+  else answerParts.forEach((part) => {
+    if (!part || typeof part !== "object" || Array.isArray(part)) {
+      validCitationShape = false;
+      return;
+    }
+    collectCitations(part.citations);
+  });
+
+  const normalizedCitations = rawCitations.map(Number);
+  const validAnswerCitations = normalizedCitations.every((citation) => (
+    Number.isInteger(citation) && citation > 0
+  ));
+  const sourceCitationCounts = new Map();
+  for (const source of sources) {
+    const citation = Number(source?.citation);
+    if (!Number.isInteger(citation) || citation <= 0) continue;
+    sourceCitationCounts.set(citation, (sourceCitationCounts.get(citation) || 0) + 1);
+  }
+  const usedCitations = new Set(normalizedCitations);
+  const citationsResolveExactlyOnce = [...usedCitations].every((citation) => (
+    sourceCitationCounts.get(citation) === 1
+  ));
+  if (!validCitationShape || !validAnswerCitations || !citationsResolveExactlyOnce) {
+    return {
+      ...response,
+      clarification: "Vastuse allikaviiteid ei saanud üheselt kontrollida.",
+      answer: {
+        eyebrow: "Täpsustust on vaja",
+        title: "Allikaviiteid ei saanud kontrollida",
+        intro: "Leitud ametlike allikate põhjal ei saanud koostada üheselt kontrollitava viitega faktivastust. Täpsusta näitajat, aastat või asukohta ja proovi uuesti.",
+        introCitations: [],
+        parts: [],
+        note: "Otsingutulemused on kuvatud allpool, kuid neist ei koostatud faktivastust.",
+      },
+      sources: [],
+    };
+  }
   const visibleSources = usedCitations.size
-    ? (response.sources || []).filter((source) => usedCitations.has(Number(source.citation)))
-    : (response.sources || []);
+    ? sources.filter((source) => usedCitations.has(Number(source.citation)))
+    : sources;
   const citationMap = new Map(visibleSources.map((source, index) => [
     Number(source.citation),
     index + 1,
@@ -678,14 +753,14 @@ export function publicResponse(draft) {
     .filter(Number.isInteger))];
   return {
     ...response,
-    answer: response.answer ? {
-      ...response.answer,
-      introCitations: compactCitations(response.answer.introCitations),
-      parts: (response.answer.parts || []).map((part) => ({
+    answer: answer ? {
+      ...answer,
+      introCitations: compactCitations(answer.introCitations),
+      parts: answerParts.map((part) => ({
         ...part,
         citations: compactCitations(part.citations),
       })),
-    } : response.answer,
+    } : answer,
     sources: visibleSources.map((source, index) => {
       const publicKeys = [
         "id", "citation", "title", "organization", "type", "published", "url", "evidenceExcerpt", "locator", "actionUrl", "actionLabel", "tags", "sourceTier",
@@ -771,8 +846,11 @@ export async function createPortalDraft(query, {
     })
     : answerCandidates.slice(0, 6);
   throwIfRequestAborted(signal);
-  const hydratedById = new Map(hydratedTop.map((document) => [document.id, document]));
-  const hydrated = answerCandidates.map((document) => hydratedById.get(document.id) || document);
+  // IDs describe logical catalogue entries, not transport identity. A typed
+  // dataset and its human landing page may deliberately have related IDs, and
+  // a future malformed duplicate must never replace evidence from another URL.
+  // Re-associate hydration only with the same canonical HTTPS resource.
+  const hydrated = reassociateHydratedDocuments(answerCandidates, hydratedTop);
   const eligibleHydrated = evidenceDocumentsFromListing({ items: hydrated });
   const reranked = rankPortalDocuments(retrievalQuery, eligibleHydrated);
   const forestBalance = composeForestHarvestBalanceAnswer(retrievalQuery, reranked, query);
@@ -932,6 +1010,9 @@ async function searchWithinBudget(cleanQuery, {
   }) || composeClimateJogevaDailyMeanResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
     now: startedAt,
+  }) || composeMunicipalWasteRecyclingResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+    now: startedAt,
   }) || composeWasteFacilitiesNavigationResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
   });
@@ -1084,6 +1165,9 @@ export function searchTimeoutFallback(cleanQuery, {
   }) || composeStatisticsWastewaterBht7Response(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
   }) || composeClimateJogevaDailyMeanResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+    now: startedAt,
+  }) || composeMunicipalWasteRecyclingResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
     now: startedAt,
   }) || composeWasteFacilitiesNavigationResponse(cleanQuery, searchResults?.items, {

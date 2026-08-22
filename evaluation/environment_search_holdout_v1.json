@@ -49,7 +49,7 @@
     { "id": "H26", "query": "Miks on Ida-Viru põlevkivibasseini põhjavesi halvas seisundis?", "topSource": "ida-viru-groundwater" },
     { "id": "H27", "query": "Mis keskkonnariskid kaasnevad põlevkivi kaevandamisega Ida-Virumaal?", "topSource": "mining-impact-guidance" },
     { "id": "H28", "query": "Eesti KHG inventuuri sektorite aegrida", "topSource": "greenhouse-gas-inventory" },
-    { "id": "H29", "query": "Kui suur on olmejäätmete ringlussevõtu sihttase 2030?", "topSource": "municipal-waste-recycling" },
+    { "id": "H29", "query": "Kui suur on olmejäätmete ringlussevõtu sihttase 2030?", "topSource": "municipal-waste-recycling-page" },
     { "id": "H30", "query": "Harju põhjaveekogumi keemiline ja koguseline seisund", "topSource": "groundwater-status" },
     { "id": "H31", "query": "Läänemere eutrofeerumise ametlik seisundihinnang", "topSource": "marine-strategy-status" },
     { "id": "H32", "query": "Kas Eesti talved on sajusemaks muutunud?", "topSource": "precipitation-change" },

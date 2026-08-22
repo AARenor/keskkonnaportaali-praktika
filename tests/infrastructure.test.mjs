@@ -63,6 +63,7 @@ import {
   isSearchCacheEnabled,
   mergeRelatedQuestions,
   publicResponse,
+  reassociateHydratedDocuments,
   requestCanStillPersist,
   searchListingRevision,
   searchEnvironmentLive as searchEnvironmentLiveImplementation,
@@ -115,12 +116,16 @@ import {
 } from "../src/search-suggestions.js";
 import {
   composeLatestPublishedHydrologyResponse,
+  composeMunicipalWasteRecyclingResponse,
   currentWeatherObservationFromXml,
   CURRENT_WEATHER_OBSERVATIONS_XML_URL,
   forestHarvestBalanceDocumentsFromJson,
   FOREST_BALANCE_EUROSTAT_API_URL,
   LATEST_HYDROLOGY_API_URL,
   latestPublishedHydrologyFromJson,
+  municipalWasteIndicatorFromCsv,
+  MUNICIPAL_WASTE_RECYCLING_CSV_URL,
+  MUNICIPAL_WASTE_RECYCLING_PAGE_URL,
   nationalWeatherForecastFromXml,
   requiresExtendedStructuredListingBudget,
   WEATHER_FORECAST_XML_URL,
@@ -1090,7 +1095,7 @@ test("malicious source directives are removed before evidence reaches Luna", () 
 test("answer evidence does not displace the most relevant search result", async () => {
   const query = "jäätmete ringlussevõtu määr Eestis 2023";
   const service = officialServiceCatalogueDocuments()
-    .find((document) => document.id === "municipal-waste-recycling");
+    .find((document) => document.id === "municipal-waste-recycling-page");
   const numericEvidence = {
     id: "official-2023-rate",
     title: "Jäätmereform",
@@ -1106,9 +1111,87 @@ test("answer evidence does not displace the most relevant search result", async 
     deadlineAt: Date.now(),
     searchResults: { total: 2, items: [numericEvidence, service] },
   });
-  assert.equal(draft.sources[0].id, "municipal-waste-recycling");
+  assert.equal(draft.sources[0].id, "municipal-waste-recycling-page");
   assert.match(draft.answer.intro, /38%/u);
   assert.deepEqual(draft.answer.introCitations, [2]);
+});
+
+test("hydration is re-associated only with the same canonical HTTPS URL", () => {
+  const aliasCandidate = {
+    id: "shared-logical-id",
+    url: "https://www.keskkonnaportaal.ee/et/proov/?utm_source=test",
+    marker: "candidate",
+  };
+  const distinctCandidate = {
+    id: "shared-logical-id",
+    url: "https://keskkonnaportaal.ee/teine",
+    marker: "distinct-candidate",
+  };
+  const invalidCandidate = { id: "shared-logical-id", url: "not a URL", marker: "invalid-candidate" };
+  const rebound = reassociateHydratedDocuments(
+    [aliasCandidate, distinctCandidate, invalidCandidate],
+    [
+      { ...aliasCandidate, url: "https://keskkonnaportaal.ee/proov/", marker: "hydrated-alias" },
+      { ...distinctCandidate, url: "https://keskkonnaportaal.ee/kolmas", marker: "wrong-resource" },
+      { ...invalidCandidate, marker: "invalid-hydration" },
+    ],
+  );
+  assert.equal(rebound[0].marker, "hydrated-alias");
+  assert.equal(rebound[1].marker, "distinct-candidate");
+  assert.equal(rebound[2].marker, "invalid-candidate");
+});
+
+test("municipal-waste pipeline cites only the validated CSV and keeps the page as its action", async () => {
+  const query = "jäätmete ringlussevõtu määr Eestis 2023";
+  const csv = [
+    "Aasta,Measure Names,Eesti/EL õige,% Eesti (copy),% Eesti,% EL (copy),% EL",
+    "2023,Eesti,*,37.9,37.9,,",
+    "2023,Euroopa Liit (EL),,,,47.9,47.9",
+    "",
+  ].join("\n");
+  const startedAt = Date.now();
+  const [source] = municipalWasteIndicatorFromCsv(query, csv, { now: startedAt });
+  const page = officialServiceCatalogueDocuments()
+    .find((document) => document.id === "municipal-waste-recycling-page");
+  assert.ok(source);
+  assert.ok(page);
+  let modelCalls = 0;
+  const searchResults = { total: 2, items: [source, page] };
+  const result = await searchEnvironmentLive(query, {
+    startedAt,
+    deadlineAt: startedAt + 2_000,
+    useCache: false,
+    searchResults,
+    async generateAnswer() {
+      modelCalls += 1;
+      throw new Error("structured municipal-waste evidence must not reach a model");
+    },
+  });
+  assert.equal(modelCalls, 0);
+  assert.match(result.answer.intro, /2023\. aastal oli 37,9%/u);
+  assert.deepEqual(result.answer.introCitations, [1]);
+  assert.equal(result.sources.length, 1);
+  assert.equal(result.sources[0].id, "municipal-waste-recycling");
+  assert.equal(result.sources[0].url, MUNICIPAL_WASTE_RECYCLING_CSV_URL);
+  assert.equal(result.sources[0].actionUrl, MUNICIPAL_WASTE_RECYCLING_PAGE_URL);
+  assert.equal(result.sources.some((item) => item.id === page.id), false);
+
+  const timedOut = searchTimeoutFallback(query, { searchResults, startedAt });
+  assert.equal(timedOut.sources.length, 1);
+  assert.equal(timedOut.sources[0].url, MUNICIPAL_WASTE_RECYCLING_CSV_URL);
+  assert.match(timedOut.answer.intro, /Euroopa Liidus 47,9%/u);
+
+  const filtered = await searchEnvironmentLive(query, {
+    startedAt,
+    deadlineAt: startedAt + 2_000,
+    useCache: false,
+    filters: { category: "Ametlik juhend" },
+    searchResults,
+    generateAnswer: async () => ({ answer: null, status: "unavailable", provider: "test" }),
+  });
+  assert.equal(filtered.sources.some((item) => item.id === source.id), false);
+  assert.equal(filtered.answer.introCitations.length, 0);
+  assert.equal(composeMunicipalWasteRecyclingResponse(query, [page], { now: startedAt }), null);
 });
 
 test("forest harvest draft answers the root and temporal follow-up from multiple visible sources", async () => {
@@ -3693,6 +3776,33 @@ test("the reviewed KOTKAS route explains how to check status without inventing a
   assert.equal(visible.actionUrl, draft.sources[0].actionUrl);
 });
 
+test("the reviewed restoration guide answers only the general duty, not a named quarry status", async () => {
+  const source = officialServiceCatalogueDocuments()
+    .find((document) => document.id === "mined-land-restoration");
+  assert.ok(source);
+  assert.equal(source._answerEvidenceEligible, true);
+  const general = await createPortalDraft("Kuidas tuleb karjäär pärast kaevandamist korrastada?", {
+    deadlineAt: Date.now(),
+    signal: new AbortController().signal,
+    searchResults: { total: 1, items: [source] },
+  });
+  assert.equal(general.evidence.kind, "ranked-search-results");
+  assert.deepEqual(general.answer.introCitations, [1]);
+  assert.match(general.answer.intro, /enne kaevandamisloa lõppemist/u);
+  assert.match(general.answer.intro, /Keskkonnaameti tingimuste/u);
+  assert.match(general.sources[0].evidenceExcerpt, /ei tõenda, et konkreetne karjäär on juba korrastatud/u);
+
+  const named = await createPortalDraft("Kas Sirgala karjäär on juba korrastatud?", {
+    deadlineAt: Date.now(),
+    signal: new AbortController().signal,
+    searchResults: { total: 1, items: [source] },
+  });
+  assert.equal(named.evidence.kind, "insufficient-evidence");
+  assert.equal(named.evidence.answerable, false);
+  assert.deepEqual(named.answer.introCitations, []);
+  assert.doesNotMatch(named.answer.intro, /Sirgala (?:on|oli) korrastatud/iu);
+});
+
 test("the reviewed well-permit guide separates general legal requirements from a specific well's status", async () => {
   const query = "Kas uue puurkaevu rajamiseks on vaja ehitusluba?";
   const source = officialServiceCatalogueDocuments()
@@ -4311,7 +4421,7 @@ test("public output compacts sparse citations after removing uncited sources", (
     url: `https://keskkonnaportaal.ee/et/${id}`,
     evidenceExcerpt: `Allika ${citation} kontrollitud tõend.`,
   });
-  const response = publicResponse({
+  const draft = {
     query: "test",
     answer: {
       eyebrow: "Allikapõhine kokkuvõte",
@@ -4329,11 +4439,57 @@ test("public output compacts sparse citations after removing uncited sources", (
     related: [],
     clarification: null,
     evidence: { kind: "test", answerable: true },
-  });
+  };
+  const original = structuredClone(draft);
+  const response = publicResponse(draft);
   assert.deepEqual(response.answer.introCitations, [1]);
   assert.deepEqual(response.answer.parts[0].citations, [2]);
   assert.deepEqual(response.sources.map((item) => item.citation), [1, 2]);
   assert.equal(response.sources.length, 2);
+  assert.deepEqual(draft, original);
+});
+
+test("public output fails closed when cited source identities are malformed", () => {
+  const source = (citation, id) => ({
+    id,
+    citation,
+    title: `Allikas ${id}`,
+    organization: "Keskkonnaagentuur",
+    type: "Ametlik allikas",
+    published: "2026",
+    url: `https://keskkonnaportaal.ee/et/${id}`,
+    evidenceExcerpt: "Kontrollitud tõend.",
+  });
+  const draft = (citations, sources) => ({
+    query: "test",
+    answer: {
+      eyebrow: "Allikapõhine kokkuvõte",
+      title: "Kontrollimata faktiväide",
+      intro: "See faktiväide peab alati säilitama üheselt lahenduva viite.",
+      introCitations: citations,
+      parts: [{ title: "Lisaväide", text: "Ka see väide vajab viidet.", citations }],
+      note: "",
+    },
+    sources,
+    searchResults: { items: [{ id: "ranked-result" }], total: 1 },
+    clarification: null,
+    evidence: { kind: "test", answerable: true },
+  });
+  const invalidDrafts = [
+    draft([7], [source(1, "missing")]),
+    draft([2], [source(2, "first"), source(2, "duplicate")]),
+    draft([0], [source(0, "zero")]),
+    draft([1.5], [source(1.5, "fractional")]),
+  ];
+  for (const invalid of invalidDrafts) {
+    const response = publicResponse(invalid);
+    assert.equal(response.answer.title, "Allikaviiteid ei saanud kontrollida");
+    assert.doesNotMatch(response.answer.intro, /faktiväide peab/u);
+    assert.deepEqual(response.answer.introCitations, []);
+    assert.deepEqual(response.answer.parts, []);
+    assert.deepEqual(response.sources, []);
+    assert.equal(response.searchResults.items[0].id, "ranked-result");
+  }
 });
 
 test("global deadline returns a controlled fallback and aborts remaining work", async () => {

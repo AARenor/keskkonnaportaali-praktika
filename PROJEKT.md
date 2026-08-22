@@ -127,7 +127,7 @@ Maa- ja Ruumiameti teenus on tasuta avalik teenus, kuid selle väljavõte on kas
 | `search.service.eu-live.vportal.ee/v1/search/keskkonnaamet` | Keskkonnaameti ametliku veebisisu relevantsusjärjestusega täistekstiotsing |
 | `search.service.eu-live.vportal.ee/v1/search/keskkonnaagentuur` | Keskkonnaagentuuri ametliku veebisisu täistekstiotsing |
 | `search.service.eu-live.vportal.ee/v1/search/kliimamin` | Kliimaministeeriumi ametliku veebisisu täistekstiotsing |
-| `tableau.envir.ee/.../OlmejtmeteringlussevttEestijaEuroopaLiit.csv` | Olmejäätmete ringlussevõtu määra küsitud aasta tüübikindel Eesti/EL väärtus; viide näitab inimesele portaali näitajalehte ja `locator` täpset CSV-vaadet |
+| `tableau.envir.ee/.../OlmejtmeteringlussevttEestijaEuroopaLiit.csv` | Olmejäätmete ringlussevõtu määra küsitud aasta tüübikindel Eesti/EL väärtus; nummerdatud viide avab täpse CSV-väljundi ja eraldi tegevuslink portaali näitajalehe |
 | `ilmateenistus.ee/ilma_andmed/xml/observations.php` | Kuni 15 minuti vanune jaama-, aja-, näitaja- ja ühikupõhine ilmavaatlus toetatud Eesti linnadele |
 | `ilmateenistus.ee/ilma_andmed/xml/forecast.php` | Nelja järjestikuse kuupäevaga Eesti prognoos; automaatvastus kasutab ainult Eesti ajavööndi homset üldprognoosi ega omista seda linnale |
 | `keskkonnaandmed.envir.ee/f_hydroseire` | Täpse kureeritud jaama ning `WL avg`, `WT avg` või `Äravool avg` seeria viimati avaldatud tunni keskmine; `Accept-Profile: apijahiala`, andmeaeg kuni 36 tundi vana ja alati eraldi reaalaja veepäringust; jaama graafiku null, põhjalähedane temperatuuriandur ja operatiivse toorandme staatus on vastuses sõnaselgelt eristatud |

@@ -35,6 +35,9 @@ import {
 } from "./statistics.mjs";
 
 export const MUNICIPAL_WASTE_RECYCLING_CSV_URL = "https://tableau.envir.ee/views/jtmed-OlmejtmeteringlussevttEestijaEuroopaLiit/OlmejtmeteringlussevttEestijaEuroopaLiit.csv?:showVizHome=no";
+export const MUNICIPAL_WASTE_RECYCLING_PAGE_URL = "https://keskkonnaportaal.ee/et/olmejaatmete-ringlussevott";
+const MUNICIPAL_WASTE_RECYCLING_LOCATOR = "Ametliku Tableau vaate CSV-väljund; valitud rida vastab vastuses nimetatud aastale.";
+const MUNICIPAL_WASTE_RECYCLING_ACTION_LABEL = "Ava Keskkonnaportaali näitajaleht";
 export const FOREST_BALANCE_EUROSTAT_API_URL = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/for_vol_efa?geo=EE&sinceTimePeriod=2020&stk_flow=NAI&stk_flow=RMOV&indic_fo=FOR&unit=THS_M3&lang=en";
 export const FOREST_BALANCE_EUROSTAT_URL = "https://ec.europa.eu/eurostat/web/products-eurostat-news/w/edn-20260320-2";
 export const FOREST_BALANCE_EFA_HANDBOOK_URL = "https://ec.europa.eu/eurostat/web/products-manuals-and-guidelines/w/ks-gq-24-015";
@@ -1021,6 +1024,17 @@ function requestedYear(query) {
   return match ? Number(match[1]) : null;
 }
 
+function municipalWasteStatement(projection) {
+  const comparison = projection.euRate === null
+    ? ""
+    : ` ja Euroopa Liidus ${etNumber(projection.euRate)}%`;
+  return `Olmejäätmete ringlussevõtu määr Eestis ${projection.year}. aastal oli ${etNumber(projection.estoniaRate)}%${comparison}.`;
+}
+
+function municipalWasteContent(projection) {
+  return `${municipalWasteStatement(projection)} Andmed on loetud lehele manustatud ametliku Tableau vaate CSV-väljundist.`;
+}
+
 export function isMunicipalWasteRecyclingRateQuery(query) {
   const text = normalize(query);
   return /\b(?:olme ?)?jaatm\w*/u.test(text)
@@ -1113,29 +1127,104 @@ export function municipalWasteIndicatorFromCsv(query, csv, options = {}) {
   const available = [...byYear.values()].filter((item) => item.estonia !== null).sort((left, right) => right.year - left.year);
   const observation = requested ? byYear.get(requested) : available[0];
   if (!observation || observation.estonia === null) return [];
-  const estonia = etNumber(observation.estonia);
-  const comparison = observation.eu === null ? "" : ` ja Euroopa Liidus ${etNumber(observation.eu)}%`;
-  const statement = `Olmejäätmete ringlussevõtu määr Eestis ${observation.year}. aastal oli ${estonia}%${comparison}.`;
+  const projection = {
+    year: observation.year,
+    estoniaRate: observation.estonia,
+    euRate: observation.eu,
+  };
+  const statement = municipalWasteStatement(projection);
+  const contentHash = createHash("sha256").update(csv).digest("hex");
   return [{
     id: "municipal-waste-recycling",
     title: "Olmejäätmete ringlussevõtu määr",
     organization: "Keskkonnaportaal / Keskkonnaagentuur",
     type: "Keskkonnanäitaja",
     published: String(observation.year),
-    url: "https://keskkonnaportaal.ee/et/olmejaatmete-ringlussevott",
-    locator: MUNICIPAL_WASTE_RECYCLING_CSV_URL,
+    url: MUNICIPAL_WASTE_RECYCLING_CSV_URL,
+    locator: MUNICIPAL_WASTE_RECYCLING_LOCATOR,
+    actionUrl: MUNICIPAL_WASTE_RECYCLING_PAGE_URL,
+    actionLabel: MUNICIPAL_WASTE_RECYCLING_ACTION_LABEL,
     summary: statement,
-    content: `${statement} Andmed on loetud lehele manustatud ametliku Tableau vaate CSV-väljundist.`,
+    content: municipalWasteContent(projection),
     topics: ["jäätmed", "olmejäätmed", "ringlussevõtt", "ringlussevõtu määr", "protsent", String(observation.year)],
     tags: ["jäätmed", "olmejäätmed", "ringlussevõtt", "protsent", String(observation.year)],
     sourceTier: "official",
     retrieval: "official-tableau-csv",
+    delivery: "structured-or-download",
+    routeClasses: ["official_indicator_or_report", "official_historical_observation", "official_data_or_api"],
     evidencePolicy: "versioned",
     _answerEvidenceEligible: options.stale !== true,
-    _contentHash: createHash("sha256").update(csv).digest("hex"),
-    _evidenceVersion: createHash("sha256").update(csv).digest("hex"),
+    _contentHash: contentHash,
+    _evidenceVersion: contentHash,
     _publishedAt: `${observation.year}-12-31`,
+    _municipalWasteRecycling: projection,
   }];
+}
+
+function validatedMunicipalWasteProjection(query, document, now = Date.now()) {
+  const projection = document?._municipalWasteRecycling;
+  const queryYear = requestedYear(query);
+  const currentYear = new Date(now).getUTCFullYear();
+  const contentHash = String(document?._contentHash || "").trim();
+  const validRate = (value) => Number.isFinite(value) && value >= 0 && value <= 100;
+  if (!isMunicipalWasteRecyclingRateQuery(query)
+    || document?.id !== "municipal-waste-recycling"
+    || document?.url !== MUNICIPAL_WASTE_RECYCLING_CSV_URL
+    || document?.locator !== MUNICIPAL_WASTE_RECYCLING_LOCATOR
+    || document?.actionUrl !== MUNICIPAL_WASTE_RECYCLING_PAGE_URL
+    || document?.actionLabel !== MUNICIPAL_WASTE_RECYCLING_ACTION_LABEL
+    || document?.retrieval !== "official-tableau-csv"
+    || sourceEvidenceEligibility(document, { now }).eligible !== true
+    || !/^[a-f0-9]{64}$/u.test(contentHash)
+    || contentHash !== String(document?._evidenceVersion || "").trim()
+    || !isPlainObject(projection)
+    || Object.keys(projection).length !== 3
+    || !["year", "estoniaRate", "euRate"].every((key) => Object.hasOwn(projection, key))
+    || !Number.isInteger(projection.year)
+    || projection.year < MIN_MUNICIPAL_WASTE_YEAR
+    || projection.year > currentYear + 1
+    || (queryYear !== null && projection.year !== queryYear)
+    || !validRate(projection.estoniaRate)
+    || !(projection.euRate === null || validRate(projection.euRate))
+    || document?.published !== String(projection.year)
+    || document?._publishedAt !== `${projection.year}-12-31`
+    || document?.summary !== municipalWasteStatement(projection)
+    || document?.content !== municipalWasteContent(projection)) return null;
+  return projection;
+}
+
+export function composeMunicipalWasteRecyclingResponse(query, documents = [], options = {}) {
+  const now = Number.isFinite(Number(options.now)) ? Number(options.now) : Date.now();
+  const candidates = (documents || [])
+    .map((document) => ({ document, projection: validatedMunicipalWasteProjection(query, document, now) }))
+    .filter((candidate) => candidate.projection);
+  if (candidates.length !== 1) return null;
+  const { document: source, projection } = candidates[0];
+  return {
+    query: String(query || "").trim(),
+    total: Number(options.total || documents.length || 1),
+    generatedAt: new Date(now).toISOString(),
+    answer: {
+      eyebrow: "Valideeritud olmejäätmete näitaja",
+      title: `Eesti olmejäätmete ringlussevõtu määr oli ${projection.year}. aastal ${etNumber(projection.estoniaRate)}%`,
+      intro: source.summary,
+      introCitations: [1],
+      parts: [],
+      note: "See on ametliku CSV-väljundi ajalooline aastanäit. See ei tõenda tulevase sihttaseme saavutamist ega kohaliku omavalitsuse, jäätmevedaja või käitluskoha tulemust.",
+    },
+    sources: [{ ...source, citation: 1, evidenceExcerpt: source.content }],
+    related: [
+      "Olmejäätmete ringlussevõtu sihttasemed",
+      "Ettevõtete jäätmete aastaaruandluse andmed",
+      "Jäätmekäitluskohtade kaart",
+    ],
+    clarification: null,
+    evidence: {
+      kind: "structured-municipal-waste-recycling",
+      answerable: true,
+      documentIds: [source.id],
+    },
+  };
 }
 
 function forestHarvestComparisonIntent(query) {

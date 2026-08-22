@@ -2,9 +2,26 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
+  publicCitationUrl,
+  rankOneSearchResultId,
   requestBoundedAuditJson,
   requestBoundedAuditText,
 } from "../scripts/audit-http.mjs";
+
+test("live audits rank the listing and inspect the user-visible citation URL", () => {
+  const body = {
+    searchResults: { items: [{ id: "ranked-first" }, { id: "cited-second" }] },
+    sources: [{
+      id: "cited-second",
+      url: "https://official.example/evidence",
+      locator: "Section 4, reviewed table",
+    }],
+  };
+  assert.equal(rankOneSearchResultId(body), "ranked-first");
+  assert.equal(publicCitationUrl(body.sources[0]), "https://official.example/evidence");
+  assert.equal(rankOneSearchResultId({}), null);
+  assert.equal(publicCitationUrl({ locator: "Not a URL" }), null);
+});
 
 test("live audit transport refuses redirects and bounds declared and streamed bodies", async () => {
   let observedInit;

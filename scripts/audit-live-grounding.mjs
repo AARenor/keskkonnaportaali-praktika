@@ -3,7 +3,11 @@ import { readFile } from "node:fs/promises";
 import { load } from "cheerio";
 import { requestApprovedPublicHttpsText } from "../server/public-https.mjs";
 import { AUDIT_CITATION_ORIGINS } from "./audit-citation-policy.mjs";
-import { requestBoundedAuditJson } from "./audit-http.mjs";
+import {
+  publicCitationUrl,
+  rankOneSearchResultId,
+  requestBoundedAuditJson,
+} from "./audit-http.mjs";
 
 const options = Object.fromEntries(process.argv.slice(2).map((argument) => {
   const [key, ...rest] = argument.replace(/^--/u, "").split("=");
@@ -123,7 +127,7 @@ for (const item of dataset.representative) {
     fail(item.id, `search HTTP ${result.status}`);
     continue;
   }
-  if (body.sources?.[0]?.id !== item.topSource) fail(item.id, "unexpected rank-one source");
+  if (rankOneSearchResultId(body) !== item.topSource) fail(item.id, "unexpected rank-one source");
   const materialClaims = claims(body);
   if (!materialClaims.length || !citations(body).length) fail(item.id, "answer has no cited material claim");
   for (const claim of materialClaims) {
@@ -137,7 +141,7 @@ for (const item of dataset.representative) {
     let fetchedPercentUnit = false;
     for (const number of claim.citations) {
       const source = body.sources?.[number - 1];
-      const evidenceUrl = source?.locator || source?.url;
+      const evidenceUrl = publicCitationUrl(source);
       if (!evidenceUrl) {
         fail(item.id, "citation does not resolve inside the response");
         continue;

@@ -40,7 +40,7 @@ const ROUTE_CLASS_IDS = Object.freeze({
   ]),
   official_indicator_or_report: new Set([
     "climate-atlas", "water-monitoring", "radiation-monitoring", "soil-monitoring-results",
-    "precipitation-change", "greenhouse-gas-inventory", "municipal-waste-recycling",
+    "precipitation-change", "greenhouse-gas-inventory", "municipal-waste-recycling", "municipal-waste-recycling-page",
     "groundwater-status", "marine-strategy-status", "bathing-water-quality",
     "groundwater-pesticide-monitoring", "wildlife-status-2025", "electric-vehicle-lifecycle",
     "baltic-sea-litter", "ida-viru-groundwater",
@@ -83,7 +83,7 @@ const STRUCTURED_SOURCE_IDS = new Set([
   "open-data-downloader", "waste-reporting-data", "current-weather-observations", "weather-forecast",
   "latest-published-hydrology", "eelis-emajogi-public-watercourse",
   "statistics-water-abstraction-2024", "statistics-wastewater-bht7-2024", "statistics-hazardous-waste-2024",
-  "climate-jogeva-daily-mean",
+  "climate-jogeva-daily-mean", "municipal-waste-recycling",
 ]);
 const LIVE_SOURCE_IDS = new Set([
   "weather-forecast", "current-weather-observations", "kaia-service", "air-quality-live", "marine-observations", "marine-ice-map",

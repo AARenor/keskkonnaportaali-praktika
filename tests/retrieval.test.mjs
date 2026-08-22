@@ -460,7 +460,7 @@ test("the exact KK068 hazardous-waste total outranks articles and generic waste 
   assert.equal(ranked[0]?.id, "statistics-hazardous-waste-2024");
   assert.equal(rankSearchCandidates(query, officialServiceCatalogueDocuments(), { now })[0]?.id,
     "statistics-pxweb");
-  for (const genericId of ["waste-reporting-data", "municipal-waste-recycling"]) {
+  for (const genericId of ["waste-reporting-data", "municipal-waste-recycling-page"]) {
     const genericIndex = ranked.findIndex((document) => document.id === genericId);
     assert.ok(genericIndex === -1 || genericIndex > 0);
   }
@@ -501,7 +501,7 @@ test("precise environmental tasks start with their maintained official service p
   const cases = [
     ["keskkonnaloa taotlemine ettevõttele", "environmental-permits"],
     ["Eesti kasvuhoonegaaside heide 2022", "greenhouse-gas-inventory"],
-    ["jäätmete ringlussevõtu määr Eestis 2023", "municipal-waste-recycling"],
+    ["jäätmete ringlussevõtu määr Eestis 2023", "municipal-waste-recycling-page"],
     ["Natura 2000 piirangud ehitamisel", "protected-area-construction"],
     ["põhjavee seisund Harjumaal 2024", "groundwater-status"],
     ["Kas kinnistul oleva puurkaevu jaoks on luba vaja?", "well-permit-guidance"],
@@ -555,7 +555,7 @@ test("common Estonian and English searches keep the intended route and best offi
     ["Miks Läänemeri suvel õitseb?", "official_indicator_or_report", "marine-strategy-status"],
     ["biodiversity observations database", "official_spatial_or_register", "nature-observations"],
     ["radiation monitoring results Estonia", "official_indicator_or_report", "radiation-monitoring"],
-    ["municipal waste recycling rate Estonia", "official_indicator_or_report", "municipal-waste-recycling"],
+    ["municipal waste recycling rate Estonia", "official_indicator_or_report", "municipal-waste-recycling-page"],
     ["marine litter Baltic Sea", "official_indicator_or_report", "baltic-sea-litter"],
     ["climate change scenarios Estonia", "official_indicator_or_report", "climate-atlas"],
     ["Lake Peipus ecological status", "official_indicator_or_report", "surface-water-status"],

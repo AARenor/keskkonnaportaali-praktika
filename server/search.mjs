@@ -414,13 +414,26 @@ const SEARCH_DOCUMENTS = [
     title: "Kaevandatud maa korrastamiskohustus",
     organization: "Keskkonnaamet",
     type: "Ametlik juhend",
-    published: "jooksev",
+    published: "06.01.2026",
     url: "https://keskkonnaamet.ee/keskkonnakasutus-kiirgus/maapou/korrastamiskohustus",
     tags: ["kaevandamine", "kaevandatud maa", "korrastamine", "leevendusmeede", "järelhooldus", "maastik"],
     summary:
-      "Kaevandatud maa tuleb enne kaevandamisloa lõppemist Keskkonnaameti tingimuste ja heakskiidetud korrastamisprojekti järgi korrastada, et vähendada keskkonnamõju ning anda ala uuesti kasutusse.",
+      "Pärast kaevandamist tuleb kaevandatud maa enne kaevandamisloa lõppemist Keskkonnaameti tingimuste ja heakskiidetud korrastamisprojekti järgi korrastada, et vähendada keskkonnamõju ning anda ala uuesti kasutusse.",
+    content:
+      "Pärast kaevandamist tuleb kaevandatud maa korrastada enne kaevandamisloa lõppemist. Kohustus kehtib ka siis, kui luba on kehtetuks tunnistatud või kehtivuse kaotanud. Ala korrastatakse korrastamisprojekti järgi, mis koostatakse Keskkonnaameti antud tingimuste alusel; projekti rakendamiseks annab nõusoleku Keskkonnaamet ja amet kontrollib tööde nõuetekohasust. Korrastamise eesmärk on vähendada keskkonnamõju ja võtta ala uuesti kasutusse. Üldjuhend ei tõenda, et konkreetne karjäär on juba korrastatud, korrastatuks tunnistatud, praegu nõuetekohane või kehtiva loaga; selle staatuseks tuleb kontrollida objekti luba, menetluskirjet ja korrastatuks tunnistamise otsust.",
     answer:
-      "Korrastamine on kaevandamise järel kohustuslik leevendus: projekti tingimused annab Keskkonnaamet ning loa omaja peab maa enne loa lõppu nõuetekohaselt korrastama.",
+      "Pärast kaevandamist tuleb maa enne kaevandamisloa lõppemist korrastada Keskkonnaameti tingimuste alusel koostatud korrastamisprojekti järgi. Projekti rakendamiseks annab nõusoleku Keskkonnaamet. Üldjuhend ei tõenda ühegi konkreetse karjääri praegust korrastamisstaatust.",
+    evidencePolicy: "versioned",
+    delivery: "catalog-only",
+    freshness: {
+      class: "reviewed-procedure-extract",
+      basis: "reviewed-at",
+      maxAgeMs: 31 * 24 * 60 * 60 * 1_000,
+      requiresSourceTimestamp: true,
+    },
+    _answerEvidenceEligible: true,
+    _evidenceVersion: "kka-korrastamiskohustus-2026-01-06",
+    _evidenceStatusAt: "2026-08-22T16:24:00.000Z",
   },
   {
     id: "waste-reporting-data",
@@ -600,7 +613,7 @@ const SEARCH_DOCUMENTS = [
       "Kliimaministeeriumi püsileht koondab Eesti iga-aastase kasvuhoonegaaside inventuuri, aegridade selgitused, sektorite jaotuse ning allalaaditavad aruanded.",
   },
   {
-    id: "municipal-waste-recycling",
+    id: "municipal-waste-recycling-page",
     title: "Olmejäätmete ringlussevõtt",
     organization: "Keskkonnaportaal",
     type: "Keskkonnanäitaja",

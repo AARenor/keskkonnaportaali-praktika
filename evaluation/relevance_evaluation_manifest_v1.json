@@ -24,11 +24,11 @@
   "datasets": [
     {
       "datasetPath": "evaluation/environment_search_holdout_v1.json",
-      "datasetSha256": "c0dab1a8c1e8d97e9ad65e4e98ef068344ef35754e87feb1d39e783ebc56f2c0",
+      "datasetSha256": "19c594d7d3e5f9ad2f527cc9270d9db2b70b0118da74d668247e01f89632e88d",
       "caseCount": 40,
       "queriesSha256": "5b526b3f59cbaac38309f6823b1624ebc087e7dccf2edebc50135da007f8fb5e",
-      "qrelsSha256": "b123c28988ee28270e1351bda8901d5a7ef71e59e69cc4ddef8d8830c43e907f",
-      "casesSha256": "12e3c494e47121e462f7a379764279398a93a7ffc1e9565bccf54ee322b6d3c5",
+      "qrelsSha256": "994e3ab3f8c690212d2eaf3f0c3d8334a4f81d8de134a87512d6c2d99654e129",
+      "casesSha256": "160a5fb882b262c31fb653bb88f1868dd4375b22ce21625be69c87a2159d5b9d",
       "selectedAt": "2026-08-18",
       "repositoryIntroductionRevision": "373324dc657986b693aa1df138f5a9c1866d5754",
       "gates": { "precisionAt1": 0.9, "mrr": 0.95, "ndcgAt5": 0.97, "recallAt5": 0.97 },

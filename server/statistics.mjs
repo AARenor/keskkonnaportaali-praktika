@@ -2,10 +2,12 @@ import { createHash } from "node:crypto";
 import { sourceEvidenceEligibility } from "./source-registry.mjs";
 
 export const STATISTICS_WATER_ABSTRACTION_API_URL = "https://andmed.stat.ee/api/v1/et/stat/Keskkond/loodusvarad-ja-nende-kasutamine/veekasutus/KK048.PX";
+export const STATISTICS_WATER_ABSTRACTION_TABLE_URL = "https://andmed.stat.ee/et/stat/keskkond__loodusvarad-ja-nende-kasutamine__veekasutus/KK048";
 export const STATISTICS_WATER_INFO_URL = "https://stat.ee/et/avasta-statistikat/valdkonnad/keskkond/vesi";
 export const STATISTICS_DISSEMINATION_POLICY_URL = "https://stat.ee/et/statistikaamet/meist/strateegia/riikliku-statistika-levitamise-pohimotted";
 export const STATISTICS_WATER_ABSTRACTION_YEAR = 2024;
 export const STATISTICS_WASTEWATER_BHT7_API_URL = "https://andmed.stat.ee/api/v1/et/stat/keskkond/surve-keskkonnaseisundile/vee-saastamine/KK25.PX";
+export const STATISTICS_WASTEWATER_BHT7_TABLE_URL = "https://andmed.stat.ee/et/stat/keskkond__surve-keskkonnaseisundile__vee-saastamine/KK25";
 export const STATISTICS_WASTEWATER_BHT7_YEAR = 2024;
 export const STATISTICS_HAZARDOUS_WASTE_API_URL = "https://andmed.stat.ee/api/v1/et/stat/keskkond/surve-keskkonnaseisundile/jaatmete-teke/KK068.PX";
 export const STATISTICS_HAZARDOUS_WASTE_TABLE_URL = "https://andmed.stat.ee/et/stat/keskkond__surve-keskkonnaseisundile__jaatmete-teke/KK068";
@@ -286,8 +288,8 @@ export function statisticsWaterAbstractionFromJson(query, json, options = {}) {
     organization: "Statistikaamet",
     type: "Ametlik aastastatistika (JSON-stat2)",
     published: String(intent.year),
-    url: STATISTICS_WATER_ABSTRACTION_API_URL,
-    locator: `Statistikaameti veestatistika teemaleht: ${STATISTICS_WATER_INFO_URL}; levitamispõhimõtted ja litsents: ${STATISTICS_DISSEMINATION_POLICY_URL}`,
+    url: STATISTICS_WATER_ABSTRACTION_TABLE_URL,
+    locator: `Fikseeritud PXWeb POST: ${STATISTICS_WATER_ABSTRACTION_API_URL}; valikud Aasta=2024, Maakond=1 (Kogu Eesti), Tegevusala=1 (Tegevusalad kokku), Vee liik=1 (Vesi kokku); veestatistika teemaleht: ${STATISTICS_WATER_INFO_URL}; levitamispõhimõtted ja litsents: ${STATISTICS_DISSEMINATION_POLICY_URL}`,
     summary: statisticsStatement(projection),
     content: statisticsContent(projection),
     topics: ["veevõtt", "vesi", "Eesti", String(intent.year), TABLE_ID],
@@ -314,7 +316,7 @@ function validatedStatisticsProjection(query, document, now = Date.now()) {
   const projection = document?._statisticsWaterAbstraction;
   const fetchedAt = Date.parse(String(projection?.fetchedAt || ""));
   if (!intent || document?.id !== "statistics-water-abstraction-2024"
-    || document?.url !== STATISTICS_WATER_ABSTRACTION_API_URL
+    || document?.url !== STATISTICS_WATER_ABSTRACTION_TABLE_URL
     || document?.retrieval !== "official-structured-statistics-pxweb"
     || sourceEvidenceEligibility(document, { now }).eligible !== true
     || !projection || projection.year !== intent.year
@@ -423,8 +425,8 @@ export function statisticsWastewaterBht7FromJson(query, json, options = {}) {
     organization: "Statistikaamet",
     type: "Ametlik aastastatistika (JSON-stat2)",
     published: String(intent.year),
-    url: STATISTICS_WASTEWATER_BHT7_API_URL,
-    locator: `Statistikaameti veestatistika teemaleht: ${STATISTICS_WATER_INFO_URL}; levitamispõhimõtted ja litsents: ${STATISTICS_DISSEMINATION_POLICY_URL}`,
+    url: STATISTICS_WASTEWATER_BHT7_TABLE_URL,
+    locator: `Fikseeritud PXWeb POST: ${STATISTICS_WASTEWATER_BHT7_API_URL}; valikud Maakond=1 (Kogu Eesti), Aasta=2024, Reostuskoormuse näitaja=1 (Bioloogiline hapnikutarve (BHT7)); veestatistika teemaleht: ${STATISTICS_WATER_INFO_URL}; levitamispõhimõtted ja litsents: ${STATISTICS_DISSEMINATION_POLICY_URL}`,
     summary: statisticsWastewaterBht7Statement(projection),
     content: statisticsWastewaterBht7Content(projection),
     topics: ["heitvesi", "pinnaveekogud", "BHT7", "reostuskoormus", "Eesti", String(intent.year), WASTEWATER_BHT7_TABLE_ID],
@@ -451,7 +453,7 @@ function validatedStatisticsWastewaterBht7Projection(query, document, now = Date
   const projection = document?._statisticsWastewaterBht7;
   const fetchedAt = Date.parse(String(projection?.fetchedAt || ""));
   if (!intent || document?.id !== "statistics-wastewater-bht7-2024"
-    || document?.url !== STATISTICS_WASTEWATER_BHT7_API_URL
+    || document?.url !== STATISTICS_WASTEWATER_BHT7_TABLE_URL
     || document?.retrieval !== "official-structured-statistics-pxweb"
     || sourceEvidenceEligibility(document, { now }).eligible !== true
     || !projection || projection.year !== intent.year
@@ -560,8 +562,8 @@ export function statisticsHazardousWasteFromJson(query, json, options = {}) {
     organization: "Statistikaamet",
     type: "Ametlik aastastatistika (JSON-stat2)",
     published: String(intent.year),
-    url: STATISTICS_HAZARDOUS_WASTE_API_URL,
-    locator: `Statistikaameti tabel ja mõõtühiku märkused: ${STATISTICS_HAZARDOUS_WASTE_TABLE_URL}; levitamispõhimõtted ja litsents: ${STATISTICS_DISSEMINATION_POLICY_URL}`,
+    url: STATISTICS_HAZARDOUS_WASTE_TABLE_URL,
+    locator: `Fikseeritud PXWeb POST: ${STATISTICS_HAZARDOUS_WASTE_API_URL}; valikud Aasta=2024, Jäätmeliik=41 (Ohtlikud jäätmed kokku), Tegevusala=1 (Tegevusalad kokku); levitamispõhimõtted ja litsents: ${STATISTICS_DISSEMINATION_POLICY_URL}`,
     summary: statisticsHazardousWasteStatement(projection),
     content: statisticsHazardousWasteContent(projection),
     topics: ["ohtlikud jäätmed", "jäätmeteke", "Eesti", String(intent.year), HAZARDOUS_WASTE_TABLE_ID],
@@ -588,7 +590,7 @@ function validatedStatisticsHazardousWasteProjection(query, document, now = Date
   const projection = document?._statisticsHazardousWaste;
   const fetchedAt = Date.parse(String(projection?.fetchedAt || ""));
   if (!intent || document?.id !== "statistics-hazardous-waste-2024"
-    || document?.url !== STATISTICS_HAZARDOUS_WASTE_API_URL
+    || document?.url !== STATISTICS_HAZARDOUS_WASTE_TABLE_URL
     || document?.retrieval !== "official-structured-statistics-pxweb"
     || sourceEvidenceEligibility(document, { now }).eligible !== true
     || !projection || projection.year !== intent.year

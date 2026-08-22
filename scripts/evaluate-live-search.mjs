@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { canonicalResultUrl } from "../server/retrieval.mjs";
 import { hasCompleteSentenceEnding } from "../server/search.mjs";
-import { requestBoundedAuditText } from "./audit-http.mjs";
+import { rankOneSearchResultId, requestBoundedAuditText } from "./audit-http.mjs";
 
 const argumentsMap = Object.fromEntries(process.argv.slice(2).map((argument) => {
   const [key, ...rest] = argument.replace(/^--/u, "").split("=");
@@ -131,10 +131,11 @@ for (const item of qrels) {
     continue;
   }
   assertPublicContract(item, result);
-  const actual = result.body?.searchResults?.items?.[0]?.id || null;
-  check(actual === item.topSource, "unexpected rank-one source", {
+  const actual = rankOneSearchResultId(result.body);
+  const expectedTopSource = item.liveTopSource || item.topSource;
+  check(actual === expectedTopSource, "unexpected rank-one source", {
     id: item.id,
-    expected: item.topSource,
+    expected: expectedTopSource,
     actual,
   });
   queryResults.push({
@@ -142,7 +143,7 @@ for (const item of qrels) {
     status: result.status,
     durationMs: result.durationMs,
     hash: result.hash,
-    expectedTopSource: item.topSource,
+    expectedTopSource,
     topSource: actual,
   });
 }

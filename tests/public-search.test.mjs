@@ -307,6 +307,25 @@ test("curated official registry has unique identities and explicit dynamic-sourc
   assert.match(permitDocument.content, /Taotluste ja menetluste registrisse/u);
   assert.match(permitDocument.summary, /portaal ise konkreetset menetlusseisu ei määra/u);
   assert.doesNotMatch(permitDocument.content, /(?:heaks kiidetud|rahuldatud|tagasi lükatud)/u);
+
+  const restorationProfile = registry.find((item) => item.id === "mined-land-restoration");
+  const restorationDocument = documents.find((item) => item.id === "mined-land-restoration");
+  const reviewedAt = Date.parse(restorationDocument._evidenceStatusAt);
+  const reviewWindowMs = 31 * 24 * 60 * 60 * 1_000;
+  assert.equal(restorationProfile.evidencePolicy, "versioned");
+  assert.equal(restorationDocument.published, "06.01.2026");
+  assert.match(restorationDocument.content, /kohustus kehtib ka siis, kui luba on kehtetuks tunnistatud/iu);
+  assert.match(restorationDocument.content, /ei tõenda, et konkreetne karjäär on juba korrastatud/u);
+  assert.equal(sourceEvidenceEligibility(restorationDocument, {
+    now: reviewedAt + reviewWindowMs,
+  }).eligible, true);
+  assert.deepEqual(sourceEvidenceEligibility(restorationDocument, {
+    now: reviewedAt + reviewWindowMs + 1,
+  }), {
+    eligible: false,
+    policy: "versioned",
+    reason: "stale-or-future-version",
+  });
 });
 
 test("route-only and unversioned live records cannot cross the answer-evidence boundary", () => {

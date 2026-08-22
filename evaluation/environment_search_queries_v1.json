@@ -20,7 +20,7 @@
     { "id": "A02", "query": "õhukvaliteet Tallinnas", "expected": "live-air" },
     { "id": "A03", "query": "põhjavee seisund Harjumaal 2024", "expected": "answerable", "topSource": "groundwater-status" },
     { "id": "A04", "query": "Natura 2000 piirangud ehitamisel", "expected": "answerable", "topSource": "protected-area-construction" },
-    { "id": "A05", "query": "jäätmete ringlussevõtu määr Eestis 2023", "expected": "answerable", "topSource": "municipal-waste-recycling" },
+    { "id": "A05", "query": "jäätmete ringlussevõtu määr Eestis 2023", "expected": "answerable", "topSource": "municipal-waste-recycling-page", "liveTopSource": "municipal-waste-recycling" },
     { "id": "A06", "query": "keskkonnaloa taotlemine ettevõttele", "expected": "answerable", "topSource": "environmental-permits" },
     { "id": "A07", "query": "müra seire Tallinnas", "expected": "answerable", "topSource": "tallinn-noise-map" },
     { "id": "A08", "query": "Eesti kasvuhoonegaaside heide 2022", "expected": "answerable" },

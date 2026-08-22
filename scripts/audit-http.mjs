@@ -4,6 +4,14 @@ import {
 
 export const MAX_AUDIT_RESPONSE_BYTES = 1_000_000;
 
+export function rankOneSearchResultId(body) {
+  return body?.searchResults?.items?.[0]?.id || null;
+}
+
+export function publicCitationUrl(source) {
+  return source?.url || null;
+}
+
 export async function requestBoundedAuditText(
   url,
   init = {},
