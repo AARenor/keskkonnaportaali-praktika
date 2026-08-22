@@ -1194,6 +1194,44 @@ test("municipal-waste pipeline cites only the validated CSV and keeps the page a
   assert.equal(composeMunicipalWasteRecyclingResponse(query, [page], { now: startedAt }), null);
 });
 
+test("municipal-waste target answers stay separate from measurements and achievement claims", async () => {
+  const page = officialServiceCatalogueDocuments()
+    .find((document) => document.id === "municipal-waste-recycling-page");
+  assert.ok(page);
+  assert.match(page.summary, /vähemalt 55% massi järgi 2025\. aastaks/u);
+  assert.match(page.summary, /vähemalt 60% massi järgi 2030\. aastaks/u);
+  assert.match(page.summary, /mitte Eesti mõõdetud tulemus ega tõend eesmärgi saavutamise kohta/u);
+
+  for (const [query, expected] of [
+    ["Kui suur on olmejäätmete ringlussevõtu sihttase 2025?", /vähemalt 55% massi järgi 2025\. aastaks/u],
+    ["Kui suur on olmejäätmete ringlussevõtu sihttase 2030?", /vähemalt 60% massi järgi 2030\. aastaks/u],
+    ["Mis on olmejäätmete ringlussevõtu eesmärk 2030?", /vähemalt 60% massi järgi 2030\. aastaks/u],
+  ]) {
+    const draft = await createPortalDraft(query, {
+      deadlineAt: Date.now(),
+      searchResults: { total: 1, items: [page] },
+    });
+    assert.equal(draft.evidence.answerable, true, query);
+    assert.match(draft.answer.intro, expected, query);
+    assert.match(draft.answer.intro, /mitte Eesti mõõdetud tulemus ega tõend eesmärgi saavutamise kohta/u, query);
+    assert.deepEqual(draft.answer.introCitations, [1], query);
+    assert.equal(draft.sources[0].id, "municipal-waste-recycling-page", query);
+  }
+
+  for (const query of [
+    "Kui suur oli olmejäätmete ringlussevõtu määr Eestis 2025?",
+    "Kas Eesti saavutas 2025. aasta olmejäätmete ringlussevõtu sihttaseme?",
+  ]) {
+    const draft = await createPortalDraft(query, {
+      deadlineAt: Date.now(),
+      searchResults: { total: 1, items: [page] },
+    });
+    assert.equal(draft.evidence.answerable, false, query);
+    assert.deepEqual(draft.answer.introCitations, [], query);
+    assert.doesNotMatch(draft.answer.intro, /(?:55|60)%/u, query);
+  }
+});
+
 test("forest harvest draft answers the root and temporal follow-up from multiple visible sources", async () => {
   const payload = {
     id: ["freq", "stk_flow", "indic_fo", "unit", "geo", "time"],

@@ -621,7 +621,8 @@ const SEARCH_DOCUMENTS = [
     url: "https://keskkonnaportaal.ee/et/olmejaatmete-ringlussevott",
     tags: ["jäätmed", "olmejäätmed", "ringlussevõtt", "ringlussevõtu määr", "protsent", "sihttase", "aasta"],
     summary:
-      "Keskkonnaportaali näitaja koondab olmejäätmete ringlussevõtu määra, võrdluse Euroopa Liiduga ning 2025. ja 2030. aasta sihttasemed.",
+      "Jäätmete raamdirektiivi olmejäätmete korduskasutuseks ettevalmistamise ja ringlussevõtu sihttase on vähemalt 55% massi järgi 2025. aastaks ning vähemalt 60% massi järgi 2030. aastaks — eesmärk on siin sihttase, mitte Eesti mõõdetud tulemus ega tõend eesmärgi saavutamise kohta.",
+    locator: "Näitajalehe selgitav tekst: jäätmete raamdirektiivi 2025. ja 2030. aasta sihttasemed",
   },
   {
     id: "protected-area-construction",
@@ -2814,6 +2815,15 @@ function passageMatchesTerms(passage, terms) {
   return terms.filter((term) => textHasQueryRoot(passage, term));
 }
 
+function documentCanDirectlyAnswerQuery(query, document) {
+  if (document?.id !== "municipal-waste-recycling-page") return true;
+  const text = normalize(query);
+  const asksForTarget = /\b(?:sihttase|eesmark)\w*/u.test(text);
+  const asksWhetherTargetWasMet = /\b(?:saavut|tait|joud|tegelik|moodet|tulemus)\w*/u.test(text)
+    || /\bon\s+(?:\d{4}\s+)?(?:sihttasem|eesmarg)\w*/u.test(text);
+  return asksForTarget && !asksWhetherTargetWasMet;
+}
+
 export function assessEvidence(query, documents = []) {
   const terms = queryTerms(query);
   const requiredDomainTerms = terms.filter((term) => rootIsDomain(term)
@@ -2841,6 +2851,7 @@ export function assessEvidence(query, documents = []) {
   const requiredMatches = Math.min(2, Math.max(1, terms.length));
   const directDocument = perDocument.find((match, index) => {
     const document = candidates[index];
+    if (!documentCanDirectlyAnswerQuery(query, document)) return false;
     const passageTerms = terms.filter((term) => !ADMIN_CONTEXT_ROOTS.has(term));
     const requiredPassageMatches = passageTerms.length <= 3
       ? passageTerms.length
