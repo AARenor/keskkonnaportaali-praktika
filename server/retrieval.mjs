@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { isClimateJogevaDailyMeanQuery } from "./climate.mjs";
-import { isEelisEmajogiPublicWatercourseQuery } from "./eelis.mjs";
+import { isClimateDailyMeanQuery } from "./climate.mjs";
+import { isEelisEmajogiPublicWatercourseQuery, isEelisNaturaSiteQuery } from "./eelis.mjs";
 import {
   enqueueOfficialDiscoveryDocuments,
   normalizeSearchFilters,
@@ -21,6 +21,7 @@ import {
   canonicalizePublicSearchQuery,
   containsPrivatePersonLookup,
   containsUnsafeInstruction,
+  directDirectoryDocumentIds,
   forestEvidenceIntent,
   forestryIntentServiceDocumentIds,
   normalize,
@@ -31,9 +32,21 @@ import {
   splitTextPassages,
   textHasQueryRoot,
 } from "./search.mjs";
-import { sourceEvidenceEligibility, sourceSupportsRouteClass } from "./source-registry.mjs";
+import {
+  sourceCanSupportPublicCitation,
+  sourceEvidenceEligibility,
+  sourceSupportsRouteClass,
+} from "./source-registry.mjs";
+import {
+  classifyForestryGeographyScope,
+  hasUnresolvedForestryAreaEntity,
+  requestsUnsupportedForestAreaBreakdown,
+  requestsUnsupportedForestAreaTimeSeries,
+  requestsUnsupportedForestAreaUnit,
+} from "./municipalities.mjs";
 import {
   isStatisticsHazardousWasteQuery,
+  isStatisticsTotalWasteRecoveryQuery,
   isStatisticsWastewaterBht7Query,
   isStatisticsWaterAbstractionQuery,
 } from "./statistics.mjs";
@@ -99,7 +112,12 @@ export function parsePublicSearchFilters(value = {}, currentYear = new Date().ge
 export function canonicalResultUrl(value) {
   try {
     const url = new URL(value);
-    url.hash = "";
+    // Ordinary page anchors are display state and should deduplicate. A PDF
+    // page fragment identifies the exact cited evidence location, however;
+    // collapsing page 22 and page 35 lets one page's body inherit the other
+    // page's public URL during merge/cache binding.
+    const pdfPage = pdfPageNumber(url);
+    url.hash = pdfPage === null ? "" : `#page=${pdfPage}`;
     if (url.hostname.startsWith("www.")) url.hostname = url.hostname.slice(4);
     if (url.hostname === "keskkonnaportaal.ee") {
       if (url.pathname === "/et") url.pathname = "/";
@@ -116,6 +134,19 @@ export function canonicalResultUrl(value) {
   }
 }
 
+function pdfPageNumber(value) {
+  try {
+    const url = value instanceof URL ? value : new URL(value);
+    if (!/\.pdf$/iu.test(url.pathname)) return null;
+    const match = url.hash.slice(1).match(/(?:^|[&?])page=(\d{1,5})(?=&|$)/iu);
+    if (!match) return null;
+    const page = Number(match[1]);
+    return Number.isInteger(page) && page > 0 ? page : null;
+  } catch {
+    return null;
+  }
+}
+
 function normalizedTitleKey(value) {
   return normalize(value).replace(/\s+\d+$/u, "").trim();
 }
@@ -128,7 +159,25 @@ function resultHost(value) {
   }
 }
 
+function distinctPdfPageLocations(left, right) {
+  try {
+    const leftUrl = new URL(left);
+    const rightUrl = new URL(right);
+    const leftPage = pdfPageNumber(leftUrl);
+    const rightPage = pdfPageNumber(rightUrl);
+    if (leftPage === null || rightPage === null || leftPage === rightPage) return false;
+    leftUrl.hash = "";
+    rightUrl.hash = "";
+    return canonicalResultUrl(leftUrl.toString()) === canonicalResultUrl(rightUrl.toString());
+  } catch {
+    return false;
+  }
+}
+
 function nearDuplicateTitle(left, right) {
+  // Two citations to different pages of one PDF are distinct evidence
+  // locations even when their titles and publication dates are identical.
+  if (distinctPdfPageLocations(left.url, right.url)) return false;
   if (resultHost(left.url) !== resultHost(right.url)) return false;
   const leftTitle = normalizedTitleKey(left.title);
   const rightTitle = normalizedTitleKey(right.title);
@@ -183,6 +232,7 @@ const ADAPTER_BOUND_PROJECTION_FIELDS = new Map([
   ["statistics-water-abstraction-2024", "_statisticsWaterAbstraction"],
   ["statistics-wastewater-bht7-2024", "_statisticsWastewaterBht7"],
   ["statistics-hazardous-waste-2024", "_statisticsHazardousWaste"],
+  ["statistics-total-waste-recovery", "_statisticsTotalWasteRecovery"],
 ]);
 
 function hasAdapterBoundStructuredProjection(document) {
@@ -437,6 +487,10 @@ function requestedEvidenceYearMatch(document, year, passages = []) {
   );
 }
 
+function measurementPassagesContainRequestedYear(passages = [], year = "") {
+  return !year || passages.some((passage) => containsEvidenceYear(passage, year));
+}
+
 function areaMeasurementKey(value = "") {
   const match = String(value || "").match(/\b(\d{1,3}(?:[\s\u00A0]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)\s*(%|protsent(?:i|ides|ides?)?|ha\b|hektar(?:it|i)?|miljonit?\s+hektarit?|tuhat\s+(?:ha\b|hektarit?))/iu);
   return match ? `${match[1].replace(/[\s\u00A0]/gu, "").replace(",", ".")}:${normalize(match[2])}` : "";
@@ -603,9 +657,78 @@ function intentEvidenceForDocument(intent, document) {
 // an answer is eligible only when one current result itself contains the
 // quantity or both forestry data sources needed by the user’s question.
 export function selectAnswerEvidence(query, documents = []) {
+  // Privacy is normally enforced before retrieval. Recheck it here so a
+  // future caller cannot obtain claim-bearing evidence for a named person's
+  // property or ownership association by invoking the planner directly.
+  if (containsPrivatePersonLookup(query)) return null;
   const intent = forestEvidenceIntent(query);
   if (!intent) return null;
-  if (!["forest-area", "forest-depletion", "forest-data-sources"].includes(intent.kind)) {
+  const numericForestAreaIntent = ["forest-area", "forest-covered-area"].includes(intent.kind);
+  const geographyScope = classifyForestryGeographyScope(query);
+  const unresolvedAreaEntity = hasUnresolvedForestryAreaEntity(query);
+  const unsupportedAreaBreakdown = numericForestAreaIntent
+    && requestsUnsupportedForestAreaBreakdown(query);
+  const unsupportedAreaTimeSeries = numericForestAreaIntent
+    && requestsUnsupportedForestAreaTimeSeries(query);
+  const unsupportedAreaUnit = numericForestAreaIntent
+    && requestsUnsupportedForestAreaUnit(query);
+  const queryBoundGeography = [
+    "reviewed-municipality",
+    "unknown-locality",
+    "estonian-region",
+    "foreign-or-other-region",
+  ].includes(geographyScope.kind) || unresolvedAreaEntity;
+  // Defense in depth: routing should mark every local/regional request as
+  // query-bound, but evidence selection independently recomputes geography.
+  // Thus a future routing regression still cannot bind Estonia-wide SMI prose
+  // to a county, municipality, foreign country or unresolved locality.
+  if (intent.requiresQueryBoundObservation
+    || queryBoundGeography
+    || unsupportedAreaBreakdown
+    || unsupportedAreaTimeSeries
+    || unsupportedAreaUnit) {
+    const unsupportedClaimScope = unsupportedAreaBreakdown
+      || unsupportedAreaTimeSeries
+      || unsupportedAreaUnit;
+    const navigationDocumentIds = unsupportedClaimScope
+      ? []
+      : (documents || [])
+        .filter((document) => intent.serviceDocumentIds.includes(document?.id))
+        .map((document) => document.id);
+    const municipalGeography = ["reviewed-municipality", "unknown-locality"].includes(geographyScope.kind)
+      || intent.kind === "municipality-forest-area";
+    return {
+      kind: intent.kind,
+      strong: false,
+      evidenceGroups: intent.evidenceGroups.map((group) => [...group]),
+      directDocumentId: null,
+      passages: [],
+      supportingDocumentIds: [],
+      passagesByDocument: {},
+      navigationDocumentIds: [...new Set(navigationDocumentIds)],
+      evidenceRoles: null,
+      reason: unsupportedAreaBreakdown
+        ? "requested-breakdown-required"
+        : unsupportedAreaTimeSeries
+          ? "requested-time-series-required"
+          : unsupportedAreaUnit
+            ? "requested-unit-conversion-required"
+        : municipalGeography
+          ? "local-observation-required"
+          : "regional-observation-required",
+      missingEvidenceGroups: [],
+      missingEvidenceRequirements: [unsupportedAreaBreakdown
+        ? "query-bound-category-year-unit-value"
+        : unsupportedAreaTimeSeries
+          ? "query-bound-time-series-year-unit-value"
+          : unsupportedAreaUnit
+            ? "validated-unit-conversion"
+        : municipalGeography
+          ? "query-bound-locality-year-unit-value"
+          : "query-bound-geography-year-unit-value"],
+    };
+  }
+  if (!["forest-area", "forest-covered-area", "forest-depletion", "forest-data-sources"].includes(intent.kind)) {
     const candidates = (documents || [])
       .map((document, index) => ({ document, index, ...genericForestryEvidence(intent, document) }))
       .filter((candidate) => candidate.score > 0)
@@ -632,7 +755,8 @@ export function selectAnswerEvidence(query, documents = []) {
       if (supporting.length >= minimumSupportingDocuments) break;
       if (!supporting.includes(candidate)) supporting.push(candidate);
     }
-    const strong = requiredGroupCount > 0
+    const strong = !intent.requiresQueryBoundObservation
+      && requiredGroupCount > 0
       && uncovered.size === 0
       && supporting.length >= minimumSupportingDocuments;
     const direct = supporting[0] || candidates[0] || null;
@@ -649,6 +773,9 @@ export function selectAnswerEvidence(query, documents = []) {
       ])),
       evidenceRoles: null,
       missingEvidenceGroups: [...uncovered],
+      missingEvidenceRequirements: intent.requiresQueryBoundObservation
+        ? ["query-bound-locality-year-unit"]
+        : [],
     };
   }
   const queryYear = requestedQueryYear(query);
@@ -660,13 +787,16 @@ export function selectAnswerEvidence(query, documents = []) {
         index,
         publishedAt: Number(document?._ranking?.publishedAt) || resultPublishedAt(document) || 0,
         ...evidence,
-        requestedYearMatch: intent.kind === "forest-area"
+        requestedYearMatch: numericForestAreaIntent
           ? requestedEvidenceYearMatch(document, queryYear, evidence.passages)
           : 0,
+        requestedYearClaimMatch: numericForestAreaIntent
+          ? measurementPassagesContainRequestedYear(evidence.passages, queryYear)
+          : true,
       };
     })
     .filter((candidate) => candidate.score > 0)
-    .sort((left, right) => (intent.kind === "forest-area"
+    .sort((left, right) => (numericForestAreaIntent
       ? (queryYear
         ? Number(right.requestedYearMatch > 0) - Number(left.requestedYearMatch > 0)
           || right.requestedYearMatch - left.requestedYearMatch
@@ -692,7 +822,8 @@ export function selectAnswerEvidence(query, documents = []) {
   } : null;
   const direct = intent.kind === "forest-depletion"
     ? candidates.find((candidate) => candidate.document.id === evidenceRoles.status)
-    : candidates.find((candidate) => candidate.satisfies);
+    : candidates.find((candidate) => candidate.satisfies
+      && (!numericForestAreaIntent || candidate.requestedYearClaimMatch));
   const strong = intent.kind === "forest-depletion"
     ? Boolean(direct
       && evidenceRoles.area
@@ -702,7 +833,8 @@ export function selectAnswerEvidence(query, documents = []) {
   const supportingDocumentIds = intent.kind === "forest-depletion"
     ? [...new Set(Object.values(evidenceRoles).filter(Boolean))]
     : candidates
-      .filter((candidate) => candidate.satisfies)
+      .filter((candidate) => candidate.satisfies
+        && (!numericForestAreaIntent || candidate.requestedYearClaimMatch))
       .slice(0, 3)
       .map((candidate) => candidate.document.id);
   return {
@@ -716,6 +848,12 @@ export function selectAnswerEvidence(query, documents = []) {
       candidates.find((candidate) => candidate.document.id === documentId)?.passages || [],
     ])),
     evidenceRoles,
+    reason: numericForestAreaIntent && queryYear && !direct
+      ? "requested-year-evidence-required"
+      : undefined,
+    missingEvidenceRequirements: numericForestAreaIntent && queryYear && !direct
+      ? ["query-bound-year-unit-value"]
+      : [],
   };
 }
 
@@ -826,16 +964,23 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
   const normalizedQuery = normalize(query);
   const latestPublishedHydrology = isLatestPublishedHydrologyQuery(query);
   const eelisEmajogiPublicWatercourse = isEelisEmajogiPublicWatercourseQuery(query);
+  const eelisNaturaSite = isEelisNaturaSiteQuery(query);
   const statisticsWaterAbstraction = isStatisticsWaterAbstractionQuery(query);
   const statisticsWastewaterBht7 = isStatisticsWastewaterBht7Query(query);
   const statisticsHazardousWaste = isStatisticsHazardousWasteQuery(query);
-  const climateJogevaDailyMean = isClimateJogevaDailyMeanQuery(query);
+  const statisticsTotalWasteRecovery = isStatisticsTotalWasteRecoveryQuery(query);
+  const climateDailyMean = isClimateDailyMeanQuery(query);
   const requestsHistoricalYear = /\b(?:19|20)\d{2}\b/u.test(normalizedQuery);
   const requestsHistoricalObservations = requestsHistoricalYear
     || /\b(?:ajalool\w*|varasem\w*|arhiiv\w*|vanad?|endisaeg\w*|eelmisel|mullu|moodunud)\b/u.test(normalizedQuery);
   const requestsForestSpatialData = roots.includes("mets")
     && roots.includes("kaart")
     && roots.includes("ruumikiht");
+  const namedForestRegisterOverview = roots.includes("metsaregister")
+    && !roots.some((root) => [
+      "smi", "kataster", "kinnistu", "metsateatis", "raie", "juurdekasv", "vordlus",
+      "wms", "wfs", "geojson", "ruumikiht",
+    ].includes(root));
   if (isForestHarvestBalanceQuery(query)) {
     if (document.id === "forest-balance-eurostat") return 6;
     if (document.id === "forest-balance-eurostat-handbook") return 5.5;
@@ -852,6 +997,10 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
     if (document.id === "eelis-emajogi-public-watercourse") return 7;
     if (document.id === "official-geoserver") return 5;
   }
+  if (eelisNaturaSite) {
+    if (document.id === "eelis-natura-site") return 7;
+    if (["environment-register", "official-geoserver"].includes(document.id)) return 5;
+  }
   if (statisticsWaterAbstraction) {
     if (document.id === "statistics-water-abstraction-2024") return 7;
     if (document.id === "statistics-pxweb") return 5;
@@ -867,8 +1016,43 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
     if (document.id === "statistics-pxweb") return 5;
     if (["waste-reporting-data", "municipal-waste-recycling-page"].includes(document.id)) return 0;
   }
-  if (climateJogevaDailyMean) {
-    if (document.id === "climate-jogeva-daily-mean") return 7;
+  if (statisticsTotalWasteRecovery) {
+    if (document.id === "statistics-total-waste-recovery") return 7;
+    if (document.id === "statistics-pxweb") return 5;
+    if (["municipal-waste-recycling", "municipal-waste-recycling-page", "waste-reporting-data"].includes(document.id)) return 0;
+  }
+  if (roots.includes("pusielupaik") && roots.includes("kaart")) {
+    if (document.id === "environment-register") return 7;
+    if (document.id === "official-geoserver") return 5;
+    if (["waste-facilities-map", "tallinn-noise-map", "tartu-noise-map"].includes(document.id)) return 0;
+  }
+  if (roots.includes("kinnistu") && roots.includes("piirang")) {
+    if (document.id === "environment-register") return 7;
+    if (document.id === "official-geoserver") return 5;
+    if (document.id === "protected-nature-guidance") return 4;
+  }
+  if (/\bmaa[ -]?ameti\s+kaart\b/u.test(normalizedQuery)) {
+    if (document.id === "environment-register") return 7;
+    if (document.id === "official-geoserver") return 5;
+    if (["waste-facilities-map", "tallinn-noise-map", "tartu-noise-map"].includes(document.id)) return 0;
+  }
+  if (roots.includes("metsateatis")) {
+    if (document.id === "forest-notice-guidance") return 7;
+    if (["forest-register-workflow", "metsaregister"].includes(document.id)) return 5;
+  }
+  if (namedForestRegisterOverview) {
+    if (document.id === "metsaregister") return 7;
+    if (document.id === "forest-register-workflow") return 6;
+    if (document.id === "official-geoserver") return 5;
+    if (["forest-overview", "forest-catalogue", "smi-metsaregister"].includes(document.id)) return 0;
+  }
+  if (roots.includes("eutrofeerumine") && roots.includes("jarv")) {
+    if (document.id === "bathing-water-quality") return 6;
+    if (document.id === "water-monitoring") return 5;
+    if (document.id === "marine-strategy-status") return 0;
+  }
+  if (climateDailyMean) {
+    if (document.id === "climate-station-daily-mean") return 7;
     if (["historical-weather-data", "official-data-services"].includes(document.id)) return 5;
     if (["current-weather-observations", "weather-forecast"].includes(document.id)) return 0;
   }
@@ -1298,6 +1482,23 @@ function ensureForestryIntentCandidates(query, ranked = [], available = []) {
   });
 }
 
+function ensureDirectDirectoryCandidates(query, ranked = [], available = []) {
+  const preferredIds = directDirectoryDocumentIds(query);
+  if (!preferredIds.length) return ranked;
+  const byId = new Map([...available, ...ranked].map((document) => [document.id, document]));
+  const preferred = preferredIds
+    .map((id) => byId.get(id))
+    .filter(Boolean);
+  if (!preferred.length) return ranked;
+  const seen = new Set();
+  return [...preferred, ...ranked].filter((document) => {
+    const key = canonicalResultUrl(document.url) || document.id;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 // The result list and answer draft both start here: relevance rank, canonical
 // deduplication, a second rank with merged text, then the narrowly scoped
 // official-forestry visibility guarantee.
@@ -1305,10 +1506,14 @@ export function rankPublicSearchCandidates(query, documents = [], {
   intentDocuments = [],
   ...rankingOptions
 } = {}) {
-  return ensureForestryIntentCandidates(
+  return ensureDirectDirectoryCandidates(
     query,
-    rankAndDeduplicate(query, documents, rankingOptions),
-    intentDocuments,
+    ensureForestryIntentCandidates(
+      query,
+      rankAndDeduplicate(query, documents, rankingOptions),
+      intentDocuments,
+    ),
+    [...intentDocuments, ...documents],
   );
 }
 
@@ -1344,6 +1549,10 @@ export function deduplicateResults(documents = []) {
       continue;
     }
     const current = distinct[currentIndex];
+    if (distinctPdfPageLocations(current.url, document.url)) {
+      distinct.push(document);
+      continue;
+    }
     const currentDate = resultPublishedAt(current);
     const candidateDate = resultPublishedAt(document);
     if (currentDate !== null && candidateDate !== null && currentDate !== candidateDate) {
@@ -1426,11 +1635,14 @@ export async function prepareRankedSearchResults(query, {
   const canonicalInput = canonicalizePublicSearchQuery(query);
   const acceptedQuery = canonicalInput.ok ? canonicalInput.query : "";
   const assessment = assessSearchQuery(canonicalInput.ok ? acceptedQuery : query);
+  const privatePersonLookup = canonicalInput.ok && containsPrivatePersonLookup(acceptedQuery);
   // Do not send private-person, injection, or other explicitly out-of-scope
   // queries to PostgreSQL or any external discovery provider. This guard is
   // deliberately inside retrieval so every current and future route inherits
-  // it even if a caller forgets to classify first.
-  if (!canonicalInput.ok || assessment.kind === "out-of-scope") {
+  // it even if a caller forgets to classify first. Keep the direct privacy
+  // predicate independent from the broader assessment result so an allowlist
+  // regression cannot silently reopen retrieval.
+  if (!canonicalInput.ok || privatePersonLookup || assessment.kind === "out-of-scope") {
     return {
       status: "empty",
       mode: "blocked-before-retrieval",
@@ -1561,7 +1773,7 @@ export function evidenceDocumentsFromListing(listing = {}, options = {}) {
     .filter((item) => ["official", "reviewed"].includes(item.sourceTier)
       && !LEGACY_ANSWER_FIXTURE_IDS.has(item.id)
       && item.retrieval !== "official-federated-search"
-      && sourceEvidenceEligibility(item, options).eligible)
+      && sourceCanSupportPublicCitation(item, options).eligible)
     .map((item) => ({
       ...item,
       tags: item.topics || item.tags || [],

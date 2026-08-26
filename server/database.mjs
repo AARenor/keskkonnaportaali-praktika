@@ -6,7 +6,8 @@ const { Pool } = pg;
 const databaseUrl = String(process.env.DATABASE_URL || "");
 const searchHashSecret = String(process.env.SEARCH_HASH_SECRET || "");
 export const SEARCH_HASH_VERSION = "hmac-sha256-v3";
-export const SEARCH_CACHE_RESPONSE_SCHEMA = "privacy-safe-v5";
+export const SEARCH_CACHE_RESPONSE_SCHEMA = "privacy-safe-v6";
+export const SEARCH_CACHE_MAX_RESPONSE_BYTES = 128 * 1_024;
 function boundedPersistenceInteger(value, fallback, minimum, maximum) {
   return Math.max(minimum, Math.min(Math.trunc(Number(value) || fallback), maximum));
 }
@@ -183,7 +184,9 @@ function boundedText(value, maximum) {
 
 function boundedCitations(value) {
   return Array.isArray(value)
-    ? [...new Set(value.map(Number).filter((citation) => Number.isInteger(citation) && citation > 0 && citation <= 20))].slice(0, 10)
+    ? [...new Set(value.filter((citation) => (
+        typeof citation === "number" && Number.isInteger(citation) && citation > 0 && citation <= 20
+      )))].slice(0, 10)
     : [];
 }
 
@@ -365,23 +368,60 @@ export function sanitizeCachedResponse(response, query) {
     },
     sources: (Array.isArray(response.sources) ? response.sources : []).slice(0, 10).map((source) => ({
       id: boundedText(source?.id, 180),
-      citation: Math.max(1, Math.min(Number(source?.citation) || 1, 20)),
+      citation: typeof source?.citation === "number"
+        && Number.isInteger(source.citation)
+        && source.citation > 0
+        && source.citation <= 20
+        ? source.citation
+        : 0,
       title: boundedText(source?.title, 500),
       organization: boundedText(source?.organization, 240),
       type: boundedText(source?.type, 160),
       published: boundedText(source?.published, 80),
       url: boundedText(source?.url, 2_000),
       summary: boundedText(source?.summary, 2_000),
+      evidenceExcerpt: boundedText(source?.evidenceExcerpt, 4_000),
       locator: boundedText(source?.locator, 1_000),
       ...(source?.actionUrl ? { actionUrl: boundedText(source.actionUrl, 2_000) } : {}),
       ...(source?.actionLabel ? { actionLabel: boundedText(source.actionLabel, 180) } : {}),
       tags: (Array.isArray(source?.tags) ? source.tags : []).map((tag) => boundedText(tag, 120)).filter(Boolean).slice(0, 5),
       sourceTier: boundedText(source?.sourceTier, 40),
-    })).filter((source) => source.id && source.title && source.url),
+      // A cache hit must cross the same current evidence-policy boundary as a
+      // fresh response. Retain only the bounded provenance fields that the
+      // validator needs; publicResponse's allowlist never exposes them.
+      evidencePolicy: ["claim-specific", "route-only", "timestamped", "versioned"]
+        .includes(source?.evidencePolicy) ? source.evidencePolicy : "invalid",
+      ...([true, false].includes(source?._answerEvidenceEligible)
+        ? { _answerEvidenceEligible: source._answerEvidenceEligible }
+        : {}),
+      retrieval: boundedText(source?.retrieval, 120),
+      delivery: boundedText(source?.delivery, 120),
+      ...(source?.freshness && typeof source.freshness === "object" && !Array.isArray(source.freshness)
+        ? {
+            freshness: {
+              class: boundedText(source.freshness.class, 80),
+              basis: boundedText(source.freshness.basis, 80),
+              maxAgeMs: Number.isFinite(Number(source.freshness.maxAgeMs))
+                && Number(source.freshness.maxAgeMs) > 0
+                && Number(source.freshness.maxAgeMs) <= 10 * 366 * 24 * 60 * 60 * 1_000
+                ? Number(source.freshness.maxAgeMs)
+                : 0,
+              requiresSourceTimestamp: source.freshness.requiresSourceTimestamp === true,
+            },
+          }
+        : {}),
+      _evidenceObservedAt: boundedText(source?._evidenceObservedAt, 40),
+      _evidenceValidFrom: boundedText(source?._evidenceValidFrom, 40),
+      _evidenceValidUntil: boundedText(source?._evidenceValidUntil, 40),
+      _evidenceVersion: boundedText(source?._evidenceVersion, 120),
+      _evidenceStatusAt: boundedText(source?._evidenceStatusAt, 40),
+      _publishedAt: boundedText(source?._publishedAt, 40),
+    })).filter((source) => source.id && source.title && source.url && source.citation > 0),
     related: (Array.isArray(response.related) ? response.related : []).map((item) => boundedText(item, 180)).filter(Boolean).slice(0, 6),
     clarification: response.clarification === null ? null : boundedText(response.clarification, 700),
   };
 
+  if (Buffer.byteLength(JSON.stringify(safe), "utf8") > SEARCH_CACHE_MAX_RESPONSE_BYTES) return null;
   if (rawQuery) {
     const queryForms = privateTextForms(rawQuery);
     if (!queryForms.converged) return null;
@@ -416,7 +456,7 @@ export const SEARCH_CACHE_READ_SQL = `
   FROM practice_search_cache
   WHERE query_hash = $1
     AND key_version = 'hmac-sha256-v3'
-    AND response_schema = 'privacy-safe-v5'
+    AND response_schema = 'privacy-safe-v6'
     AND expires_at > NOW()
 `;
 
@@ -426,7 +466,7 @@ export const SEARCH_DATA_PURGE_SQL = `
     FROM practice_search_cache
     WHERE expires_at <= NOW()
       OR key_version <> 'hmac-sha256-v3'
-      OR response_schema <> 'privacy-safe-v5'
+      OR response_schema <> 'privacy-safe-v6'
     ORDER BY expires_at ASC, query_hash ASC
     LIMIT $1
     FOR UPDATE
@@ -552,7 +592,7 @@ async function ensureSchema() {
         query_hash TEXT PRIMARY KEY,
         response JSONB NOT NULL,
         key_version TEXT NOT NULL DEFAULT 'hmac-sha256-v3',
-        response_schema TEXT NOT NULL DEFAULT 'privacy-safe-v5',
+        response_schema TEXT NOT NULL DEFAULT 'privacy-safe-v6',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         expires_at TIMESTAMPTZ NOT NULL
       );
@@ -589,8 +629,8 @@ async function ensureSchema() {
           SELECT 1
           FROM practice_search_cache
           WHERE key_version <> 'hmac-sha256-v3'
-             OR response_schema <> 'privacy-safe-v5'
-             OR COALESCE(response->>'cacheSchema', '') <> 'privacy-safe-v5'
+             OR response_schema <> 'privacy-safe-v6'
+             OR COALESCE(response->>'cacheSchema', '') <> 'privacy-safe-v6'
           LIMIT 1
         ) THEN
           -- The cache is optional. A metadata-level reset removes every legacy
@@ -606,7 +646,7 @@ async function ensureSchema() {
       ALTER TABLE practice_search_cache
         ALTER COLUMN key_version SET DEFAULT 'hmac-sha256-v3';
       ALTER TABLE practice_search_cache
-        ALTER COLUMN response_schema SET DEFAULT 'privacy-safe-v5';
+        ALTER COLUMN response_schema SET DEFAULT 'privacy-safe-v6';
     `).then(() => true).catch((error) => {
       schemaPromise = undefined;
       throw error;
@@ -775,7 +815,7 @@ export async function runSearchPersistenceTransaction(client, {
         `UPDATE practice_search_cache
          SET response = $2::jsonb,
              key_version = 'hmac-sha256-v3',
-             response_schema = 'privacy-safe-v5',
+             response_schema = 'privacy-safe-v6',
              created_at = NOW(),
              expires_at = NOW() + ($3 * INTERVAL '1 minute')
          WHERE query_hash = $1
@@ -790,7 +830,7 @@ export async function runSearchPersistenceTransaction(client, {
         if (capacity.canInsert) {
           const inserted = await client.query(
             `INSERT INTO practice_search_cache (query_hash, response, expires_at, key_version, response_schema)
-             VALUES ($1, $2::jsonb, NOW() + ($3 * INTERVAL '1 minute'), 'hmac-sha256-v3', 'privacy-safe-v5')
+             VALUES ($1, $2::jsonb, NOW() + ($3 * INTERVAL '1 minute'), 'hmac-sha256-v3', 'privacy-safe-v6')
              ON CONFLICT (query_hash) DO UPDATE SET
                response = EXCLUDED.response,
                key_version = EXCLUDED.key_version,
@@ -832,6 +872,7 @@ export async function runSearchPersistenceTransaction(client, {
 export async function recordSearch({
   query,
   response,
+  cacheValue = response,
   revision,
   answerProvider = "unknown",
   answerStatus = "ready",
@@ -861,7 +902,7 @@ export async function recordSearch({
       answerStatus,
       documentIds: (documentIds || []).map(String).slice(0, 12),
     };
-    const safeResponse = sanitizeCachedResponse(response, acceptedQuery);
+    const safeResponse = sanitizeCachedResponse(cacheValue, acceptedQuery);
     const persistence = await runSearchPersistenceTransaction(client, {
       hash,
       safeResponse,

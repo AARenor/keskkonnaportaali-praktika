@@ -1,14 +1,16 @@
 import { createHash } from "node:crypto";
+import { officialCitationUrlEligibility } from "./citation-policy.mjs";
 import { readSearchCache, recordSearch } from "./database.mjs";
 import { answerCadastreQuestion } from "./cadastre.mjs";
-import { composeClimateJogevaDailyMeanResponse } from "./climate.mjs";
+import { composeClimateDailyMeanResponse } from "./climate.mjs";
 import {
   hydrateOfficialDocuments,
 } from "./integrations.mjs";
 import { generateGroundedAnswer, sanitizeLlmEvidenceText } from "./llm.mjs";
-import { composeEelisEmajogiPublicWatercourseResponse } from "./eelis.mjs";
+import { composeEelisEmajogiPublicWatercourseResponse, composeEelisNaturaSiteResponse } from "./eelis.mjs";
 import {
   composeStatisticsHazardousWasteResponse,
+  composeStatisticsTotalWasteRecoveryResponse,
   composeStatisticsWastewaterBht7Response,
   composeStatisticsWaterAbstractionResponse,
 } from "./statistics.mjs";
@@ -43,9 +45,36 @@ import {
   splitTextPassages,
   textHasQueryRoot,
 } from "./search.mjs";
+import { sourceCanSupportPublicCitation } from "./source-registry.mjs";
 
-export const SEARCH_RESPONSE_REVISION = "answer-v40-temporal-source-contracts";
+// Increment whenever the public response/citation contract changes so rows
+// written under an older policy cannot be served without regeneration.
+export const SEARCH_RESPONSE_REVISION = "answer-v45-whole-municipality-privacy";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
+const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
+  "official-structured-climate-daily",
+  "official-structured-eelis-natura",
+  "official-structured-eelis-wfs",
+  "official-structured-forecast-xml",
+  "official-structured-hydrology-postgrest",
+  "official-structured-statistics-pxweb",
+  "official-structured-weather-xml",
+  "official-tableau-csv",
+]);
+
+function conventionalEvidenceDocumentsFromListing(listing) {
+  // Typed adapter rows are valid only for the exact query that their composer
+  // revalidates. If that composer declines the row, do not recycle it as
+  // ordinary lexical evidence for a neighboring legal, temporal or geographic
+  // question. Forestry's multi-source structured comparison has its own
+  // retrieval class and remains available to its dedicated planner below.
+  const conventionalListing = {
+    ...(listing || {}),
+    items: (listing?.items || [])
+      .filter((document) => !QUERY_BOUND_ADAPTER_RETRIEVALS.has(document.retrieval)),
+  };
+  return evidenceDocumentsFromListing(conventionalListing);
+}
 
 function rankPortalDocuments(query, documents) {
   const ranked = rankSearchCandidates(query, documents).map((document) => ({
@@ -684,9 +713,15 @@ function attachEvidenceExcerpts(draft, _query, plannedEvidence) {
   };
 }
 
-export function publicResponse(draft) {
+export function publicResponse(draft, { now = Date.now() } = {}) {
   const { evidence: _evidence, ...response } = draft;
-  const sources = Array.isArray(response.sources) ? response.sources : [];
+  const sources = (Array.isArray(response.sources) ? response.sources : [])
+    .filter((source) => officialCitationUrlEligibility(source?.url).eligible)
+    .map((source) => {
+      if (source.actionUrl === undefined || officialCitationUrlEligibility(source.actionUrl).eligible) return source;
+      const { actionUrl: _actionUrl, actionLabel: _actionLabel, ...safeSource } = source;
+      return safeSource;
+    });
   const answer = response.answer && typeof response.answer === "object" && !Array.isArray(response.answer)
     ? response.answer
     : null;
@@ -711,21 +746,27 @@ export function publicResponse(draft) {
     collectCitations(part.citations);
   });
 
-  const normalizedCitations = rawCitations.map(Number);
-  const validAnswerCitations = normalizedCitations.every((citation) => (
-    Number.isInteger(citation) && citation > 0
+  const validAnswerCitations = rawCitations.every((citation) => (
+    typeof citation === "number" && Number.isInteger(citation) && citation > 0
   ));
   const sourceCitationCounts = new Map();
   for (const source of sources) {
-    const citation = Number(source?.citation);
-    if (!Number.isInteger(citation) || citation <= 0) continue;
+    const citation = source?.citation;
+    if (typeof citation !== "number" || !Number.isInteger(citation) || citation <= 0) continue;
     sourceCitationCounts.set(citation, (sourceCitationCounts.get(citation) || 0) + 1);
   }
-  const usedCitations = new Set(normalizedCitations);
+  const usedCitations = new Set(rawCitations);
   const citationsResolveExactlyOnce = [...usedCitations].every((citation) => (
     sourceCitationCounts.get(citation) === 1
   ));
-  if (!validCitationShape || !validAnswerCitations || !citationsResolveExactlyOnce) {
+  const citedSourcesSupportPublicClaims = [...usedCitations].every((citation) => {
+    const source = sources.find((candidate) => Number(candidate?.citation) === citation);
+    return sourceCanSupportPublicCitation(source || {}, { now }).eligible;
+  });
+  if (!validCitationShape
+    || !validAnswerCitations
+    || !citationsResolveExactlyOnce
+    || !citedSourcesSupportPublicClaims) {
     return {
       ...response,
       clarification: "Vastuse allikaviiteid ei saanud üheselt kontrollida.",
@@ -741,14 +782,13 @@ export function publicResponse(draft) {
     };
   }
   const visibleSources = usedCitations.size
-    ? sources.filter((source) => usedCitations.has(Number(source.citation)))
+    ? sources.filter((source) => usedCitations.has(source.citation))
     : sources;
   const citationMap = new Map(visibleSources.map((source, index) => [
-    Number(source.citation),
+    source.citation,
     index + 1,
   ]));
   const compactCitations = (citations = []) => [...new Set(citations
-    .map(Number)
     .map((citation) => citationMap.get(citation))
     .filter(Number.isInteger))];
   return {
@@ -832,7 +872,7 @@ export async function createPortalDraft(query, {
     signal,
     clientKey,
   });
-  const candidates = evidenceDocumentsFromListing(listing);
+  const candidates = conventionalEvidenceDocumentsFromListing(listing);
   // Route-only federated cards stay visible as discovery results but cannot
   // become answer evidence. Hydrate only independently eligible sources so a
   // search never spends six page requests on cards discarded immediately.
@@ -923,22 +963,65 @@ export async function createPortalDraft(query, {
     : attachEvidenceExcerpts(draft, retrievalQuery, plannedEvidence);
 }
 
+function stableRevisionValue(value) {
+  if (Array.isArray(value)) return value.map(stableRevisionValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [
+      key,
+      stableRevisionValue(value[key]),
+    ]));
+  }
+  if (value === undefined || value === null) return null;
+  if (["string", "number", "boolean"].includes(typeof value)) return value;
+  return String(value);
+}
+
 export function searchListingRevision(listing = {}) {
-  const records = (listing.items || []).map((item) => [
-    canonicalResultUrl(item.url),
-    String(item.title || ""),
-    String(item.summary || ""),
-    String(item.locator || ""),
-    String(item.actionUrl || ""),
-    String(item.actionLabel || ""),
-    String(item.published || ""),
-    String(item.sourceTier || ""),
-    String(item._contentHash || item.content || ""),
-  ]);
+  const records = (listing.items || []).map((item) => {
+    const currentEvidence = sourceCanSupportPublicCitation(item);
+    return stableRevisionValue({
+      id: item.id,
+      url: canonicalResultUrl(item.url),
+      title: item.title,
+      organization: item.organization,
+      type: item.type,
+      summary: item.summary,
+      answer: item.answer,
+      content: item._contentHash || item.content,
+      locator: item.locator,
+      actionUrl: item.actionUrl ? canonicalResultUrl(item.actionUrl) : null,
+      actionLabel: item.actionLabel,
+      published: item.published,
+      publishedAt: item._publishedAt,
+      sourceTier: item.sourceTier,
+      routeClasses: item.routeClasses,
+      topics: item.topics,
+      tags: item.tags,
+      retrieval: item.retrieval,
+      delivery: item.delivery,
+      evidencePolicy: item.evidencePolicy,
+      answerEvidenceEligible: item._answerEvidenceEligible,
+      evidenceVersion: item._evidenceVersion,
+      evidenceStatusAt: item._evidenceStatusAt,
+      evidenceObservedAt: item._evidenceObservedAt,
+      evidenceValidFrom: item._evidenceValidFrom,
+      evidenceValidUntil: item._evidenceValidUntil,
+      freshness: item.freshness,
+      currentEvidence: {
+        eligible: currentEvidence.eligible,
+        policy: currentEvidence.policy,
+        reason: currentEvidence.reason,
+      },
+    });
+  });
   return createHash("sha256").update(JSON.stringify(records)).digest("hex");
 }
 
 export function cachedSourcesBelongToListing(cached, listing) {
+  if ((cached?.sources || []).some((source) => (
+    !officialCitationUrlEligibility(source?.url).eligible
+    || (source?.actionUrl !== undefined && !officialCitationUrlEligibility(source.actionUrl).eligible)
+  ))) return false;
   if (!listing?.items?.length || !cached?.sources?.length) return true;
   const urls = new Set(listing.items.map((item) => canonicalResultUrl(item.url)));
   return cached.sources.every((source) => urls.has(canonicalResultUrl(source.url)));
@@ -976,7 +1059,7 @@ async function searchWithinBudget(cleanQuery, {
   // telemetry, or model/retrieval inputs. Keep this defensive boundary before
   // even a cache read so legacy rows cannot bypass the current classifier.
   if (assessment.kind === "out-of-scope") {
-    return publicResponse(composeScopeResponse(cleanQuery, assessment));
+    return publicResponse(composeScopeResponse(cleanQuery, assessment), { now: startedAt });
   }
   const defaultFilters = !filters?.category && !filters?.year
     && [undefined, "", "all"].includes(filters?.source)
@@ -988,7 +1071,9 @@ async function searchWithinBudget(cleanQuery, {
     const cached = await readSearchCache(cleanQuery, cacheRevision);
     throwIfRequestAborted(signal);
     if (cached && cachedSourcesBelongToListing(cached, searchResults)) {
-      return cached;
+      // Defence in depth: persisted responses still cross the current public
+      // serializer even when their revision and listing witness are valid.
+      return publicResponse(cached, { now: startedAt });
     }
   }
 
@@ -1001,13 +1086,19 @@ async function searchWithinBudget(cleanQuery, {
     total: searchResults?.total,
   }) || composeEelisEmajogiPublicWatercourseResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
+  }) || composeEelisNaturaSiteResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+    now: startedAt,
   }) || composeStatisticsWaterAbstractionResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
   }) || composeStatisticsHazardousWasteResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
+  }) || composeStatisticsTotalWasteRecoveryResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+    now: startedAt,
   }) || composeStatisticsWastewaterBht7Response(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
-  }) || composeClimateJogevaDailyMeanResponse(cleanQuery, searchResults?.items, {
+  }) || composeClimateDailyMeanResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
     now: startedAt,
   }) || composeMunicipalWasteRecyclingResponse(cleanQuery, searchResults?.items, {
@@ -1026,7 +1117,10 @@ async function searchWithinBudget(cleanQuery, {
   } else if (assessment.kind !== "answerable") {
     draft = composeScopeResponse(cleanQuery, assessment);
     if (searchResults && !draftSourcesBelongToListing(draft, searchResults)) {
-      const filteredDocuments = rankPortalDocuments(retrievalQuery, evidenceDocumentsFromListing(searchResults));
+      const filteredDocuments = rankPortalDocuments(
+        retrievalQuery,
+        conventionalEvidenceDocumentsFromListing(searchResults),
+      );
       draft = composeSearchResponse(cleanQuery, filteredDocuments, {
         answerable: false,
         clarification: defaultFilters
@@ -1053,7 +1147,7 @@ async function searchWithinBudget(cleanQuery, {
   if (!draftMatchesListingAndFilters(draft, searchResults, filters)) {
     const filteredDocuments = rankPortalDocuments(
       retrievalQuery,
-      evidenceDocumentsFromListing(searchResults)
+      conventionalEvidenceDocumentsFromListing(searchResults)
         .filter((document) => resultMatchesFilters(document, filters)),
     );
     draft = composeSearchResponse(cleanQuery, filteredDocuments, {
@@ -1070,7 +1164,7 @@ async function searchWithinBudget(cleanQuery, {
   const llmBudget = remainingBudget(deadlineAt, 300);
   if (canGenerate && llmBudget >= 500 && typeof onDraft === "function") {
     throwIfRequestAborted(signal);
-    onDraft(publicResponse(draft));
+    onDraft(publicResponse(draft, { now: startedAt }));
   }
   // Keep the accepted deterministic result detached from both the provider
   // input and any streamed consumer. A ready model answer must rebind its
@@ -1103,7 +1197,7 @@ async function searchWithinBudget(cleanQuery, {
   // never turn that uncited field into public navigation or hidden-prompt text.
   draft.related = mergeRelatedQuestions([], draft.related, 6);
   draft.generatedAt = new Date().toISOString();
-  const response = publicResponse(draft);
+  const response = publicResponse(draft, { now: startedAt });
   const durationMs = Date.now() - startedAt;
   const evidenceKind = draft.evidence?.kind;
   const spatialDegraded = evidenceKind === "official-spatial-snapshot"
@@ -1128,6 +1222,7 @@ async function searchWithinBudget(cleanQuery, {
     void recordSearch({
       query: cleanQuery,
       response,
+      cacheValue: draft,
       revision: cacheRevision,
       answerProvider: llmResult.provider,
       answerStatus: llmResult.status,
@@ -1158,13 +1253,19 @@ export function searchTimeoutFallback(cleanQuery, {
     total: searchResults?.total,
   }) || composeEelisEmajogiPublicWatercourseResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
+  }) || composeEelisNaturaSiteResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+    now: startedAt,
   }) || composeStatisticsWaterAbstractionResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
   }) || composeStatisticsHazardousWasteResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
+  }) || composeStatisticsTotalWasteRecoveryResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+    now: startedAt,
   }) || composeStatisticsWastewaterBht7Response(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
-  }) || composeClimateJogevaDailyMeanResponse(cleanQuery, searchResults?.items, {
+  }) || composeClimateDailyMeanResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
     now: startedAt,
   }) || composeMunicipalWasteRecyclingResponse(cleanQuery, searchResults?.items, {
@@ -1178,15 +1279,15 @@ export function searchTimeoutFallback(cleanQuery, {
     searchResults,
     filters,
   ) ? structuredCandidate : null;
-  if (structuredIndicator) return publicResponse(structuredIndicator);
+  if (structuredIndicator) return publicResponse(structuredIndicator, { now: startedAt });
   if (assessment.kind !== "answerable") {
     const scopeDraft = composeScopeResponse(cleanQuery, assessment);
     if (draftMatchesListingAndFilters(scopeDraft, searchResults, filters)) {
-      return publicResponse(scopeDraft);
+      return publicResponse(scopeDraft, { now: startedAt });
     }
     const visible = rankPortalDocuments(
       assessmentQuery,
-      evidenceDocumentsFromListing(searchResults)
+      conventionalEvidenceDocumentsFromListing(searchResults)
         .filter((document) => resultMatchesFilters(document, filters)),
     );
     return publicResponse(composeSearchResponse(cleanQuery, visible, {
@@ -1195,12 +1296,16 @@ export function searchTimeoutFallback(cleanQuery, {
       evidenceKind: "filtered-scope-exclusion",
       limit: 6,
       total: Number(searchResults?.total || visible.length),
-    }));
+    }), { now: startedAt });
   }
   const sourceUnavailable = reason === "source-error";
   const capacityLimited = reason === "capacity";
   const ranked = searchResults?.items?.length
-    ? rankPortalDocuments(assessmentQuery, evidenceDocumentsFromListing(searchResults))
+    ? rankPortalDocuments(
+      assessmentQuery,
+      conventionalEvidenceDocumentsFromListing(searchResults)
+        .filter((document) => resultMatchesFilters(document, filters)),
+    )
     : [];
   const quality = assessEvidence(cleanQuery, ranked);
   const draft = composeSearchResponse(cleanQuery, ranked, {
@@ -1235,7 +1340,7 @@ export function searchTimeoutFallback(cleanQuery, {
     : capacityLimited
       ? "Proovi otsingut paari sekundi pärast uuesti."
       : "Proovi otsingut uuesti või lisa täpsem objekt, näitaja, piirkond või aasta.";
-  return publicResponse(draft);
+  return publicResponse(draft, { now: startedAt });
 }
 
 export function createDeadlineCleanupLease(finalize = () => undefined) {
@@ -1306,14 +1411,14 @@ export async function searchEnvironmentLive(query, options = {}) {
   if (queryInput.reason === "empty") return composeSearchResponse("", [], { limit: 3, total: 0 });
   const directAssessment = assessSearchQuery(queryInput.ok ? queryInput.query : query);
   if (!queryInput.ok) {
-    return publicResponse(composeScopeResponse(queryInput.ok ? queryInput.query : "", directAssessment));
+    return publicResponse(composeScopeResponse(queryInput.ok ? queryInput.query : "", directAssessment), { now: startedAt });
   }
   const cleanQuery = queryInput.query;
   const assessmentInput = canonicalizePublicSearchQuery(options.assessmentQuery ?? cleanQuery);
   const retrievalInput = canonicalizePublicSearchQuery(options.retrievalQuery ?? cleanQuery);
   if (!assessmentInput.ok || !retrievalInput.ok) {
     const rejectedValue = !assessmentInput.ok ? options.assessmentQuery : options.retrievalQuery;
-    return publicResponse(composeScopeResponse("", assessSearchQuery(rejectedValue)));
+    return publicResponse(composeScopeResponse("", assessSearchQuery(rejectedValue)), { now: startedAt });
   }
   const contextualAssessment = assessSearchQuery(assessmentInput.query);
   const validatedEllipticalFollowUp = options.allowSafeEllipticalFollowUp === true
@@ -1321,7 +1426,7 @@ export async function searchEnvironmentLive(query, options = {}) {
     && isSafeEllipticalFollowUp(cleanQuery)
     && contextualAssessment.kind === "answerable";
   if (directAssessment.kind === "out-of-scope" && !validatedEllipticalFollowUp) {
-    return publicResponse(composeScopeResponse(cleanQuery, directAssessment));
+    return publicResponse(composeScopeResponse(cleanQuery, directAssessment), { now: startedAt });
   }
   const contextInput = canonicalizePublicSearchQuery(options.conversationContext || "", {
     maximumLength: 1_400,

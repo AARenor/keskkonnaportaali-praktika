@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   assessSearchQuery,
   composeScopeResponse,
+  containsPrivatePersonLookup,
   forestEvidenceIntent,
   officialServiceCatalogueDocuments,
 } from "../server/search.mjs";
@@ -12,7 +13,11 @@ import {
   rankPublicSearchCandidates,
   selectAnswerEvidence,
 } from "../server/retrieval.mjs";
-import { createPortalDraft, publicResponse } from "../server/pipeline.mjs";
+import {
+  createPortalDraft,
+  publicResponse,
+  searchEnvironmentLive,
+} from "../server/pipeline.mjs";
 import {
   forestHarvestBalanceDocumentsFromJson,
   isForestHarvestBalanceQuery,
@@ -24,7 +29,11 @@ import {
   FORESTRY_VARIANT_GROUPS,
   MUNICIPALITY_CLARIFICATION_VARIANTS,
 } from "./fixtures/forestry-query-matrix.mjs";
-import { REVIEWED_SEARCH_SUGGESTIONS, suggestionsForValue } from "../src/search-suggestions.js";
+import {
+  REVIEWED_FORESTRY_SEARCH_SUGGESTIONS,
+  REVIEWED_SEARCH_SUGGESTIONS,
+  suggestionsForValue,
+} from "../src/search-suggestions.js";
 
 const NOW = Date.parse("2026-08-19T12:00:00Z");
 
@@ -121,13 +130,14 @@ test("all 30 supplied forestry misconceptions and FAQs have an explicit public r
 });
 
 test("every visible reviewed suggestion leads to a deterministic answer or the intended municipality clarification", () => {
-  assert.equal(REVIEWED_SEARCH_SUGGESTIONS.length, 18);
+  assert.equal(REVIEWED_FORESTRY_SEARCH_SUGGESTIONS.length, 18);
+  assert.equal(REVIEWED_SEARCH_SUGGESTIONS.length, 33);
   assert.deepEqual(
     suggestionsForValue("", {}, REVIEWED_SEARCH_SUGGESTIONS, 5).map((item) => item.value),
-    REVIEWED_SEARCH_SUGGESTIONS.slice(0, 5),
+    REVIEWED_FORESTRY_SEARCH_SUGGESTIONS.slice(0, 5),
   );
   const directory = officialServiceCatalogueDocuments();
-  for (const query of REVIEWED_SEARCH_SUGGESTIONS) {
+  for (const query of REVIEWED_FORESTRY_SEARCH_SUGGESTIONS) {
     const assessment = assessSearchQuery(query);
     if (query === MUNICIPAL_QUERY) {
       assert.equal(assessment.kind, "needs-clarification", query);
@@ -263,9 +273,531 @@ test("balance paraphrases, missing municipalities and negative collisions keep d
     assert.equal(assessment.kind, "needs-clarification", query);
     assert.equal(assessment.reason, "missing-municipality", query);
   }
+  const directory = officialServiceCatalogueDocuments();
+  for (const query of [
+    "Kui palju metsa on Tartus?",
+    "Mitu hektarit metsa on Tartu linnas?",
+    "Kui palju metsa on Võru linnas?",
+    "Kui palju metsa on Võru linnavalitsuses?",
+    "Kui palju metsa on Võru vallavalitsuses?",
+    "Kui palju metsamaad on Pärnu linnas?",
+    "Kui suur on Pärnu linnavalitsuse haldusalas metsasus?",
+    "Kui suur on metsasus Tartu vallas?",
+    "metsasus Võru vald",
+    "metsamaa pindala Viljandi vald",
+    "How much forest is in Võru city?",
+    "How much forest is in the City of Tartu?",
+    "Forest area of Viljandi municipality",
+    "How much forest does the Võru municipal government manage?",
+  ]) {
+    assert.equal(forestEvidenceIntent(query)?.kind, "municipality-forest-area", query);
+    const assessment = assessSearchQuery(query);
+    assert.equal(assessment.kind, "needs-clarification", query);
+    const expectedReason = /(?:Viljandi municipality|Võru municipal government)/u.test(query)
+      ? "ambiguous-municipality"
+      : "municipality-observation-required";
+    assert.equal(assessment.reason, expectedReason, query);
+    const visible = rankPublicSearchCandidates(query, directory, {
+      intentDocuments: directory,
+      now: NOW,
+    }).slice(0, 12);
+    const plan = selectAnswerEvidence(query, visible);
+    assert.equal(plan?.kind, "municipality-forest-area", query);
+    assert.equal(plan?.strong, false, query);
+    assert.equal(plan?.directDocumentId, null, query);
+    assert.deepEqual(plan?.supportingDocumentIds, [], query);
+    assert.deepEqual(plan?.missingEvidenceRequirements, ["query-bound-locality-year-unit-value"], query);
+    assert.equal(visible[0]?.id, "forest-spatial-data", query);
+    const response = composeScopeResponse(query, assessment);
+    assert.equal(response.evidence.answerable, false, query);
+    assert.doesNotMatch(answerText(response), /(?:2[,.]36|52[,.]1)/u, query);
+    assert.equal(response.sources.length, 0, query);
+  }
   for (const query of FORESTRY_NEGATIVE_COLLISIONS) {
     assert.equal(forestEvidenceIntent(query), null, query);
     assert.equal(isForestHarvestBalanceQuery(query), false, query);
+  }
+});
+
+test("municipal and regional scopes fail closed without borrowing national forest figures", async () => {
+  const directory = officialServiceCatalogueDocuments();
+  const cases = [
+    ["Tartu metsasus", "ambiguous-municipality"],
+    ["Pärnu metsasus", "municipality-observation-required"],
+    ["Rakvere metsasus", "ambiguous-municipality"],
+    ["Otepää metsasus", "municipality-observation-required"],
+    ["Saaremaa metsasus", "municipality-observation-required"],
+    ["Võru metsamaa pindala 2024", "ambiguous-municipality"],
+    ["Metsasus Tartu", "ambiguous-municipality"],
+    ["Sinioru metsasus", "missing-municipality"],
+    ["Kivimetsa metsamaa pindala", "missing-municipality"],
+    ["How much forest is under the municipal government of Tartu?", "ambiguous-municipality"],
+    ["How much forest is managed by Tartu local government?", "ambiguous-municipality"],
+    ["What is the forest cover percentage of Saaremaa municipality?", "municipality-observation-required"],
+    ["How much forest is in the municipality of Tartu?", "ambiguous-municipality"],
+    ["How much forest is in the municipality of Tartu linn?", "municipality-observation-required"],
+    ["How much forest is in the municipality of Võru vald?", "municipality-observation-required"],
+    ["How much forest is in the municipality of municipality of Tartu?", "ambiguous-municipality"],
+    ["How much forest is managed by municipality of Tartu local government?", "ambiguous-municipality"],
+    ["How much forest is in the municipality of Saaremaa?", "municipality-observation-required"],
+    ["How much forest is in the local government of Sinioru?", "missing-municipality"],
+    ["How much forest is in the unknown local government of Sinioru?", "missing-municipality"],
+    ["Forest area of the Municipality of Sinioru", "missing-municipality"],
+    ["Forest area of Sinioru municipality", "missing-municipality"],
+    ["How much forest does Municipality of Sinioru have?", "missing-municipality"],
+  ];
+  for (const [query, expectedReason] of cases) {
+    assert.equal(containsPrivatePersonLookup(query), false, query);
+    assert.equal(forestEvidenceIntent(query)?.kind, "municipality-forest-area", query);
+    const assessment = assessSearchQuery(query);
+    assert.equal(assessment.kind, "needs-clarification", query);
+    assert.equal(assessment.reason, expectedReason, query);
+    const visible = rankPublicSearchCandidates(query, directory, {
+      intentDocuments: directory,
+      now: NOW,
+    }).slice(0, 12);
+    const plan = selectAnswerEvidence(query, visible);
+    assert.equal(plan?.kind, "municipality-forest-area", query);
+    assert.equal(plan?.strong, false, query);
+    assert.equal(plan?.directDocumentId, null, query);
+    assert.deepEqual(plan?.supportingDocumentIds, [], query);
+    const response = composeScopeResponse(query, assessment);
+    assert.equal(response.sources.length, 0, query);
+    assert.doesNotMatch(answerText(response), /(?:2[,.]36|2[,.]350|51[,.]84|52[,.]1|54[,.]08)/u, query);
+    const publicDraft = await searchEnvironmentLive(query, {
+      deadlineAt: Date.now() + 5_000,
+      searchResults: { total: visible.length, items: visible },
+      useCache: false,
+    });
+    assert.equal(publicDraft.sources.length, 0, query);
+    assert.equal(usedCitations(publicDraft).size, 0, query);
+    assert.doesNotMatch(answerText(publicDraft), /(?:2[,.]36|2[,.]350|51[,.]84|52[,.]1|54[,.]08)/u, query);
+  }
+
+  const regionalCases = [
+    ["Harjumaa metsasus", "regional-observation-required"],
+    ["Põlvamaa metsamaa pindala", "regional-observation-required"],
+    ["Harju maakonna metsasus", "regional-observation-required"],
+    ["Põlva county forest cover", "regional-observation-required"],
+    ["Läti metsasus", "unsupported-geography"],
+    ["Soome metsasus", "unsupported-geography"],
+    ["Euroopa metsasus", "unsupported-geography"],
+    ["Latvia forest area", "unsupported-geography"],
+    ["Forest area of Finland", "unsupported-geography"],
+    ["European forest cover percentage", "unsupported-geography"],
+    ["Forest area of Gondor", "unsupported-geography"],
+    ["How much forest is there in Gondor?", "unsupported-geography"],
+    ["How many hectares of forest are there in Gondor?", "unsupported-geography"],
+    ["Forest area in Gondor Estonia", "unsupported-geography"],
+    ["How much forest is there in Gondor Estonia?", "unsupported-geography"],
+    ["Forest area in the current year for Gondor", "unsupported-geography"],
+    ["Forest area for the latest year in Gondor", "unsupported-geography"],
+    ["Forest area in hectares for Atlantis", "unsupported-geography"],
+    ["Forest area in hectares Gondor", "unsupported-geography"],
+    ["Forest area in 2025 in Gondor", "unsupported-geography"],
+    ["Forest area for 2025 in Gondor", "unsupported-geography"],
+    ["Forest area in 2025 for Atlantis", "unsupported-geography"],
+    ["What is the forest area in 2025 in Middle Earth", "unsupported-geography"],
+    ["Forest area by 2025 in Gondor", "unsupported-geography"],
+    ["What is the woodland coverage in 2025 in Gondor", "unsupported-geography"],
+    ["Gondor forest area", "unsupported-geography"],
+    ["What is Gondor forest area?", "unsupported-geography"],
+    ["What is Gondor's forest area?", "unsupported-geography"],
+    ["Latest Gondor forest area", "unsupported-geography"],
+    ["How much forest does Gondor have?", "unsupported-geography"],
+    ["How many hectares of forest does Gondor have?", "unsupported-geography"],
+    ["How many forest hectares are in Gondor?", "unsupported-geography"],
+    ["How many hectares are forested in Gondor?", "unsupported-geography"],
+    ["Forest area during 2025 in Gondor", "unsupported-geography"],
+    ["Forest area from 2020 through 2025 in Gondor", "unsupported-geography"],
+    ["Forest area as of 2025 in Gondor", "unsupported-geography"],
+    ["Woodland cover according to 2025 data for Atlantis", "unsupported-geography"],
+    ["Compare Estonia and Gondor forest area", "unsupported-geography"],
+    ["Estonia versus Gondor forest cover", "unsupported-geography"],
+    ["Forest area Estonia versus Gondor", "unsupported-geography"],
+    ["Forest area in Estonia and Gondor", "unsupported-geography"],
+    ["How much forest in Estonia and Gondor?", "unsupported-geography"],
+    ["How much forest was there in Gondor in 2025?", "unsupported-geography"],
+    ["Estonia's forest area compared with Gondor", "unsupported-geography"],
+    ["How much forest does Estonia have compared with Gondor?", "unsupported-geography"],
+    ["Estonia forest area compared to Gondor", "unsupported-geography"],
+    ["How much forest does Estonia have relative to Gondor?", "unsupported-geography"],
+    ["How much forest does Estonia have alongside Gondor?", "unsupported-geography"],
+    ["Estonia's forest area against Gondor", "unsupported-geography"],
+    ["How does Estonia's forest area differ from Gondor?", "unsupported-geography"],
+    ["Kui suur on Gondori metsamaa pindala?", "unsupported-geography"],
+    ["Kui palju metsa on Gondoris?", "unsupported-geography"],
+    ["Atlantise metsamaa pindala", "unsupported-geography"],
+    ["Gondor has how much forest?", "unsupported-geography"],
+  ];
+  for (const countyName of [
+    "Harju", "Hiiu", "Ida-Viru", "Jõgeva", "Järva", "Lääne", "Lääne-Viru", "Põlva",
+    "Pärnu", "Rapla", "Saare", "Tartu", "Valga", "Viljandi", "Võru",
+  ]) {
+    const query = `${countyName} maakonna metsamaa pindala`;
+    assert.equal(containsPrivatePersonLookup(query), false, query);
+    assert.equal(forestEvidenceIntent(query)?.kind, "regional-forest-area", query);
+    assert.equal(assessSearchQuery(query).reason, "regional-observation-required", query);
+  }
+  for (const [query, expectedReason] of regionalCases) {
+    assert.equal(forestEvidenceIntent(query)?.kind, "regional-forest-area", query);
+    const assessment = assessSearchQuery(query);
+    assert.equal(assessment.kind, "needs-clarification", query);
+    assert.equal(assessment.reason, expectedReason, query);
+    const visible = rankPublicSearchCandidates(query, directory, {
+      intentDocuments: directory,
+      now: NOW,
+    }).slice(0, 12);
+    const plan = selectAnswerEvidence(query, visible);
+    assert.equal(plan?.kind, "regional-forest-area", query);
+    assert.equal(plan?.strong, false, query);
+    assert.equal(plan?.directDocumentId, null, query);
+    assert.deepEqual(plan?.supportingDocumentIds, [], query);
+    assert.deepEqual(plan?.missingEvidenceRequirements, ["query-bound-geography-year-unit-value"], query);
+    const response = composeScopeResponse(query, assessment);
+    assert.equal(response.evidence.answerable, false, query);
+    assert.equal(response.sources.length, 0, query);
+    assert.doesNotMatch(answerText(response), /(?:2[,.]36|2[,.]350|51[,.]84|52[,.]1|54[,.]08)/u, query);
+    if (/Gondor|Atlantis|Middle Earth/u.test(query)) {
+      const publicDraft = await searchEnvironmentLive(query, {
+        deadlineAt: Date.now() + 5_000,
+        searchResults: { total: visible.length, items: visible },
+        useCache: false,
+      });
+      assert.equal(publicDraft.sources.length, 0, query);
+      assert.equal(usedCitations(publicDraft).size, 0, query);
+      assert.doesNotMatch(answerText(publicDraft), /(?:2[,.]36|2[,.]350|51[,.]84|52[,.]1|54[,.]08)/u, query);
+    }
+  }
+  for (const query of [
+    "Harju maakonna metsamaa pindala ja Jaan Tamme e-post",
+    "Forest area of Finland and Jaan Tamm email",
+    "Forest area in million hectares and Jaan Tamm email",
+    "How much forest is in Sinioru and where does Jaan Tamm live?",
+    "Gondor forest area and what is Jaan Tamm's birth date?",
+    "Gondor forest area and Jaan Tamm social security number",
+    "Gondor forest area and Jaan Tamm passport number",
+    "Gondor forest area and Jaan Tamm personal ID",
+    "Gondor forest area and Jaan Tamm cadastral parcel",
+    "Forest area in Finland and what is Jaan Tamm's birth date?",
+    "Harjumaa metsasus ning Jaan Tamme sünniaeg",
+    "Forest area of privately owned forests in Estonia and Jaan Tamm email",
+    "Forest area of the Municipality of Sinioru and Jaan Tamm email",
+    "How much forest does Municipality of Sinioru have and where does Jaan Tamm live?",
+    "Forest area in hectares and Jaan Tamm cadastral ID 12345:678:9012",
+    "Forest area in hectares and JAAN TAMM CADASTRAL ID 12345:678:9012",
+    "Forest area in Estonia and Jaan Tamm residence",
+    "Forest area in Estonia and jaan tamm residence",
+    "Forest area in Estonia and JAAN TAMM RESIDENCE",
+    "Forest area in Estonia and Jaan Tamm residency",
+    "Forest area in Estonia and Jaan Tamm domicile",
+    "Forest area in Estonia and Jaan Tamm residency status",
+    "Forest area in Estonia and Jaan Tamm resident status",
+    "Forest area in Estonia and Jaan Tamm residentsus",
+    "Forest area in Estonia and jaan tamm residentsus",
+    "Forest area in Estonia and JAAN TAMM RESIDENTSUS",
+    "Forest area in Estonia and Jaan-Tamm residentsus",
+    "Forest area in Estonia and Jaan/Tamm residentsus",
+    "Forest area in Estonia and Jaan_Tamm residentsus",
+    "Forest area in Estonia managed by Jaan Tamm",
+    "Forest area in Estonia managed by jaan tamm",
+    "Forest area in Estonia owned by JAAN TAMM",
+    "Forest area in Estonia by ownership of Jaan Tamm",
+    "Forest area in Estonia by ownership of jaan tamm",
+    "Forest area in Estonia by ownership of JAAN TAMM",
+    "Forest area in Estonia by ownership of Jaan-Tamm",
+    "Forest area in Estonia by ownership of Jaan/Tamm",
+    "Forest area in Estonia by ownership of Jaan_Tamm",
+    "Forest area in Estonia by ownership of Anna Maria Tamm",
+    "Forest area by ownership of Jaan Tamm in Estonia",
+    "Forest area by ownership of Jaan Tamm within Estonia",
+    "Forest area by ownership of Jaan Tamm forest holdings",
+    "Forest area according to ownership of Jaan Tamm in Estonia",
+    "Forest area in Estonia by Jaan Tamm ownership",
+    "Forest area in Estonia by Jaan Tamm's ownership",
+    "Metsamaa pindala Jaan Tamme omandis Eestis",
+    "Metsamaa pindala Jaan Tamme omandi järgi Eestis",
+    "Mati Maasika omandivormi järgi olev metsamaa",
+    "Mati Maasika ownership forest area",
+    "Forest area in Estonia and Mati Maasika ownership",
+    "Forest area in Estonia, ownership: Jaan Tamm",
+    "Forest area in Estonia, ownership — Jaan Tamm",
+    "Forest area in Estonia, ownership = Jaan Tamm",
+    "Forest area in Estonia, ownership attributed to Jaan Tamm",
+    "Forest area in Estonia by ownership: Jaan Tamm",
+    "Forest area in Estonia by ownership—Jaan Tamm",
+    "Forest area in Estonia, Jaan Tamm owns the forest",
+    "Forest area in Estonia registered to Jaan Tamm",
+    "Forest area in Estonia registered to jaan tamm",
+    "Forest area in Estonia registered to JAAN TAMM",
+    "Forest area in Estonia registered to Jaan-Tamm",
+    "Forest area in Estonia registered to Jaan/Tamm",
+    "Forest area in Estonia registered to Jaan_Tamm",
+    "Forest area in Estonia owned by Anna Maria Tamm",
+    "Forest area in Estonia managed by Anna Maria Tamm",
+    "Forest area in Estonia registered to Anna Maria Tamm",
+    "Forest area in Estonia registered to Mati Maasika",
+    "Metsamaa pindala Eestis, omand: Jaan Tamm",
+    "Metsamaa pindala Eestis, Jaan Tammile kuuluv mets",
+    "Metsamaa pindala Eestis Jaan Tamm hallata",
+    "Metsamaa pindala Eestis, omandiõigus Jaan Tammel",
+    "Forest area in Estonia titled to Jaan Tamm",
+    "Forest area in Estonia held for Jaan Tamm",
+    "Forest area in Estonia, Jaan Tamm's forest area",
+    "Forest area of Jaan Tamm in Estonia",
+    "Jaan Tamm forest area in Estonia",
+    "Forest area attributable to Jaan Tamm in Estonia",
+    "Forest area in Estonia, title: Jaan Tamm",
+    "Forest area in Estonia, beneficiary: Jaan Tamm",
+    "Forest area in Estonia, holder: Jaan Tamm",
+    "Forest area in Estonia, possessor: Jaan Tamm",
+    "Metsamaa pindala Jaan Tamme nimel Eestis",
+    "Jaan Tamme metsamaa pindala Eestis",
+    "Metsamaa pindala kuulub Jaan Tammele Eestis",
+    "Metsamaa pindala Jaan Tamme valduses Eestis",
+    "Metsamaa pindala Eestis, kasutaja: Jaan Tamm",
+    "Metsamaa pindala Eestis, õigustatud isik: Jaan Tamm",
+    "Metsamaa pindala Eestis, valdaja: Jaan Tamm",
+    "Eesti metsamaa pindala ja Jaan Tamme elukoht",
+    "Eesti metsamaa pindala ja Jaan Tamme kodukoht",
+  ]) {
+    assert.equal(containsPrivatePersonLookup(query), true, query);
+    assert.equal(assessSearchQuery(query).reason, "personal-data-lookup", query);
+    assert.equal(selectAnswerEvidence(query, directory), null, query);
+    const privateResponse = await searchEnvironmentLive(query, {
+      deadlineAt: Date.now() + 5_000,
+      searchResults: { total: directory.length, items: directory },
+      useCache: false,
+    });
+    assert.equal(privateResponse.sources.length, 0, query);
+    assert.equal(usedCitations(privateResponse).size, 0, query);
+  }
+
+  for (const query of [
+    "Brown bear residence habitat in Estonia",
+    "Where does the brown bear live?",
+    "Forest habitat of species in Estonia",
+    "Forest area in Estonia and brown bear residence habitat",
+    "Forest area in Estonia managed by Tartu linn",
+    "Forest area in Estonia managed by Võru vald",
+    "Forest area in Estonia by ownership category",
+    "Forest area in Estonia by public ownership",
+    "Forest area in Estonia by ownership of state forests",
+    "Forest area in Estonia by ownership of Tartu linn",
+    "Forest area in Estonia by ownership of Statistics Estonia",
+    "Forest area in Estonia by ownership of Blue Valley Agency",
+    "Forest area in Estonia by ownership of brown bear habitat",
+    "Forest area in Estonia, ownership: Statistics Estonia",
+    "Forest area in Estonia, ownership — Blue Valley Agency",
+    "Forest area in Estonia registered to Tartu linn",
+    "Forest area in Estonia, brown bear owns the forest habitat",
+    "How does Jaan Tamm manage municipal forest?",
+    "How does Forest Whitaker manage public woodland?",
+    "Kuidas Jaan Tamm haldab riigi-metsa?",
+    "Forest area in Estonia in the name of Statistics Estonia",
+    "Forest area in Estonia in the name of Tartu linn",
+    "Forest area in Estonia in the name of Municipality of Tartu",
+    "Forest area by title holder in Estonia",
+    "Forest area by beneficiary category in Estonia",
+    "Forest area by possessor category in Estonia",
+    "Forest area in Estonia, holder: Environment Board",
+    "Forest area in Estonia, beneficiary: Blue Valley Agency",
+    "Forest area in Estonia titled to Tartu linn",
+    "Lendorava elukoha keskkond Eestis",
+    "National forest institution contact",
+    "national forest policy agency contact",
+    "national forest authority phone",
+    "Riikliku metsapoliitika asutuse kontakt",
+    "Riiklik metsaameti üldkontakt",
+    "Pruunkaru elukoht ja elupaik Eestis",
+  ]) {
+    assert.equal(containsPrivatePersonLookup(query), false, query);
+    assert.notEqual(assessSearchQuery(query).reason, "personal-data-lookup", query);
+  }
+
+  const privateSuffix = "How much forest is under the municipal government of Tartu and what is Jaan Tamm’s email?";
+  assert.equal(assessSearchQuery(privateSuffix).kind, "out-of-scope");
+  assert.equal(assessSearchQuery(privateSuffix).reason, "personal-data-lookup");
+
+  const nationalCases = [
+    ["Kui palju metsa on Eestis?", "forest-area"],
+    ["How much forest is in Estonia?", "forest-area"],
+    ["What is the forest area of Estonia?", "forest-area"],
+    ["What percentage of Estonia is forest?", "forest-covered-area"],
+    ["Praegune metsasus", "forest-area"],
+    ["Uusim metsasus", "forest-area"],
+    ["Metsasus protsentides", "forest-covered-area"],
+    ["Metsamaa pindala kokku", "forest-area"],
+    ["Metsamaa pindala tänapäeval", "forest-area"],
+    ["What is the current forest area?", "forest-area"],
+    ["Current forest cover percentage", "forest-covered-area"],
+    ["Forest area today", "forest-area"],
+    ["Forest area in the current year", "forest-area"],
+    ["Forest area in the latest year", "forest-area"],
+    ["Forest area in the year 2024", "forest-area"],
+    ["Kui suur oli Eesti metsamaa pindala 2024. aastal?", "forest-area"],
+    ["How many hectares did Estonia report as forest area in 2024?", "forest-area"],
+    ["Mitu hektarit oli Eesti metsamaad 2024. aastal?", "forest-area"],
+    ["Forest area in this year", "forest-area"],
+    ["Forest area in the present year", "forest-area"],
+    ["Forest area in the most recent year", "forest-area"],
+    ["Forest area in million hectares", "forest-area"],
+    ["Forest area in thousands of hectares", "forest-area"],
+    ["Forest cover percentage in the present year", "forest-covered-area"],
+    ["Forest cover percentage in the most recent year", "forest-covered-area"],
+    ["Forest cover percentage in million hectares", "forest-covered-area"],
+    ["Forest cover percentage in thousands of hectares", "forest-covered-area"],
+    ["How much forest is there in thousands of hectares", "forest-area"],
+    ["How many hectares of forest in thousands of hectares", "forest-area"],
+    ["Forest area in the current year thanks", "forest-area"],
+    ["Forest area in hectares thank you", "forest-area"],
+    ["Forest area in the latest year for Estonia thanks", "forest-area"],
+    ["Forest area in million hectares if possible", "forest-area"],
+    ["Forest area in 2025", "forest-area"],
+    ["Forest area by 2025", "forest-area"],
+    ["Forest area in 2025 in hectares for Estonia thank you", "forest-area"],
+    ["Forest area in Estonia and in 2025", "forest-area"],
+    ["What is Estonia's forest area?", "forest-area"],
+    ["What is Estonia forest area in thousands of hectares", "forest-area"],
+    ["Latest Estonia forest area", "forest-area"],
+    ["How many forest hectares are in Estonia?", "forest-area"],
+    ["How many hectares are forested in Estonia?", "forest-area"],
+    ["How much forest is there in 2025", "forest-area"],
+    ["How much forest is there in the current year thanks", "forest-area"],
+    ["How many hectares of forest are there in 2025", "forest-area"],
+    ["Forest area in Estonia this year", "forest-area"],
+    ["Please tell me the national forest area", "forest-area"],
+    ["I want to know the forest area", "forest-area"],
+    ["Find the latest forest area", "forest-area"],
+    ["Give me the forest area estimate", "forest-area"],
+    ["Report the current forest area figure", "forest-area"],
+    ["Forest area in Estonia today", "forest-area"],
+    ["Latest available Estonia forest area estimate", "forest-area"],
+    ["How much forest is there in Estonia today?", "forest-area"],
+  ];
+  for (const [query, expectedIntent] of nationalCases) {
+    assert.equal(assessSearchQuery(query).kind, "answerable", query);
+    assert.equal(forestEvidenceIntent(query)?.kind, expectedIntent, query);
+  }
+  for (const [query, expectedReason, expectedRequirement, expectedIntent = "forest-area"] of [
+    ["Forest area by ownership category in Estonia", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Forest area according to ownership category in Estonia", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Forest area by private ownership in Estonia", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Forest area with public ownership", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Forest area with management status", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Forest cover with management status", "requested-breakdown-required", "query-bound-category-year-unit-value", "forest-covered-area"],
+    ["Forest area by conservation status", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Woodland area grouped by conservation regime", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Forest cover according to protection class", "requested-breakdown-required", "query-bound-category-year-unit-value", "forest-covered-area"],
+    ["Forest cover according to land use type", "requested-breakdown-required", "query-bound-category-year-unit-value", "forest-covered-area"],
+    ["Forest area across ownership types", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Forest area divided by ownership", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Forest cover disaggregated by protection regime", "requested-breakdown-required", "query-bound-category-year-unit-value", "forest-covered-area"],
+    ["Woodland area based on management class", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Forest area for each conservation status", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Forest area of privately owned forests in Estonia", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Forest area excluding protected forests in Estonia", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Metsamaa pindala omandivormi järgi Eestis", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Forest area in Estonia by ownership category", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Forest cover in Estonia by protection class", "requested-breakdown-required", "query-bound-category-year-unit-value", "forest-covered-area"],
+    ["Forest area in Estonia excluding protected forests", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Forest area omandivormi järgi", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Forest area omandivormi järgi in Estonia", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Forest cover omandivormi järgi", "requested-breakdown-required", "query-bound-category-year-unit-value", "forest-covered-area"],
+    ["Forest area ownership järgi", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Woodland area omandivormi järgi", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Metsamaa pindala ownership järgi", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Forest area kaitsekategooria järgi", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Forest cover majandamisviisi järgi", "requested-breakdown-required", "query-bound-category-year-unit-value", "forest-covered-area"],
+    ["Forest area omandivormide lõikes Eestis", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Forest area omanikuliigi kaupa Eestis", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Metsasus protection class by", "requested-breakdown-required", "query-bound-category-year-unit-value"],
+    ["Ajalooline metsasus", "requested-time-series-required", "query-bound-time-series-year-unit-value"],
+    ["Forest area in the period 2020 to 2025", "requested-time-series-required", "query-bound-time-series-year-unit-value"],
+    ["Forest area from 2020 to 2024", "requested-time-series-required", "query-bound-time-series-year-unit-value"],
+    ["Historical forest area by year", "requested-time-series-required", "query-bound-time-series-year-unit-value"],
+    ["Forest area over the years", "requested-time-series-required", "query-bound-time-series-year-unit-value"],
+    ["Forest area year to year", "requested-time-series-required", "query-bound-time-series-year-unit-value"],
+    ["Forest area over time", "requested-time-series-required", "query-bound-time-series-year-unit-value"],
+    ["Forest area through the years", "requested-time-series-required", "query-bound-time-series-year-unit-value"],
+    ["Forest area during the years", "requested-time-series-required", "query-bound-time-series-year-unit-value"],
+    ["Forest area for all years", "requested-time-series-required", "query-bound-time-series-year-unit-value"],
+    ["Forest cover for all years", "requested-time-series-required", "query-bound-time-series-year-unit-value", "forest-covered-area"],
+    ["Forest area between years", "requested-time-series-required", "query-bound-time-series-year-unit-value"],
+    ["Forest area by period", "requested-time-series-required", "query-bound-time-series-year-unit-value"],
+    ["Forest area per year", "requested-time-series-required", "query-bound-time-series-year-unit-value"],
+    ["Woodland area across multiple years", "requested-time-series-required", "query-bound-time-series-year-unit-value"],
+    ["Forest cover for each period", "requested-time-series-required", "query-bound-time-series-year-unit-value", "forest-covered-area"],
+    ["Forest area per period", "requested-time-series-required", "query-bound-time-series-year-unit-value"],
+    ["Forest area period by period", "requested-time-series-required", "query-bound-time-series-year-unit-value"],
+    ["Forest cover across time periods", "requested-time-series-required", "query-bound-time-series-year-unit-value", "forest-covered-area"],
+    ["Woodland area over previous years", "requested-time-series-required", "query-bound-time-series-year-unit-value"],
+    ["Forest area by decade", "requested-time-series-required", "query-bound-time-series-year-unit-value"],
+    ["Forest cover timeline", "requested-time-series-required", "query-bound-time-series-year-unit-value", "forest-covered-area"],
+    ["Annual forest area 2018 through 2024", "requested-time-series-required", "query-bound-time-series-year-unit-value"],
+    ["Forest area 2024 and 2025", "requested-time-series-required", "query-bound-time-series-year-unit-value"],
+    ["Metsamaa pindala aastate kaupa Eestis", "requested-time-series-required", "query-bound-time-series-year-unit-value"],
+    ["Forest area in Estonia from 2020 to 2024", "requested-time-series-required", "query-bound-time-series-year-unit-value"],
+    ["Forest area in Estonia over time", "requested-time-series-required", "query-bound-time-series-year-unit-value"],
+    ["Forest area in square kilometres", "requested-unit-conversion-required", "validated-unit-conversion"],
+    ["Forest area in acres", "requested-unit-conversion-required", "validated-unit-conversion"],
+    ["Forest area in km2", "requested-unit-conversion-required", "validated-unit-conversion"],
+    ["Forest cover with public ownership", "requested-breakdown-required", "query-bound-category-year-unit-value", "forest-covered-area"],
+    ["Forest cover over time", "requested-time-series-required", "query-bound-time-series-year-unit-value", "forest-covered-area"],
+    ["Forest cover in acres", "requested-unit-conversion-required", "validated-unit-conversion", "forest-covered-area"],
+    ["Forest area in square miles", "requested-unit-conversion-required", "validated-unit-conversion"],
+  ]) {
+    assert.equal(forestEvidenceIntent(query)?.kind, expectedIntent, query);
+    assert.equal(assessSearchQuery(query).reason, expectedReason, query);
+    const visible = rankPublicSearchCandidates(query, directory, {
+      intentDocuments: directory,
+      now: NOW,
+    }).slice(0, 12);
+    const plan = selectAnswerEvidence(query, visible);
+    assert.equal(plan?.strong, false, query);
+    assert.equal(plan?.directDocumentId, null, query);
+    assert.deepEqual(plan?.supportingDocumentIds, [], query);
+    assert.deepEqual(plan?.navigationDocumentIds, [], query);
+    assert.deepEqual(plan?.missingEvidenceRequirements, [expectedRequirement], query);
+    const publicDraft = await searchEnvironmentLive(query, {
+      deadlineAt: Date.now() + 5_000,
+      searchResults: { total: visible.length, items: visible },
+      useCache: false,
+    });
+    assert.equal(publicDraft.sources.length, 0, query);
+    assert.equal(usedCitations(publicDraft).size, 0, query);
+    assert.doesNotMatch(answerText(publicDraft), /(?:2[,.]36|2[,.]350|51[,.]84|52[,.]1|54[,.]08)/u, query);
+  }
+  for (const [query, expectedIntent] of [
+    ["Forest area in 1999", "forest-area"],
+    ["Forest area in 2010", "forest-area"],
+    ["Forest area in 2020", "forest-area"],
+    ["Forest area in 2030", "forest-area"],
+    ["Forest cover in 1999", "forest-covered-area"],
+    ["Forest cover in 2030", "forest-covered-area"],
+    ["Woodland cover in 1999", "forest-covered-area"],
+    ["What was Estonia forest coverage in 2010?", "forest-covered-area"],
+    ["Forest coverage in 2025", "forest-covered-area"],
+    ["Forest cover as of 2020", "forest-covered-area"],
+  ]) {
+    assert.equal(containsPrivatePersonLookup(query), false, query);
+    assert.equal(forestEvidenceIntent(query)?.kind, expectedIntent, query);
+    const visible = rankPublicSearchCandidates(query, directory, {
+      intentDocuments: directory,
+      now: NOW,
+    }).slice(0, 12);
+    const plan = selectAnswerEvidence(query, visible);
+    assert.equal(plan?.strong, false, query);
+    assert.equal(plan?.directDocumentId, null, query);
+    assert.deepEqual(plan?.supportingDocumentIds, [], query);
+    assert.equal(plan?.reason, "requested-year-evidence-required", query);
+    const publicDraft = await searchEnvironmentLive(query, {
+      deadlineAt: Date.now() + 5_000,
+      searchResults: { total: visible.length, items: visible },
+      useCache: false,
+    });
+    assert.equal(usedCitations(publicDraft).size, 0, query);
+    assert.doesNotMatch(answerText(publicDraft), /(?:2[,.]36|2[,.]350|51[,.]84|52[,.]1|54[,.]08)/u, query);
   }
 });
 

@@ -714,6 +714,7 @@ function TerrapointSection() {
           data-testid="terrapoint-embed"
           loading="lazy"
           referrerPolicy="strict-origin-when-cross-origin"
+          sandbox="allow-forms allow-same-origin allow-scripts"
           src="https://terrapoint.ee/"
           title="Terrapointi täisrakendus"
         />
@@ -1327,7 +1328,7 @@ function TerrapointEmbed() {
         {stage === "parcel" && cadastro ? (
           <section className="tp-parcel">
             <div className="tp-parcel__top"><button onClick={() => { setParcel(null); setStage("addresses"); }} type="button"><ArrowLeft size={16} /> Tagasi</button><span><CheckCircle2 size={16} /> Andmed laaditud</span></div>
-            <div className="tp-map">{mapUrl ? <iframe src={mapUrl} title="Kinnistu asukoht OpenStreetMapis" loading="lazy" /> : <Map size={38} />}</div>
+            <div className="tp-map">{mapUrl ? <iframe src={mapUrl} title="Kinnistu asukoht OpenStreetMapis" loading="lazy" referrerPolicy="strict-origin-when-cross-origin" sandbox="allow-same-origin allow-scripts" /> : <Map size={38} />}</div>
             <div className="tp-parcel__title"><span className="eyebrow">Katastriüksus</span><h1>{cadastro.l_aadress || cadastro.number}</h1><code>{cadastro.number}</code></div>
             <div className="tp-stats">
               <div><span>Pindala</span><strong>{cadastro.pindala_ha ?? "–"} ha</strong></div>

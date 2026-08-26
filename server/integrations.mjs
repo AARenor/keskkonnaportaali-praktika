@@ -88,6 +88,14 @@ const MAX_CONCURRENT_HYDRATIONS = 4;
 const MAX_CONCURRENT_SUGGESTIONS = 2;
 const MAX_DISCOVERY_DOCUMENT_TEXT = 7_500;
 const MAX_DISCOVERY_MARKUP = 48_000;
+const VPORTAL_PROJECTION_SCHEMA = 1;
+const MAX_VPORTAL_DOCUMENTS = 6;
+const MAX_VPORTAL_CONTENT_FRAGMENTS = 12;
+const MAX_VPORTAL_DOCUMENT_MARKUP_BYTES = 48_000;
+const MAX_VPORTAL_RESPONSE_MARKUP_BYTES = 192_000;
+const MAX_VPORTAL_URI_BYTES = 2_000;
+const MAX_VPORTAL_TITLE_BYTES = 2_000;
+const MAX_VPORTAL_METADATA_BYTES = 640;
 const responseCache = createByteBoundedLruCache({
   maximumEntries: MAX_CACHE_ENTRIES,
   maximumBytes: MAX_CACHE_BYTES,
@@ -496,20 +504,158 @@ function stripMarkup(value = "", maximumInputChars = MAX_DISCOVERY_MARKUP) {
   return cleanText($("main").text());
 }
 
-function boundedVportalContent(fragments = []) {
-  let content = "";
-  for (const fragment of fragments) {
-    if (content.length >= MAX_DISCOVERY_DOCUMENT_TEXT) break;
-    const remaining = MAX_DISCOVERY_DOCUMENT_TEXT - content.length;
-    // Kuna lõppvastusse jõuab niigi kõige rohkem 7500 puhast tähemärki,
-    // ei tohi üks ametliku otsingu ebatavaliselt suur HTML-väli kogu event
-    // loop'i enne seda piiri ära kasutada.
-    const rawLimit = Math.max(4_000, Math.min(MAX_DISCOVERY_MARKUP, remaining * 6));
-    const cleaned = stripMarkup(fragment, rawLimit).slice(0, remaining);
-    if (!cleaned) continue;
-    content = `${content}${content ? "\n" : ""}${cleaned}`.slice(0, MAX_DISCOVERY_DOCUMENT_TEXT);
+function boundedUtf8Prefix(value, maximumBytes) {
+  const input = String(value || "");
+  const limit = Math.max(0, Math.trunc(Number(maximumBytes) || 0));
+  if (!limit || !input) return "";
+  const encoded = Buffer.from(input, "utf8");
+  if (encoded.length <= limit) return input;
+  let end = limit;
+  // Buffer#toString replaces a truncated UTF-8 sequence. Back up by at most
+  // four bytes so the cache projection always stays inside its byte budget.
+  while (end > Math.max(0, limit - 4)) {
+    const candidate = encoded.subarray(0, end).toString("utf8");
+    if (!candidate.endsWith("\uFFFD")) return candidate;
+    end -= 1;
   }
-  return content;
+  return encoded.subarray(0, end).toString("utf8").replace(/\uFFFD+$/u, "");
+}
+
+function boundedVportalMarkup(parts, maximumBytes) {
+  const limit = Math.max(0, Math.trunc(Number(maximumBytes) || 0));
+  let markup = "";
+  let bytes = 0;
+  for (const part of parts) {
+    if (!part) continue;
+    const separator = markup ? "\n" : "";
+    const separatorBytes = Buffer.byteLength(separator, "utf8");
+    const remaining = limit - bytes - separatorBytes;
+    if (remaining <= 0) break;
+    const accepted = boundedUtf8Prefix(part, remaining);
+    if (!accepted) continue;
+    markup += `${separator}${accepted}`;
+    bytes += separatorBytes + Buffer.byteLength(accepted, "utf8");
+  }
+  return markup;
+}
+
+function boundedVportalField(value, maximumBytes, label, { optional = false } = {}) {
+  if ((value === null || value === undefined || value === "") && optional) return "";
+  if (typeof value !== "string" || !value || Buffer.byteLength(value, "utf8") > maximumBytes) {
+    throw new Error(`Official search returned an invalid ${label}`);
+  }
+  return value;
+}
+
+function vportalDocumentProjection(item, maximumMarkupBytes) {
+  if (!item || typeof item !== "object" || Array.isArray(item)) {
+    throw new Error("Official search returned an invalid document");
+  }
+  if (!Array.isArray(item.content)) {
+    throw new Error("Official search returned invalid document content");
+  }
+  // Some valid Drupal pages expose dozens of field fragments. Only the first
+  // bounded window can enter the projection; the remainder is neither walked,
+  // cached nor parsed.
+  const content = item.content.slice(0, MAX_VPORTAL_CONTENT_FRAGMENTS);
+  if (content.some((fragment) => typeof fragment !== "string")) {
+    throw new Error("Official search returned invalid document content");
+  }
+  const lead = boundedVportalField(item.lead_text, MAX_VPORTAL_DOCUMENT_MARKUP_BYTES, "lead", { optional: true });
+  const highlighted = boundedVportalField(
+    item.highlighted,
+    MAX_VPORTAL_DOCUMENT_MARKUP_BYTES,
+    "highlight",
+    { optional: true },
+  );
+  return {
+    uri: boundedVportalField(item.uri, MAX_VPORTAL_URI_BYTES, "document URL"),
+    title: boundedVportalField(item.title, MAX_VPORTAL_TITLE_BYTES, "document title"),
+    content_type: boundedVportalField(
+      item.content_type,
+      MAX_VPORTAL_METADATA_BYTES,
+      "content type",
+      { optional: true },
+    ),
+    created: boundedVportalField(item.created, MAX_VPORTAL_METADATA_BYTES, "date", { optional: true }),
+    markup: boundedVportalMarkup(
+      [lead, highlighted, ...content],
+      Math.min(MAX_VPORTAL_DOCUMENT_MARKUP_BYTES, maximumMarkupBytes),
+    ),
+  };
+}
+
+export function projectVportalPayload(payload) {
+  if (!payload?.response || !Array.isArray(payload.response.docs)
+    || payload.response.docs.length > MAX_VPORTAL_DOCUMENTS) {
+    throw new Error("Official search returned an invalid payload");
+  }
+  let remainingMarkupBytes = MAX_VPORTAL_RESPONSE_MARKUP_BYTES;
+  const docs = payload.response.docs.map((item) => {
+    const projected = vportalDocumentProjection(item, remainingMarkupBytes);
+    remainingMarkupBytes -= Buffer.byteLength(projected.markup, "utf8");
+    return projected;
+  });
+  const numFound = Number(payload.response.numFound);
+  return {
+    _schema: VPORTAL_PROJECTION_SCHEMA,
+    response: {
+      docs,
+      numFound: Number.isSafeInteger(numFound) && numFound >= 0 ? numFound : docs.length,
+    },
+  };
+}
+
+export function parseVportalProjectionBody(body) {
+  let payload;
+  try {
+    payload = JSON.parse(String(body));
+  } catch {
+    throw new Error("Official search cache is invalid");
+  }
+  if (payload?._schema !== VPORTAL_PROJECTION_SCHEMA
+    || !payload.response
+    || !Array.isArray(payload.response.docs)
+    || payload.response.docs.length > MAX_VPORTAL_DOCUMENTS) {
+    throw new Error("Official search cache is invalid");
+  }
+  let totalMarkupBytes = 0;
+  const docs = payload.response.docs.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)
+      || typeof item.markup !== "string"
+      || Buffer.byteLength(item.markup, "utf8") > MAX_VPORTAL_DOCUMENT_MARKUP_BYTES) {
+      throw new Error("Official search cache is invalid");
+    }
+    totalMarkupBytes += Buffer.byteLength(item.markup, "utf8");
+    if (totalMarkupBytes > MAX_VPORTAL_RESPONSE_MARKUP_BYTES) {
+      throw new Error("Official search cache is invalid");
+    }
+    return {
+      uri: boundedVportalField(item.uri, MAX_VPORTAL_URI_BYTES, "cached document URL"),
+      title: boundedVportalField(item.title, MAX_VPORTAL_TITLE_BYTES, "cached document title"),
+      content_type: boundedVportalField(
+        item.content_type,
+        MAX_VPORTAL_METADATA_BYTES,
+        "cached content type",
+        { optional: true },
+      ),
+      created: boundedVportalField(item.created, MAX_VPORTAL_METADATA_BYTES, "cached date", { optional: true }),
+      markup: item.markup,
+    };
+  });
+  const numFound = Number(payload.response.numFound);
+  if (!Number.isSafeInteger(numFound) || numFound < 0) {
+    throw new Error("Official search cache is invalid");
+  }
+  return { _schema: VPORTAL_PROJECTION_SCHEMA, response: { docs, numFound } };
+}
+
+export function vportalDocumentText(item, strip = stripMarkup) {
+  if (!item || typeof item.markup !== "string"
+    || Buffer.byteLength(item.markup, "utf8") > MAX_VPORTAL_DOCUMENT_MARKUP_BYTES) {
+    throw new Error("Official search document projection is invalid");
+  }
+  return strip(item.markup, MAX_DISCOVERY_MARKUP).slice(0, MAX_DISCOVERY_DOCUMENT_TEXT);
 }
 
 function yieldToEventLoop() {
@@ -538,7 +684,11 @@ async function fetchVportalJson(url, origin, {
   const now = Date.now();
   const cached = responseCache.get(cacheKey);
   if (cached && now - cached.savedAt < ttlMs) {
-    return { payload: JSON.parse(cached.body), cache: "hit", stale: false };
+    try {
+      return { payload: parseVportalProjectionBody(cached.body), cache: "hit", stale: false };
+    } catch {
+      responseCache.delete(cacheKey);
+    }
   }
 
   const controller = new AbortController();
@@ -588,16 +738,17 @@ async function fetchVportalJson(url, origin, {
       request.on("error", reject);
       request.end();
     });
-    const payload = JSON.parse(body);
-    if (!payload?.response || !Array.isArray(payload.response.docs)) {
-      throw new Error("Official search returned an invalid payload");
-    }
-    cacheResponse(cacheKey, body);
+    const payload = projectVportalPayload(JSON.parse(body));
+    cacheResponse(cacheKey, JSON.stringify(payload));
     return { payload, cache: "miss", stale: false };
   } catch (error) {
     throwIfRequestAborted(externalSignal);
     if (cached && now - cached.savedAt < staleMs) {
-      return { payload: JSON.parse(cached.body), cache: "stale", stale: true };
+      try {
+        return { payload: parseVportalProjectionBody(cached.body), cache: "stale", stale: true };
+      } catch {
+        responseCache.delete(cacheKey);
+      }
     }
     throw error;
   } finally {
@@ -624,12 +775,9 @@ async function searchVportalSite(site, query, limit, options) {
       continue;
     }
     if (sourceUrl.toString().length > 2_000) continue;
-    const highlighted = stripMarkup(item.highlighted, 12_000).slice(0, 900);
-    const lead = stripMarkup(item.lead_text, 12_000).slice(0, 900);
-    const fullContent = boundedVportalContent(Array.isArray(item.content) ? item.content : []);
+    const fullContent = vportalDocumentText(item);
     const firstContent = fullContent.slice(0, 900);
-    const summary = cleanText([lead, highlighted].filter(Boolean).join(" ")).slice(0, 1_200)
-      || firstContent
+    const summary = firstContent
       || `${item.title} – ${site.organization} ametlik otsingutulemus.`;
     const title = cleanText(item.title).slice(0, 500);
     if (!title || !summary) continue;
@@ -644,7 +792,7 @@ async function searchVportalSite(site, query, limit, options) {
       tags: [contentType, site.organization.slice(0, 240), "ametlik allikas"].filter(Boolean),
       summary,
       content: fullContent || undefined,
-      excerpt: highlighted || lead,
+      excerpt: firstContent,
       sourceSystem: `${site.organization} otsing`,
       retrieval: "official-federated-search",
       delivery: "federated-discovery",
@@ -819,7 +967,7 @@ export async function getKeskkonnaportaalSuggestions(query, limit = 5, options =
   const canonicalInput = canonicalizePublicSearchQuery(query, { maximumLength: 80 });
   if (!canonicalInput.ok) return { suggestions: [], cache: "rejected" };
   const url = new URL("/et/search_api_autocomplete/kem_kkp_search", PORTAL_BASE);
-  url.searchParams.set("q", canonicalInput.query);
+  url.searchParams.set("q", canonicalInput.query.toLocaleLowerCase("et"));
   const cacheKey = url.toString();
   let entry = suggestionInflight.get(cacheKey);
   if (!entry) {

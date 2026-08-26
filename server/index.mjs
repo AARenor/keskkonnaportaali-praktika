@@ -49,6 +49,10 @@ import {
   searchDeadline,
 } from "./request-budget.mjs";
 import {
+  createPublicResponseBudget,
+  resolvePublicResponseBudget,
+} from "./response-budget.mjs";
+import {
   createByteBoundedLruCache,
 } from "./upstream.mjs";
 import {
@@ -57,7 +61,10 @@ import {
 } from "./terrapoint.mjs";
 import { requestApprovedPublicHttpsText } from "./public-https.mjs";
 import { publicDeploymentRevision } from "./version.mjs";
-import { getReviewedSearchSuggestions } from "./suggestions.mjs";
+import {
+  getReviewedSearchSuggestions,
+  isReviewedSearchSuggestionAlias,
+} from "./suggestions.mjs";
 import {
   assessSearchQuery,
   canonicalizePublicSearchQuery,
@@ -74,6 +81,7 @@ const proxyConfiguration = resolveProxyConfiguration({ port });
 const publicOrigin = proxyConfiguration.publicOrigin;
 const browserOriginSet = new Set(proxyConfiguration.browserOrigins);
 const ipv6ClientPrefixBits = resolveIpv6ClientPrefixBits();
+const publicResponseConfiguration = resolvePublicResponseBudget(process.env);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const clientRoot = path.join(root, "dist", "client");
 const proxyInflight = new Map();
@@ -113,6 +121,16 @@ const terrapointAdmission = createFairSearchAdmission({
   capacityCode: "UPSTREAM_CAPACITY",
   capacityLabel: "Terrapoint admission",
 });
+const publicResponseBudget = createPublicResponseBudget({
+  ...publicResponseConfiguration,
+  keyForRequest: (request) => requestRateLimitAddress(
+    request,
+    proxyConfiguration.trustedProxyCidrs,
+    { ipv6PrefixBits: ipv6ClientPrefixBits },
+  ),
+  isReservedRequest: (request) => request.path === "/api/health"
+    || request.path === "/api/health/container-readiness",
+});
 let containerReadiness = "ready";
 let officialDiscoveryMaintenanceTimer;
 let corpusRefreshTimeout;
@@ -124,6 +142,7 @@ searchDataMaintenance.unref();
 
 app.disable("x-powered-by");
 app.set("trust proxy", proxyConfiguration.trust);
+app.use(publicResponseBudget);
 app.use((request, response, next) => {
   const trustedProxy = requestFromTrustedProxy(request, proxyConfiguration.trustedProxyCidrs);
   if (publicOrigin && trustedProxy && !request.secure) {
@@ -302,6 +321,37 @@ function emptySearchListing(filters, page = 1, pageSize = 12) {
   });
 }
 
+function blockedSearchAssessment(query) {
+  const assessment = assessSearchQuery(query);
+  return assessment.kind === "out-of-scope" ? assessment : null;
+}
+
+function blockedSearchPayload(query, assessment, filters, page, pageSize) {
+  const searchResults = emptySearchListing(filters, page, pageSize);
+  return {
+    ...composeScopeResponse(query, assessment),
+    searchResults,
+  };
+}
+
+async function writeBlockedSearchStream(response, query, assessment, filters, page, pageSize) {
+  const payload = blockedSearchPayload(query, assessment, filters, page, pageSize);
+  response.status(200);
+  response.setHeader("Cache-Control", "no-store");
+  response.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+  response.setHeader("X-Accel-Buffering", "no");
+  const stream = createBoundedNdjsonWriter(response);
+  response.flushHeaders?.();
+  try {
+    await stream.write("results", { searchResults: payload.searchResults });
+    await stream.write("answer", { result: payload });
+    await stream.finish();
+  } catch (error) {
+    if (!response.destroyed) response.destroy(error);
+  }
+  return undefined;
+}
+
 function searchCapacityError(message = "Search execution budget expired before admission") {
   const error = new Error(message);
   error.code = "SEARCH_CAPACITY";
@@ -338,6 +388,13 @@ async function handleSearch(request, response) {
   const parsedFilters = searchFilters(request);
   if (!parsedFilters.ok) return response.status(400).json({ error: parsedFilters.error });
   const filters = parsedFilters.filters;
+  const blockedAssessment = blockedSearchAssessment(query);
+  if (blockedAssessment) {
+    response.setHeader("Cache-Control", "no-store");
+    return response.status(200).json(
+      blockedSearchPayload(query, blockedAssessment, filters, page, pageSize),
+    );
+  }
   const startedAt = Date.now();
   const deadlineAt = searchDeadline(startedAt, JSON_SEARCH_DEADLINE_CEILING_MS);
   const lifecycle = bindRequestAbort(request, response);
@@ -423,6 +480,17 @@ app.post("/api/search/stream", async (request, response) => {
   const parsedFilters = searchFilters(request);
   if (!parsedFilters.ok) return response.status(400).json({ error: parsedFilters.error });
   const filters = parsedFilters.filters;
+  const blockedAssessment = blockedSearchAssessment(query);
+  if (blockedAssessment) {
+    return writeBlockedSearchStream(
+      response,
+      query,
+      blockedAssessment,
+      filters,
+      page,
+      pageSize,
+    );
+  }
 
   const startedAt = Date.now();
   const deadlineAt = searchDeadline(startedAt);
@@ -558,6 +626,16 @@ async function handleSearchResults(request, response) {
   });
   if (queryInput.reason === "empty") return response.status(400).json({ error: "Sisesta otsingusõna." });
   if (!queryInput.ok) return response.status(400).json({ error: "Otsing on liiga pikk." });
+  const page = searchPage(request, "page", 1, 500);
+  const pageSize = searchPage(request, "page_size", 12, 50);
+  if (page === null || pageSize === null) return response.status(400).json({ error: "Lehekülg ja lehe suurus peavad olema lubatud täisarvud." });
+  const parsedFilters = searchFilters(request);
+  if (!parsedFilters.ok) return response.status(400).json({ error: parsedFilters.error });
+  const filters = parsedFilters.filters;
+  if (blockedSearchAssessment(query)) {
+    response.setHeader("Cache-Control", "no-store");
+    return response.status(200).json(emptySearchListing(filters, page, pageSize));
+  }
   const startedAt = Date.now();
   const deadlineAt = searchDeadline(startedAt);
   const lifecycle = bindRequestAbort(request, response);
@@ -580,12 +658,6 @@ async function handleSearchResults(request, response) {
         retryable: true,
       });
     }
-    const page = searchPage(request, "page", 1, 500);
-    const pageSize = searchPage(request, "page_size", 12, 50);
-    if (page === null || pageSize === null) return response.status(400).json({ error: "Lehekülg ja lehe suurus peavad olema lubatud täisarvud." });
-    const parsedFilters = searchFilters(request);
-    if (!parsedFilters.ok) return response.status(400).json({ error: parsedFilters.error });
-    const filters = parsedFilters.filters;
     const results = await settleWithinDeadline(prepareRankedSearchResults(query, {
       page,
       pageSize,
@@ -765,11 +837,19 @@ async function handleSuggestions(request, response) {
   const query = queryInput.query;
   if (queryInput.reason === "too-long") return response.status(400).json({ error: "Otsing on liiga pikk." });
   if (query.length < 2) return response.json({ suggestions: [] });
-  if (assessSearchQuery(query).kind === "out-of-scope") {
-    response.setHeader("Cache-Control", "no-store");
-    return response.json({ suggestions: [] });
-  }
+  const assessment = assessSearchQuery(query);
+  const reviewedAlias = isReviewedSearchSuggestionAlias(query);
   const curated = getReviewedSearchSuggestions(query, 5).map((value) => ({ value, count: null }));
+  // Exact reviewed aliases never need to leave the process. An out-of-scope
+  // query gets no upstream autocomplete call even if a future classifier or
+  // normalizer change makes it resemble one of those local aliases.
+  if (reviewedAlias || assessment.kind === "out-of-scope") {
+    response.setHeader(
+      "Cache-Control",
+      reviewedAlias ? "public, max-age=300, stale-while-revalidate=900" : "no-store",
+    );
+    return response.json({ suggestions: reviewedAlias ? curated.slice(0, 5) : [] });
+  }
   const lifecycle = bindRequestAbort(request, response);
   try {
     const result = await getKeskkonnaportaalSuggestions(query, 5, {
@@ -1009,6 +1089,8 @@ server.headersTimeout = 5_000;
 server.requestTimeout = 10_000;
 server.keepAliveTimeout = 5_000;
 server.maxHeadersCount = 100;
+server.maxConnections = publicResponseConfiguration.maximumConnections;
+server.setTimeout(publicResponseConfiguration.idleTimeoutMs, (socket) => socket.destroy());
 server.listen(port, "0.0.0.0", () => {
   process.stdout.write(`Keskkonnaportaali praktika listening on ${port}\n`);
   const refreshCorpus = () => {

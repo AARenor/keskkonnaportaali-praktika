@@ -533,7 +533,7 @@ export function getForestrySuggestions(query, limit = 5) {
       const alias = normalizeForestryText(item.value);
       const aliasTokens = alias.match(/[0-9a-zõäöüšž]+/giu) || [];
       const prefixMatches = normalizedTokens.filter((token) => aliasTokens.some((aliasToken) => (
-        aliasToken.startsWith(token) || token.startsWith(aliasToken)
+        aliasToken.startsWith(token) || (aliasToken.length >= 3 && token.startsWith(aliasToken))
       ))).length;
       const score = alias.startsWith(normalized) ? 100
         : normalizedTokens.length && prefixMatches === normalizedTokens.length ? 60 + prefixMatches

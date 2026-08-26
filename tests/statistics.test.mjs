@@ -6,19 +6,25 @@ import { rankPublicSearchCandidates } from "../server/retrieval.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
 import {
   composeStatisticsHazardousWasteResponse,
+  composeStatisticsTotalWasteRecoveryResponse,
   composeStatisticsWastewaterBht7Response,
   composeStatisticsWaterAbstractionResponse,
   isStatisticsHazardousWasteQuery,
+  isStatisticsTotalWasteRecoveryQuery,
   isStatisticsWastewaterBht7Query,
   isStatisticsWaterAbstractionQuery,
   STATISTICS_HAZARDOUS_WASTE_API_URL,
   STATISTICS_HAZARDOUS_WASTE_TABLE_URL,
+  STATISTICS_TOTAL_WASTE_RECOVERY_API_URL,
+  STATISTICS_TOTAL_WASTE_RECOVERY_TABLE_URL,
   STATISTICS_WATER_ABSTRACTION_API_URL,
   STATISTICS_WATER_ABSTRACTION_TABLE_URL,
   STATISTICS_WASTEWATER_BHT7_API_URL,
   STATISTICS_WASTEWATER_BHT7_TABLE_URL,
   statisticsHazardousWasteFromJson,
   statisticsHazardousWasteRequest,
+  statisticsTotalWasteRecoveryFromJson,
+  statisticsTotalWasteRecoveryRequest,
   statisticsWastewaterBht7FromJson,
   statisticsWastewaterBht7Request,
   statisticsWaterAbstractionFromJson,
@@ -128,6 +134,40 @@ function hazardousWasteFixture(overrides = {}) {
     role: { time: ["Aasta"] },
     version: "2.0",
     extension: { px: { tableid: "KK068", decimals: 0 } },
+  };
+  return JSON.stringify({ ...payload, ...overrides });
+}
+
+function totalWasteRecoveryFixture(year = 2024, overrides = {}) {
+  const yearKey = String(year);
+  const payload = {
+    class: "dataset",
+    label: "KK610: JÄÄTMEBILANSS | Aasta, Jäätmeliik ning Näitaja",
+    source: "Statistikaamet",
+    updated: "2009-10-13T06:00:00Z",
+    id: ["Aasta", "Jäätmeliik", "Näitaja"],
+    size: [1, 1, 1],
+    dimension: {
+      Aasta: {
+        extension: { show: "value" },
+        label: "Aasta",
+        category: { index: { [yearKey]: 0 }, label: { [yearKey]: yearKey } },
+      },
+      Jäätmeliik: {
+        extension: { show: "value" },
+        label: "Jäätmeliik",
+        category: { index: { 1: 0 }, label: { 1: "Jäätmed kokku" } },
+      },
+      Näitaja: {
+        extension: { show: "value" },
+        label: "Näitaja",
+        category: { index: { 7: 0 }, label: { 7: "....taaskasutamine" } },
+      },
+    },
+    value: [17667652],
+    role: { time: ["Aasta"] },
+    version: "2.0",
+    extension: { px: { tableid: "KK610", decimals: 0 } },
   };
   return JSON.stringify({ ...payload, ...overrides });
 }
@@ -695,4 +735,110 @@ test("an eligible same-URL alias cannot overwrite an adapter-bound Statistics Es
   assert.equal(retained?._statisticsWastewaterBht7?.valueTonnes, 868);
   assert.equal(composeStatisticsWastewaterBht7Response(query, ranked, { now })?.evidence.kind,
     "structured-statistics-wastewater-bht7");
+});
+
+test("KK610 binds an explicit supported year to the national total-waste recovery cell", () => {
+  const query = "Kui palju jäätmeid taaskasutati Eestis 2024. aastal?";
+  assert.equal(isStatisticsTotalWasteRecoveryQuery(query), true);
+  assert.deepEqual(statisticsTotalWasteRecoveryRequest(2024), {
+    query: [
+      { code: "Aasta", selection: { filter: "item", values: ["2024"] } },
+      { code: "Jäätmeliik", selection: { filter: "item", values: ["1"] } },
+      { code: "Näitaja", selection: { filter: "item", values: ["7"] } },
+    ],
+    response: { format: "json-stat2" },
+  });
+  const [document] = statisticsTotalWasteRecoveryFromJson(query, totalWasteRecoveryFixture(), {
+    now: NOW,
+    fetchedAt: FETCHED_AT,
+  });
+  assert.equal(document?.id, "statistics-total-waste-recovery");
+  assert.equal(document?.url, STATISTICS_TOTAL_WASTE_RECOVERY_TABLE_URL);
+  assert.equal(document?._statisticsTotalWasteRecovery.valueTonnes, 17667652);
+  assert.equal(sourceEvidenceEligibility(document, { now: NOW }).eligible, true);
+  assert.match(document?.summary || "", /17 667 652 tonni/u);
+  const response = composeStatisticsTotalWasteRecoveryResponse(query, [document], { now: NOW });
+  assert.match(response?.answer.title || "", /KK610[\s\S]*17 667 652 tonni/u);
+  assert.deepEqual(response?.answer.introCitations, [1]);
+  assert.match(response?.answer.note || "", /ei ole olmejäätmete ringlussevõtu määr/u);
+
+  const olderQuery = "Mitu tonni jäätmeid kokku taaskasutati 2019. aastal Eestis?";
+  const [older] = statisticsTotalWasteRecoveryFromJson(
+    olderQuery,
+    totalWasteRecoveryFixture(2019, { value: [12345678] }),
+    { now: NOW, fetchedAt: FETCHED_AT },
+  );
+  assert.equal(older?._statisticsTotalWasteRecovery.year, 2019);
+  assert.deepEqual(statisticsTotalWasteRecoveryRequest(2019)?.query[0].selection.values, ["2019"]);
+});
+
+test("KK610 rejects rates, subgroups, local scopes, comparisons and schema drift", () => {
+  for (const query of [
+    "Kui palju jäätmeid taaskasutati Eestis?",
+    "Kui palju jäätmeid taaskasutati Eestis 2001. aastal?",
+    "Kui palju jäätmeid taaskasutati Eestis 2025. aastal?",
+    "Milline oli olmejäätmete ringlussevõtu määr Eestis 2024?",
+    "Kui palju ohtlikke jäätmeid taaskasutati Eestis 2024?",
+    "Kui palju jäätmeid taaskasutati Harjumaal 2024?",
+    "Võrdle jäätmete taaskasutamist Eestis 2020–2024",
+    "Kui palju jäätmeid eksporditi ja taaskasutati Eestis 2024?",
+  ]) assert.equal(isStatisticsTotalWasteRecoveryQuery(query), false, query);
+  assert.equal(statisticsTotalWasteRecoveryRequest(2001), null);
+  assert.equal(statisticsTotalWasteRecoveryRequest(2025), null);
+
+  const query = "Kui palju jäätmeid taaskasutati Eestis 2024. aastal?";
+  const fixture = JSON.parse(totalWasteRecoveryFixture());
+  const invalid = [
+    "not json",
+    JSON.stringify([]),
+    totalWasteRecoveryFixture(2024, { label: "KK610: muu" }),
+    totalWasteRecoveryFixture(2024, { source: "Muu" }),
+    totalWasteRecoveryFixture(2024, { id: ["Näitaja", "Jäätmeliik", "Aasta"] }),
+    totalWasteRecoveryFixture(2024, { size: [1, 1, 2] }),
+    totalWasteRecoveryFixture(2024, { role: { time: ["Näitaja"] } }),
+    totalWasteRecoveryFixture(2024, { extension: { px: { tableid: "KK611", decimals: 0 } } }),
+    totalWasteRecoveryFixture(2024, { value: ["17667652"] }),
+    totalWasteRecoveryFixture(2024, { value: [-1] }),
+    totalWasteRecoveryFixture(2024, { value: [100000001] }),
+    totalWasteRecoveryFixture(2024, {
+      dimension: { ...fixture.dimension, Jäätmeliik: {
+        ...fixture.dimension.Jäätmeliik,
+        category: { index: { 1: 0 }, label: { 1: "Ohtlikud jäätmed" } },
+      } },
+    }),
+  ];
+  for (const body of invalid) {
+    assert.deepEqual(statisticsTotalWasteRecoveryFromJson(query, body, {
+      now: NOW,
+      fetchedAt: FETCHED_AT,
+    }), []);
+  }
+  assert.deepEqual(statisticsTotalWasteRecoveryFromJson(query, totalWasteRecoveryFixture(), {
+    now: NOW,
+    fetchedAt: NOW - 14 * 60 * 60_000,
+  }), []);
+});
+
+test("structured loader and public pipeline keep KK610 bound to the visible table citation", async () => {
+  const query = "Kui palju jäätmeid taaskasutati Eestis 2024. aastal?";
+  let calls = 0;
+  const documents = await loadStructuredIndicatorDocuments(query, {
+    now: NOW,
+    fetchPxwebDataset: async (url, payload) => {
+      calls += 1;
+      assert.equal(url, STATISTICS_TOTAL_WASTE_RECOVERY_API_URL);
+      assert.deepEqual(payload, statisticsTotalWasteRecoveryRequest(2024));
+      return { body: totalWasteRecoveryFixture(), fetchedAt: FETCHED_AT, stale: false };
+    },
+  });
+  assert.equal(calls, 1);
+  assert.deepEqual(documents.map((document) => document.id), ["statistics-total-waste-recovery"]);
+
+  const response = searchTimeoutFallback(query, {
+    searchResults: { items: documents, total: 1 },
+    startedAt: NOW,
+  });
+  assert.match(response.answer.title, /17 667 652 tonni/u);
+  assert.equal(response.sources[0].url, STATISTICS_TOTAL_WASTE_RECOVERY_TABLE_URL);
+  assert.doesNotMatch(response.sources[0].url, /\.PX$/u);
 });

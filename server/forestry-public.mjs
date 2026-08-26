@@ -5,6 +5,10 @@
 // answer only when their title, summary or content satisfies the intent's
 // evidence groups. Tags alone never make an answer eligible.
 
+import {
+  classifyForestryGeographyScope,
+} from "./municipalities.mjs";
+
 export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
   {
     id: "increment-method",
@@ -486,6 +490,13 @@ const INTENTS = {
       ["ruumikiht", "ruumiandmed"],
       ["ei ole sama", "ei tohi"],
     ],
+    requiresQueryBoundObservation: true,
+  },
+  "regional-forest-area": {
+    serviceDocumentIds: [],
+    discoveryQueries: [],
+    evidenceGroups: [],
+    requiresQueryBoundObservation: true,
   },
   "clearcut-value-judgement": {
     serviceDocumentIds: ["forest-condition-review", "forest-climate-adaptation-report"],
@@ -530,6 +541,7 @@ function resolved(kind) {
     serviceDocumentIds: [...definition.serviceDocumentIds],
     evidenceGroups: definition.evidenceGroups.map((group) => [...group]),
     minimumSupportingDocuments: Number(definition.minimumSupportingDocuments) || 1,
+    requiresQueryBoundObservation: Boolean(definition.requiresQueryBoundObservation),
   };
 }
 
@@ -598,7 +610,7 @@ export function resolvePublicForestryIntent(query) {
   const tokens = text.split(" ").filter(Boolean);
   const hasSmi = hasStem(tokens, ["smi"]);
   const hasRegistry = hasStem(tokens, ["metsaregis"], true);
-  const hasNotice = hasStem(tokens, ["metsateat"], true);
+  const hasNotice = hasStem(tokens, ["metsateat", "raieteat"], true);
   const hasClearcut = hasStem(tokens, ["lagerai"], true);
   const hasStock = hasStem(tokens, ["tagavara", "metsavaru", "puiduvaru"], true);
   const hasParcelRegister = hasStem(tokens, ["eraldisregis"], true);
@@ -612,10 +624,15 @@ export function resolvePublicForestryIntent(query) {
   const mentionsSample = hasStem(tokens, ["valim", "proovitukk", "vaatlus"], true);
   const hasForest = hasStem(tokens, [
     "mets", "puist", "tagavara", "metsavaru", "puiduvaru", "juurdekasv", "netojuurdekasv",
-    "lagerai", "metsateat", "metsaregis", "takseer", "mand", "kuusk",
-  ], true) || hasSmi || hasStem(tokens, ["rmk"]);
+    "lagerai", "metsateat", "raieteat", "metsaregis", "takseer", "mand", "kuusk", "forest", "woodland",
+  ], true) || /\bforested\b/u.test(text) || hasSmi || hasStem(tokens, ["rmk"]);
 
-  if (hasForest && /\b(?:koduvall\w*|valla\s+mets\w*|mets\w*(?:\s+\w+){0,3}\s+vallas|vallas(?:\s+\w+){0,3}\s+mets\w*|metsasus\w*(?:\s+\w+){0,4}\somavalitsus\w*)\b/u.test(text)) {
+  const geographyScope = classifyForestryGeographyScope(query);
+  const municipalityScope = ["reviewed-municipality", "unknown-locality"].includes(geographyScope.kind);
+  const regionalScope = ["estonian-region", "foreign-or-other-region"].includes(geographyScope.kind);
+  const municipalityAreaMetric = /\b(?:kui\s+palju|kui\s+suur\w*|mitu\s+hektar\w*|metsasus\w*|metsamaa\w*|metsa\s+pindala|metsaga\s+kaetud|pindala|osakaal|protsent\w*|forest\s+area|forest\s+cover(?:age)?|woodland\s+area|woodland\s+cover(?:age)?|forest\s+hectares?|hectares?\s+(?:of\s+)?(?:forest|woodland)|hectares?\s+are\s+forested|percentage|how\s+many\s+(?:forest\s+)?hectares|how\s+much\s+(?:forest|woodland))\b/u.test(text);
+  if (hasForest && (/\b(?:koduvall\w*|valla\s+mets\w*|mets\w*(?:\s+\w+){0,3}\s+vallas|vallas(?:\s+\w+){0,3}\s+mets\w*|metsasus\w*(?:\s+\w+){0,4}\somavalitsus\w*)\b/u.test(text)
+    || (municipalityScope && municipalityAreaMetric))) {
     return resolved("municipality-forest-area");
   }
   if (hasForest && /\b(?:kinnistu|katastriuksus|katastritunnus|maatuk|maauksus)\w*\b/u.test(text)
@@ -730,8 +747,21 @@ export function resolvePublicForestryIntent(query) {
     minimumSupportingDocuments: 1,
   };
 
+  // Never let a recognized local-government scope fall through to the
+  // Estonia-wide forest-area snapshot. More specific forestry intents above
+  // retain priority, while local area requests stay on the municipal route.
+  if (hasForest && municipalityScope) return resolved("municipality-forest-area");
+  // Counties, foreign countries and broader named regions need a measurement
+  // bound to that geography. They must never fall through to Estonia's
+  // national SMI figures simply because the metric wording is familiar.
+  if (hasForest && regionalScope && municipalityAreaMetric) return resolved("regional-forest-area");
+
   if (hasForest && (/\b(?:metsaga\s+kaetud|kaetud\s+metsaga|puistute\s+pindala|metsaga\s+metsamaa)\b/u.test(text)
     || /\b(?:mitu|kui\s+suur)\s+(?:protsenti|osa)\s+eesti\w*\b[\s\S]{0,30}\bmets\w*\b/u.test(text))) {
+    return resolved("forest-covered-area");
+  }
+  if (hasForest && (/\b(?:forest|woodland)\s+cover(?:age)?(?:\s+(?:percentage|percent|share))?\b/u.test(text)
+    || /\b(?:what|which)\s+(?:percentage|percent|share)\b[\s\S]{0,45}\b(?:forest|woodland)\b/u.test(text))) {
     return resolved("forest-covered-area");
   }
   if (hasForest && /\bmetsasus\w*\b/u.test(text)
@@ -746,6 +776,15 @@ export function resolvePublicForestryIntent(query) {
     };
   }
   if (hasForest && /\b(?:kui\s+palju|mitu|kui\s+suur\w*|metsamaa|metsasus\w*|pindala|osakaal|protsent|hektar\w*)\b/u.test(text)) {
+    return {
+      kind: "forest-area",
+      discoveryQueries: ["metsamaa pindala SMI Eesti", "metsasuse pindala Eesti"],
+      serviceDocumentIds: ["forest-area", "smi"],
+      evidenceGroups: [],
+      minimumSupportingDocuments: 1,
+    };
+  }
+  if (hasForest && /\b(?:forest\s+area|woodland\s+area|how\s+much\s+(?:forest|woodland)|how\s+many\s+(?:forest\s+hectares?|hectares?\s+of\s+(?:forest|woodland)|hectares?\s+(?:are\s+)?forested))\b/u.test(text)) {
     return {
       kind: "forest-area",
       discoveryQueries: ["metsamaa pindala SMI Eesti", "metsasuse pindala Eesti"],

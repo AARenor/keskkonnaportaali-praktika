@@ -125,6 +125,7 @@ test("forestry autocomplete suggests useful questions instead of word forms", ()
   assert.ok(getForestrySuggestions("Kuidas", 5).some((suggestion) => /juurdekasvu|kliimamuutus/iu.test(suggestion)));
   assert.ok(getForestrySuggestions("SMI", 5).length > 0);
   assert.ok(getForestrySuggestions("kliimamuutus", 5).some((suggestion) => /kliimamuutus/iu.test(suggestion)));
+  assert.deepEqual(getForestrySuggestions("jaat", 5), []);
 });
 
 test("instruction injection with a forestry marker gets a safe abstention", () => {

@@ -13,8 +13,11 @@ import {
   hydrateOfficialDocuments,
   officialHydrationStats,
   officialSuggestionStats,
+  parseVportalProjectionBody,
+  projectVportalPayload,
   readBoundedResponseText,
   validatedOfficialUrl,
+  vportalDocumentText,
 } from "../server/integrations.mjs";
 import {
   validateTerrapointPayload,
@@ -22,6 +25,90 @@ import {
 } from "../server/terrapoint.mjs";
 import { createByteBoundedLruCache } from "../server/upstream.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
+
+function vportalDocument(overrides = {}) {
+  return {
+    uri: "https://keskkonnaamet.ee/et/keskkonnaseire",
+    title: "Keskkonnaseire",
+    content_type: "Ametlik veebileht",
+    created: "2026-08-25T00:00:00Z",
+    lead_text: "<p>Juhtlõik</p>",
+    highlighted: "<mark>Esiletõste</mark>",
+    content: ["<p>Kontrollitud sisu</p>"],
+    ignored_secret: "must-not-reach-cache",
+    ...overrides,
+  };
+}
+
+test("Vportal discovery validates and caches only a bounded versioned projection", () => {
+  const projected = projectVportalPayload({
+    response: { docs: [vportalDocument()], numFound: 1 },
+    ignored_root: "must-not-reach-cache",
+  });
+  const serialized = JSON.stringify(projected);
+  assert.equal(projected._schema, 1);
+  assert.equal(projected.response.docs.length, 1);
+  assert.deepEqual(Object.keys(projected.response.docs[0]).sort(), [
+    "content_type",
+    "created",
+    "markup",
+    "title",
+    "uri",
+  ]);
+  assert.doesNotMatch(serialized, /ignored_secret|ignored_root|must-not-reach-cache/u);
+  assert.doesNotMatch(serialized, /"content"|"lead_text"|"highlighted"/u);
+  assert.match(projected.response.docs[0].markup, /Juhtlõik[\s\S]*Esiletõste[\s\S]*Kontrollitud sisu/u);
+  assert.deepEqual(parseVportalProjectionBody(serialized), projected);
+  assert.throws(
+    () => parseVportalProjectionBody(JSON.stringify({ response: { docs: [] } })),
+    /cache is invalid/u,
+  );
+});
+
+test("Vportal discovery rejects excess documents and drops excess fragments before parsing", () => {
+  assert.throws(() => projectVportalPayload({
+    response: { docs: Array.from({ length: 7 }, () => vportalDocument()), numFound: 7 },
+  }), /invalid payload/u);
+  const capped = projectVportalPayload({
+    response: {
+      docs: [vportalDocument({
+        content: [...Array.from({ length: 12 }, () => "<i>accepted</i>"), "DROPPED_FRAGMENT"],
+      })],
+      numFound: 1,
+    },
+  });
+  assert.doesNotMatch(capped.response.docs[0].markup, /DROPPED_FRAGMENT/u);
+  assert.throws(() => projectVportalPayload({
+    response: { docs: [vportalDocument({ content: ["safe", { markup: "unsafe" }] })], numFound: 1 },
+  }), /invalid document content/u);
+});
+
+test("Vportal projection caps cumulative UTF-8 markup and parses once per selected document", () => {
+  const projected = projectVportalPayload({
+    response: {
+      docs: Array.from({ length: 6 }, (_value, index) => vportalDocument({
+        uri: `https://keskkonnaamet.ee/et/keskkonnaseire-${index}`,
+        lead_text: "",
+        highlighted: "",
+        content: Array.from({ length: 12 }, () => "🌲".repeat(20_000)),
+      })),
+      numFound: 6,
+    },
+  });
+  const byteLengths = projected.response.docs.map((document) => Buffer.byteLength(document.markup, "utf8"));
+  assert.equal(byteLengths.every((bytes) => bytes <= 48_000), true);
+  assert.ok(byteLengths.reduce((sum, bytes) => sum + bytes, 0) <= 192_000);
+
+  let parserCalls = 0;
+  const text = vportalDocumentText(projected.response.docs[0], (markup, limit) => {
+    parserCalls += 1;
+    assert.ok(Buffer.byteLength(markup, "utf8") <= 48_000);
+    assert.equal(limit, 48_000);
+    return "kontrollitud tekst";
+  });
+  assert.equal(text, "kontrollitud tekst");
+  assert.equal(parserCalls, 1);
+});
 
 test("official PostgREST retrieval pins and verifies the live API profile", async () => {
   let requestHeaders;

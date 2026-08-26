@@ -2,12 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   composeEelisEmajogiPublicWatercourseResponse,
+  composeEelisNaturaSiteResponse,
   EELIS_EMAJOGI_CODE,
   EELIS_EMAJOGI_PUBLIC_WATERCOURSE_WFS_URL,
   eelisEmajogiPublicWatercourseFromGeoJson,
+  EELIS_NATURA_API_URL,
+  EELIS_NATURA_SITES,
+  eelisNaturaSiteFromJson,
+  eelisNaturaSiteQueryUrl,
   isEelisEmajogiPublicWatercourseQuery,
+  isEelisNaturaSiteQuery,
 } from "../server/eelis.mjs";
 import { loadStructuredIndicatorDocuments } from "../server/indicators.mjs";
+import { searchEnvironmentLive } from "../server/pipeline.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
 
 const NOW = Date.parse("2026-08-21T23:45:00Z");
@@ -42,9 +49,26 @@ function eelisFixture(overrides = {}) {
   });
 }
 
+function naturaFixture(overrides = {}) {
+  return JSON.stringify([{
+    kood: "EE0010173",
+    nimi: "Lahemaa loodusala",
+    tyyp: "7",
+    tyyp_selg: "Natura (loodusala)",
+    kkr_kood: "RAH0000601",
+    pindala_maa: 47118.84,
+    pindala_vesi: 673.74,
+    pindala_meri: 26991.51,
+    muut_aeg: "2025-09-04T10:35:04.741207",
+    keht_staatus: "Kehtiv",
+    ...overrides,
+  }]);
+}
+
 test("EELIS adapter binds the fixed Emajõgi WFS identity and public-use fields", () => {
   const query = "Kas Emajõgi on avalikult kasutatav veekogu?";
   assert.equal(isEelisEmajogiPublicWatercourseQuery(query), true);
+  assert.equal(isEelisEmajogiPublicWatercourseQuery("Kas Emajõgi on avalik vooluveekogu?"), true);
   const url = new URL(EELIS_EMAJOGI_PUBLIC_WATERCOURSE_WFS_URL);
   assert.equal(url.origin + url.pathname, "https://gsavalik.envir.ee/geoserver/eelis/ows");
   assert.equal(url.searchParams.get("service"), "WFS");
@@ -175,4 +199,152 @@ test("structured loader calls only the fixed EELIS WFS route for the exact class
     },
   );
   assert.deepEqual(rejectedCompound, []);
+});
+
+test("named Natura adapter resolves a curated identity and cites the exact EELIS row", () => {
+  const query = "Kas Lahemaa loodusala on Natura ala?";
+  assert.equal(EELIS_NATURA_SITES.length, 6);
+  assert.equal(isEelisNaturaSiteQuery(query), true);
+  const url = new URL(eelisNaturaSiteQueryUrl(query));
+  assert.equal(`${url.origin}${url.pathname}`, EELIS_NATURA_API_URL);
+  assert.equal(url.searchParams.get("nimi"), "eq.Lahemaa loodusala");
+  assert.equal(url.searchParams.get("limit"), "2");
+  assert.equal(url.toString().includes(query), false);
+
+  const [document] = eelisNaturaSiteFromJson(query, naturaFixture(), {
+    now: NOW,
+    fetchedAt: FETCHED_AT,
+  });
+  assert.equal(document?.id, "eelis-natura-site");
+  assert.equal(document?.url, eelisNaturaSiteQueryUrl(query));
+  assert.equal(document?._eelisNaturaSite.euCode, "EE0010173");
+  assert.equal(document?._eelisNaturaSite.kkrCode, "RAH0000601");
+  assert.equal(sourceEvidenceEligibility(document, { now: NOW }).eligible, true);
+  assert.match(document?.summary || "", /47\s?118,84 ha[\s\S]*673,74 ha[\s\S]*26\s?991,51 ha/u);
+
+  const response = composeEelisNaturaSiteResponse(query, [document], { now: NOW });
+  assert.match(response?.answer.title || "", /Lahemaa loodusala[\s\S]*Natura \(loodusala\)/u);
+  assert.deepEqual(response?.answer.introCitations, [1]);
+  assert.match(response?.answer.note || "", /mitte[\s\S]*tegevusloa[\s\S]*eramaale juurdepääsu/u);
+  assert.equal(response?.sources[0].url, eelisNaturaSiteQueryUrl(query));
+});
+
+test("named Natura adapter accepts six reviewed sites and rejects ambiguous, legal or malformed claims", () => {
+  for (const site of EELIS_NATURA_SITES) {
+    const query = `Kas ${site.name} on Natura loodusala?`;
+    assert.equal(isEelisNaturaSiteQuery(query), true, query);
+    assert.equal(new URL(eelisNaturaSiteQueryUrl(query)).searchParams.get("nimi"), `eq.${site.name}`);
+    const [document] = eelisNaturaSiteFromJson(query, naturaFixture({
+      kood: site.euCode,
+      nimi: site.name,
+      kkr_kood: site.kkrCode,
+    }), { now: NOW, fetchedAt: FETCHED_AT });
+    assert.equal(document?._eelisNaturaSite.euCode, site.euCode, query);
+    assert.equal(document?._eelisNaturaSite.kkrCode, site.kkrCode, query);
+  }
+  for (const query of [
+    "Kas Soomaa loodusala on Natura 2000 ala?",
+    "Kas Otepää loodusala kuulub Natura 2000 võrgustikku?",
+  ]) assert.equal(isEelisNaturaSiteQuery(query), true, query);
+  for (const query of [
+    "Kas Lahemaal tohib telkida?",
+    "Kas Lahemaa loodusala oli Natura ala 2024. aastal?",
+    "Kas Lahemaa loodusala oli Natura ala 2000. aastal?",
+    "Kas Lahemaa loodusala oli Natura ala 2000?",
+    "Lahemaa loodusala staatus 2000",
+    "Was Lahemaa Natura status valid in 2000?",
+    "Kas Lahemaa linnuala on Natura ala?",
+    "Kas Lahemaa ja Matsalu loodusalad on Natura alad?",
+    "Kas tundmatu loodusala on Natura ala?",
+  ]) assert.equal(isEelisNaturaSiteQuery(query), false, query);
+
+  const query = "Kas Lahemaa loodusala on Natura ala?";
+  for (const body of [
+    "not json",
+    "[]",
+    JSON.stringify([JSON.parse(naturaFixture())[0], JSON.parse(naturaFixture())[0]]),
+    naturaFixture({ kood: "EE0000000" }),
+    naturaFixture({ nimi: "Matsalu loodusala" }),
+    naturaFixture({ tyyp: "6" }),
+    naturaFixture({ tyyp_selg: "Natura (linnuala)" }),
+    naturaFixture({ kkr_kood: "RAH0000000" }),
+    naturaFixture({ keht_staatus: "Kehtetu" }),
+    naturaFixture({ pindala_maa: -1 }),
+    naturaFixture({ pindala_vesi: "673.74" }),
+    naturaFixture({ pindala_meri: 5_000_001 }),
+    naturaFixture({ muut_aeg: "2025-02-31T10:00:00" }),
+    naturaFixture({ extra: true }),
+  ]) assert.deepEqual(eelisNaturaSiteFromJson(query, body, { now: NOW, fetchedAt: FETCHED_AT }), []);
+  assert.deepEqual(eelisNaturaSiteFromJson(query, naturaFixture(), {
+    now: NOW,
+    fetchedAt: NOW - 61 * 60_000,
+  }), []);
+  assert.deepEqual(eelisNaturaSiteFromJson(query, "x".repeat(32_001), {
+    now: NOW,
+    fetchedAt: FETCHED_AT,
+  }), []);
+});
+
+test("named Natura adapter rejects future record-change timestamps at ingestion and composition", () => {
+  const query = "Kas Lahemaa loodusala on Natura ala?";
+  const farFuture = "2099-01-01T00:00:00";
+  assert.deepEqual(eelisNaturaSiteFromJson(query, naturaFixture({ muut_aeg: farFuture }), {
+    now: NOW,
+    fetchedAt: FETCHED_AT,
+  }), []);
+
+  const localClockAtUtcPlusThree = new Date(NOW + 3 * 60 * 60_000).toISOString().slice(0, 19);
+  assert.equal(eelisNaturaSiteFromJson(query, naturaFixture({
+    muut_aeg: localClockAtUtcPlusThree,
+  }), { now: NOW, fetchedAt: FETCHED_AT }).length, 1);
+  assert.equal(eelisNaturaSiteFromJson(query, naturaFixture({
+    muut_aeg: "2001-01-01T00:00:00",
+  }), { now: NOW, fetchedAt: FETCHED_AT }).length, 1);
+
+  const [document] = eelisNaturaSiteFromJson(query, naturaFixture(), {
+    now: NOW,
+    fetchedAt: FETCHED_AT,
+  });
+  const tampered = structuredClone(document);
+  const originalChangedAt = tampered._eelisNaturaSite.recordChangedAt;
+  tampered._eelisNaturaSite.recordChangedAt = farFuture;
+  tampered.published = farFuture.slice(0, 10);
+  tampered.content = tampered.content.replace(originalChangedAt, farFuture);
+  assert.equal(composeEelisNaturaSiteResponse(query, [tampered], { now: NOW }), null);
+});
+
+test("structured loader requests only the resolved Natura row", async () => {
+  const query = "Kas Lahemaa loodusala on Natura ala?";
+  let calls = 0;
+  const documents = await loadStructuredIndicatorDocuments(query, {
+    now: NOW,
+    fetchPostgrestDataset: async (url, options) => {
+      calls += 1;
+      assert.equal(url, eelisNaturaSiteQueryUrl(query));
+      assert.equal(options.staleMs, 0);
+      assert.equal(options.maximumBytes, 32_000);
+      return { body: naturaFixture(), fetchedAt: FETCHED_AT, stale: false };
+    },
+  });
+  assert.equal(calls, 1);
+  assert.deepEqual(documents.map((document) => document.id), ["eelis-natura-site"]);
+});
+
+test("production pipeline keeps a named Natura answer bound to its visible exact EELIS row", async () => {
+  const query = "Kas Matsalu loodusala on Natura loodusala?";
+  const [document] = eelisNaturaSiteFromJson(query, naturaFixture({
+    kood: "EE0040501",
+    nimi: "Matsalu loodusala",
+    kkr_kood: "RAH0000694",
+  }), { now: NOW, fetchedAt: FETCHED_AT });
+  const response = await searchEnvironmentLive(query, {
+    startedAt: NOW,
+    deadlineAt: NOW + 1_000,
+    useCache: false,
+    searchResults: { items: [document], total: 1 },
+  });
+  assert.match(response.answer.title, /Matsalu loodusala[\s\S]*Natura \(loodusala\)/u);
+  assert.deepEqual(response.answer.introCitations, [1]);
+  assert.deepEqual(response.sources.map((source) => source.id), ["eelis-natura-site"]);
+  assert.equal(response.sources[0].url, eelisNaturaSiteQueryUrl(query));
 });

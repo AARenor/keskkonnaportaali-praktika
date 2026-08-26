@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { canonicalOfficialDiscoveryUrl } from "../server/corpus.mjs";
 import { createOfficialDiscoveryIndexQueue } from "../server/live-index-queue.mjs";
 
 function nextTurn() {
@@ -58,6 +59,29 @@ test("official discovery indexing coalesces URLs and bounds pending batches and 
   assert.equal(queue.stats().pending, 0);
   assert.equal(queue.stats().inflight, 0);
   assert.equal(queue.stats().active, 0);
+});
+
+test("official discovery canonical identity coalesces reordered query parameters", async () => {
+  const written = [];
+  const queue = createOfficialDiscoveryIndexQueue({
+    keyOf: (item) => canonicalOfficialDiscoveryUrl(item.url),
+    writeBatch: async (documents) => {
+      written.push(...documents);
+      return { status: "ready", indexed: documents.length };
+    },
+  });
+  assert.deepEqual(queue.enqueue([
+    document("https://keskkonnaagentuur.ee/teema?b=2&utm_source=live&a=1#section"),
+    document("https://keskkonnaagentuur.ee/teema?a=1&b=2"),
+  ], { clientKey: "client-a" }), {
+    accepted: 1,
+    coalesced: 1,
+    dropped: 0,
+    closed: false,
+  });
+  await queue.idle();
+  assert.equal(written.length, 1);
+  assert.equal(queue.stats().acceptedInWindow, 1);
 });
 
 test("official discovery indexing never queues a duplicate behind an in-flight URL", async () => {

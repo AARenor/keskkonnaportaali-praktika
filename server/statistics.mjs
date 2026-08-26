@@ -12,6 +12,8 @@ export const STATISTICS_WASTEWATER_BHT7_YEAR = 2024;
 export const STATISTICS_HAZARDOUS_WASTE_API_URL = "https://andmed.stat.ee/api/v1/et/stat/keskkond/surve-keskkonnaseisundile/jaatmete-teke/KK068.PX";
 export const STATISTICS_HAZARDOUS_WASTE_TABLE_URL = "https://andmed.stat.ee/et/stat/keskkond__surve-keskkonnaseisundile__jaatmete-teke/KK068";
 export const STATISTICS_HAZARDOUS_WASTE_YEAR = 2024;
+export const STATISTICS_TOTAL_WASTE_RECOVERY_API_URL = "https://andmed.stat.ee/api/v1/et/stat/keskkond/surve-keskkonnaseisundile/jaatmete-teke/KK610.PX";
+export const STATISTICS_TOTAL_WASTE_RECOVERY_TABLE_URL = "https://andmed.stat.ee/et/stat/keskkond__surve-keskkonnaseisundile__jaatmete-teke/KK610";
 
 const MAX_STATISTICS_JSON_BYTES = 256_000;
 const MAX_OPERATIONAL_FETCH_AGE_MS = 13 * 60 * 60_000;
@@ -63,6 +65,19 @@ const HAZARDOUS_WASTE_FIXED_REQUEST = Object.freeze({
   }))),
   response: Object.freeze({ format: "json-stat2" }),
 });
+const TOTAL_WASTE_RECOVERY_TABLE_ID = "KK610";
+const TOTAL_WASTE_RECOVERY_EXPECTED_LABEL = "KK610: JÄÄTMEBILANSS | Aasta, Jäätmeliik ning Näitaja";
+const TOTAL_WASTE_RECOVERY_MIN_YEAR = 2002;
+const TOTAL_WASTE_RECOVERY_MAX_YEAR = 2024;
+const TOTAL_WASTE_RECOVERY_MAX_TONNES = 100_000_000;
+
+function totalWasteRecoveryDimensions(year) {
+  return [
+    { id: "Aasta", code: String(year), label: String(year) },
+    { id: "Jäätmeliik", code: "1", label: "Jäätmed kokku" },
+    { id: "Näitaja", code: "7", label: "....taaskasutamine" },
+  ];
+}
 
 export function statisticsWaterAbstractionRequest() {
   return JSON.parse(JSON.stringify(FIXED_REQUEST));
@@ -74,6 +89,20 @@ export function statisticsWastewaterBht7Request() {
 
 export function statisticsHazardousWasteRequest() {
   return JSON.parse(JSON.stringify(HAZARDOUS_WASTE_FIXED_REQUEST));
+}
+
+export function statisticsTotalWasteRecoveryRequest(year) {
+  const numericYear = Number(year);
+  if (!Number.isInteger(numericYear)
+    || numericYear < TOTAL_WASTE_RECOVERY_MIN_YEAR
+    || numericYear > TOTAL_WASTE_RECOVERY_MAX_YEAR) return null;
+  return {
+    query: totalWasteRecoveryDimensions(numericYear).map(({ id, code }) => ({
+      code: id,
+      selection: { filter: "item", values: [code] },
+    })),
+    response: { format: "json-stat2" },
+  };
 }
 
 function normalize(value) {
@@ -190,6 +219,42 @@ function statisticsHazardousWasteIntent(query) {
 
 export function isStatisticsHazardousWasteQuery(query) {
   return Boolean(statisticsHazardousWasteIntent(query));
+}
+
+function statisticsTotalWasteRecoveryIntent(query) {
+  if (typeof query !== "string" || query.length > 180) return null;
+  const text = normalize(query);
+  const tokens = text.split(" ").filter(Boolean);
+  const years = [...text.matchAll(/\b(?:19|20)\d{2}\b/gu)].map((match) => Number(match[0]));
+  const asksWaste = /\bjaat\w*/u.test(text);
+  const asksRecovery = /\btaaskasut\w*/u.test(text);
+  const asksAmount = /\b(?:kui palju|mitu|kogus|tonn|suur)\w*/u.test(text);
+  const asksNationalTotal = /\beesti(?:s|l)?\b/u.test(text) && /\b(?:kogu|kokku|jaatme)\w*/u.test(text);
+  const unsupportedScope = /\b(?:olmejaat|ohtlik|maakond|vald|linn|tallinn|tartu|parnu|narva|harju|hiiu|ida viru|jogeva|jarva|laane|polva|rapla|saare|valga|viljandi|voru|ettevote|kaitleja|kaitluskoht|jaatmejaam|piirkond|kohalik|jaatmekood|jaatmeliik)\w*/u.test(text);
+  const unsupportedMeasure = /\b(?:ringlussevot|maar|protsent|osakaal|import|eksport|ladest|polet|korvaldam|teke|tekkis)\w*/u.test(text);
+  const unsupportedAnalysis = /\b(?:praegu|hetkel|jooksev|tana|prognoos|trend|muutus|kasv|kahan|vordle|vordlus|aastate|miks|pohjus)\w*/u.test(text);
+  const approvedTokens = new Set([
+    "aasta", "aastal", "eesti", "eestis", "kogu", "kui", "kokku", "mis", "mitu",
+    "oli", "palju", "suur", "tonni",
+  ]);
+  const reviewedLanguage = tokens.length > 0 && tokens.every((token) => (
+    approvedTokens.has(token)
+    || /^\d{4}$/u.test(token)
+    || /^jaat\w*$/u.test(token)
+    || /^taaskasut\w*$/u.test(token)
+    || /^kogus\w*$/u.test(token)
+    || /^tonn\w*$/u.test(token)
+  ));
+  const year = years[0];
+  return asksWaste && asksRecovery && asksAmount && asksNationalTotal
+    && years.length === 1 && year >= TOTAL_WASTE_RECOVERY_MIN_YEAR && year <= TOTAL_WASTE_RECOVERY_MAX_YEAR
+    && !unsupportedScope && !unsupportedMeasure && !unsupportedAnalysis && reviewedLanguage
+    ? { year }
+    : null;
+}
+
+export function isStatisticsTotalWasteRecoveryQuery(query) {
+  return Boolean(statisticsTotalWasteRecoveryIntent(query));
 }
 
 function numericTimestamp(value, fallback) {
@@ -637,6 +702,139 @@ export function composeStatisticsHazardousWasteResponse(query, documents = [], o
     clarification: null,
     evidence: {
       kind: "structured-statistics-hazardous-waste",
+      answerable: true,
+      documentIds: [source.id],
+    },
+  };
+}
+
+function statisticsTotalWasteRecoveryStatement(projection) {
+  return `Statistikaameti tabeli ${TOTAL_WASTE_RECOVERY_TABLE_ID} järgi taaskasutati Eestis ${projection.year}. aastal jäätmeid kokku ${etInteger(projection.valueTonnes)} tonni.`;
+}
+
+function statisticsTotalWasteRecoveryContent(projection) {
+  return `${statisticsTotalWasteRecoveryStatement(projection)} Fikseeritud tabelivalik on „Jäätmed kokku” ja näitaja „taaskasutamine”. See on aastane üleriigiline jäätmebilansi kogus, mitte olmejäätmete ringlussevõtu määr, ohtlike jäätmete näitaja, piirkonna- või ettevõtteväärtus, hetkeolukord ega trendivõrdlus. JSON-stat2 vastuse eksitavat „updated” välja ei kasutata avaldamisaja ega värskuse tõendina.`;
+}
+
+export function statisticsTotalWasteRecoveryFromJson(query, json, options = {}) {
+  const intent = statisticsTotalWasteRecoveryIntent(query);
+  const input = String(json || "");
+  const now = numericTimestamp(options.now, Date.now());
+  const fetchedTimestamp = numericTimestamp(options.fetchedAt, Number.NaN);
+  if (!intent || !input || !Number.isFinite(now) || !Number.isFinite(fetchedTimestamp)
+    || Buffer.byteLength(input, "utf8") > MAX_STATISTICS_JSON_BYTES
+    || input.includes("\0") || options.stale === true
+    || fetchedTimestamp > now + FUTURE_FETCH_SKEW_MS
+    || now - fetchedTimestamp > MAX_OPERATIONAL_FETCH_AGE_MS) return [];
+  let payload;
+  try {
+    payload = JSON.parse(input);
+  } catch {
+    return [];
+  }
+  const expectedDimensions = totalWasteRecoveryDimensions(intent.year);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)
+    || payload.class !== "dataset" || payload.version !== "2.0"
+    || payload.label !== TOTAL_WASTE_RECOVERY_EXPECTED_LABEL || payload.source !== "Statistikaamet"
+    || !exactArray(payload.id, expectedDimensions.map(({ id }) => id))
+    || !exactArray(payload.size, [1, 1, 1])
+    || !exactKeys(payload.dimension, expectedDimensions.map(({ id }) => id))
+    || !expectedDimensions.every((expected) => validDimension(payload.dimension[expected.id], expected))
+    || !exactKeys(payload.role, ["time"]) || !exactArray(payload.role.time, ["Aasta"])
+    || !exactKeys(payload.extension, ["px"])
+    || !exactKeys(payload.extension.px, ["tableid", "decimals"])
+    || payload.extension.px.tableid !== TOTAL_WASTE_RECOVERY_TABLE_ID
+    || payload.extension.px.decimals !== 0
+    || (payload.status !== undefined && payload.status !== null)
+    || !Array.isArray(payload.value) || payload.value.length !== 1
+    || !Number.isSafeInteger(payload.value[0]) || payload.value[0] < 0
+    || payload.value[0] > TOTAL_WASTE_RECOVERY_MAX_TONNES) return [];
+
+  const projection = {
+    year: intent.year,
+    valueTonnes: payload.value[0],
+    unit: "tonni",
+    geography: "Eesti",
+    wasteType: "Jäätmed kokku",
+    indicator: "Taaskasutamine",
+    fetchedAt: new Date(fetchedTimestamp).toISOString(),
+  };
+  return [{
+    id: "statistics-total-waste-recovery",
+    title: `Statistikaamet KK610: jäätmete taaskasutamine Eestis ${intent.year}`,
+    organization: "Statistikaamet",
+    type: "Ametlik aastastatistika (JSON-stat2)",
+    published: String(intent.year),
+    url: STATISTICS_TOTAL_WASTE_RECOVERY_TABLE_URL,
+    locator: `Fikseeritud PXWeb POST: ${STATISTICS_TOTAL_WASTE_RECOVERY_API_URL}; valikud Aasta=${intent.year}, Jäätmeliik=1 (Jäätmed kokku), Näitaja=7 (taaskasutamine); levitamispõhimõtted ja litsents: ${STATISTICS_DISSEMINATION_POLICY_URL}`,
+    summary: statisticsTotalWasteRecoveryStatement(projection),
+    content: statisticsTotalWasteRecoveryContent(projection),
+    topics: ["jäätmed", "taaskasutamine", "Eesti", String(intent.year), TOTAL_WASTE_RECOVERY_TABLE_ID],
+    tags: ["Statistikaamet", "jäätmed kokku", "taaskasutamine", String(intent.year), TOTAL_WASTE_RECOVERY_TABLE_ID, "CC BY-SA 4.0"],
+    sourceTier: "official",
+    retrieval: "official-structured-statistics-pxweb",
+    delivery: "structured-or-download",
+    routeClasses: ["official_indicator_or_report", "official_historical_observation", "official_data_or_api"],
+    evidencePolicy: "claim-specific",
+    freshness: {
+      class: "annual-historical-statistic",
+      basis: "reference-year",
+      maxAgeMs: null,
+      requiresSourceTimestamp: false,
+    },
+    _answerEvidenceEligible: true,
+    _contentHash: createHash("sha256").update(input).digest("hex"),
+    _statisticsTotalWasteRecovery: projection,
+  }];
+}
+
+function validatedStatisticsTotalWasteRecoveryProjection(query, document, now) {
+  const intent = statisticsTotalWasteRecoveryIntent(query);
+  const projection = document?._statisticsTotalWasteRecovery;
+  const fetchedAt = Date.parse(String(projection?.fetchedAt || ""));
+  if (!intent || document?.id !== "statistics-total-waste-recovery"
+    || document?.url !== STATISTICS_TOTAL_WASTE_RECOVERY_TABLE_URL
+    || document?.retrieval !== "official-structured-statistics-pxweb"
+    || sourceEvidenceEligibility(document, { now }).eligible !== true
+    || !projection || projection.year !== intent.year
+    || !Number.isSafeInteger(projection.valueTonnes) || projection.valueTonnes < 0
+    || projection.valueTonnes > TOTAL_WASTE_RECOVERY_MAX_TONNES
+    || projection.unit !== "tonni" || projection.geography !== "Eesti"
+    || projection.wasteType !== "Jäätmed kokku" || projection.indicator !== "Taaskasutamine"
+    || !Number.isFinite(fetchedAt) || fetchedAt > now + FUTURE_FETCH_SKEW_MS
+    || now - fetchedAt > MAX_OPERATIONAL_FETCH_AGE_MS
+    || !/^[a-f0-9]{64}$/u.test(String(document._contentHash || ""))
+    || document.summary !== statisticsTotalWasteRecoveryStatement(projection)
+    || document.content !== statisticsTotalWasteRecoveryContent(projection)) return null;
+  return projection;
+}
+
+export function composeStatisticsTotalWasteRecoveryResponse(query, documents = [], options = {}) {
+  const now = Number.isFinite(Number(options.now)) ? Number(options.now) : Date.now();
+  const source = (documents || []).find((document) => validatedStatisticsTotalWasteRecoveryProjection(query, document, now));
+  if (!source) return null;
+  const projection = source._statisticsTotalWasteRecovery;
+  return {
+    query: String(query || "").trim(),
+    total: Number(options.total || documents.length || 1),
+    generatedAt: new Date(now).toISOString(),
+    answer: {
+      eyebrow: `Statistikaameti tabel ${TOTAL_WASTE_RECOVERY_TABLE_ID}`,
+      title: `${TOTAL_WASTE_RECOVERY_TABLE_ID} järgi taaskasutati Eestis ${projection.year}. aastal jäätmeid kokku ${etInteger(projection.valueTonnes)} tonni`,
+      intro: source.summary,
+      introCitations: [1],
+      parts: [{
+        title: "Tabelivaliku ulatus",
+        text: `Fikseeritud tabelivalik on „${projection.wasteType}” ja näitaja „${projection.indicator.toLocaleLowerCase("et")}”.`,
+        citations: [1],
+      }],
+      note: "See on aastane üleriigiline jäätmebilansi kogus. See ei ole olmejäätmete ringlussevõtu määr, ohtlike jäätmete näitaja, piirkonna- või ettevõtteväärtus, hetkeolukord ega trendivõrdlus.",
+    },
+    sources: [{ ...source, citation: 1, evidenceExcerpt: source.content }],
+    related: ["Statistikaameti jäätmestatistika", "Olmejäätmete ringlussevõtu määr", "Ohtlike jäätmete teke"],
+    clarification: null,
+    evidence: {
+      kind: "structured-statistics-total-waste-recovery",
       answerable: true,
       documentIds: [source.id],
     },

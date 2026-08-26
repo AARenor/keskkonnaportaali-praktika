@@ -194,9 +194,9 @@ export const CORPUS_OVERFLOW_DELETE_SQL = `
   WHERE document.id = victims.id
 `;
 
-function officialDiscoveryQueueKey(document = {}) {
+export function canonicalOfficialDiscoveryUrl(value = "") {
   try {
-    const url = new URL(document.url);
+    const url = new URL(typeof value === "object" ? value?.url : value);
     if (url.protocol !== "https:" || !OFFICIAL_HOSTS.has(url.hostname)) return "";
     url.hash = "";
     for (const key of [...url.searchParams.keys()]) {
@@ -207,6 +207,10 @@ function officialDiscoveryQueueKey(document = {}) {
   } catch {
     return "";
   }
+}
+
+function officialDiscoveryQueueKey(document = {}) {
+  return canonicalOfficialDiscoveryUrl(document?.url);
 }
 
 const officialDiscoveryIndexQueue = createOfficialDiscoveryIndexQueue({
@@ -1312,34 +1316,33 @@ export function limitOfficialDiscoveryDocuments(
   });
 }
 
-export async function indexOfficialDiscoveryDocuments(rawDocuments = [], { signal, retireStale = false } = {}) {
-  if (!databaseEnabled()) return { status: "disabled", indexed: 0 };
-  throwIfCorpusAborted(signal);
-  const documents = deduplicateCorpusDocuments(rawDocuments.flatMap((document) => {
-    let url;
-    try {
-      url = new URL(document.url);
-    } catch {
-      return [];
-    }
-    if (url.protocol !== "https:" || !OFFICIAL_HOSTS.has(url.hostname)) return [];
+export function normalizeOfficialDiscoveryDocuments(rawDocuments = []) {
+  return deduplicateCorpusDocuments(rawDocuments.flatMap((document) => {
+    const url = canonicalOfficialDiscoveryUrl(document?.url);
+    if (!url) return [];
     return [{
       sourceKey: "official-live-search",
-      externalId: hash(url.toString()).slice(0, 24),
-      url: url.toString(),
-      title: document.title,
-      summary: document.summary,
-      content: document.content,
-      category: document.type,
-      organization: document.organization,
-      publishedAt: parsePortalDate(document.published),
-      publishedLabel: document.published,
-      topics: document.tags || document.topics || [],
+      externalId: hash(url).slice(0, 24),
+      url,
+      title: document?.title,
+      summary: document?.summary,
+      content: document?.content,
+      category: document?.type,
+      organization: document?.organization,
+      publishedAt: parsePortalDate(document?.published),
+      publishedLabel: document?.published,
+      topics: document?.tags || document?.topics || [],
       sourceTier: "official",
       quality: 4,
       metadata: { source_kind: "official-live-search", placeholder: false },
     }];
   }));
+}
+
+export async function indexOfficialDiscoveryDocuments(rawDocuments = [], { signal, retireStale = false } = {}) {
+  if (!databaseEnabled()) return { status: "disabled", indexed: 0 };
+  throwIfCorpusAborted(signal);
+  const documents = normalizeOfficialDiscoveryDocuments(rawDocuments);
   if (!documents.length && !retireStale) return { status: "empty", indexed: 0 };
   try {
     await ensureCorpusSchema();

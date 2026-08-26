@@ -5,6 +5,7 @@ import { Readable } from "node:stream";
 import test from "node:test";
 import {
   buildPrefixTsQuery,
+  canonicalOfficialDiscoveryUrl,
   deduplicateCorpusDocuments,
   extractReadablePage,
   fetchCorpusText,
@@ -12,6 +13,7 @@ import {
   isApprovedCorpusRedirect,
   limitCorpusDocumentsByAggregateCapacity,
   limitOfficialDiscoveryDocuments,
+  normalizeOfficialDiscoveryDocuments,
   planCorpusDocumentAdmission,
   CORPUS_OVERFLOW_DELETE_SQL,
   OFFICIAL_DISCOVERY_DELETE_SQL,
@@ -112,6 +114,30 @@ test("live discovery row admission preserves existing URLs and caps new rows", (
     3,
     3,
   ).map((item) => item.url), ["https://example.test/existing"]);
+});
+
+test("live discovery uses one canonical identity for queueing and persistence", () => {
+  const reordered = "https://keskkonnaagentuur.ee/teema?b=2&utm_source=live&a=1#section";
+  const canonical = "https://keskkonnaagentuur.ee/teema?a=1&b=2";
+  assert.equal(canonicalOfficialDiscoveryUrl(reordered), canonical);
+  assert.equal(canonicalOfficialDiscoveryUrl(canonical), canonical);
+  assert.equal(canonicalOfficialDiscoveryUrl("http://keskkonnaagentuur.ee/teema?a=1&b=2"), "");
+  assert.notEqual(
+    canonicalOfficialDiscoveryUrl("https://keskkonnaagentuur.ee/teema?a=1&a=2"),
+    canonicalOfficialDiscoveryUrl("https://keskkonnaagentuur.ee/teema?a=2&a=1"),
+  );
+
+  const first = normalizeOfficialDiscoveryDocuments([{ url: reordered, title: "Esimene" }]);
+  const second = normalizeOfficialDiscoveryDocuments([{ url: canonical, title: "Teine" }]);
+  const combined = normalizeOfficialDiscoveryDocuments([
+    { url: reordered, title: "Esimene" },
+    { url: canonical, title: "Teine" },
+  ]);
+  assert.equal(first[0].url, canonical);
+  assert.equal(first[0].externalId, second[0].externalId);
+  assert.equal(combined.length, 1);
+  assert.equal(combined[0].url, canonical);
+  assert.deepEqual(limitOfficialDiscoveryDocuments(combined, [canonical], 20_000, 20_000), combined);
 });
 
 test("aggregate corpus admission includes available rows, bytes and existing updates", () => {

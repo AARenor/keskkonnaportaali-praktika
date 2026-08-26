@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { load } from "cheerio";
 import {
-  climateJogevaDailyMeanFromJson,
-  climateJogevaDailyQueryUrl,
-  isClimateJogevaDailyMeanQuery,
+  climateDailyMeanFromJson,
+  climateDailyQueryUrl,
+  isClimateDailyMeanQuery,
 } from "./climate.mjs";
 import {
   fetchOfficialDataset,
@@ -16,18 +16,25 @@ import {
 import {
   eelisEmajogiPublicWatercourseFromGeoJson,
   EELIS_EMAJOGI_PUBLIC_WATERCOURSE_WFS_URL,
+  eelisNaturaSiteFromJson,
+  eelisNaturaSiteQueryUrl,
   isEelisEmajogiPublicWatercourseQuery,
+  isEelisNaturaSiteQuery,
 } from "./eelis.mjs";
 import { sourceEvidenceEligibility } from "./source-registry.mjs";
 import {
   isStatisticsHazardousWasteQuery,
+  isStatisticsTotalWasteRecoveryQuery,
   isStatisticsWastewaterBht7Query,
   isStatisticsWaterAbstractionQuery,
   STATISTICS_HAZARDOUS_WASTE_API_URL,
+  STATISTICS_TOTAL_WASTE_RECOVERY_API_URL,
   STATISTICS_WATER_ABSTRACTION_API_URL,
   STATISTICS_WASTEWATER_BHT7_API_URL,
   statisticsHazardousWasteFromJson,
   statisticsHazardousWasteRequest,
+  statisticsTotalWasteRecoveryFromJson,
+  statisticsTotalWasteRecoveryRequest,
   statisticsWastewaterBht7FromJson,
   statisticsWastewaterBht7Request,
   statisticsWaterAbstractionFromJson,
@@ -78,7 +85,7 @@ const LATEST_HYDROLOGY_MAX_AGE_MS = 36 * 60 * 60_000;
 const MAX_HYDROLOGY_JSON_BYTES = 20_000;
 const HYDROLOGY_SELECT_FIELDS = "jaam_kood,jaam_nimi,jaam_taisnimi,veekogu_nimi,valgala_nimi,jaam_laiuskraad,jaam_pikkuskraad,timeline_ts_utc,aegrida_nimi,vaartus";
 const WEATHER_LOCATIONS = Object.freeze([
-  { key: "tallinn", label: "Tallinn", query: /\btallinn\w*/u, stations: ["Tallinn-Harku"] },
+  { key: "tallinn", label: "Tallinn", query: /\btal{1,2}in{1,2}\w*/u, stations: ["Tallinn-Harku"] },
   { key: "tartu", label: "Tartu", query: /\btartu\w*/u, stations: ["Tartu", "Tartu-Tõravere"] },
   { key: "parnu", label: "Pärnu", query: /\bparnu\w*/u, stations: ["Pärnu"] },
   { key: "narva", label: "Narva", query: /\bnarva\w*/u, stations: ["Narva"] },
@@ -665,10 +672,12 @@ export function isLatestPublishedHydrologyQuery(query) {
 export function requiresExtendedStructuredListingBudget(query) {
   return isLatestPublishedHydrologyQuery(query)
     || isEelisEmajogiPublicWatercourseQuery(query)
+    || isEelisNaturaSiteQuery(query)
     || isStatisticsHazardousWasteQuery(query)
+    || isStatisticsTotalWasteRecoveryQuery(query)
     || isStatisticsWaterAbstractionQuery(query)
     || isStatisticsWastewaterBht7Query(query)
-    || isClimateJogevaDailyMeanQuery(query);
+    || isClimateDailyMeanQuery(query);
 }
 
 function hydrologyQuerySince(now) {
@@ -1853,10 +1862,10 @@ export function composeForestHarvestBalanceAnswer(query, sources = [], controlQu
 export async function loadStructuredIndicatorDocuments(query, options = {}) {
   const timeoutMs = Math.max(250, Math.min(Number(options.timeoutMs) || 2_000, 6_000));
   const documents = [];
-  if (isClimateJogevaDailyMeanQuery(query, { now: options.now })) {
+  if (isClimateDailyMeanQuery(query, { now: options.now })) {
     try {
       const fetchPostgrestDataset = options.fetchPostgrestDataset || fetchOfficialPostgrestDataset;
-      const url = climateJogevaDailyQueryUrl(query, { now: options.now });
+      const url = climateDailyQueryUrl(query, { now: options.now });
       const result = await fetchPostgrestDataset(url, {
         timeoutMs,
         signal: options.signal,
@@ -1865,7 +1874,7 @@ export async function loadStructuredIndicatorDocuments(query, options = {}) {
         maximumBytes: 64_000,
         maximumRedirects: 0,
       });
-      documents.push(...climateJogevaDailyMeanFromJson(query, result.body, {
+      documents.push(...climateDailyMeanFromJson(query, result.body, {
         fetchedAt: result.fetchedAt,
         stale: result.stale,
         now: options.now,
@@ -1929,6 +1938,26 @@ export async function loadStructuredIndicatorDocuments(query, options = {}) {
       // The reviewed PXWeb directory route remains visible without a number.
     }
   }
+  if (isStatisticsTotalWasteRecoveryQuery(query)) {
+    try {
+      const fetchPxwebDataset = options.fetchPxwebDataset || fetchOfficialPxwebDataset;
+      const year = Number(String(query).match(/\b(?:19|20)\d{2}\b/u)?.[0]);
+      const request = statisticsTotalWasteRecoveryRequest(year);
+      const result = await fetchPxwebDataset(
+        STATISTICS_TOTAL_WASTE_RECOVERY_API_URL,
+        request,
+        { timeoutMs, signal: options.signal },
+      );
+      documents.push(...statisticsTotalWasteRecoveryFromJson(query, result.body, {
+        fetchedAt: result.fetchedAt,
+        stale: result.stale,
+        now: options.now,
+      }));
+    } catch (error) {
+      if (options.signal?.aborted || error?.name === "AbortError") throw error;
+      // The reviewed PXWeb directory route remains visible without a number.
+    }
+  }
   if (isEelisEmajogiPublicWatercourseQuery(query)) {
     try {
       const fetchGeoJsonDataset = options.fetchGeoJsonDataset || fetchOfficialGeoJsonDataset;
@@ -1944,6 +1973,28 @@ export async function loadStructuredIndicatorDocuments(query, options = {}) {
     } catch (error) {
       if (options.signal?.aborted || error?.name === "AbortError") throw error;
       // The maintained GeoServer route remains visible without a classification claim.
+    }
+  }
+  if (isEelisNaturaSiteQuery(query)) {
+    try {
+      const fetchPostgrestDataset = options.fetchPostgrestDataset || fetchOfficialPostgrestDataset;
+      const url = eelisNaturaSiteQueryUrl(query);
+      const result = await fetchPostgrestDataset(url, {
+        timeoutMs,
+        signal: options.signal,
+        ttlMs: 30 * 60_000,
+        staleMs: 0,
+        maximumBytes: 32_000,
+        maximumRedirects: 0,
+      });
+      documents.push(...eelisNaturaSiteFromJson(query, result.body, {
+        fetchedAt: result.fetchedAt,
+        stale: result.stale,
+        now: options.now,
+      }));
+    } catch (error) {
+      if (options.signal?.aborted || error?.name === "AbortError") throw error;
+      // The EELIS catalogue remains visible without a register-fact claim.
     }
   }
   if (isLatestPublishedHydrologyQuery(query)) {

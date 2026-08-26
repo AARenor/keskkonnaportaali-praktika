@@ -1,3 +1,5 @@
+import { officialCitationUrlEligibility } from "./citation-policy.mjs";
+
 export const OFFICIAL_ROUTE_CLASSES = Object.freeze([
   "official_data_or_api",
   "official_spatial_or_register",
@@ -17,15 +19,15 @@ const ROUTE_CLASS_IDS = Object.freeze({
     "open-data", "kese-monitoring", "official-data-services", "open-data-downloader",
     "official-geoserver", "kaia-service", "statistics-pxweb", "waste-reporting-data",
     "forest-spatial-data", "official-cadastre-wfs", "official-forest-register-wfs", "latest-published-hydrology",
-    "eelis-emajogi-public-watercourse", "statistics-water-abstraction-2024",
-    "statistics-wastewater-bht7-2024", "statistics-hazardous-waste-2024",
-    "climate-jogeva-daily-mean",
+    "eelis-emajogi-public-watercourse", "eelis-natura-site", "statistics-water-abstraction-2024",
+    "statistics-wastewater-bht7-2024", "statistics-hazardous-waste-2024", "statistics-total-waste-recovery",
+    "climate-station-daily-mean",
   ]),
   official_spatial_or_register: new Set([
     "environment-register", "official-geoserver", "waste-facilities-map", "well-register",
     "metsaregister", "forest-spatial-data", "official-cadastre-wfs", "official-forest-register-wfs",
     "forest-catalogue", "biodiversity", "tallinn-noise-map", "tartu-noise-map",
-    "eelis-emajogi-public-watercourse",
+    "eelis-emajogi-public-watercourse", "eelis-natura-site",
   ]),
   official_live_weather: new Set(["weather-forecast", "current-weather-observations", "kaia-service"]),
   official_live_air: new Set(["air-quality-live"]),
@@ -36,7 +38,8 @@ const ROUTE_CLASS_IDS = Object.freeze({
     "historical-weather-data", "historical-hydrology-data", "marine-observations",
     "marine-ice-map", "kese-monitoring", "water-monitoring", "latest-published-hydrology",
     "statistics-water-abstraction-2024", "statistics-wastewater-bht7-2024", "statistics-hazardous-waste-2024",
-    "climate-jogeva-daily-mean",
+    "statistics-total-waste-recovery",
+    "climate-station-daily-mean",
   ]),
   official_indicator_or_report: new Set([
     "climate-atlas", "water-monitoring", "radiation-monitoring", "soil-monitoring-results",
@@ -45,6 +48,7 @@ const ROUTE_CLASS_IDS = Object.freeze({
     "groundwater-pesticide-monitoring", "wildlife-status-2025", "electric-vehicle-lifecycle",
     "baltic-sea-litter", "ida-viru-groundwater",
     "statistics-water-abstraction-2024", "statistics-wastewater-bht7-2024", "statistics-hazardous-waste-2024",
+    "statistics-total-waste-recovery",
     "forest-area", "forest-stock-stable", "forest-condition-review", "protected-forest-share",
     "forest-smi-2024-summary", "forest-smi-2025-presentation", "forest-yearbook-2023-fellings",
     "forest-climate-adaptation-report", "increment-method", "clearcut-over-time",
@@ -81,9 +85,10 @@ const STRUCTURED_SOURCE_IDS = new Set([
   "statistics-pxweb", "official-geoserver", "official-cadastre-wfs", "official-forest-register-wfs",
   "historical-weather-data", "historical-hydrology-data", "kese-monitoring", "official-data-services",
   "open-data-downloader", "waste-reporting-data", "current-weather-observations", "weather-forecast",
-  "latest-published-hydrology", "eelis-emajogi-public-watercourse",
+  "latest-published-hydrology", "eelis-emajogi-public-watercourse", "eelis-natura-site",
   "statistics-water-abstraction-2024", "statistics-wastewater-bht7-2024", "statistics-hazardous-waste-2024",
-  "climate-jogeva-daily-mean", "municipal-waste-recycling",
+  "statistics-total-waste-recovery",
+  "climate-station-daily-mean", "municipal-waste-recycling",
 ]);
 const LIVE_SOURCE_IDS = new Set([
   "weather-forecast", "current-weather-observations", "kaia-service", "air-quality-live", "marine-observations", "marine-ice-map",
@@ -298,6 +303,15 @@ export function sourceEvidenceEligibility(document = {}, {
     return { eligible: false, policy, reason: "adapter-not-validated" };
   }
   return { eligible: true, policy, reason: "claim-specific" };
+}
+
+export function sourceCanSupportPublicCitation(document = {}, options = {}) {
+  const evidence = sourceEvidenceEligibility(document, options);
+  if (!evidence.eligible) return evidence;
+  const citation = officialCitationUrlEligibility(document.url);
+  return citation.eligible
+    ? evidence
+    : { ...evidence, eligible: false, reason: citation.reason };
 }
 
 export function officialSourceProfile(document = {}, options = {}) {
