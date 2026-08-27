@@ -520,6 +520,10 @@ test("municipal and regional scopes fail closed without borrowing national fores
   const regionalCases = [
     ["Harjumaa metsasus", "regional-observation-required"],
     ["Põlvamaa metsamaa pindala", "regional-observation-required"],
+    ["Ida-Viru metsamaa pindala", "regional-observation-required"],
+    ["Lääne-Viru metsamaa pindala", "regional-observation-required"],
+    ["Ida-Virumaa metsamaa pindala", "regional-observation-required"],
+    ["Lääne-Virumaa metsamaa pindala", "regional-observation-required"],
     ["Harju maakonna metsasus", "regional-observation-required"],
     ["Põlva county forest cover", "regional-observation-required"],
     ["Läti metsasus", "unsupported-geography"],

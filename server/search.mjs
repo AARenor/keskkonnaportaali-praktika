@@ -8,6 +8,7 @@ import {
   REVIEWED_ESTONIAN_MUNICIPALITY_BASES,
   classifyForestryGeographyScope,
   hasLossyUnicodeForestryAreaResidual,
+  isReviewedEstonianCountyIdentity,
   isReviewedEstonianMunicipalityIdentity,
   isReviewedNationalDefaultForestryAreaComplement,
   isReviewedNationalUnsupportedForestAreaBreakdownQuestion,
@@ -655,7 +656,7 @@ const SEARCH_DOCUMENTS = [
       "building construction", "Environment Board", "official contact",
     ],
     summary:
-      "Keskkonnaameti juhend selgitab kaitstaval alal, sealhulgas püsielupaigas, hoone rajamise või renoveerimise piiranguid, eelneva nõusoleku vajadust ning seost Natura hindamisega.",
+      "Keskkonnaameti juhend selgitab kaitstaval alal, sealhulgas püsielupaigas, ehitamise piiranguid, hoone rajamise või renoveerimise eelneva nõusoleku vajadust ning seost Natura hindamisega.",
   },
   {
     id: "groundwater-status",
@@ -2156,6 +2157,12 @@ const PUBLIC_ORGANIZATION_NAME_PATTERNS = Object.freeze([
   /(?<![\p{L}\p{N}])[\p{L}-]{2,50}\s+(?:AS|OÜ|MTÜ|SA)(?![\p{L}\p{N}])/gu,
 ]);
 function removeFirstPublicOrganizationName(value) {
+  const selected = firstPublicOrganizationNameMatch(value);
+  if (!selected) return value;
+  return `${value.slice(0, selected.index)} ${value.slice(selected.index + selected.text.length)}`;
+}
+
+function firstPublicOrganizationNameMatch(value) {
   let selected = null;
   for (const pattern of PUBLIC_ORGANIZATION_NAME_PATTERNS) {
     pattern.lastIndex = 0;
@@ -2168,8 +2175,7 @@ function removeFirstPublicOrganizationName(value) {
       selected = { index: match.index, text: match[0] };
     }
   }
-  if (!selected) return value;
-  return `${value.slice(0, selected.index)} ${value.slice(selected.index + selected.text.length)}`;
+  return selected;
 }
 
 function isWholeReviewedPublicOrganizationName(value) {
@@ -2237,6 +2243,150 @@ const CLAUSE_LEADING_NAMED_PERSON_PRIVATE_ASSET_PATTERN = new RegExp(
 );
 const ANY_CASE_ESTONIAN_NAMED_PERSON_PRIVATE_LAND_PATTERN = new RegExp(
   String.raw`(?<!\p{L})${CAPTURED_ANY_CASE_PERSON_NAME_SOURCE}\s+(?:era)?(?:maal|metsamaal|kinnistul|maa(?:u|ü)ksusel|maat(?:ü|u)kil|metsas)(?!\p{L})`,
+  "giu",
+);
+const ESTONIAN_GENITIVE_PERSON_TOKEN_SOURCE = String.raw`[\p{L}][\p{L}'’]{0,38}[aeiouõäöü]`;
+const CAPTURED_ESTONIAN_GENITIVE_PERSON_NAME_SOURCE = String.raw`(${ENGLISH_PERSON_TOKEN_SOURCE})${ENGLISH_PERSON_SEPARATOR_SOURCE}(?:(${ENGLISH_PERSON_TOKEN_SOURCE})${ENGLISH_PERSON_SEPARATOR_SOURCE})?(${ESTONIAN_GENITIVE_PERSON_TOKEN_SOURCE})`;
+const ESTONIAN_PRIVATE_COMPOUND_ASSET_SOURCE = String.raw`(?:mets(?:a(?:s|st|le|l|lt|ga|d(?:e(?:s|st|le|lt|ga)?)?)?|i)?|metsaala\w*|kinnist(?:u|ut|ul|ult|ule|uga|ute|uid)?|kinnisvara(?:l|le|lt|st|ga)?|maa(?:d|l|le|lt|st|ga)?|maa(?:u|ü)ksus\w*|maat(?:ü|u)k\w*|põld|põllu(?:l|le|lt|st|ga|d|de|sid)?|hoon(?:e|et|el|ele|elt|est|ega|ed|ete|eid)|maj(?:a|as|ast|ale|al|alt|aga|ad|ade|asid)|talu(?:s|st|sse|le|l|lt|ga|d|de|sid)?|korter(?:i|it|is|isse|ist|ile|il|ilt|iga|iks|id|ite|ites|itest|itele|itelt|itega)?|suvil(?:a|at|as|asse|ast|ale|al|alt|aga|aks|ad|ate|aid)|elam(?:u|ut|us|usse|ust|ule|ul|ult|uga|uks|ud|ute|uid)|krunt(?:i|it|is|isse|ist|ile|il|ilt|iga|id|ide|e)?|ehitis(?:e|t|es|esse|est|ele|el|elt|ega|ed|te|i)?|rajatis(?:e|t|es|esse|est|ele|el|elt|ega|ed|te|i)?|a(?:ed|ia(?:s|st|le|l|lt|ga|d|de|sid)?)|tii(?:k|gi(?:s|st|le|l|lt|ga|d|de|sid)?)|puistu(?:s|st|sse|le|l|lt|ga|d|de|sid)?|garaa(?:ž|z)(?:i|is|ist|ile|il|ilt|iga|id|ide)?|puurkaev\w*|kaev(?:u|us|ust|ule|ul|uga)?)`;
+const EXPLICIT_ENGLISH_PRIVATE_ASSET_NOUN_SOURCE = String.raw`(?:property|parcel|plot|lot|estate|land|unit|house|home|farm|farmhouse|farmstead|well|borehole|wetland|marsh|meadow|pond|building|dwelling|cottage|premises|site|installation|landholding|holding|forest|woodland)`;
+const EXPLICIT_PRIVATE_ASSET_IDENTITY_TARGET_PATTERN = new RegExp(
+  String.raw`(?<!\p{L})(?:(?:era|perekonna|isiklik)[\s\p{Pd}./·:_]*${ESTONIAN_PRIVATE_COMPOUND_ASSET_SOURCE}|(?:private|family|household|personal)\s+${EXPLICIT_ENGLISH_PRIVATE_ASSET_NOUN_SOURCE})(?!\p{L})`,
+  "iu",
+);
+const AMBIGUOUS_BARE_COUNTY_PRIVATE_ASSET_PATTERN = new RegExp(
+  String.raw`(?<!\p{L})(?:ida|lääne|laane)\s+viru\s+(?:(?:era|perekonna|isiklik)[\s\p{Pd}./·:_]*${ESTONIAN_PRIVATE_COMPOUND_ASSET_SOURCE}|(?:private|family|household|personal)\s+${EXPLICIT_ENGLISH_PRIVATE_ASSET_NOUN_SOURCE})(?!\p{L})`,
+  "iu",
+);
+const ASSET_RESIDENT_ROLE_PATTERN = /(?<!\p{L})(?:elanik\w*|residend\w*|rentnik\w*|residents?|occupants?|inhabitants?|tenants?)(?!\p{L})/iu;
+const RESIDENTIAL_ASSET_TARGET_PATTERN = new RegExp(
+  String.raw`(?<!\p{L})(?:${ESTONIAN_PRIVATE_COMPOUND_ASSET_SOURCE}|${EXPLICIT_ENGLISH_PRIVATE_ASSET_NOUN_SOURCE})(?!\p{L})`,
+  "iu",
+);
+const PRIVATE_ASSET_IDENTITY_FIELD_PATTERN = /(?<!\p{L})(?:nimi\w*|names?|identity\w*|identiteet\w*|kontakt\w*|contact\w*|telefon\w*|phone\w*|telephone\w*|e-?post\w*|email\w*|aadress\w*|address\w*|elukoh\w*|residence\w*|isikukood\w*|ssn)(?!\p{L})/iu;
+const ASSET_RESIDENT_IDENTITY_FIELD_PATTERN = /(?<!\p{L})(?:eesnimi\w*|perekonnanimi\w*|täisnimi\w*|taisnimi\w*|vanus\w*|surnames?|age|(?:first|last|full)\s+names?)(?!\p{L})/iu;
+
+function hasAssetResidentIdentityFieldRequest(value) {
+  const text = String(value || "");
+  return RESIDENTIAL_ASSET_TARGET_PATTERN.test(text)
+    && ASSET_RESIDENT_ROLE_PATTERN.test(text)
+    && (PRIVATE_ASSET_IDENTITY_FIELD_PATTERN.test(text)
+      || ASSET_RESIDENT_IDENTITY_FIELD_PATTERN.test(text)
+      || PRIVATE_PERSON_ATTRIBUTE_PATTERN.test(text)
+      || PRIVATE_POSTAL_FIELD_PATTERN.test(text));
+}
+
+function hasPrivateAssetIdentityFieldRequest(value) {
+  const text = String(value || "");
+  const asset = EXPLICIT_PRIVATE_ASSET_IDENTITY_TARGET_PATTERN.exec(text);
+  if (!asset) return false;
+  const rawTail = text.slice((asset.index || 0) + asset[0].length);
+  const tail = stripNegatedPrivateContactFields(
+    stripSingleReviewedOrganizationContactField(rawTail),
+  );
+  return PRIVATE_ASSET_IDENTITY_FIELD_PATTERN.test(tail)
+    || PRIVATE_PERSON_ATTRIBUTE_PATTERN.test(tail)
+    || PRIVATE_POSTAL_FIELD_PATTERN.test(tail)
+    || NAMED_PERSON_CADASTRAL_FIELD_PATTERN.test(tail);
+}
+
+function stripNegatedPrivateContactFields(value) {
+  const replaceUnlessGovernedByNegation = (text, pattern, negatorPattern) => text.replace(
+    pattern,
+    (match, offset, source) => {
+      const boundedPrefix = source.slice(Math.max(0, offset - 160), offset);
+      const clausePrefix = boundedPrefix.split(/[.!?;:。！？；]+/u).at(-1) || "";
+      return negatorPattern.test(clausePrefix) ? match : " ";
+    },
+  );
+  const withoutEstonianExclusion = replaceUnlessGovernedByNegation(
+    String(value || ""),
+    /(?<!\p{L})ilma\s+(?:(?:isiklik\w*|omanik\w*|eraisik\w*)\s+)?(?:kontakt\w*|telefoni?\w*|e-?post\w*|aadress\w*)(?!\p{L})/giu,
+    /(?<!\p{L})(?:mitte|ega|ei|pole|polnud|ära|ärge)(?!\p{L})/iu,
+  );
+  return replaceUnlessGovernedByNegation(
+    withoutEstonianExclusion,
+    /(?<!\p{L})without\s+(?:(?:personal|private|owners?|owner['’]s|tenants?|tenant['’]s)\s+)?(?:contact\w*(?:\s+(?:details?|information))?|phone\w*|telephone\w*|email\w*|address\w*)(?!\p{L})/giu,
+    /(?<!\p{L})(?:not|nor|never|no|cannot|can['’]?t|won['’]?t|wouldn['’]?t|shouldn['’]?t|mustn['’]?t|isn['’]?t|aren['’]?t|don['’]?t|doesn['’]?t|didn['’]?t)(?!\p{L})/iu,
+  );
+}
+
+function isUnambiguousReviewedEstonianCountyIdentity(value) {
+  const text = String(value || "").normalize("NFKC").trim();
+  if (/^(?:ida|lääne|laane)\s+viru$/iu.test(text)) return false;
+  return isReviewedEstonianCountyIdentity(text);
+}
+
+function isCompleteReviewedCountyPrivateAssetEcologyQuestion(value) {
+  const clauses = splitPublicQueryClauses(value);
+  if (clauses.length < 1 || clauses.length > 2) return false;
+  const contactClauses = clauses.filter(isCompleteReviewedPublicOrganizationContactQuestion);
+  if (clauses.length === 2 && contactClauses.length !== 1) return false;
+  const environmentalClause = clauses.find((clause) => (
+    !isCompleteReviewedPublicOrganizationContactQuestion(clause)
+  ));
+  if (!environmentalClause) return false;
+  const patterns = [
+    new RegExp(String.raw`^how\s+does\s+(.+?)\s+(?:private|family|household|personal)\s+${EXPLICIT_ENGLISH_PRIVATE_ASSET_NOUN_SOURCE}\s+(?:affect|impact)\s+(?:biodiversity|habitats?|ecology|ecosystems?|species)(?:\s+(?:diversity|richness))?\??$`, "iu"),
+    new RegExp(String.raw`^kuidas\s+m[õo]juta\w*\s+(.+?)\s+(?:era|perekonna|isiklik)[\s\p{Pd}./·:_]*${ESTONIAN_PRIVATE_COMPOUND_ASSET_SOURCE}\s+(?:elurikk\w*|liigirikk\w*|elupai[kg]\w*|loodus\w*|ökosüsteem\w*)\??$`, "iu"),
+    new RegExp(String.raw`^palun\s+selgita\s+(.+?)\s+(?:era|perekonna|isiklik)[\s\p{Pd}./·:_]*${ESTONIAN_PRIVATE_COMPOUND_ASSET_SOURCE}\s+m[õo]ju\s+(?:elurikk\w*|liigirikk\w*|elupai[kg]\w*|loodus\w*|ökosüsteem\w*)\??$`, "iu"),
+  ];
+  for (const pattern of patterns) {
+    const match = environmentalClause.trim().match(pattern);
+    if (match && isUnambiguousReviewedEstonianCountyIdentity(match[1])) return true;
+  }
+  return false;
+}
+
+function hasReviewedCountyPrivateAssetEcologySensitiveResidual(value) {
+  const text = String(value || "").trim();
+  const patterns = [
+    new RegExp(String.raw`^how\s+does\s+(.+?)\s+(?:private|family|household|personal)\s+${EXPLICIT_ENGLISH_PRIVATE_ASSET_NOUN_SOURCE}\s+(?:affect|impact)\s+(?:biodiversity|habitats?|ecology|ecosystems?|species)(?:\s+(?:diversity|richness))?([\s\S]*)$`, "iu"),
+    new RegExp(String.raw`^kuidas\s+m[õo]juta\w*\s+(.+?)\s+(?:era|perekonna|isiklik)[\s\p{Pd}./·:_]*${ESTONIAN_PRIVATE_COMPOUND_ASSET_SOURCE}\s+(?:elurikk\w*|liigirikk\w*|elupai[kg]\w*|loodus\w*|ökosüsteem\w*)([\s\S]*)$`, "iu"),
+    new RegExp(String.raw`^palun\s+selgita\s+(.+?)\s+(?:era|perekonna|isiklik)[\s\p{Pd}./·:_]*${ESTONIAN_PRIVATE_COMPOUND_ASSET_SOURCE}\s+m[õo]ju\s+(?:elurikk\w*|liigirikk\w*|elupai[kg]\w*|loodus\w*|ökosüsteem\w*)([\s\S]*)$`, "iu"),
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match || !isUnambiguousReviewedEstonianCountyIdentity(match[1])) continue;
+    const residual = stripNegatedPrivateContactFields(match[2])
+      .replace(/^[\s,.!?;:—–−-]+/gu, "")
+      .replace(/^(?:ja|ning|and)\s+/iu, "")
+      .trim();
+    if (!residual || isCompleteReviewedPublicOrganizationContactQuestion(residual)) return false;
+    return true;
+  }
+  return false;
+}
+
+function isCompleteReviewedCountyPrivateAssetAggregateQuestion(value) {
+  const text = String(value || "").trim();
+  const patterns = [
+    new RegExp(String.raw`^(.+?)\s+(?:private|family|household|personal)\s+(?:forest|woodland|land|property)\s+(?:area|cover(?:age)?)(?:\s+(?:aggregate|data|statistics))?\??$`, "iu"),
+    new RegExp(String.raw`^how\s+to\s+publish\s+(.+?)\s+(?:private|family|household|personal)\s+(?:forest|woodland|land|property)\s+(?:area|cover(?:age)?)(?:\s+(?:aggregate|data|statistics))?\??$`, "iu"),
+  ];
+  return patterns.some((pattern) => {
+    const match = text.match(pattern);
+    return Boolean(match && isUnambiguousReviewedEstonianCountyIdentity(match[1]));
+  });
+}
+
+function stripSingleReviewedOrganizationContactField(value) {
+  const text = String(value || "");
+  if (!isReviewedPublicOrganizationContactClause(text)) return text;
+  const organization = firstPublicOrganizationNameMatch(text);
+  if (!organization) return text;
+  const afterOrganizationIndex = organization.index + organization.text.length;
+  const afterOrganization = text.slice(afterOrganizationIndex);
+  const candidates = [
+    INSTITUTIONAL_CONTACT_CHANNEL_PATTERN.exec(afterOrganization),
+    PRIVATE_POSTAL_FIELD_PATTERN.exec(afterOrganization),
+  ].filter(Boolean).sort((left, right) => left.index - right.index);
+  const contact = candidates[0];
+  if (!contact) return text;
+  const contactIndex = afterOrganizationIndex + contact.index;
+  return `${text.slice(0, contactIndex)} ${text.slice(contactIndex + contact[0].length)}`;
+}
+const ANY_CASE_ESTONIAN_NAMED_PERSON_PRIVATE_COMPOUND_ASSET_PATTERN = new RegExp(
+  String.raw`(?<!\p{L})${CAPTURED_ESTONIAN_GENITIVE_PERSON_NAME_SOURCE}\s+era[\s\p{Pd}./·:_]*${ESTONIAN_PRIVATE_COMPOUND_ASSET_SOURCE}(?!\p{L})`,
   "giu",
 );
 const HYPHENATED_ESTONIAN_NAMED_PERSON_PRIVATE_ASSET_PATTERN = new RegExp(
@@ -2589,6 +2739,42 @@ function hasPersonPrefixedReviewedMunicipalityAssetAssociation(value) {
   ));
 }
 
+function isExplicitHyphenatedReviewedCountyNameMatch(nameParts, matchedText) {
+  if (nameParts.length !== 2
+    || !isReviewedEstonianCountyIdentity(nameParts.join(" "))) return false;
+  const pattern = new RegExp(
+    `(?<!\\p{L})${RegExp.escape(nameParts[0])}\\s*\\p{Pd}+\\s*${RegExp.escape(nameParts[1])}(?!\\p{L})`,
+    "iu",
+  );
+  return pattern.test(String(matchedText || ""));
+}
+
+function explicitHyphenatedReviewedCountyTokenIndexes(nameParts, matchedText) {
+  const indexes = new Set();
+  nameParts.forEach((part, index) => {
+    if (/\p{L}\s*\p{Pd}+\s*\p{L}/u.test(part)
+      && isReviewedEstonianCountyIdentity(part)) indexes.add(index);
+  });
+  for (let index = 0; index < nameParts.length - 1; index += 1) {
+    if (!isExplicitHyphenatedReviewedCountyNameMatch(
+      [nameParts[index], nameParts[index + 1]],
+      matchedText,
+    )) continue;
+    indexes.add(index);
+    indexes.add(index + 1);
+  }
+  return indexes;
+}
+
+function removeExplicitHyphenatedReviewedCountyNames(value) {
+  return String(value || "").replace(
+    /(?<!\p{L})(\p{L}+)\s*\p{Pd}+\s*(\p{L}+)(?!\p{L})/gu,
+    (match, first, second) => (
+      isReviewedEstonianCountyIdentity(`${first} ${second}`) ? " " : match
+    ),
+  );
+}
+
 function hasEarlyNamedPersonSensitiveAssociation(value) {
   const text = String(value || "");
   const pairIsPersonShaped = (first, second) => (
@@ -2603,21 +2789,27 @@ function hasEarlyNamedPersonSensitiveAssociation(value) {
       && (ECOLOGICAL_SUBJECT_PATTERN.test(first)
         || ECOLOGICAL_MODIFIER_PATTERN.test(first)))
   );
-  const namePartsContainPersonPair = (nameParts) => {
+  const namePartsContainPersonPair = (nameParts, matchedText) => {
     if (nameParts.length < 2
       || nameParts.some((part) => NAMED_PERSON_ASSOCIATION_ORGANIZATION_DESIGNATOR_PATTERN.test(part))
       || removeFirstPublicOrganizationName(nameParts.join(" ")).trim() === ""
       || isReviewedEstonianMunicipalityIdentity(nameParts.join(" "))) return false;
+    const countyTokenIndexes = explicitHyphenatedReviewedCountyTokenIndexes(nameParts, matchedText);
     const candidatePairs = nameParts.length === 3
-      ? [[nameParts[0], nameParts[1]], [nameParts[1], nameParts[2]]]
-      : [[nameParts[0], nameParts[1]]];
-    return candidatePairs.some(([first, last]) => (
-      !OWNERSHIP_ASSOCIATION_NON_PERSON_TOKEN_PATTERN.test(first)
-      && !OWNERSHIP_ASSOCIATION_NON_PERSON_TOKEN_PATTERN.test(last)
-      && pairIsPersonShaped(first, last)
-      && removeFirstPublicOrganizationName(`${first} ${last}`).trim() !== ""
-      && !isReviewedEstonianMunicipalityIdentity(`${first} ${last}`)
-    ));
+      ? [[0, 1], [1, 2]]
+      : [[0, 1]];
+    return candidatePairs.some(([firstIndex, lastIndex]) => {
+      if (countyTokenIndexes.has(firstIndex) || countyTokenIndexes.has(lastIndex)) return false;
+      const first = nameParts[firstIndex];
+      const last = nameParts[lastIndex];
+      return (
+        !OWNERSHIP_ASSOCIATION_NON_PERSON_TOKEN_PATTERN.test(first)
+        && !OWNERSHIP_ASSOCIATION_NON_PERSON_TOKEN_PATTERN.test(last)
+        && pairIsPersonShaped(first, last)
+        && removeFirstPublicOrganizationName(`${first} ${last}`).trim() !== ""
+        && !isReviewedEstonianMunicipalityIdentity(`${first} ${last}`)
+      );
+    });
   };
   ANY_CASE_NAMED_PERSON_LOCATION_FIELD_PATTERN.lastIndex = 0;
   for (const match of text.matchAll(ANY_CASE_NAMED_PERSON_LOCATION_FIELD_PATTERN)) {
@@ -2631,7 +2823,7 @@ function hasEarlyNamedPersonSensitiveAssociation(value) {
   ANY_CASE_ROLE_TO_NAMED_PERSON_PATTERN.lastIndex = 0;
   for (const match of text.matchAll(ANY_CASE_ROLE_TO_NAMED_PERSON_PATTERN)) {
     const nameParts = [match[1], match[2], match[3]].filter(Boolean);
-    if (!namePartsContainPersonPair(nameParts)) continue;
+    if (!namePartsContainPersonPair(nameParts, match[0])) continue;
     const suffix = text.slice((match.index || 0) + match[0].length, (match.index || 0) + match[0].length + 50);
     if (/^\s+(?:agency|authority|board|company|corporation|council|department|government|institute|institution|office|organization|organisation|service|team|university)\b/iu.test(suffix)) continue;
     ANY_CASE_ROLE_TO_NAMED_PERSON_PATTERN.lastIndex = 0;
@@ -2663,7 +2855,7 @@ function hasEarlyNamedPersonSensitiveAssociation(value) {
       // adjacent pairs. This also keeps "Anna Maria Tamm" private even though
       // “Anna” is an Estonian request verb. Explicit organization designators,
       // reviewed municipalities and ecological/common-noun pairs stay public.
-      if (!namePartsContainPersonPair(nameParts)) continue;
+      if (!namePartsContainPersonPair(nameParts, match[0])) continue;
       if (pattern === ANY_CASE_FOREST_TRANSFER_TO_NAMED_PERSON_PATTERN
         || pattern === ANY_CASE_ESTONIAN_FOREST_TRANSFER_TO_NAMED_PERSON_PATTERN) {
         const relationWindow = text.slice(
@@ -2731,27 +2923,33 @@ function hasEarlyBoundedNamedPrivateAssetAssociation(value) {
       && (ECOLOGICAL_SUBJECT_PATTERN.test(first)
         || ECOLOGICAL_MODIFIER_PATTERN.test(first)))
   );
-  const namePartsContainPersonPair = (nameParts) => {
+  const namePartsContainPersonPair = (nameParts, matchedText) => {
     if (nameParts.length < 2
       || nameParts.some((part) => NAMED_PERSON_ASSOCIATION_ORGANIZATION_DESIGNATOR_PATTERN.test(part))
       || removeFirstPublicOrganizationName(nameParts.join(" ")).trim() === ""
       || isReviewedEstonianMunicipalityIdentity(nameParts.join(" "))) return false;
+    const countyTokenIndexes = explicitHyphenatedReviewedCountyTokenIndexes(nameParts, matchedText);
     const pairs = nameParts.length === 3
-      ? [[nameParts[0], nameParts[1]], [nameParts[1], nameParts[2]]]
-      : [[nameParts[0], nameParts[1]]];
-    return pairs.some(([first, second]) => pairIsPersonShaped(first, second));
+      ? [[0, 1], [1, 2]]
+      : [[0, 1]];
+    return pairs.some(([firstIndex, secondIndex]) => (
+      !countyTokenIndexes.has(firstIndex)
+      && !countyTokenIndexes.has(secondIndex)
+      && pairIsPersonShaped(nameParts[firstIndex], nameParts[secondIndex])
+    ));
   };
   for (const pattern of [
     ANY_CASE_CONNECTOR_NAMED_PERSON_PRIVATE_ASSET_PATTERN,
     CLAUSE_LEADING_NAMED_PERSON_PRIVATE_ASSET_PATTERN,
     ANY_CASE_ESTONIAN_NAMED_PERSON_PRIVATE_LAND_PATTERN,
+    ANY_CASE_ESTONIAN_NAMED_PERSON_PRIVATE_COMPOUND_ASSET_PATTERN,
     HYPHENATED_ESTONIAN_NAMED_PERSON_PRIVATE_ASSET_PATTERN,
     ANY_CASE_OWNERSHIP_TO_NAMED_PERSON_PATTERN,
   ]) {
     pattern.lastIndex = 0;
     for (const match of text.matchAll(pattern)) {
       const nameParts = [match[1], match[2], match[3]].filter(Boolean);
-      if (namePartsContainPersonPair(nameParts)) {
+      if (namePartsContainPersonPair(nameParts, match[0])) {
         pattern.lastIndex = 0;
         return true;
       }
@@ -2787,7 +2985,7 @@ function isPlainEcologicalResidenceDescriptionQuestion(value) {
     ));
 }
 const PUBLIC_CONTACT_ROLE_PATTERN = /^(?:büroo\w*|buroo\w*|e|info\w*|juht\w*|keskkonnaosakond\w*|klienditeenindus\w*|nõunik\w*|nounik\w*|osakond\w*|post|press\w*|projektiosakond\w*|spetsialist\w*|teenindus\w*|ühine|uhine|üld\w*|uld\w*|yld\w*|vaatlus\w*|customer|data|office|regional|research|service|support)$/iu;
-const PERSON_CONTEXT_STOPWORD_PATTERN = /^(?:aga|alal|andm\w*|andmev[äa]rav\p{L}*|andmetel|anna|andke|asub|asuv\w*|avalik\w*|jaoks|kaudu|kas|kaits\w*|kasuta\w*|katastri\w*|kes|kuidas|kinnist\w*|konkreetse|kohta|kuulu\w*|kui|kus|kust|küsimus\w*|kõrval|lahedal|lähedal|lasta|lei\w*|loa\w*|luba\w*|maaüksus\w*|maauksus\w*|maatükk\w*|maatukk\w*|metsaeraldis\w*|metsaregister\w*|millal|millin\w*|millis\w*|minu|mis|mida|midagi|miks|nõu\w*|näen|näha|näita|naita|oleva|oma|on|otsing\w*|palju|p[õo]him[õo]t\w*|poliitik\w*|puurkaev\w*|s[äa]ilita\w*|smi|sügavus\w*|tagasta|tagastage|talu\w*|testida|too|t[öo][öo]tle\w*|ütleb|vaadata|valda|vaja|ööbib|oobib|paikneb|peatub|piirkonn\w*|resideerib|registr\w*|viibib|järgi|ja|ning|või|voi|ääres|aasta|elab|elava|majas|a|about|affect\w*|are|area\w*|at|be|by|can|could|customer|data|did|do|does|for|from|get|give|handle[sd]?|handling|how|in|information|is|live[sd]?|living|may|me|must|near|number|occup(?:y|ies|ied|ying)|of|office|on|permit\w*|polic(?:y|ies)|process(?:es|ed|ing)?|protect(?:s|ed|ing)?|protected|public|regional|register\w*|requirement\w*|research|reside[sd]?|residing|return|s|service|should|show|state|stor(?:e|es|ed|ing)|stay(?:s|ed|ing)?|support|tell|that|the|this|to|use[sd]?|using|what|where|which|who|with|would)$/iu;
+const PERSON_CONTEXT_STOPWORD_PATTERN = /^(?:aga|alal|andm\w*|andmev[äa]rav\p{L}*|andmetel|anna|andke|asub|asuv\w*|avalik\w*|jaoks|kaudu|kas|kaits\w*|kasuta\w*|katastri\w*|kehti\w*|kes|kuidas|kinnist\w*|konkreetse|kohta|kuulu\w*|kui|kus|kust|küsimus\w*|kõrval|lahedal|lähedal|lasta|lei\w*|loa\w*|luba\w*|maaüksus\w*|maauksus\w*|maatükk\w*|maatukk\w*|metsaeraldis\w*|metsaregister\w*|millal|millin\w*|millis\w*|minu|mis|mida|midagi|miks|nõu\w*|näen|näha|näita|naita|oleva|oma|on|otsing\w*|palju|p[õo]him[õo]t\w*|poliitik\w*|puurkaev\w*|s[äa]ilita\w*|smi|sügavus\w*|tagasta|tagastage|talu\w*|testida|too|t[öo][öo]tle\w*|ütleb|vaadata|valda|vaja|ööbib|oobib|paikneb|peatub|piirkonn\w*|resideerib|registr\w*|viibib|järgi|ja|ning|või|voi|ääres|aasta|elab|elava|majas|a|about|affect\w*|are|area\w*|at|be|by|can|could|customer|data|did|do|does|for|from|get|give|handle[sd]?|handling|how|in|information|is|live[sd]?|living|may|me|must|near|number|occup(?:y|ies|ied|ying)|of|office|on|permit\w*|polic(?:y|ies)|process(?:es|ed|ing)?|protect(?:s|ed|ing)?|protected|public|regional|register\w*|requirement\w*|research|reside[sd]?|residing|return|s|service|should|show|state|stor(?:e|es|ed|ing)|stay(?:s|ed|ing)?|support|tell|that|the|this|to|use[sd]?|using|what|where|which|who|with|would)$/iu;
 const ESTONIAN_PRIVATE_OWNERSHIP_PATTERN = /\b(?:omanik\w*|omaja\w*|omand(?:is|uses)\w*|oma(?:b|vad|s|sid|nud|ma|takse|tud)|valdaj\w*|valduses\w*|valda(?:b|vad|s|sid|nud|ma)|kellele\s+kuulub)\b/iu;
 const ESTONIAN_FOREST_NOUN_PATTERN = /^(?:mets(?:a(?:s|st|le|lt|ga|d(?:e(?:s|st|le|lt|ga)?)?)?|i)?|metsaa)$/iu;
 const ESTONIAN_PRIVATE_FOREST_NOUN_PATTERN = /^(?:eramets(?:a(?:s|st|le|lt|ga|d(?:e(?:s|st|le|lt|ga)?)?)?|i)?|erametsaa)$/iu;
@@ -3342,6 +3540,9 @@ const UNREVIEWED_PERSON_NAME_PAIR_PATTERN = /(?<![\p{L}\p{N}])(?:\p{Lu}[\p{Ll}\p
 function splitPublicQueryClauses(value) {
   return String(value || "")
     .split(/(?<!\b\p{Lu})\.+|[!?;,¿¡。！？；،]+|\s[-—–−]\s/gu)
+    .flatMap((clause) => clause.split(
+      /\s+(?:ja|ning|and)\s+(?=(?:(?:mis|millin\w*)\s+on|(?:what|where|which)\s+(?:is|are))\b[\s\S]{0,100}(?:kontakt\w*|contact\w*|telefon\w*|phone\w*|e-?post\w*|email\w*|aadress\w*|address\w*))/giu,
+    ))
     .map((clause) => clause.trim())
     .filter(Boolean);
 }
@@ -3355,6 +3556,19 @@ function isReviewedPublicOrganizationContactClause(value) {
   return !CADASTRE_PATTERN.test(clause)
     && !PRIVATE_PERSON_ATTRIBUTE_PATTERN.test(withoutOrganization)
     && !UNREVIEWED_PERSON_NAME_PAIR_PATTERN.test(withoutOrganization);
+}
+
+function isCompleteReviewedPublicOrganizationContactQuestion(value) {
+  const text = String(value || "").trim();
+  if (!isReviewedPublicOrganizationContactClause(text)) return false;
+  const residual = removeFirstPublicOrganizationName(text)
+    .replace(/[.?!,;:]+$/gu, "")
+    .replace(/\s+/gu, " ")
+    .trim();
+  return [
+    /^(?:mis|millin\w*)\s+on\s+(?:(?:avalik|ametlik|üldine|üld|uld)\w*\s+)?(?:kontakt\w*|telefoni?\w*|e-?post\w*|aadress\w*)$/iu,
+    /^(?:what|where)\s+is\s+(?:the\s+)?(?:(?:official|public|general)\s+)?(?:contact(?:\s+(?:channel|details|information|point))?|phone|telephone|email|address)$/iu,
+  ].some((pattern) => pattern.test(residual));
 }
 
 function isReviewedForeignLanguageSelectorQuery(value) {
@@ -3428,17 +3642,59 @@ export function containsPrivatePersonLookup(value, {
   allowReviewedPublicClauseComposition = true,
 } = {}) {
   if (hasForeignPrivatePersonClause(decodeSecurityEscapes(value))) return true;
-  const text = canonicalSecurityText(value);
+  const canonicalText = canonicalSecurityText(value);
   // Unsupported-language residence and ownership clauses must fail before a
   // public environmental prefix can admit the complete text. This guard is
   // intentionally ahead of every reviewed public exception and is shared by
   // all provider-facing minimization paths below.
-  if (hasForeignPrivatePersonClause(text)) return true;
+  if (hasForeignPrivatePersonClause(canonicalText)) return true;
   // Reviewed protected-construction grammars are Latin/Estonian. Never grant
   // their public exception after normalization has erased an unconsumed
   // letter or number from another script; the intact query would otherwise
   // cross suggestion, discovery and model-provider boundaries.
-  if (hasLossyUnicodeProtectedConstructionResidual(text)) return true;
+  if (hasLossyUnicodeProtectedConstructionResidual(canonicalText)) return true;
+  // A reviewed geography can be followed by an open-class asset role (for
+  // example a tenant, operator or responsible party). Treat an explicit
+  // private asset plus a requested identity/contact field structurally instead
+  // of trying to enumerate every possible role noun. This guard must run
+  // before aggregate and county-name exceptions at every provider boundary.
+  // Evaluate asset-resident identity requests against the intact query. A
+  // later county disambiguation step may remove a hyphenated geography token,
+  // but it must never erase the resident/name, national-ID or birth-data risk.
+  if (hasAssetResidentIdentityFieldRequest(canonicalText)) return true;
+  // Bare Ida/Lääne Viru spellings are also plausible two-token person names.
+  // Deny their private-asset form explicitly and case-insensitively instead of
+  // relying on later person-shape heuristics; only an unambiguous hyphenated,
+  // Virumaa, maakond or county spelling can enter a regional exception.
+  if (AMBIGUOUS_BARE_COUNTY_PRIVATE_ASSET_PATTERN.test(canonicalText)) return true;
+  if (hasPrivateAssetIdentityFieldRequest(canonicalText)) return true;
+  // Explicitly negated contact fields are not requested identity data. Carry
+  // the stripped residual through every downstream detector; any other name,
+  // role, contact, cadastral or personal field remains intact and fail-closed.
+  const text = stripNegatedPrivateContactFields(canonicalText)
+    .replace(/\s+/gu, " ")
+    .replace(/\s+([.?!,;:])/gu, "$1")
+    .trim();
+  // Once a complete county/private-asset ecology prefix has been consumed,
+  // an arbitrary suffix cannot inherit that public meaning. Only an empty
+  // residual, an explicitly negated contact field, or one complete reviewed
+  // agency-contact clause is admissible; every other suffix fails closed.
+  if (hasReviewedCountyPrivateAssetEcologySensitiveResidual(canonicalText)) return true;
+  // Complete organization-contact questions carry no natural-person
+  // residual. Resolve this bounded form before public-clause composition so
+  // an environmental clause can safely be paired with a reviewed agency
+  // contact without making the private-asset classifier absorb that field.
+  if (isCompleteReviewedPublicOrganizationContactQuestion(text)) return false;
+  // A complete environmental-impact question about a private asset in an
+  // exact reviewed county asks about ecology, not the asset holder. An
+  // optional second clause is accepted only when it is itself one complete,
+  // reviewed public-organization contact question.
+  if (isCompleteReviewedCountyPrivateAssetEcologyQuestion(text)) return false;
+  // Aggregate publication wording has the same reviewed-county identity
+  // shape as a person name after punctuation tokenization. Admit only the
+  // fully consumed, field-free English forms after negated contacts have been
+  // removed above.
+  if (isCompleteReviewedCountyPrivateAssetAggregateQuestion(text)) return false;
   // Do not fuse two independently public environmental/contact clauses into
   // a person-shaped contact request. The lightweight composition grammar is
   // only a candidate allowlist: every clause must also clear the complete
@@ -4026,7 +4282,9 @@ export function containsPrivatePersonLookup(value, {
   // Postal-field phrases are sensitive predicates, not identity material.
   // Removing the complete phrase prevents words such as "details" from
   // synthesizing a person beside a legitimate public organization or policy.
-  const identityText = textWithoutKnownOrganizations.replace(PRIVATE_POSTAL_FIELD_PATTERN, " ");
+  const identityText = removeExplicitHyphenatedReviewedCountyNames(
+    textWithoutKnownOrganizations.replace(PRIVATE_POSTAL_FIELD_PATTERN, " "),
+  );
   const rawIdentityFragments = (identityText.match(/[\p{L}\p{N}]+/gu) || [])
     .map((word) => word.toLocaleLowerCase("et"))
     .filter(Boolean);

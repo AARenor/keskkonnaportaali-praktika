@@ -75,6 +75,7 @@ import {
 } from "../server/pipeline.mjs";
 import { cadastreSourceDocuments, composeCadastreAnswer } from "../server/cadastre.mjs";
 import {
+  assessEvidence,
   assessSearchQuery,
   composeWasteFacilitiesNavigationResponse,
   composeScopeResponse,
@@ -144,6 +145,7 @@ import {
   deduplicateResults,
   evidenceDocumentsFromListing,
   rankPublicSearchCandidates,
+  rankSearchCandidates,
 } from "../server/retrieval.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
 import { relationshipClaimHasPassageWitness } from "../server/proposition-grounding.mjs";
@@ -4404,6 +4406,36 @@ test("the reviewed KOTKAS route explains how to check status without inventing a
   const visible = publicResponse(draft).sources[0];
   assert.equal(visible.url, draft.sources[0].url);
   assert.equal(visible.actionUrl, draft.sources[0].actionUrl);
+});
+
+test("the reviewed protected-area guide answers the Natura construction query with a visible official citation", async () => {
+  const query = "Natura 2000 piirangud ehitamisel";
+  const url = "https://keskkonnaamet.ee/elusloodus-looduskaitse/tegevused-kaitstavatel-aladel/planeerimine-ja-ehitamine";
+  const ranked = rankSearchCandidates(query, officialServiceCatalogueDocuments());
+  assert.equal(ranked[0]?.id, "protected-area-construction");
+  const quality = assessEvidence(query, ranked.map((document) => ({
+    ...document,
+    score: document._ranking.score,
+  })));
+  assert.equal(quality.strong, true);
+  assert.equal(quality.directDocumentId, "protected-area-construction");
+
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    signal: new AbortController().signal,
+    searchResults: { total: ranked.length, items: ranked },
+  });
+  assert.equal(draft.evidence.kind, "ranked-search-results");
+  assert.deepEqual(draft.answer.introCitations, [1]);
+  assert.match(draft.answer.intro, /Natura/iu);
+  assert.match(draft.answer.intro, /ehitamise/iu);
+  assert.match(draft.answer.intro, /piirangu/iu);
+  assert.equal(draft.sources[0].id, "protected-area-construction");
+  assert.equal(draft.sources[0].url, url);
+
+  const visible = publicResponse(draft);
+  assert.deepEqual(visible.answer.introCitations, [1]);
+  assert.equal(visible.sources[0].url, url);
 });
 
 test("the reviewed restoration guide answers only the general duty, not a named quarry status", async () => {

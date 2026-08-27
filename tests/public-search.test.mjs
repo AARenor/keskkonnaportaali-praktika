@@ -244,6 +244,10 @@ test("national ownership breakdowns stay public while named private-asset suffix
     "How much forest is in Estonia and how is it measured for her property?",
     "How much forest is in Estonia and how is it measured for their forest parcel?",
     "Kui palju metsa on Eestis Jaan Tamme maal ja kuidas seda mõõdetakse?",
+    "Jaan Tamm metsamaa pindala",
+    "Jaan-Tamme metsamaa pindala",
+    "Jaan-Tamme eramets",
+    "Jaan Tamm metsamaa pindala Ida-Virus",
     "Forest area in Estonia by ownership / John Smith's parcel",
     "Forest area in Estonia by ownership breakdown for Jaan Tamm",
     "Forest area in Estonia by ownership breakdown of jaan tamm",
@@ -430,12 +434,153 @@ test("organization-designator surnames cannot cross possessive forest provider b
     "What is Keskkonnaamet's forest data?",
     "What is RMK's forest data?",
     "What is Tartu city's forest data?",
+    "Lääne-Viru metsamaa pindala",
+    "Ida-Viru metsamaa pindala",
+    "Lääne-Virumaa metsamaa pindala",
+    "Ida-Virumaa metsamaa pindala",
     "Lääne-Viru maakonna metsamaa pindala",
     "Ida-Viru maakonna metsamaa pindala",
   ]) {
     assert.equal(containsPrivatePersonLookup(query), false, query);
     assert.notEqual(assessSearchQuery(query).reason, "personal-data-lookup", query);
     assert.notEqual(minimizePublicProviderQuery(query), "", query);
+    assert.ok(buildDiscoveryQueries(query).length > 0, query);
+    assert.notEqual(contextualRetrievalQuery("mets Eestis", query, []), "", query);
+    assert.doesNotThrow(() => buildLlmRequest({
+      selectedModel: "gpt-5.6-luna",
+      query,
+      evidence: [],
+      singleSource: true,
+    }), query);
+  }
+});
+
+test("Estonian genitive names cannot hide private compound assets behind a public county clause", async () => {
+  const services = officialServiceCatalogueDocuments();
+  const alreadyAborted = new AbortController();
+  alreadyAborted.abort(new DOMException("privacy guard must precede retrieval", "AbortError"));
+  for (const query of [
+    "Jaan Tamme eramets",
+    "jaan tamme eramets",
+    "Jaan Tamme era-mets",
+    "Jaan Tamme erakaev",
+    "Jaan Tamme era-kaev",
+    "Ida-Viru metsamaa pindala; Jaan Tamme eramets",
+    "Lääne-Viru metsamaa pindala, Jaan Tamme era-mets",
+    "Ida-Viru erametsade pindala. Jaan Tamme erakaev",
+    "Ida Viru metsamaa pindala",
+    "Lääne Viru metsamaa pindala",
+    "Ida-Viru eramets omaniku nimi",
+    "Lääne-Viru eramets omaniku nimi",
+    "Ida-Viru eramets haldaja nimi",
+    "Lääne-Viru eramets valdaja nimi",
+    "Ida-Viru eramets kasutaja nimi",
+    "Lääne-Viru eramets loaomaniku nimi",
+    "Ida-Viru eramets rentniku nimi",
+    "Ida-Viru eramets majandaja nimi",
+    "Ida-Viru eramets responsible party name",
+    "Harjumaa eramets rentniku nimi",
+    "Põlvamaa eramets majandaja nimi",
+    "Harjumaa private forest responsible party name",
+    "Ida-Viru eramaa rentniku nimi",
+    "Lääne-Viru erapõllu majandaja nimi",
+    "Harjumaa erahoone vastutaja kontakt",
+    "Põlvamaa erakinnisvara kasutaja telefon",
+    "Ida-Viru eratalu rentniku nimi",
+    "Lääne-Viru erakorter majandaja nimi",
+    "Harjumaa erasuvila vastutaja kontakt",
+    "Põlvamaa erakrunt kasutaja telefon",
+    "Ida-Viru eramets rentniku nimi ilma kontaktita",
+    "Kuidas mõjutab Ida-Viru eramets elurikkust Jaan Tamme hallatuna?",
+    "Kuidas mõjutab Ida-Viru eramets elurikkust Jaan Tamme jaoks",
+    "Näita Ida-Viru erametsa pindala mitte ilma omaniku kontaktita",
+    "Kuva Ida-Viru erametsa andmed mitte ilma omaniku kontaktandmeteta",
+    "Tagasta Ida-Viru erametsa pindala mitte ilma isikliku e-postita",
+    "Show Ida-Viru private forest area not without owner contact details",
+    "Näita Ida-Viru erametsa pindala mitte kunagi ilma omaniku kontaktita",
+    "Näita Ida-Viru erametsa pindala mitte mingil juhul ilma omaniku kontaktita",
+    "Kuva Ida-Viru erametsa andmed, mis ei tohi olla ilma omaniku kontaktita",
+    "Tagasta Ida-Viru erametsa pindala mitte kohe ilma isikliku e-postita",
+    "Show Ida-Viru private forest area never without owner contact details",
+    "Show Ida-Viru private forest area not ever without owner contact details",
+    "Publish Ida-Viru private forest data that must not be without owner contact details",
+    "How does Ida Viru private forest affect biodiversity?",
+    "How does Lääne Viru private forest affect biodiversity?",
+    "How does IDA VIRU private forest affect biodiversity?",
+    "How does IDA Viru private forest affect biodiversity?",
+    "How does Ida VIRU private forest affect biodiversity?",
+    "How does iDa vIrU private forest affect biodiversity?",
+    "How does LÄÄNE VIRU private forest affect biodiversity?",
+    "Kuidas mõjutab Ida Viru eramets elurikkust?",
+    "Kuidas mõjutab IDA VIRU eramets elurikkust?",
+    "Palun selgita Lääne Viru erametsa mõju liigirikkusele",
+    "Ida Viru private forest area without contact details",
+    "Ida-Viru kinnistu elaniku nimi",
+    "Ida-Viru kinnistu elaniku isikukood",
+    "Ida-Viru kinnistu elaniku sünnikuupäev",
+    "Lääne-Viru kinnistu residendi nimi",
+    "Ida-Viru property resident name",
+    "Ida-Viru property resident national ID",
+    "Ida-Viru property resident date of birth",
+    "Ida-Viru kinnistu elaniku eesnimi",
+    "Ida-Viru kinnistu elaniku perekonnanimi",
+    "Ida-Viru kinnistu elaniku täisnimi",
+    "Ida-Viru kinnistu elaniku vanus",
+    "IDA-VIRU ELANIKU EESNIMI KINNISTU",
+    "Ida-Viru property occupant full name",
+    "Ida-Viru resident age property",
+  ]) {
+    assert.equal(containsPrivatePersonLookup(query), true, query);
+    assert.equal(assessSearchQuery(query).reason, "personal-data-lookup", query);
+    assert.equal(minimizePublicProviderQuery(query), "", query);
+    assert.deepEqual(preparePublicProviderQuery(query), {
+      accepted: false,
+      query: "",
+      reason: "blocked-or-unconsumed",
+    }, query);
+    assert.deepEqual(buildDiscoveryQueries(query), [], query);
+    assert.equal(blockedFollowUpAssessment("mets Eestis", query, [])?.reason, "personal-data-lookup", query);
+    assert.equal(contextualRetrievalQuery("mets Eestis", query, []), "", query);
+    assert.equal(selectAnswerEvidence(query, services), null, query);
+    const listing = await prepareRankedSearchResults(query, {
+      page: 1,
+      pageSize: 12,
+      deadlineAt: Date.now() + 5_000,
+      signal: alreadyAborted.signal,
+    });
+    assert.equal(listing.mode, "blocked-before-retrieval", query);
+    assert.equal(listing.total, 0, query);
+    assert.throws(() => buildLlmRequest({
+      selectedModel: "gpt-5.6-luna",
+      query,
+      evidence: [],
+      singleSource: true,
+    }), (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY", query);
+  }
+
+  for (const query of [
+    "Ida-Viru erametsade pindala",
+    "Lääne-Viru erametsade pindala",
+    "Ida-Viru erametsade pindala omanike kaupa",
+    "Millised kohustused kehtivad Ida-Viru erametsa haldajale üldiselt?",
+    "Kuidas mõjutab Ida-Viru eramets elurikkust?",
+    "Palun selgita Ida-Viru erametsa mõju liigirikkusele",
+    "Kuidas mõjutab Ida-Viru eramets elurikkust ja mis on Keskkonnaameti kontakt?",
+    "How does Ida-Viru private forest affect biodiversity?",
+    "How does Ida-Virumaa private forest affect biodiversity?",
+    "Kuidas mõjutab Ida-Virumaa eramets elurikkust?",
+    "How does Ida-Viru private forest affect biodiversity and what is the Environment Board contact?",
+    "Ida-Viru erametsa pindala ilma kontaktita",
+    "Ida-Viru erametsa pindala ilma kontaktandmeteta",
+    "Kuidas avaldada Ida-Viru erametsa pindala ilma isikliku kontaktita?",
+    "Ida-Viru private forest area without contact details",
+    "Ida-Viru private forest area without owner contact details",
+    "How to publish Ida-Viru private forest area without personal contact information?",
+  ]) {
+    assert.equal(containsPrivatePersonLookup(query), false, query);
+    assert.notEqual(assessSearchQuery(query).reason, "personal-data-lookup", query);
+    assert.equal(minimizePublicProviderQuery(query), query, query);
+    assert.equal(preparePublicProviderQuery(query).accepted, true, query);
     assert.ok(buildDiscoveryQueries(query).length > 0, query);
     assert.notEqual(contextualRetrievalQuery("mets Eestis", query, []), "", query);
     assert.doesNotThrow(() => buildLlmRequest({

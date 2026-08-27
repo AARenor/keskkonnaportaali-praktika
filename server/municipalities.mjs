@@ -299,11 +299,11 @@ const FORESTRY_LOCALITY_METRIC_TOKEN_PATTERN = /^(?:mets\w*|metsasus\w*|metsamaa
 const REVIEWED_ESTONIAN_COUNTY_ALIASES = Object.freeze([
   ["harju maakond", ["harjumaa", "harju maakond", "harju county"]],
   ["hiiu maakond", ["hiiumaa", "hiiu maakond", "hiiu county"]],
-  ["ida viru maakond", ["ida virumaa", "ida viru maakond", "ida viru county"]],
+  ["ida viru maakond", ["ida viru", "ida virumaa", "ida viru maakond", "ida viru county"]],
   ["jogeva maakond", ["jogevamaa", "jogeva maakond", "jogeva county"]],
   ["jarva maakond", ["jarvamaa", "jarva maakond", "jarva county"]],
   ["laane maakond", ["laanemaa", "laane maakond", "laane county"]],
-  ["laane viru maakond", ["laane virumaa", "laane viru maakond", "laane viru county"]],
+  ["laane viru maakond", ["laane viru", "laane virumaa", "laane viru maakond", "laane viru county"]],
   ["polva maakond", ["polvamaa", "polva maakond", "polva county"]],
   ["parnu maakond", ["parnumaa", "parnu maakond", "parnu county"]],
   ["rapla maakond", ["raplamaa", "rapla maakond", "rapla county"]],
@@ -313,6 +313,13 @@ const REVIEWED_ESTONIAN_COUNTY_ALIASES = Object.freeze([
   ["viljandi maakond", ["viljandimaa", "viljandi maakond", "viljandi county"]],
   ["voru maakond", ["vorumaa", "voru maakond", "voru county"]],
 ]);
+
+export function isReviewedEstonianCountyIdentity(value) {
+  const identity = normalizeMunicipalityText(value);
+  return REVIEWED_ESTONIAN_COUNTY_ALIASES.some(([canonical, aliases]) => (
+    identity === canonical || aliases.includes(identity)
+  ));
+}
 
 const FORESTRY_FOREIGN_OR_OTHER_REGION_PATTERN = new RegExp(
   String.raw`\b(?:${[
