@@ -1,11 +1,36 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { composeCadastreAnswer, extractCadastreNumber, normalizeSpatialState } from "../server/cadastre.mjs";
+import {
+  composeCadastreAnswer,
+  extractCadastreNumber,
+  fetchFeatureCollection,
+  normalizeSpatialState,
+} from "../server/cadastre.mjs";
 
 test("cadastre intent accepts only a canonical cadastral number", () => {
   assert.equal(extractCadastreNumber("Vaata 78404:409:0113 metsa"), "78404:409:0113");
   assert.equal(extractCadastreNumber("78404:409:011'3"), null);
   assert.equal(extractCadastreNumber("78404:409:0113x"), null);
+});
+
+test("official WFS retrieval stays on the approved public HTTPS transport", async () => {
+  const url = "https://gsavalik.envir.ee/geoserver/eelis/ows?service=WFS";
+  let observed;
+  const features = await fetchFeatureCollection(url, 1_000, undefined, async (requestedUrl, options) => {
+    observed = { requestedUrl, options };
+    return {
+      status: 200,
+      body: JSON.stringify({ type: "FeatureCollection", features: [] }),
+    };
+  });
+
+  assert.deepEqual(features, []);
+  assert.equal(observed.requestedUrl, url);
+  assert.equal(observed.options.approvedOrigins.has("https://gsavalik.envir.ee"), true);
+  assert.equal(observed.options.maximumBytes, 3_000_000);
+  assert.equal(observed.options.maximumRedirects, 0);
+  assert.match(observed.options.headers.Accept, /application\/geo\+json/u);
+  assert.equal(observed.options.signal instanceof AbortSignal, true);
 });
 
 test("official spatial answer distinguishes found, not found and unavailable states", () => {

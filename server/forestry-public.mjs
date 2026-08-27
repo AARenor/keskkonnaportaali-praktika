@@ -219,6 +219,21 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
 ];
 
 const INTENTS = {
+  "forest-area-method": {
+    serviceDocumentIds: [
+      "forest-stock-stable",
+      "forest-area",
+      "smi",
+      "forest-smi-2025-presentation",
+      "forest-smi-methodology-20-years",
+    ],
+    discoveryQueries: [
+      "Eesti metsamaa pindala SMI",
+      "statistiline metsainventuur valikuuring proovitükid kogu Eesti",
+    ],
+    evidenceGroups: [],
+    minimumSupportingDocuments: 2,
+  },
   "smi-method-comparison": {
     serviceDocumentIds: ["smi", "forest-smi-2025-presentation", "forest-smi-methodology-20-years", "forest-rmk-data-methods"],
     discoveryQueries: ["SMI metoodika valikuuring proovitükid", "SMI statistiline viga lausmetsakorraldus"],
@@ -635,8 +650,20 @@ export function resolvePublicForestryIntent(query) {
     || (municipalityScope && municipalityAreaMetric))) {
     return resolved("municipality-forest-area");
   }
-  if (hasForest && /\b(?:kinnistu|katastriuksus|katastritunnus|maatuk|maauksus)\w*\b/u.test(text)
-    && (hasRegistry || /\b(?:metsaandm\w*|metsaeraldis\w*|puistu\w*|kust\s+lei\w*|andm\w*\s+vaat\w*)\b/u.test(text))) {
+  const asksForestMeasurementMethod = (
+    /\b(?:kuidas|mil\s+viisil)\b[\s\S]{0,70}\b(?:moodet\w*|hinnat\w*|arvutat\w*|inventeerit\w*|metoodik\w*)\b/u.test(text)
+    || /\bhow\b[\s\S]{0,70}\b(?:measur\w*|estimat\w*|calculat\w*|survey\w*|inventor\w*|method\w*)\b/u.test(text)
+    || (mentionsSample && /\b(?:metoodik\w*|moodet\w*|hinnat\w*|kuidas|how)\b/u.test(text))
+  );
+  const hasParcelScope = /\b(?:kinnistu|katastriuksus|katastritunnus|maatuk|maauksus)\w*\b/u.test(text);
+  // Concrete parcel and named source-comparison requests are narrower than
+  // the national amount-plus-method composite. Resolve them first so an area
+  // phrase cannot substitute country-wide SMI evidence for the requested
+  // registry or property evidence.
+  if (hasForest && hasParcelScope
+    && (hasRegistry
+      || municipalityAreaMetric
+      || /\b(?:metsaandm\w*|metsaeraldis\w*|puistu\w*|kust\s+lei\w*|andm\w*\s+vaat\w*)\b/u.test(text))) {
     return resolved("property-forest-data");
   }
   if ((hasStem(tokens, ["rmk", "riigimets"], true))
@@ -652,6 +679,15 @@ export function resolvePublicForestryIntent(query) {
     && /\b(?:vahe|erinev\w*|vordl\w*|kumb|sama|klap\w*|katt\w*|vastuolu)\b/u.test(text)) {
     return forestDataSourcesIntent();
   }
+  // A national amount-plus-method question has two independently verifiable
+  // parts. Keep it out of the single-number area route so the answer planner
+  // must bind both a current area measurement and a separate SMI method
+  // witness. Named local and regional scopes retain their query-bound routes.
+  if (hasForest
+    && municipalityAreaMetric
+    && asksForestMeasurementMethod
+    && !municipalityScope
+    && !regionalScope) return resolved("forest-area-method");
   if (mentionsSample
     && /\b(?:suurem|rohkem|mitu|palju|arv|suurus|taps\w*|vea\w*|piis\w*|esindus\w*)\b/u.test(text)) {
     return resolved("sample-size-and-precision");

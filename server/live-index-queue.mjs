@@ -77,7 +77,10 @@ export function createOfficialDiscoveryIndexQueue({
   const inflight = new Set();
   const successes = new Map();
   const retries = new Map();
-  const acceptedNewKeys = new Map();
+  // This is an event ledger, not a URL set. A URL admitted again after its
+  // success/retry suppression expires starts another database transaction and
+  // must therefore consume another rolling process and client budget slot.
+  const acceptedEvents = new Map();
   const clientAcceptedCounts = new Map();
   const activeControllers = new Set();
   const idleWaiters = new Set();
@@ -86,11 +89,12 @@ export function createOfficialDiscoveryIndexQueue({
   let closed = false;
   let drainScheduled = false;
   let lastMaintenanceAt = 0;
+  let acceptedEventSequence = 0;
 
   // A URL that was already accepted must remain in the success/retry history
   // for the entire corresponding suppression period. Otherwise accepting more
   // than an unrelated fixed history size evicts early keys while they are
-  // still counted in acceptedNewKeys, allowing repeated writes without
+  // still counted in acceptedEvents, allowing repeated writes without
   // consuming another acceptance slot.
   const suppressionHistoryLimit = acceptedWindowLimit;
 
@@ -107,17 +111,18 @@ export function createOfficialDiscoveryIndexQueue({
   }
 
   function pruneAccepted(currentTime) {
-    for (const [key, entry] of acceptedNewKeys) {
+    for (const [eventId, entry] of acceptedEvents) {
       if (currentTime - entry.acceptedAt < acceptanceWindow) continue;
-      acceptedNewKeys.delete(key);
+      acceptedEvents.delete(eventId);
       const nextCount = Math.max(0, Number(clientAcceptedCounts.get(entry.clientScope) || 0) - 1);
       if (nextCount) clientAcceptedCounts.set(entry.clientScope, nextCount);
       else clientAcceptedCounts.delete(entry.clientScope);
     }
   }
 
-  function recordAcceptedKey(key, clientScope, currentTime) {
-    acceptedNewKeys.set(key, { acceptedAt: currentTime, clientScope });
+  function recordAcceptedEvent(clientScope, currentTime) {
+    acceptedEventSequence += 1;
+    acceptedEvents.set(acceptedEventSequence, { acceptedAt: currentTime, clientScope });
     clientAcceptedCounts.set(clientScope, Number(clientAcceptedCounts.get(clientScope) || 0) + 1);
   }
 
@@ -236,16 +241,15 @@ export function createOfficialDiscoveryIndexQueue({
         dropped += 1;
         continue;
       }
-      const isNewWithinWindow = !acceptedNewKeys.has(key);
-      if (isNewWithinWindow && (
-        acceptedNewKeys.size >= acceptedWindowLimit
+      if (
+        acceptedEvents.size >= acceptedWindowLimit
         || Number(clientAcceptedCounts.get(clientScope) || 0) >= acceptedClientLimit
-      )) {
+      ) {
         dropped += 1;
         continue;
       }
       pending.set(key, { kind: "document", document });
-      if (isNewWithinWindow) recordAcceptedKey(key, clientScope, currentTime);
+      recordAcceptedEvent(clientScope, currentTime);
       accepted += 1;
     }
     if (accepted) scheduleDrain();
@@ -268,7 +272,7 @@ export function createOfficialDiscoveryIndexQueue({
     pending.clear();
     successes.clear();
     retries.clear();
-    acceptedNewKeys.clear();
+    acceptedEvents.clear();
     clientAcceptedCounts.clear();
     const error = abortError(reason);
     for (const controller of activeControllers) {
@@ -294,7 +298,7 @@ export function createOfficialDiscoveryIndexQueue({
       inflight: inflight.size,
       recent: successes.size,
       retries: retries.size,
-      acceptedInWindow: acceptedNewKeys.size,
+      acceptedInWindow: acceptedEvents.size,
       clientsInWindow: clientAcceptedCounts.size,
       maximumPending: pendingLimit,
       acceptanceWindowMs: acceptanceWindow,

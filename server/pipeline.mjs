@@ -46,10 +46,11 @@ import {
   textHasQueryRoot,
 } from "./search.mjs";
 import { sourceCanSupportPublicCitation } from "./source-registry.mjs";
+import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs";
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v45-whole-municipality-privacy";
+export const SEARCH_RESPONSE_REVISION = "answer-v50-citation-rebinding";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
@@ -355,27 +356,31 @@ function composeForestDataSourcesFallback(query, plannedEvidence, sources = [], 
 
   const comparisonCitations = uniqueCitations([comparison]);
   const smiCitations = uniqueCitations([smiMethod]);
-  const registryCitations = uniqueCitations([registry]);
+  // The comparison source contains the intact subject/object sentence for the
+  // summarized registry role; the registry catalogue independently identifies
+  // the live datasets. Cite both instead of assembling the claim from separate
+  // passages under a single catalogue citation.
+  const registryCitations = uniqueCitations([comparison, registry]);
   const introCitations = uniqueCitations([comparison, smiMethod, registry]);
   return {
     eyebrow: "Allikapõhine kokkuvõte",
     title: String(previousAnswer.title || query).trim().slice(0, 180),
-    intro: "Metsaandmed on mitmel viisil kogutavate metsandusandmete katusmõiste; SMI ei ole metsaandmete sünonüüm. SMI on üleriigiline proovitükkidel põhinev statistiline valikuuring Eesti metsade seisundi ja muutuste hindamiseks, mitte üksiku kinnistu inventeerimisandmete esitamiseks. Metsaregister koondab kinnistu- ja metsaeraldisepõhiseid inventeerimisandmeid ning metsateatisi. Nende arvud ei pea kattuma, sest allikatel on erinev eesmärk, katvus ja ajaseis; enne võrdlemist tuleb ühtlustada definitsioon, andmeaasta ja üldkogum.",
+    intro: "Metsaandmed on mitmel viisil kogutavate metsandusandmete katusmõiste; SMI ei ole metsaandmete sünonüüm. SMI on üleriigiliste proovitükkidega valikuuring, mille põhjal koostatakse statistiliste meetoditega kogu Eesti metsade üldistatud hinnang. SMI sobib riigi metsade seisundi ja muutuste hindamiseks, mitte üksiku kinnistu inventeerimisandmete esitamiseks. Metsaregister sisaldab kinnistute metsainventeerimise andmeid ning lisaks metsateatiste, metsakaitseekspertiiside ja metsauuendusekspertiiside andmeid. Registri andmestik sobib kinnistu- ja metsaeraldisepõhiste andmete vaatamiseks. Nende arvud ei pea kattuma, sest allikatel on erinev eesmärk, katvus ja ajaseis; enne võrdlemist tuleb ühtlustada definitsioon, andmeaasta ja üldkogum.",
     introCitations,
     parts: [
       {
         title: "Metsaandmed",
-        text: "Metsaandmed hõlmavad eri kogumisviise ja andmeallikaid; SMI on neist üks, mitte kogu mõiste ega Metsaregistri teine nimi.",
+        text: "Metsaandmed on mitmel viisil kogutavate andmete katusmõiste: SMI ja kinnistute inventeerimisandmeid koondav Metsaregister on eri ametlikud allikad.",
         citations: comparisonCitations,
       },
       {
         title: "SMI roll",
-        text: "SMI annab proovitükkidel põhineva statistilise hinnangu Eesti metsade seisundile ja muutustele ning ei ole üksiku kinnistu inventeerimisvaade.",
+        text: "SMI on üleriigiliste proovitükkidega valikuuring, mille põhjal koostatakse statistiliste meetoditega kogu Eesti metsade üldistatud hinnang.",
         citations: smiCitations,
       },
       {
         title: "Metsaregistri roll",
-        text: "Metsaregister koondab kinnistu- ja metsaeraldisepõhiseid inventeerimisandmeid ning metsateatisi.",
+        text: "Metsaregister sisaldab kinnistute metsainventeerimise andmeid ning lisaks metsateatiste, metsakaitseekspertiiside ja metsauuendusekspertiiside andmeid. Registri andmestik sobib kinnistu- ja metsaeraldisepõhiste andmete vaatamiseks.",
         citations: registryCitations,
       },
     ],
@@ -503,7 +508,23 @@ function answerEvidenceDocuments(documents = [], plannedEvidence, forestBalance)
   ].filter(Boolean))];
   const byId = new Map((documents || []).map((document) => [document.id, document]));
   const selected = ids.map((id) => byId.get(id)).filter(Boolean);
-  return selected.length ? selected : documents;
+  const chosen = selected.length ? selected : documents;
+  if (plannedEvidence.kind !== "forest-area-method" || !plannedEvidence.strong) return chosen;
+  // Limit every downstream consumer—including the optional model and the
+  // visible citation excerpt—to the two passages selected for this composite
+  // question. The cited source may contain stock and harvest figures elsewhere,
+  // but those facts were not requested and cannot enter this answer pack.
+  return chosen.map((document) => {
+    const passages = distinctPassages(plannedEvidence.passagesByDocument?.[document.id] || []);
+    if (!passages.length) return document;
+    const { answer: _answer, ...projected } = document;
+    const evidenceText = passages.join(" ");
+    return {
+      ...projected,
+      summary: evidenceText,
+      content: evidenceText,
+    };
+  });
 }
 
 function boundedEvidenceExcerpt(passages = []) {
@@ -546,12 +567,19 @@ function answerClaims(answer = {}) {
   return [
     {
       text: String(answer.intro || "").trim(),
+      relationshipText: String(answer.intro || "").trim(),
       citations: (answer.introCitations || []).map(Number).filter(Number.isFinite),
     },
-    ...(answer.parts || []).map((part) => ({
-      text: [part.title, part.text].filter(Boolean).join(" ").trim(),
-      citations: (part.citations || []).map(Number).filter(Number.isFinite),
-    })),
+    ...(answer.parts || []).map((part) => {
+      const partText = String(part.text || "").trim();
+      return {
+        text: [part.title, partText].filter(Boolean).join(" ").trim(),
+        // A display heading helps lexical excerpt selection but is not part of
+        // the factual proposition whose entity relationship must be bound.
+        relationshipText: partText,
+        citations: (part.citations || []).map(Number).filter(Number.isFinite),
+      };
+    }),
   ].filter((claim) => claim.text);
 }
 
@@ -574,8 +602,14 @@ function claimWitnessCoverage(claim, witness) {
   };
 }
 
-function claimHasVisibleWitness(claim, witness) {
-  const coverage = claimWitnessCoverage(claim, witness);
+function claimHasVisibleWitness(claim, witness, relationshipClaim = claim) {
+  const passages = (Array.isArray(witness) ? witness : [witness])
+    .flatMap(splitTextPassages)
+    .filter(Boolean);
+  const relationshipWitness = relationshipClaimHasPassageWitness(relationshipClaim, passages);
+  if (relationshipWitness === false) return false;
+  const joinedWitness = passages.join(" ");
+  const coverage = claimWitnessCoverage(claim, joinedWitness);
   if (coverage.matchedNumbers.length !== coverage.expectedNumbers.length) return false;
   if (!coverage.roots.length) return true;
   const requiredRoots = coverage.roots.length <= 2
@@ -584,11 +618,76 @@ function claimHasVisibleWitness(claim, witness) {
   return coverage.matchedRoots.length >= requiredRoots;
 }
 
-function claimCoveringPassages(claim, passages = []) {
+function rebindSupportedCitations(citations, supports, propositionUnits = []) {
+  let retained = [...new Set((citations || []).map(Number).filter((citation) => (
+    Number.isInteger(citation) && citation > 0
+  )))].slice(0, 10);
+  if (!retained.length || !supports(retained)) return [];
+  for (const citation of [...retained]) {
+    if (supports([citation])) continue;
+    const without = retained.filter((candidate) => candidate !== citation);
+    if (!without.length || !supports(without)) continue;
+    const uniquelySupportsProposition = propositionUnits.some((unit) => (
+      supports([citation], unit) && !supports(without, unit)
+    ));
+    if (!uniquelySupportsProposition) retained = without;
+  }
+  return retained.length && supports(retained) ? retained : [];
+}
+
+function visibleClaimCitations(claim, sourcesByCitation) {
+  const supportCache = new Map();
+  const supports = (citations, proposition = claim) => {
+    const cacheKey = `${citations.join(",")}:${proposition.text}:${proposition.relationshipText}`;
+    if (supportCache.has(cacheKey)) return supportCache.get(cacheKey);
+    const witnesses = citations
+      .map((citation) => sourcesByCitation.get(citation)?.evidenceExcerpt || "")
+      .filter(Boolean);
+    const supported = witnesses.length > 0
+      && claimHasVisibleWitness(proposition.text, witnesses, proposition.relationshipText);
+    supportCache.set(cacheKey, supported);
+    return supported;
+  };
+  const propositionUnits = splitTextPassages(claim.propositionText || claim.relationshipText || claim.text)
+    .filter(hasCompleteSentenceEnding)
+    .map((text) => ({ text, relationshipText: text }));
+  return rebindSupportedCitations(claim.citations, supports, propositionUnits);
+}
+
+function rebindAnswerCitationsToVisibleWitnesses(draft = {}) {
+  const sourcesByCitation = new Map((draft.sources || []).map((source) => [Number(source.citation), source]));
+  const introText = String(draft.answer?.intro || "").trim();
+  const introCitations = visibleClaimCitations({
+    text: introText,
+    relationshipText: introText,
+    propositionText: introText,
+    citations: (draft.answer?.introCitations || []).map(Number).filter(Number.isFinite),
+  }, sourcesByCitation);
+  const parts = (draft.answer?.parts || []).map((part) => {
+    const partText = String(part.text || "").trim();
+    const citations = visibleClaimCitations({
+      text: [part.title, partText].filter(Boolean).join(" ").trim(),
+      relationshipText: partText,
+      propositionText: partText,
+      citations: (part.citations || []).map(Number).filter(Number.isFinite),
+    }, sourcesByCitation);
+    return { ...part, citations };
+  });
+  return {
+    ...draft,
+    answer: {
+      ...draft.answer,
+      introCitations,
+      parts,
+    },
+  };
+}
+
+function claimCoveringPassages(claim, passages = [], relationshipClaim = claim) {
   const remaining = passages.map((passage, index) => ({ passage, index }));
   const selected = [];
   let witness = "";
-  while (remaining.length && selected.length < 8 && !claimHasVisibleWitness(claim, witness)) {
+  while (remaining.length && selected.length < 8 && !claimHasVisibleWitness(claim, witness, relationshipClaim)) {
     const before = claimWitnessCoverage(claim, witness);
     const ranked = remaining.map((candidate) => {
       const combined = [witness, candidate.passage].filter(Boolean).join(" ");
@@ -613,31 +712,34 @@ function claimCoveringPassages(claim, passages = []) {
 function answerClaimsHaveVisibleWitnesses(draft = {}) {
   const sourcesByCitation = new Map((draft.sources || []).map((source) => [Number(source.citation), source]));
   return answerClaims(draft.answer).every((claim) => {
-    const witness = claim.citations
+    const witnesses = claim.citations
       .map((citation) => sourcesByCitation.get(citation)?.evidenceExcerpt || "")
-      .filter(Boolean)
-      .join(" ");
-    return Boolean(witness) && claimHasVisibleWitness(claim.text, witness);
+      .filter(Boolean);
+    return witnesses.length > 0
+      && claimHasVisibleWitness(claim.text, witnesses, claim.relationshipText);
   });
 }
 
 function claimHasVisibleWitnessInDraft(draft, claim) {
   if (!claim?.text || !claim.citations?.length) return false;
   const wanted = new Set(claim.citations.map(Number));
-  const witness = (draft.sources || [])
+  const witnesses = (draft.sources || [])
     .filter((source) => wanted.has(Number(source.citation)))
     .map((source) => source.evidenceExcerpt || "")
-    .filter(Boolean)
-    .join(" ");
-  return Boolean(witness) && claimHasVisibleWitness(claim.text, witness);
+    .filter(Boolean);
+  return witnesses.length > 0
+    && claimHasVisibleWitness(claim.text, witnesses, claim.relationshipText || claim.text);
 }
 
 function finalizeVisibleAnswerWitnesses(draft, query, plannedEvidence) {
-  const attached = attachEvidenceExcerpts(draft, query, plannedEvidence);
+  const attached = rebindAnswerCitationsToVisibleWitnesses(
+    attachEvidenceExcerpts(draft, query, plannedEvidence),
+  );
   if (answerClaimsHaveVisibleWitnesses(attached)) return attached;
 
   const introClaim = {
     text: String(attached.answer?.intro || "").trim(),
+    relationshipText: String(attached.answer?.intro || "").trim(),
     citations: (attached.answer?.introCitations || []).map(Number).filter(Number.isFinite),
   };
   if (!claimHasVisibleWitnessInDraft(attached, introClaim)) {
@@ -661,6 +763,7 @@ function finalizeVisibleAnswerWitnesses(draft, query, plannedEvidence) {
 
   const parts = (attached.answer?.parts || []).filter((part) => claimHasVisibleWitnessInDraft(attached, {
     text: [part.title, part.text].filter(Boolean).join(" ").trim(),
+    relationshipText: String(part.text || "").trim(),
     citations: (part.citations || []).map(Number).filter(Number.isFinite),
   }));
   const reduced = {
@@ -685,7 +788,7 @@ function attachEvidenceExcerpts(draft, _query, plannedEvidence) {
       const sourcePassages = distinctPassages([...plannedPassages, ...safeSourcePassages(source)]);
       const sourceClaims = claims.filter((claim) => claim.citations.includes(Number(source.citation)));
       const claimPassages = distinctPassages(sourceClaims.flatMap((claim) => (
-        claimCoveringPassages(claim.text, sourcePassages)
+        claimCoveringPassages(claim.text, sourcePassages, claim.relationshipText)
       )));
       // The deterministic planner already returns passages in explanatory
       // order. Preserve that order for its accepted draft; the claim-ranked
@@ -836,6 +939,23 @@ export function requestCanStillPersist({ signal, deadlineAt, now = Date.now() } 
   return !signal?.aborted && (!Number.isFinite(deadlineAt) || now < deadlineAt);
 }
 
+export function retainSearchPersistence(operation, onBackgroundCleanup) {
+  const cleanup = Promise.resolve(operation).catch(() => undefined);
+  if (typeof onBackgroundCleanup === "function") {
+    try {
+      // Registration is synchronous: the HTTP owner retains its search slot
+      // before this operation can return a response. The response itself does
+      // not wait for optional telemetry/cache persistence.
+      onBackgroundCleanup(cleanup);
+      return Promise.resolve();
+    } catch {
+      // A caller without a working lease must wait for the bounded operation;
+      // optional database work is never allowed to become detached.
+    }
+  }
+  return cleanup;
+}
+
 export function shouldGenerateGroundedAnswer(draft) {
   return Boolean(
     draft?.sources?.length
@@ -904,8 +1024,35 @@ export async function createPortalDraft(query, {
       answerIntent: plannedEvidence.kind,
       supportingDocumentIds: plannedEvidence.supportingDocumentIds,
     }
+    : plannedEvidence?.kind === "forest-area-method"
+      ? {
+        ...conventionalQuality,
+        strong: false,
+        directDocumentId: null,
+        answerIntent: plannedEvidence.kind,
+        supportingDocumentIds: [],
+      }
     : conventionalQuality;
-  const answerDocuments = answerEvidenceDocuments(reranked, plannedEvidence, forestBalance);
+  const allPlannedAnswerDocuments = answerEvidenceDocuments(reranked, plannedEvidence, forestBalance);
+  const compositeRequiredIds = plannedEvidence?.kind === "forest-area-method"
+    && !plannedEvidence.strong
+    ? new Set(forestryIntentServiceDocumentIds(retrievalQuery))
+    : null;
+  const plannedAnswerDocuments = compositeRequiredIds
+    ? allPlannedAnswerDocuments.filter((document) => compositeRequiredIds.has(document?.id))
+    : allPlannedAnswerDocuments;
+  const compositeNavigationDocuments = plannedEvidence?.kind === "forest-area-method"
+    && !plannedEvidence.strong
+    ? (listing?.items || []).filter((document) => document?.id === "forest-overview").slice(0, 1)
+    : [];
+  const seenAnswerDocuments = new Set();
+  const answerDocuments = [...compositeNavigationDocuments, ...plannedAnswerDocuments]
+    .filter((document) => {
+      const key = canonicalResultUrl(document?.url) || document?.id;
+      if (!key || seenAnswerDocuments.has(key)) return false;
+      seenAnswerDocuments.add(key);
+      return true;
+    });
   const direct = quality.strong
     ? answerDocuments.find((document) => document.id === quality.directDocumentId)
     : null;
@@ -916,6 +1063,8 @@ export async function createPortalDraft(query, {
     answerable: Boolean(forestBalance) || quality.strong,
     clarification: forestBalance || quality.strong
       ? null
+      : plannedEvidence?.reason === "national-area-method-evidence-required"
+        ? "Leitud allikad ei kata korraga Eesti metsamaa pindala ja selle statistilist mõõtmismeetodit. Seetõttu ei esita ma osalist arvvastust; ava ametlik ülevaade või proovi uuesti."
       : "Leitud allikad ei kata küsimust piisavalt täpselt. Lisa konkreetne objekt, näitaja, piirkond või aasta.",
     evidenceKind: forestBalance
       ? "structured-forest-balance"
@@ -928,6 +1077,12 @@ export async function createPortalDraft(query, {
     draft.answer = forestBalance.answer;
     draft.related = forestBalance.related;
     draft.evidence.answerable = true;
+  }
+  if (plannedEvidence?.reason === "national-area-method-evidence-required") {
+    draft.answer.eyebrow = "Mõõtmismeetodi tõend puudub";
+    draft.answer.intro = "Leitud ametlikud allikad ei kata korraga nii Eesti metsamaa pindala kui ka seda, kuidas riiklik hinnang saadakse. Ma ei esita ainult üht poolt vastusest ega lisa kontrollimata metoodikat.";
+    draft.answer.introCitations = [];
+    draft.answer.parts = [];
   }
   const forestDataSourcesFallback = !forestBalance
     ? composeForestDataSourcesFallback(query, plannedEvidence, draft.sources, draft.answer)
@@ -1051,6 +1206,7 @@ async function searchWithinBudget(cleanQuery, {
   llmClientKey = "unknown",
   useCache = true,
   onDraft,
+  onBackgroundCleanup,
   generateAnswer = generateGroundedAnswer,
 }) {
   throwIfRequestAborted(signal);
@@ -1181,10 +1337,10 @@ async function searchWithinBudget(cleanQuery, {
   throwIfRequestAborted(signal);
 
   if (llmResult.answer) {
-    const modelDraft = attachEvidenceExcerpts({
+    const modelDraft = rebindAnswerCitationsToVisibleWitnesses(attachEvidenceExcerpts({
       ...structuredClone(deterministicDraft),
       answer: structuredClone(llmResult.answer),
-    }, retrievalQuery, null);
+    }, retrievalQuery, null));
     // Validation proves that a model claim is grounded in the internal
     // evidence pack. This second boundary proves that the same claim is also
     // supported by the bounded excerpt a reader can actually inspect.
@@ -1219,7 +1375,7 @@ async function searchWithinBudget(cleanQuery, {
   ].includes(evidenceKind) ? 5 : 20;
 
   if (requestCanStillPersist({ signal, deadlineAt })) {
-    void recordSearch({
+    await retainSearchPersistence(recordSearch({
       query: cleanQuery,
       response,
       cacheValue: draft,
@@ -1232,7 +1388,7 @@ async function searchWithinBudget(cleanQuery, {
       cacheResponse: listingBackedCache && cacheResponse,
       signal,
       deadlineAt,
-    }).catch(() => undefined);
+    }), onBackgroundCleanup);
   }
   return response;
 }
@@ -1409,7 +1565,7 @@ export async function searchEnvironmentLive(query, options = {}) {
   const startedAt = Number(options.startedAt) || Date.now();
   const queryInput = canonicalizePublicSearchQuery(query);
   if (queryInput.reason === "empty") return composeSearchResponse("", [], { limit: 3, total: 0 });
-  const directAssessment = assessSearchQuery(queryInput.ok ? queryInput.query : query);
+  const directAssessment = assessSearchQuery(query);
   if (!queryInput.ok) {
     return publicResponse(composeScopeResponse(queryInput.ok ? queryInput.query : "", directAssessment), { now: startedAt });
   }
@@ -1473,6 +1629,7 @@ export async function searchEnvironmentLive(query, options = {}) {
     llmClientKey: options.llmClientKey || "unknown",
     useCache: options.useCache !== false,
     onDraft: captureGroundedDraft,
+    onBackgroundCleanup: options.onBackgroundCleanup,
     generateAnswer: typeof options.generateAnswer === "function"
       ? options.generateAnswer
       : generateGroundedAnswer,

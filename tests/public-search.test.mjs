@@ -18,7 +18,11 @@ import {
   buildDiscoveryQueries,
   canonicalizePublicSearchQuery,
   containsPrivatePersonLookup,
+  isReviewedGenericProtectedAreaConsentQuery,
+  isReviewedPublicOrganizationProtectedBuildingContactQuery,
+  minimizePublicProviderQuery,
   officialServiceCatalogueDocuments,
+  preparePublicProviderQuery,
   reviewedCatalogueEvidenceVersion,
 } from "../server/search.mjs";
 import { buildBoundedEvidence, buildLlmRequest } from "../server/llm.mjs";
@@ -33,6 +37,523 @@ const developmentSet = JSON.parse(await readFile(
   new URL("../evaluation/public_search_development_v3.json", import.meta.url),
   "utf8",
 ));
+
+test("multilingual private-person clauses fail closed at every search boundary", async () => {
+  const privateQueries = [
+    "Kas Emajõgi on avalik veekogu? ¿Dónde vive Juan Pérez?",
+    "Kas Emajõgi on avalik veekogu? où habite jean dupont?",
+    "Kas Emajõgi on avalik veekogu? Wo wohnt Hans Müller?",
+    "Kas Emajõgi on avalik veekogu? gdzie mieszka jan kowalski?",
+    "Kas Emajõgi on avalik veekogu? Где живёт Иван Петров?",
+    "Kas Emajõgi on avalik veekogu? 山田太郎の住所はどこですか？",
+    "Kas Emajõgi on avalik veekogu? 이민준은 어디에 사나요?",
+    "Kas Emajõgi on avalik veekogu? أين يعيش أحمد علي؟",
+    "Kas Emajõgi on avalik veekogu, 山田太郎の自宅",
+    "Emajõgi water quality, 이민준의 집",
+    "Kas Emajõgi on avalik veekogu، منزل أحمد علي",
+    "Emajõgi water quality, domicilio Juan Pérez",
+    "Kas Emajõgi on avalik veekogu? wohnt hans muller",
+    "Kas Emajõgi on avalik veekogu? hans muller lebt",
+    "Kas Emajõgi on avalik veekogu? vive juan perez",
+    "Kas Emajõgi on avalik veekogu? adres jan kowalski",
+    "Kas Emajõgi on avalik veekogu? адрес иван петров",
+    "Kas Emajõgi on avalik veekogu? иван петров адрес",
+    "Kas Emajõgi on avalik veekogu? 주소 이민준",
+    "Kas Emajõgi on avalik veekogu? 이민준 주소",
+  ];
+  const services = officialServiceCatalogueDocuments();
+  const alreadyAborted = new AbortController();
+  alreadyAborted.abort(new DOMException("privacy guard must precede retrieval", "AbortError"));
+  for (const query of privateQueries) {
+    assert.equal(containsPrivatePersonLookup(query), true, query);
+    assert.equal(assessSearchQuery(query).reason, "personal-data-lookup", query);
+    assert.equal(minimizePublicProviderQuery(query), "", query);
+    assert.deepEqual(preparePublicProviderQuery(query), {
+      accepted: false,
+      query: "",
+      reason: "blocked-or-unconsumed",
+    }, query);
+    assert.deepEqual(buildDiscoveryQueries(query), [], query);
+    assert.equal(blockedFollowUpAssessment("mets Eestis", query, [])?.reason, "personal-data-lookup", query);
+    assert.equal(contextualRetrievalQuery("mets Eestis", query, []), "", query);
+    assert.equal(selectAnswerEvidence(query, services), null, query);
+    const listing = await prepareRankedSearchResults(query, {
+      page: 1,
+      pageSize: 12,
+      deadlineAt: Date.now() + 5_000,
+      signal: alreadyAborted.signal,
+    });
+    assert.equal(listing.mode, "blocked-before-retrieval", query);
+    assert.equal(listing.total, 0, query);
+    assert.throws(() => buildLlmRequest({
+      selectedModel: "gpt-5.6-luna",
+      query,
+      evidence: [],
+      singleSource: true,
+    }), (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY", query);
+  }
+
+  for (const query of [
+    "Kas Emajõgi on avalik veekogu?",
+    "How does Emajõgi water quality affect biodiversity?",
+    "Environment Board general contact phone",
+    "Keskkonnaameti avalik kontakt kaitsealal vana maja ehitamise loa kohta?",
+    "Kas Emajõgi on avalik veekogu? Environment Board general contact phone",
+    "Kas Emajõgi on avalik veekogu? European Environment Agency postal address",
+    "Kas Emajõgi on avalik veekogu? Keskkonnaameti üldkontakt",
+  ]) {
+    assert.equal(containsPrivatePersonLookup(query), false, query);
+    assert.notEqual(minimizePublicProviderQuery(query), "", query);
+  }
+});
+
+test("reviewed benign person attribution is removed at discovery and model boundaries", () => {
+  const cases = [
+    [
+      "Jaan Tamm küsib üldist nõu. Kelle luba on vaja et kaitsealal maja ehitada?",
+      "Kelle luba on vaja et kaitsealal maja ehitada",
+    ],
+    [
+      "Jaan Tamm küsib nõu kaitsealal maja ehitamise kohta.",
+      "kaitsealal maja ehitamise kohta",
+    ],
+    [
+      "J. Tamm küsib nõu: kas Lahemaa rahvuspargis võib vana maja ehitada ja kelle nõusolekut on vaja?",
+      "kas Lahemaa rahvuspargis võib vana maja ehitada ja kelle nõusolekut on vaja",
+    ],
+  ];
+  for (const [query, minimized] of cases) {
+    assert.equal(minimizePublicProviderQuery(query), minimized, query);
+    const discovery = buildDiscoveryQueries(query);
+    assert.ok(discovery.length > 0 && discovery.length <= 3, query);
+    assert.doesNotMatch(JSON.stringify(discovery), /Jaan|Tamm/iu, query);
+    const request = buildLlmRequest({
+      selectedModel: "gpt-5.6-luna",
+      query,
+      evidence: [],
+      singleSource: true,
+    });
+    assert.doesNotMatch(JSON.stringify(request.body), /Jaan|Tamm/iu, query);
+    assert.match(JSON.stringify(request.body), /kaitsealal|Lahemaa/iu, query);
+  }
+
+  for (const organization of [
+    "Keskkonnaamet",
+    "Eesti Energia",
+    "Tallinna Vesi",
+    "Tartu Ülikool",
+    "Riigi Teataja",
+    "Environment Board",
+  ]) {
+    const organizationQuery = `${organization} küsib nõu. Kas kaitsealal võib vana maja ehitada ja kelle nõusolekut on vaja?`;
+    assert.equal(minimizePublicProviderQuery(organizationQuery), organizationQuery, organizationQuery);
+    const distinctiveOrganizationTerm = organization.split(/\s+/u).at(-1);
+    assert.match(
+      JSON.stringify(buildDiscoveryQueries(organizationQuery)),
+      new RegExp(distinctiveOrganizationTerm, "iu"),
+      organizationQuery,
+    );
+    const request = buildLlmRequest({
+      selectedModel: "gpt-5.6-luna",
+      query: organizationQuery,
+      evidence: [],
+      singleSource: true,
+    });
+    assert.match(JSON.stringify(request.body), new RegExp(organization, "iu"), organizationQuery);
+  }
+
+  for (const privateQuery of [
+    "Jaan Tamm küsib nõu oma maja kaitsealal ehitamise kohta.",
+    "Jaan Tamm küsib nõu kaitsealal Jüri Kase maja ehitamise kohta.",
+    "Jaan Tamm küsib nõu. Kelle luba on vaja kaitsealal maja ehitada; tema telefon 5551234?",
+  ]) {
+    assert.equal(minimizePublicProviderQuery(privateQuery), "", privateQuery);
+    assert.deepEqual(buildDiscoveryQueries(privateQuery), [], privateQuery);
+    assert.throws(() => buildLlmRequest({
+      selectedModel: "gpt-5.6-luna",
+      query: privateQuery,
+      evidence: [],
+      singleSource: true,
+    }), /private-person|blocked/iu, privateQuery);
+  }
+});
+
+test("multi-word English public organizations remain public at every provider boundary", () => {
+  for (const organization of [
+    "European Environment Agency",
+    "European Forest Service",
+    "European Climate Ministry",
+    "European Environmental Board",
+  ]) {
+    for (const channel of ["general contact phone", "official email", "public mailbox", "environmental office contact"]) {
+      const query = `${organization} ${channel}`;
+      assert.equal(containsPrivatePersonLookup(query), false, query);
+      assert.equal(assessSearchQuery(query).kind, "answerable", query);
+      assert.equal(minimizePublicProviderQuery(query), query, query);
+      assert.ok(buildDiscoveryQueries(query).length > 0, query);
+      const request = buildLlmRequest({
+        selectedModel: "gpt-5.6-luna",
+        query,
+        evidence: [],
+        singleSource: true,
+      });
+      assert.match(JSON.stringify(request.body), new RegExp(organization, "iu"), query);
+    }
+  }
+});
+
+test("national ownership breakdowns stay public while named private-asset suffixes fail closed", () => {
+  const publicQueries = [
+    "How much forest is in Estonia and how is it measured by ownership?",
+    "How much forest is in Estonia and how is it measured according to ownership?",
+    "How much forest is in Estonia and how is it measured by ownership category?",
+    "How much forest is in Estonia and how is it measured across ownership types?",
+    "Forest area in Estonia and how is it measured by ownership?",
+    "Forest area in Estonia and how is it measured according to ownership?",
+    "Forest area in Estonia and how is it measured by ownership category?",
+    "Forest area in Estonia and how is it measured across ownership types?",
+    "Forest area in Estonia and how is it measured by tenure?",
+    "Forest area in Estonia and how is it measured by public ownership?",
+    "Forest area in Estonia by ownership and how is it measured?",
+    "Forest area in Estonia broken down by ownership",
+    "Metsamaa pindala Eestis omanike kaupa",
+    "Kui palju metsa Eestis on omandivormide kaupa ja kuidas seda mõõdetakse?",
+  ];
+  for (const query of publicQueries) {
+    assert.equal(containsPrivatePersonLookup(query), false, query);
+    assert.equal(assessSearchQuery(query).reason, "requested-breakdown-required", query);
+    assert.equal(minimizePublicProviderQuery(query), query, query);
+    assert.ok(buildDiscoveryQueries(query).length > 0, query);
+    assert.doesNotThrow(() => buildLlmRequest({
+      selectedModel: "gpt-5.6-luna",
+      query,
+      evidence: [],
+      singleSource: true,
+    }), query);
+  }
+
+  const privateQueries = [
+    "How much forest is in Estonia and how is it measured for John Smith's property?",
+    "How much forest is in Estonia and how is it measured for John Smith's parcel?",
+    "How much forest is in Estonia and how is it measured on jane doe land?",
+    "How much forest is in Estonia and how is it measured of JOHN SMITH forest parcel?",
+    "How much forest is in Estonia and how is it measured for John O'Connor's property?",
+    "How much forest is in Estonia and how is it measured for Alice's parcel?",
+    "How much forest is in Estonia and how is it measured for John's property?",
+    "How much forest is in Estonia and how is it measured for O'Connor's land?",
+    "How much forest is in Estonia and how is it measured for her property?",
+    "How much forest is in Estonia and how is it measured for their forest parcel?",
+    "Kui palju metsa on Eestis Jaan Tamme maal ja kuidas seda mõõdetakse?",
+    "Forest area in Estonia by ownership / John Smith's parcel",
+    "Forest area in Estonia by ownership breakdown for Jaan Tamm",
+    "Forest area in Estonia by ownership breakdown of jaan tamm",
+    "Forest area in Estonia by ownership, Jaan Tamm",
+    "Forest area in Estonia by ownership category for Jaan Tamm",
+  ];
+  for (const query of privateQueries) {
+    assert.equal(containsPrivatePersonLookup(query), true, query);
+    assert.equal(assessSearchQuery(query).reason, "personal-data-lookup", query);
+    assert.equal(minimizePublicProviderQuery(query), "", query);
+    assert.deepEqual(buildDiscoveryQueries(query), [], query);
+    assert.throws(() => buildLlmRequest({
+      selectedModel: "gpt-5.6-luna",
+      query,
+      evidence: [],
+      singleSource: true,
+    }), (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY", query);
+  }
+
+  for (const query of [
+    "How much forest is in Estonia and how is it measured for European Environment Agency property?",
+    "How much forest is in Estonia and how is it measured for Tartu City Government land?",
+    "How much forest is in Estonia and how is it measured for public forest land?",
+    "How much forest is in Estonia and how is it measured for Estonia's forest area?",
+    "How much forest is in Estonia and how is it measured for Tartu's public forest?",
+    "How much forest is in Estonia and how is it measured for Lahemaa's national forest?",
+    "How much forest is in Estonia and how is it measured for RMK's forest land?",
+  ]) {
+    assert.equal(containsPrivatePersonLookup(query), false, query);
+  }
+
+  for (const query of [
+    "How much forest is in Estonia and how is it measured by ownership in Gondor?",
+    "How much forest is in Estonia and how is it measured by ownership in Tartu?",
+    "How much forest is in Estonia and how is it measured by ownership in Estonia?",
+    "How much forest is in Estonia and how is it measured by ownership in 2024?",
+    "How much forest is in Estonia and how is it measured by ownership in acres?",
+  ]) {
+    assert.equal(containsPrivatePersonLookup(query), false, query);
+    assert.notEqual(assessSearchQuery(query).reason, "personal-data-lookup", query);
+    assert.doesNotThrow(() => buildLlmRequest({
+      selectedModel: "gpt-5.6-luna",
+      query,
+      evidence: [],
+      singleSource: true,
+    }), query);
+  }
+});
+
+test("public possessive forest aggregates stay open without admitting person or asset suffixes", () => {
+  for (const query of [
+    "What are Estonia's forest statistics?",
+    "What are Estonia’s forest statistics?",
+    "What is the country's forest area?",
+    "What is the country’s forest area?",
+    "How much is the nation's woodland cover?",
+    "How much is the nation’s woodland cover?",
+    "What is the country's woodland cover in 2024?",
+    "What is Natura's forest habitat?",
+    "Estonia's forest data for 2024",
+    "Natura 2000's forest habitats",
+    "What is the nation's forest area today?",
+    "What is the nation’s forest area today?",
+    "What is Finland's forest area?",
+    "What is Finland’s forest area?",
+    "What is Finland's forest area over the last decade?",
+    "What is Finland's forest area over ten years?",
+    "What is Finland's forest area over a decade?",
+    "What is Finland's forest area for ten years?",
+    "What is Finland's forest area between 2010 and 2020?",
+    "What is Finland's forest area 2010-2020?",
+    "What is Finland's forest area yearly?",
+    "What is Finland's forest area by year?",
+    "What is Finland's forest area for every year?",
+    "What is Finland's forest area for all years?",
+    "What is Finland's forest area over two decades?",
+    "What is Finland's forest area over ten calendar years?",
+    "What is Finland's forest area through the last decade?",
+    "What is Finland's forest area annually from 2010 to 2020?",
+    "What is Finland's forest area by calendar year?",
+    "What is Finland's forest area since 2010?",
+    "What is Finland's forest area in successive years?",
+    "What is Finland's forest area in 2010–2020?",
+    "What is Latvia's forest area over the last decade?",
+    "What is Sweden's forest area over the last decade?",
+    "What is Norway's forest area over the last decade?",
+    "What is Germany's forest area over the last decade?",
+    "What is France's forest area over the last decade?",
+    "What is Canada's forest area over the last decade?",
+    "What is Spain's forest area over the last decade?",
+    "What is Gondor's forest area?",
+    "What are RMK's forest statistics?",
+    "What are Environment Board's forest statistics?",
+    "What is Keskkonnaamet's forest inventory?",
+    "What is Ministry of the Environment's forest policy?",
+    "What is the Ministry of the Environment's forest policy?",
+    "Estonia's forest area and how is it measured?",
+    "What is Estonia’s forest area and how is it measured?",
+    "What is the country's forest area in Estonia and how is it measured?",
+  ]) {
+    assert.equal(containsPrivatePersonLookup(query), false, query);
+    assert.notEqual(assessSearchQuery(query).reason, "personal-data-lookup", query);
+    assert.notEqual(minimizePublicProviderQuery(query), "", query);
+    assert.ok(buildDiscoveryQueries(query).length > 0, query);
+    assert.doesNotThrow(() => buildLlmRequest({
+      selectedModel: "gpt-5.6-luna",
+      query,
+      evidence: [],
+      singleSource: true,
+    }), query);
+  }
+
+  for (const query of [
+    "What is Alice's forest area?",
+    "What is Alice‘s forest area?",
+    "What is Aliceʼs forest area?",
+    "What is Alice′s forest area?",
+    "What is John's woodland cover?",
+    "What is Estonia's forest area for Alice's parcel?",
+    "What are Estonia's forest statistics and John Smith's address?",
+    "What is Natura's forest habitat on Jane Doe's property?",
+  ]) {
+    assert.equal(containsPrivatePersonLookup(query), true, query);
+    assert.equal(assessSearchQuery(query).reason, "personal-data-lookup", query);
+    assert.equal(minimizePublicProviderQuery(query), "", query);
+    assert.deepEqual(buildDiscoveryQueries(query), [], query);
+    assert.throws(() => buildLlmRequest({
+      selectedModel: "gpt-5.6-luna",
+      query,
+      evidence: [],
+      singleSource: true,
+    }), (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY", query);
+  }
+});
+
+test("organization-designator surnames cannot cross possessive forest provider boundaries", async () => {
+  const services = officialServiceCatalogueDocuments();
+  const alreadyAborted = new AbortController();
+  alreadyAborted.abort(new DOMException("privacy guard must precede retrieval", "AbortError"));
+  const ambiguousPeople = [
+    "John Board",
+    "Jane Service",
+    "Alice Trust",
+    "Mark Council",
+    "Nora Team",
+  ];
+
+  for (const person of ambiguousPeople) {
+    for (const apostrophe of ["'", "’"]) {
+      const query = `What is ${person}${apostrophe}s forest data?`;
+      assert.equal(containsPrivatePersonLookup(query), true, query);
+      assert.equal(assessSearchQuery(query).reason, "personal-data-lookup", query);
+      assert.equal(minimizePublicProviderQuery(query), "", query);
+      assert.deepEqual(preparePublicProviderQuery(query), {
+        accepted: false,
+        query: "",
+        reason: "blocked-or-unconsumed",
+      }, query);
+      assert.deepEqual(buildDiscoveryQueries(query), [], query);
+      assert.equal(blockedFollowUpAssessment("mets Eestis", query, [])?.reason, "personal-data-lookup", query);
+      assert.equal(contextualRetrievalQuery("mets Eestis", query, []), "", query);
+      assert.equal(selectAnswerEvidence(query, services), null, query);
+      const listing = await prepareRankedSearchResults(query, {
+        page: 1,
+        pageSize: 12,
+        deadlineAt: Date.now() + 5_000,
+        signal: alreadyAborted.signal,
+      });
+      assert.equal(listing.mode, "blocked-before-retrieval", query);
+      assert.equal(listing.total, 0, query);
+      assert.throws(() => buildLlmRequest({
+        selectedModel: "gpt-5.6-luna",
+        query,
+        evidence: [],
+        singleSource: true,
+      }), (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY", query);
+    }
+  }
+
+  for (const query of [
+    "What is Environment Board's forest data?",
+    "What is Forest Service's forest data?",
+    "What is Ministry of Climate's forest data?",
+    "What is Keskkonnaamet's forest data?",
+    "What is RMK's forest data?",
+    "What is Tartu city's forest data?",
+    "Lääne-Viru maakonna metsamaa pindala",
+    "Ida-Viru maakonna metsamaa pindala",
+  ]) {
+    assert.equal(containsPrivatePersonLookup(query), false, query);
+    assert.notEqual(assessSearchQuery(query).reason, "personal-data-lookup", query);
+    assert.notEqual(minimizePublicProviderQuery(query), "", query);
+    assert.ok(buildDiscoveryQueries(query).length > 0, query);
+    assert.notEqual(contextualRetrievalQuery("mets Eestis", query, []), "", query);
+    assert.doesNotThrow(() => buildLlmRequest({
+      selectedModel: "gpt-5.6-luna",
+      query,
+      evidence: [],
+      singleSource: true,
+    }), query);
+  }
+});
+
+test("public organization contacts cannot mask a separate private-asset clause", () => {
+  for (const query of [
+    "Environment Board official soil-data catalogue contact; What is Alice's forest area?",
+    "Environment Board official soil-data catalogue contact, What is Alice-Marie’s forest area?",
+    "Environment Board official soil-data catalogue contact. What is Alice‘s forest area?",
+    "Keskkonnaagentuuri veeseire avalik kontakt; Näita Mari Musta metsa.",
+    "Keskkonnaameti üldkontakt, Jaan-Tamme eramets",
+    "Keskkonnaameti üldkontakt; Jaan-Tamme era-mets",
+    "Keskkonnaameti üldkontakt. Jüri-Oja eramets",
+    "Keskkonnaameti üldkontakt — Jüri-Oja eramets",
+    "Keskkonnaameti üldkontakt; Jaan/Tamme eramets",
+    "Keskkonnaameti üldkontakt; Jaan_Tamme eramets",
+    "Keskkonnaameti üldkontakt; Jaan.Tamme eramets",
+    "Keskkonnaameti üldkontakt; Jaan·Tamme eramets",
+    "Keskkonnaameti üldkontakt; Jaan-Tamme era_mets",
+    "Keskkonnaameti üldkontakt; Jaan-Tamme era/mets",
+  ]) {
+    assert.equal(containsPrivatePersonLookup(query), true, query);
+    assert.equal(assessSearchQuery(query).reason, "personal-data-lookup", query);
+    assert.equal(minimizePublicProviderQuery(query), "", query);
+    assert.deepEqual(buildDiscoveryQueries(query), [], query);
+    assert.throws(() => buildLlmRequest({
+      selectedModel: "gpt-5.6-luna",
+      query,
+      evidence: [],
+      singleSource: true,
+    }), (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY", query);
+  }
+
+  const publicComposition = "Environment Board official soil-data catalogue contact; What is Estonia's forest area?";
+  assert.equal(containsPrivatePersonLookup(publicComposition), false);
+  assert.notEqual(assessSearchQuery(publicComposition).reason, "personal-data-lookup");
+  assert.notEqual(minimizePublicProviderQuery(publicComposition), "");
+  assert.ok(buildDiscoveryQueries(publicComposition).length > 0);
+  assert.doesNotThrow(() => buildLlmRequest({
+    selectedModel: "gpt-5.6-luna",
+    query: publicComposition,
+    evidence: [],
+    singleSource: true,
+  }));
+
+  for (const regionalComposition of [
+    "Keskkonnaameti üldkontakt; Lääne-Viru maakonna metsamaa pindala",
+    "Keskkonnaameti üldkontakt; Ida-Viru maakonna metsamaa pindala",
+  ]) {
+    assert.equal(containsPrivatePersonLookup(regionalComposition), false, regionalComposition);
+    assert.notEqual(assessSearchQuery(regionalComposition).reason, "personal-data-lookup", regionalComposition);
+    assert.notEqual(minimizePublicProviderQuery(regionalComposition), "", regionalComposition);
+    assert.ok(buildDiscoveryQueries(regionalComposition).length > 0, regionalComposition);
+  }
+});
+
+test("aggregate-prefixed cadastral person associations fail before every provider boundary", () => {
+  for (const query of [
+    "What is Estonia's forest area, cadastral ID 78401:101:1234 for Alice Smith?",
+    "What is Estonia’s forest area, cadastral ID 78401:101:1234 registered to alice smith?",
+    "Forest statistics, cadastral ID 78401:101:1234 owned by JOHN SMITH",
+  ]) {
+    assert.equal(containsPrivatePersonLookup(query), true, query);
+    assert.equal(assessSearchQuery(query).reason, "personal-data-lookup", query);
+    assert.equal(minimizePublicProviderQuery(query), "", query);
+    assert.deepEqual(buildDiscoveryQueries(query), [], query);
+    assert.throws(() => buildLlmRequest({
+      selectedModel: "gpt-5.6-luna",
+      query,
+      evidence: [],
+      singleSource: true,
+    }), (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY", query);
+  }
+
+  const publicOrganizationQuery = "Cadastral ID 78401:101:1234 registered to Environment Board";
+  assert.equal(containsPrivatePersonLookup(publicOrganizationQuery), false);
+});
+
+test("official organization contacts for reviewed national parks stay public", () => {
+  for (const organization of [
+    "European Environment Agency",
+    "Environment Board",
+    "Keskkonnaamet",
+  ]) {
+    for (const place of [
+      "Lahemaa national park",
+      "Matsalu national park",
+      "Lahemaa nature park",
+      "Lahemaa rahvuspark",
+      "Matsalu looduspark",
+    ]) {
+      const query = `${organization} official contact for ${place}`;
+      assert.equal(containsPrivatePersonLookup(query), false, query);
+      assert.notEqual(assessSearchQuery(query).reason, "personal-data-lookup", query);
+      assert.ok(buildDiscoveryQueries(query).length > 0, query);
+      assert.doesNotThrow(() => buildLlmRequest({
+        selectedModel: "gpt-5.6-luna",
+        query,
+        evidence: [],
+        singleSource: true,
+      }), query);
+    }
+  }
+
+  for (const query of [
+    "Environment Board official contact for Lahemaa national park and John Smith email",
+    "Keskkonnaamet official contact for Matsalu national park and Jaan Tamm property",
+  ]) {
+    assert.equal(containsPrivatePersonLookup(query), true, query);
+  }
+});
 
 test("147-query public search development matrix clears every declared gate", () => {
   assert.equal(developmentSet.cases.length, 147);
@@ -129,6 +650,486 @@ test("place- or ecology-shaped personal names cannot bypass contact privacy", ()
     }
     assert.equal(blockedFollowUpAssessment("mets Eestis", query, []), null, query);
     assert.notEqual(contextualRetrievalQuery("mets Eestis", query, []), "", query);
+    assert.doesNotThrow(() => buildLlmRequest({
+      selectedModel: "gpt-5.6-luna",
+      query,
+      evidence: [],
+      singleSource: true,
+    }), query);
+  }
+});
+
+test("generic protected-area consent questions remain public without weakening private-asset boundaries", async () => {
+  const services = officialServiceCatalogueDocuments();
+  const publicQueries = [
+    "Kas kaitsealale võib maja ehitada ja kelle nõusolekut on vaja?",
+    "Kelle luba on vaja Natura alale hoone rajamiseks?",
+    "Kelle kooskõlastus on vajalik kaitsealal maja ehitamiseks?",
+    "Kas kaitsealale võib eramaja ehitada ja kelle kooskõlastust on vaja?",
+    "Kelle luba on vaja kaitsealal vana puidust hoone rajamiseks?",
+    "Kelle luba on vaja kaitsealal kahe korrusega maja ehitamiseks?",
+    "Kelle luba on vaja Natura alal riigi uue hoone rajamiseks?",
+    "Kelle luba on vaja, et kaitsealal maja ehitada?",
+    "Kelle luba on kaitsealal maja ehitamiseks vaja?",
+    "Kas kaitsealal võib maja ehitada; kelle nõusolekut on vaja?",
+    "Palun öelge, kelle luba on vaja Natura alale hoone rajamiseks?",
+    "Kas kaitsealal võib maja ehitada ning kelle luba on vaja?",
+    "Kas kaitsealal võib ehitada maja ja kelle luba on vaja?",
+    "Kelle luba on vaja kaitsealal renoveeritud hoone ehitamiseks?",
+    "Kelle luba on vaja looduskaitsealal maja ehitamiseks?",
+    "Kelle luba on vaja maastikukaitsealal hoone rajamiseks?",
+    "Kelle luba on vaja rahvuspargis maja ehitamiseks?",
+    "Kelle luba on vaja kaitsealal renoveeritavat hoonet ehitada?",
+    "Kelle luba on vaja kaitsealal väikest hoonet ehitada?",
+    "Kelle luba on vaja kaitsealal abihoone ehitamiseks?",
+    "Kelle luba on vaja kaitsealal korterelamu ehitamiseks?",
+    "Kelle luba on vaja kaitsealal saunamaja ehitamiseks?",
+    "Kelle luba on vaja kaitsealal moodulmaja ehitamiseks?",
+    "Kelle luba on vaja kaitsealal palkmaja ehitamiseks?",
+    "Kelle luba on vaja kaitsealal ridaelamu ehitamiseks?",
+    "Kelle luba on vaja kaitsealal üksikelamu ehitamiseks?",
+    "Kelle luba on vaja kaitsealal spordihoone ehitamiseks?",
+    "Kelle luba on vaja kaitsealal õppehoone ehitamiseks?",
+    "Kelle luba on vaja kaitsealal korteri renoveerimiseks?",
+    "Kas Natura alal võib hoone ehitada ja kelle luba on vaja?",
+    "Kas Natura alal võib ehitada abihoone ning kelle luba on vajalik?",
+    "Kas Natura alal võib abihoone ehitada ja kelle nõusolekut on vaja?",
+    "Kas Natura alal võib ehitada saunamaja ning kelle nõusolekut on vajalik?",
+    "Kas Natura alal võib saunamaja ehitada ja kelle kooskõlastust on vaja?",
+    "Kas Natura alal võib ehitada maja ning kelle kooskõlastust on vajalik?",
+    "Kelle nõusolekut on vaja maastikukaitsealal abihoone ehitada?",
+    "Palun kelle nõusolekut on vaja saunamaja maastikukaitsealal ehitada?",
+    "Kelle kooskõlastust on vaja maastikukaitsealal saunamaja ehitada?",
+    "Palun kelle kooskõlastust on vaja maja maastikukaitsealal ehitada?",
+    "Kelle nõusolekut on vaja rahvuspargis saunamaja ehitada?",
+    "Palun kelle nõusolekut on vaja maja rahvuspargis ehitada?",
+    "Kelle kooskõlastust on vaja rahvuspargis maja ehitada?",
+    "Palun kelle kooskõlastust on vaja hoone rahvuspargis ehitada?",
+    "Kelle nõusolekut on vaja püsielupaigas hoone ehitada?",
+    "Palun kelle nõusolekut on vaja abihoone püsielupaigas ehitada?",
+    "Kelle kooskõlastust on vaja püsielupaigas abihoone ehitada?",
+    "Palun kelle kooskõlastust on vaja saunamaja püsielupaigas ehitada?",
+    "Kas kaitsealale võib avaliku asutuse hoone ehitada ja kelle nõusolekut on vaja?",
+    "Kas kaitsealale võib riigiasutuse hoone ehitada ja kelle nõusolekut on vaja?",
+    "Kas kaitsealale võib avaliku kooli hoone ehitada ja kelle nõusolekut on vaja?",
+    "Kas kaitsealale võib Keskkonnaameti hoone ehitada ja kelle nõusolekut on vaja?",
+    "Kelle luba on vaja kaitsealal sauna ehitamiseks?",
+    "Kelle luba on vaja kaitsealal talu renoveerimiseks?",
+    "Kelle luba on vaja kaitsealal küüni ehitamiseks?",
+    "Kelle luba on vaja kaitsealal lauda ehitamiseks?",
+    "Kelle luba on vaja kaitsealal varjualuse ehitamiseks?",
+    "Kas kaitsealale võib linnavalitsuse hoone ehitada ja kelle nõusolekut on vaja?",
+    "Kas kaitsealale võib vallavalitsuse hoone ehitada ja kelle nõusolekut on vaja?",
+    "Kas Lahemaa rahvuspargis võib maja ehitada ja kelle nõusolekut on vaja?",
+    "Kas Vilsandi rahvuspargis võib maja ehitada ja kelle nõusolekut on vaja?",
+    "Kelle luba on vaja kaitsealal energiatõhusa sauna ehitamiseks?",
+    "Kelle luba on vaja kaitsealal kohaliku kogukonnamaja ehitamiseks?",
+    "Kelle luba on vaja kaitsealal ajaloolise talu renoveerimiseks?",
+    "Kelle luba on vaja kaitsealal uue kohaliku väikese puidust ajaloolise maja ehitamiseks?",
+    "Kas Natura alal võib uue väikese puidust avaliku kohaliku ajaloolise maja ehitada ja kelle luba on vaja?",
+    "Kas Natura alal võib uue väikese puidust avaliku kohaliku ajaloolise energiatõhusa kahekorruselise maja ehitada ja kelle luba on vaja?",
+    "Kaitsealal maja ehitada: kelle luba on vaja?",
+    "Kaitsealal maja ehitada, kelle luba on vaja?",
+    "Kaitsealal maja ehitada – kelle luba on vaja?",
+    "Kaitsealal maja ehitada ja kelle luba on vaja?",
+    "Maja ehitada kaitsealal: kelle luba on vaja?",
+    "Kelle luba on vajalik püsielupaigas saunamaja renoveerida?",
+    "Kelle luba on vaja kaitsealal suure maja ehitamiseks?",
+    "Kelle luba on vaja kaitsealal uue maja ehitamiseks?",
+    "Kelle luba on vaja kaitsealal vana maja ehitamiseks?",
+    "Kas kaitsealal võib vana maja ehitada ja kelle nõusolekut on vaja? Jaan Tamm küsib nõu.",
+    "Jaan Tamm küsib nõu. Kas kaitsealal võib vana maja ehitada ja kelle nõusolekut on vaja?",
+    "Kas kaitsealal võib vana maja ehitada ja kelle nõusolekut on vaja; uuringu autor Jaan Tamm.",
+    "Kas kaitsealal võib vana maja ehitada ja kelle nõusolekut on vaja — projekti tutvustas Jaan Tamm.",
+    "Kas kaitsealal võib Eesti Rahva Muuseumi paviljoni ehitada ja kelle nõusolekut on vaja?",
+    "J. Tamm küsib nõu. Kas kaitsealal võib vana maja ehitada ja kelle nõusolekut on vaja?",
+    "Keskkonnaamet küsib nõu. Kas kaitsealal võib vana maja ehitada ja kelle nõusolekut on vaja?",
+    "Keskkonnaameti hoone kaitsealal: kelle nõusolekut on vaja?",
+    "RMK maja rahvuspargis: kelle luba on vaja?",
+    "Jaan Tamm küsib nõu kaitsealal maja ehitamise kohta.",
+    "Jaan Tamm küsis nõu kaitsealal maja ehitamise kohta.",
+    "Jaan Tamm annab nõu kaitsealal maja ehitamise kohta.",
+    "Jaan Tamm kirjutas juhendi kaitsealal maja ehitamise kohta.",
+    "Jaan Tamm kirjutas nõu kaitsealal maja ehitamise kohta.",
+    "Jaan Tamm koostas nõu kaitsealal maja ehitamise kohta.",
+    "Jaan Tamm avaldas nõu kaitsealal maja ehitamise kohta.",
+    "Jaan Tamm tutvustas nõu kaitsealal maja ehitamise kohta.",
+    "Jaan Tamm toimetas nõu kaitsealal maja ehitamise kohta.",
+    "Jaan Tamm selgitas nõu kaitsealal maja ehitamise kohta.",
+    "Jaan Tamm küsib nõu: kas Lahemaa rahvuspargis võib vana maja ehitada ja kelle nõusolekut on vaja?",
+    "J. Tamm küsib nõu: kas Lahemaa rahvuspargis võib vana maja ehitada ja kelle nõusolekut on vaja?",
+    "JAAN TAMM küsib nõu: Kas Lahemaa rahvuspargis võib vana maja ehitada ja kelle nõusolekut on vaja?",
+    "Keskkonnaamet küsib nõu: kas Lahemaa rahvuspargis võib vana maja ehitada ja kelle nõusolekut on vaja?",
+    "Keskkonnaameti avalik kontakt kaitsealal maja ehitamise loa kohta?",
+    "Keskkonnaameti üldkontakt kaitsealal maja ehitamise loa kohta?",
+    "Keskkonnaameti kontakt kaitsealal maja ehitamise loa kohta?",
+    "Keskkonnaameti avalik telefon kaitsealal maja ehitamise loa kohta?",
+    "Keskkonnaameti avalik e-post kaitsealal maja ehitamise loa kohta?",
+    "Keskkonnaameti ametlik postiaadress kaitsealal maja ehitamise kohta?",
+    "RMK üldkontakt rahvuspargis maja ehitamise loa kohta?",
+    "Kliimaministeeriumi avalik kontakt kaitsealal maja ehitamise loa kohta?",
+    "Keskkonnaameti avalik kontakt kaitsealal vana maja ehitamise loa kohta?",
+    "Keskkonnaameti avalik kontakt kaitsealal uue maja ehitamise loa kohta?",
+    "Keskkonnaameti avalik kontakt kaitsealal suure maja ehitamise loa kohta?",
+    "Keskkonnaameti avalik kontakt kaitsealal vana-maja ehitamise loa kohta?",
+    "Keskkonnaameti kontakt kaitsealal hoone renoveerimise kohta?",
+    "Keskkonnaameti kontakt kaitsealal hoone rekonstrueerimise kohta?",
+    "Lahemaa National Park: how do I contact Environment Board about renovating a building?",
+    "How do I contact Environment Board about renovating a building in Lahemaa National Park?",
+    "Lahemaa National Park renovation contact",
+    "Lahemaa National Park: building renovation contact?",
+    "Official contact for building renovation in Lahemaa National Park",
+    "Environment Board contact for building renovation in Lahemaa National Park",
+    "What is the Environment Board official contact for renovating a building in Lahemaa National Park?",
+    "Environment Board — general email regarding building renovation in Lahemaa National Park",
+    "Keskkonnaameti kontakt Lahemaa rahvuspargis hoone renoveerimiseks",
+    "Kuidas võtta ühendust Keskkonnaametiga Lahemaa rahvuspargis hoone renoveerimiseks?",
+    "Keskkonnaamet: ametlik kontakt Lahemaa rahvuspargis hoone renoveerimise kohta?",
+    "Lahemaa rahvuspargi hoone renoveerimise ametlik kontakt",
+    "Kust leida Keskkonnaameti ametlik kontakt Lahemaa rahvuspargis hoone renoveerimiseks?",
+    ...["Lahemaa", "Vilsandi", "Matsalu", "Soomaa", "Karula", "Alutaguse"].flatMap(
+      (park) => [
+        `Official contact for building renovation in ${park} National Park?`,
+        `Environment Board contact for building renovation in ${park} National Park?`,
+      ],
+    ),
+    ...["Keskkonnaamet", "RMK", "Kliimaministeerium", "Keskkonnaagentuur"].flatMap(
+      (organization) => [
+        `${organization} üldkontakt Natura ala ehitamise nõusoleku kohta?`,
+        `${organization} avalik kontakt Natura ala ehitamise nõusoleku kohta?`,
+        `${organization} üldtelefon kaitsealal maja ehitamise loa kohta?`,
+        `${organization} üldtelefon Natura ala ehitamise nõusoleku kohta?`,
+        `${organization} üldtelefon rahvuspargis hoone rajamise kohta?`,
+        `${organization} avalik telefon Natura ala ehitamise nõusoleku kohta?`,
+        `${organization} üldine e-post kaitsealal maja ehitamise loa kohta?`,
+        `${organization} üldine e-post Natura ala ehitamise nõusoleku kohta?`,
+        `${organization} üldine e-post rahvuspargis hoone rajamise kohta?`,
+        `${organization} avalik postiaadress Natura ala ehitamise nõusoleku kohta?`,
+      ],
+    ),
+  ];
+  for (const query of publicQueries) {
+    assert.equal(containsPrivatePersonLookup(query), false, query);
+    assert.equal(assessSearchQuery(query).kind, "answerable", query);
+    assert.equal(blockedFollowUpAssessment("Natura piirangud ehitamisel", query, []), null, query);
+    assert.notEqual(contextualRetrievalQuery("Natura piirangud ehitamisel", query, []), "", query);
+    assert.ok(buildDiscoveryQueries(query).length > 0, query);
+    assert.doesNotThrow(() => buildLlmRequest({
+      selectedModel: "gpt-5.6-luna",
+      query,
+      evidence: [],
+      singleSource: true,
+    }), query);
+    assert.equal(rankPublicSearchCandidates(query, services)[0]?.id, "protected-area-construction", query);
+  }
+
+  const privateQueries = [
+    "Jaan Tamm: kas kaitsealale võib maja ehitada ja kelle nõusolekut on vaja?",
+    "Kelle nõusolekut on vaja Jaan Tamme maja ehitamiseks?",
+    "Kelle nõusolekut on vaja Jaan Tamme maja ehitamiseks ja mis on Jaan Tamme e-post?",
+    "Kas kaitsealale võib maja ehitada, kelle nõusolekut on vaja ja kellele maja kuulub?",
+    "Kelle nõusolekut on vaja naabri maja ehitamiseks?",
+    "Kelle nõusolekut on vaja minu maja ehitamiseks?",
+    "Kelle nõusolekut on vaja kaitsealal maja ehitamiseks katastritunnusel 12345:678:9012?",
+    "Kelle nõusolekut on vaja kaitsealal jaan tamme maja ehitamiseks?",
+    "Kelle nõusolekut on vaja kaitsealal Jaan-Tamme maja ehitamiseks?",
+    "Kelle nõusolekut on vaja kaitsealal Jaan/Tamme maja ehitamiseks?",
+    "Kelle nõusolekut on vaja kaitsealal naabri enda maja ehitamiseks?",
+    "Kelle nõusolekut on vaja kaitsealal minu enda maja ehitamiseks?",
+    "Kelle nõusolekut on vaja kaitsealal meie pere maja ehitamiseks?",
+    "Kelle nõusolekut on vaja kaitsealal selle inimese maja ehitamiseks?",
+    "Kelle nõusolekut on vaja kaitsealal maja ehitamiseks ja kes on omanik?",
+    "Kelle nõusolekut on vaja kaitsealal JAAN_TAMME kaitstava hoone ehitamiseks?",
+    "Kelle nõusolekut on vaja kaitsealal minu vana maja ehitamiseks?",
+    "Kelle nõusolekut on vaja kaitsealal selle konkreetse inimese maja ehitamiseks?",
+    "Kelle nõusolekut on vaja kaitsealal sõbra maja ehitamiseks?",
+    "Kelle luba on vaja kaitsealal vanaema maja ehitamiseks?",
+    "Kelle luba on vaja kaitsealal vanaisa maja ehitamiseks?",
+    "Kelle luba on vaja kaitsealal vanavanema maja ehitamiseks?",
+    "Kelle luba on vaja kaitsealal Uuno maja ehitamiseks?",
+    "Kelle luba on vaja kaitsealal Vanaema maja ehitamiseks?",
+    "Kelle luba on vaja kaitsealal \"Suure\" maja ehitamiseks?",
+    "Kelle luba on vaja kaitsealal \"Uue\" maja ehitamiseks?",
+    "Kelle luba on vaja kaitsealal \"Vana\" maja ehitamiseks?",
+    "Kelle luba on vaja kaitsealal Suure maja ehitamiseks?",
+    "Kelle luba on vaja kaitsealal Uue maja ehitamiseks?",
+    "Kelle luba on vaja kaitsealal Vana maja ehitamiseks?",
+    "Kelle luba on vaja kaitsealal uuno/maja ehitamiseks?",
+    "Kelle luba on vaja kaitsealal vanaema, maja ehitamiseks?",
+    "Kas kaitsealale võib vanaema maja ehitada ja kelle nõusolekut on vaja?",
+    "Kas kaitsealal võib ehitada majaJaanTamm ning kelle luba on vaja?",
+    "Kelle luba on vaja kaitsealal majaJaanTamm ehitamiseks?",
+    "Kelle luba on vaja kaitsealal maja ehitamiseksJaanTamm?",
+    "Kelle lubaJaanTamm on vaja kaitsealal maja ehitamiseks?",
+    "Kelle luba on vajaJaanTamm kaitsealal maja ehitamiseks?",
+    "Kelle luba on vaja kaitsealalJaanTamm maja ehitamiseks?",
+    "Kelle luba on vaja kaitsealal Jaan Tamme abihoone ehitamiseks?",
+    "Kelle luba on vaja kaitsealal jaan/tamme abihoone ehitamiseks?",
+    "Kelle luba on vaja kaitsealal vanaema abihoone ehitamiseks?",
+    "Kelle luba on vaja kaitsealal minu abihoone ehitamiseks?",
+    "Kelle luba on vaja kaitsealal Jaan Tamme korterelamu ehitamiseks?",
+    "Kelle luba on vaja kaitsealal minu korterelamu ehitamiseks?",
+    "Kelle luba on vaja kaitsealal Jaan Tamme saunamaja ehitamiseks?",
+    "Kelle luba on vaja kaitsealal Jaan Tamme suvemajakese ehitamiseks?",
+    "Kelle luba on vaja kaitsealal minu moodulmajakese ehitamiseks?",
+    "Kelle luba on vaja kaitsealal Jaan Tamme korteri renoveerimiseks?",
+    "Kelle luba on vaja kaitsealal Jaan Tamme sauna ehitamiseks?",
+    "Kelle luba on vaja kaitsealal minu talu renoveerimiseks?",
+    "Kelle luba on vaja kaitsealal Jaan Tamme küüni ehitamiseks?",
+    "Kelle luba on vaja kaitsealal Jaan Tamme lauda ehitamiseks?",
+    "Kelle luba on vaja kaitsealal Jaan Tamme varjualuse ehitamiseks?",
+    "Kelle luba on vaja kaitsealal Jaan Tamme keskkonnasäästliku kohaliku väikese puidust ajaloolise paviljoni ehitamiseks?",
+    "Kelle luba on vaja kaitsealal jaan tamme keskkonnasäästliku kohaliku väikese puidust ajaloolise paviljoni ehitamiseks?",
+    "Kelle luba on vaja kaitsealal minu keskkonnasäästliku kohaliku väikese puidust ajaloolise paviljoni ehitamiseks?",
+    "Kas kaitsealale võib ehitada keskkonnasäästliku kohaliku väikese Jaan Tamme ajaloolise paviljoni ja kelle nõusolekut on vaja?",
+    "Kelle luba on vaja kaitsealal jaan/tamme sauna ehitamiseks?",
+    "Kas kaitsealale võib Jaan Tamme sauna ehitada ja kelle nõusolekut on vaja?",
+    "Kas kaitsealale võib ehitada Jaan Tamme sauna ja kelle nõusolekut on vaja?",
+    "Kas kaitsealale võib Jaan Tamme avaliku asutuse hoone ehitada ja kelle nõusolekut on vaja?",
+    "Kas kaitsealale võib avaliku asutuse hoone ehitada ja kelle nõusolekut on vaja, kui maja kuulub Jaan Tammele?",
+    "Kas kaitsealale võib avaliku asutuse hoone ehitada ja kelle nõusolekut on vaja; Jaan Tamme e-post?",
+    "Kas kaitsealale võib minu avaliku asutuse hoone ehitada ja kelle nõusolekut on vaja?",
+    "Kas kaitsealale võib Jaani asutuse hoone ehitada ja kelle nõusolekut on vaja?",
+    "Kas Jaan Tamme rahvuspargis võib maja ehitada ja kelle nõusolekut on vaja?",
+    "Kas kaitsealale võib Jaan Tamme linnavalitsuse hoone ehitada ja kelle nõusolekut on vaja?",
+    "Kas kaitsealale võib linnavalitsuse hoone ehitada ja kelle nõusolekut on vaja; Jaan Tamme e-post?",
+    "Jaan Tamm küsib nõu oma maja kaitsealal ehitamise kohta.",
+    "Jaan Tamm küsib nõu kaitsealal Jüri Kase maja ehitamise kohta.",
+    "RMK Jaan Tamme maja rahvuspargis: kelle luba on vaja?",
+    "Keskkonnaamet küsib nõu. Kas kaitsealal võib Jaan Tamme maja ehitada ja kelle nõusolekut on vaja?",
+    "J. Tamme maja kaitsealal: kelle nõusolekut on vaja?",
+    "Jaan Tamm küsis nõu kaitsealal Suure maja ehitamise kohta.",
+    "Jaan Tamm annab nõu kaitsealal \"Suure\" maja ehitamise kohta.",
+    "Jaan Tamm kirjutas juhendi kaitsealal oma maja ehitamise kohta.",
+    "Jaan Tamm kirjutas juhendi kaitsealal Jüri Kase maja ehitamise kohta.",
+    "Jaan Tamm tutvustas nõu kaitsealal oma maja ehitamise kohta.",
+    "Jaan Tamm toimetas nõu kaitsealal Jüri Kase maja ehitamise kohta.",
+    "Jaan Tamm selgitas nõu: kas Lahemaa rahvuspargis võib tema maja ehitada ja kelle nõusolekut on vaja?",
+    "J. Tamm küsib nõu: kas Lahemaa rahvuspargis võib vana maja ehitada ja kelle nõusolekut on vaja; Jaan Tamme telefon?",
+    "JAAN TAMM küsib nõu: Kas Lahemaa rahvuspargis võib tema maja ehitada ja kelle nõusolekut on vaja?",
+    "Keskkonnaamet küsib nõu: kas Lahemaa rahvuspargis võib vana maja ehitada ja kelle nõusolekut on vaja; Jaan Tamme telefon?",
+    "Keskkonnaameti avalik kontakt kaitsealal Jaan Tamme maja ehitamise loa kohta?",
+    "Keskkonnaameti avalik kontakt kaitsealal \"Vana\" maja ehitamise loa kohta?",
+    "Keskkonnaameti avalik kontakt kaitsealal Vana maja ehitamise loa kohta?",
+    "Keskkonnaameti avalik kontakt kaitsealal Vana Maja ehitamise loa kohta?",
+    "Keskkonnaameti avalik kontakt kaitsealal Vana uue maja ehitamise loa kohta?",
+    "Keskkonnaameti avalik kontakt kaitsealal Vana/maja ehitamise loa kohta?",
+    "Keskkonnaameti avalik kontakt kaitsealal Vana-maja ehitamise loa kohta?",
+    "Keskkonnaameti avalik kontakt kaitsealal VANA väikese maja ehitamise loa kohta?",
+    "Keskkonnaameti avalik kontakt kaitsealal VaNa väikese maja ehitamise loa kohta?",
+    "Keskkonnaameti avalik kontakt kaitsealal Uue maja ehitamise loa kohta?",
+    "Keskkonnaameti avalik kontakt kaitsealal Suure maja ehitamise loa kohta?",
+    "Keskkonnaameti kontakt kaitsealal minu maja ehitamise loa kohta?",
+    "RMK üldkontakt rahvuspargis maja ehitamise loa kohta ja Jaan Tamme e-post?",
+    "Keskkonnaamet üldtelefon Natura ala ehitamise nõusoleku kohta ja Jaan Tamme e-post?",
+    "RMK üldine e-post rahvuspargis hoone rajamise kohta; Jaan Tamme telefon?",
+    "Kliimaministeerium avalik postiaadress Natura ala ehitamise nõusoleku kohta ja minu maja?",
+    "Keskkonnaameti kontakt kaitsealal minu hoone renoveerimise kohta?",
+    "Keskkonnaameti kontakt kaitsealal Jaan Tamme hoone rekonstrueerimise kohta?",
+    "How do I contact Environment Board about renovating John Smith's building in Lahemaa National Park?",
+    "How do I contact Environment Board about renovating a John Smith building in Lahemaa National Park?",
+    "How do I contact Environment Board about renovating a building in Lahemaa National Park, and what is John Smith's email?",
+    "Keskkonnaameti kontakt Lahemaa rahvuspargis Jaan Tamme hoone renoveerimiseks",
+    "Kuidas võtta ühendust Keskkonnaametiga Lahemaa rahvuspargis Jaan Tamme hoone renoveerimiseks?",
+    "Environment Board contact for renovating John Smith's building in Lahemaa National Park",
+    "Lahemaa National Park renovation contact for John Smith",
+    "Environment Board contact for building renovation in Lahemaa National Park; John Smith email",
+    "Lahemaa rahvuspargi hoone renoveerimise kontakt; Jaan Tamme telefon",
+    "Environment Board contact for building renovation in Lahemaa National Park 12345:678:9012",
+    "Environment Board contact for 山田 building renovation in Lahemaa National Park",
+    "Environment Board contact for “Smith House” renovation in Lahemaa National Park",
+  ];
+  const alreadyAborted = new AbortController();
+  alreadyAborted.abort(new DOMException("privacy guard must precede retrieval", "AbortError"));
+  for (const query of privateQueries) {
+    assert.equal(containsPrivatePersonLookup(query), true, query);
+    assert.equal(assessSearchQuery(query).reason, "personal-data-lookup", query);
+    assert.deepEqual(buildDiscoveryQueries(query), [], query);
+    assert.equal(blockedFollowUpAssessment("Natura piirangud ehitamisel", query, [])?.reason, "personal-data-lookup", query);
+    assert.equal(contextualRetrievalQuery("Natura piirangud ehitamisel", query, []), "", query);
+    assert.equal(selectAnswerEvidence(query, services), null, query);
+    const listing = await prepareRankedSearchResults(query, {
+      page: 1,
+      pageSize: 12,
+      deadlineAt: Date.now() + 5_000,
+      signal: alreadyAborted.signal,
+    });
+    assert.equal(listing.mode, "blocked-before-retrieval", query);
+    assert.equal(listing.total, 0, query);
+    assert.deepEqual(listing.items, [], query);
+    assert.throws(
+      () => buildLlmRequest({
+        selectedModel: "gpt-5.6-luna",
+        query,
+        evidence: [],
+        singleSource: true,
+      }),
+      (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY",
+      query,
+    );
+  }
+});
+
+test("provider boundaries reject lossy-script identities, partial geographies, and clause-leading private assets", async () => {
+  const consentQueries = [
+    "Kelle luba on vaja kaitsealal 山田太郎 maja ehitamiseks?",
+    "Kas kaitsealale võib 山田太郎 maja ehitada ja kelle nõusolekut on vaja?",
+    "Kelle luba on vaja kaitsealal 이민준 maja ehitamiseks?",
+    "Kelle luba on vaja kaitsealal محمد علي maja ehitamiseks?",
+    "RMK 山田太郎 maja rahvuspargis: kelle luba on vaja?",
+    "RMK 이민준 maja rahvuspargis: kelle luba on vaja?",
+    "RMK محمد علي maja rahvuspargis: kelle luba on vaja?",
+    "RMK %E5%B1%B1%E7%94%B0%E5%A4%AA%E9%83%8E maja rahvuspargis: kelle luba on vaja?",
+  ];
+  const contactQueries = [
+    "RMK üldtelefon kaitsealal 이민준 maja ehitamise loa kohta?",
+    "Keskkonnaamet üldkontakt Natura ala 山田太郎 maja ehitamise nõusoleku kohta?",
+    "Kliimaministeerium avalik kontakt rahvuspargis محمد علي hoone rajamise loa kohta?",
+  ];
+  const partialGeographyQueries = [
+    "What is John Canada's forest area?",
+    "What is John Canada’s forest area?",
+    "What is John Europe's forestry data?",
+    "What is Alice Narva's forestry data?",
+    "What is John Estonia's forest area?",
+    "What is Alice Natura's forestry data?",
+    "What is Alice/Narva's forestry data?",
+    "What is Alice_Narva's forestry data?",
+    "What is Alice·Narva's forestry data?",
+    "What is Alice:Narva's forestry data?",
+    "What is Alice|Narva's forestry data?",
+    "What is John|Europe's forest area?",
+    "What is John\\Europe's forest area?",
+    "What is 山田/Narva's forestry data?",
+    "What is 이민준_Narva's forestry data?",
+    "What is محمد Narva's forestry data?",
+    "What is %E5%B1%B1%E7%94%B0|Narva's forestry data?",
+    "What is 山田 Estonia's forestry data?",
+    "What is 이민준 Canada's forest statistics?",
+    "What is محمد Europe's forest policy?",
+    "What is %E5%B1%B1%E7%94%B0 Estonia's woodland monitoring?",
+    "What is 山田's forestry data?",
+    "What is محمد's forestry data?",
+    "What is Alice山田's forestry data?",
+    "What is %E5%B1%B1%E7%94%B0's forestry data?",
+    String.raw`What is \u5c71\u7530's forestry data?`,
+  ];
+  const clausePrivateAssetQueries = [
+    "Forest area by ownership? John Smith property",
+    "Forest area by ownership; John Smith property",
+    "Forest area by ownership. John Smith property",
+    "Forest area by ownership! John Smith property",
+    "Forest area by ownership: John Smith property",
+    "Forest area by ownership / John Smith property",
+    "Forest area by ownership — John Smith property",
+    "Forest area by ownership− John Smith property",
+    "Forest area by ownership\nJohn Smith property",
+    "Forest area by ownership\tJohn Smith property",
+    "Forest area by ownership%0AJohn Smith property",
+    "Forest area by ownership&#10;John Smith property",
+    "How much forest is in Estonia and how is it measured by ownership? John Smith property",
+    "How much forest is in Estonia and how is it measured by ownership; John Smith property",
+    "What is John Smith's forest habitat?",
+  ];
+  for (const query of consentQueries) {
+    assert.equal(isReviewedGenericProtectedAreaConsentQuery(query), false, query);
+  }
+  for (const query of contactQueries) {
+    assert.equal(isReviewedPublicOrganizationProtectedBuildingContactQuery(query), false, query);
+  }
+
+  const services = officialServiceCatalogueDocuments();
+  const privateQueries = [
+    ...consentQueries,
+    ...contactQueries,
+    ...partialGeographyQueries,
+    ...clausePrivateAssetQueries,
+  ];
+  const originalFetch = globalThis.fetch;
+  let outboundCalls = 0;
+  globalThis.fetch = async () => {
+    outboundCalls += 1;
+    throw new Error("private query must be blocked before provider dispatch");
+  };
+  try {
+    const alreadyAborted = new AbortController();
+    alreadyAborted.abort(new DOMException("privacy guard must precede retrieval", "AbortError"));
+    for (const query of privateQueries) {
+      assert.equal(containsPrivatePersonLookup(query), true, query);
+      assert.equal(assessSearchQuery(query).reason, "personal-data-lookup", query);
+      assert.equal(minimizePublicProviderQuery(query), "", query);
+      assert.deepEqual(buildDiscoveryQueries(query), [], query);
+      assert.equal(
+        blockedFollowUpAssessment("mets Eestis", query, [])?.reason,
+        "personal-data-lookup",
+        query,
+      );
+      assert.equal(contextualRetrievalQuery("mets Eestis", query, []), "", query);
+      assert.equal(selectAnswerEvidence(query, services), null, query);
+      const listing = await prepareRankedSearchResults(query, {
+        page: 1,
+        pageSize: 12,
+        deadlineAt: Date.now() + 5_000,
+        signal: alreadyAborted.signal,
+      });
+      assert.equal(listing.mode, "blocked-before-retrieval", query);
+      assert.equal(listing.total, 0, query);
+      assert.deepEqual(listing.items, [], query);
+      assert.throws(
+        () => buildLlmRequest({
+          selectedModel: "gpt-5.6-luna",
+          query,
+          evidence: [],
+          singleSource: true,
+        }),
+        (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY",
+        query,
+      );
+    }
+    assert.equal(outboundCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  const publicProtectedQueries = [
+    "Kelle luba on vaja kaitsealal maja ehitamiseks?",
+    "Kas kaitsealale võib vana energiatõhusa maja ehitada ja kelle nõusolekut on vaja?",
+    "RMK üldtelefon kaitsealal maja ehitamise loa kohta?",
+    "Keskkonnaameti avalik kontakt kaitsealal vana maja ehitamise loa kohta?",
+    "RMK maja rahvuspargis: kelle luba on vaja?",
+    "Tartu Ülikooli maja rahvuspargis: kelle luba on vaja?",
+  ];
+  assert.equal(isReviewedGenericProtectedAreaConsentQuery(publicProtectedQueries[0]), true);
+  assert.equal(isReviewedGenericProtectedAreaConsentQuery(publicProtectedQueries[1]), true);
+  assert.equal(isReviewedPublicOrganizationProtectedBuildingContactQuery(publicProtectedQueries[2]), true);
+  assert.equal(isReviewedPublicOrganizationProtectedBuildingContactQuery(publicProtectedQueries[3]), true);
+  for (const query of [
+    ...publicProtectedQueries,
+    "What is Canada's forest area?",
+    "What is Finland's forest area?",
+    "What is Europe's forestry data?",
+    "What is Narva's forestry data?",
+    "What is Pärnu's forestry data?",
+    "What is Estonia's forest area?",
+    "Estonia's forest area compared with Gondor",
+    "How much forest is in Estonia and how is it measured for Estonia's forest area?",
+    "What is Middle Earth's forest area?",
+    "What are European Environment Agency's forest statistics?",
+    "What is bear's forest habitat?",
+    "What is brown bear's forest habitat?",
+    "What is black bear's forest habitat?",
+    "What is European brown bear's forest habitat?",
+    "What is otter's forest habitat?",
+    "Forest area in Estonia by ownership category",
+    "How much forest is in Estonia and how is it measured by ownership?",
+    "Forest area in Estonia\nby ownership category",
+    "RMK maja rahvuspargis:\nkelle luba on vaja?",
+    "Emajõe veeandmed 中文",
+  ]) {
+    assert.equal(containsPrivatePersonLookup(query), false, query);
+    assert.notEqual(assessSearchQuery(query).reason, "personal-data-lookup", query);
+    assert.notEqual(minimizePublicProviderQuery(query), "", query);
+    assert.ok(buildDiscoveryQueries(query).length > 0, query);
     assert.doesNotThrow(() => buildLlmRequest({
       selectedModel: "gpt-5.6-luna",
       query,
@@ -605,6 +1606,11 @@ test("private-person lookup stops before local or external retrieval", async () 
       "Forest area in Estonia owned by JAAN TAMM",
       "Forest area in Estonia by ownership of Jaan Tamm",
       "Forest area in Estonia by ownership of Anna Maria Tamm",
+      "How much forest is in Estonia and how is it measured for Alice's parcel?",
+      "How much forest is in Estonia and how is it measured for John's property?",
+      "How much forest is in Estonia and how is it measured for O'Connor's land?",
+      "How much forest is in Estonia and how is it measured for her property?",
+      "How much forest is in Estonia and how is it measured for their forest parcel?",
       "Forest area in Estonia, ownership: Jaan Tamm",
       "Forest area in Estonia registered to Jaan Tamm",
       "Forest area in Estonia owned by Anna Maria Tamm",

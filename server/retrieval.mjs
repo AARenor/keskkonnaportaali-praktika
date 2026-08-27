@@ -22,8 +22,11 @@ import {
   containsPrivatePersonLookup,
   containsUnsafeInstruction,
   directDirectoryDocumentIds,
+  FOREST_OVERVIEW_URL,
   forestEvidenceIntent,
   forestryIntentServiceDocumentIds,
+  isReviewedGenericProtectedAreaConsentQuery,
+  isReviewedPublicOrganizationProtectedBuildingContactQuery,
   normalize,
   officialServiceCatalogueDocuments,
   queryRootVariants,
@@ -521,6 +524,55 @@ function forestAreaEvidence(document) {
   };
 }
 
+function forestAreaOnlyEvidence(document) {
+  const matches = evidenceSourcePassages(document)
+    .map((passage, index) => ({ passage, index, ...forestAreaPassageEvidence(passage) }))
+    .filter((candidate) => candidate.satisfies)
+    // A composite area-and-method answer must not inherit a neighboring stock
+    // or harvest observation merely because it appears in the same source.
+    .filter((candidate) => !/\b(?:tagavara\w*|raiemaht\w*|m[³3]\b|tihumeet\w*|kuupmeet\w*)/iu
+      .test(candidate.passage))
+    .sort((left, right) => right.score - left.score || left.index - right.index);
+  const best = matches[0] || null;
+  return {
+    satisfies: Boolean(best),
+    score: best?.score || 0,
+    passages: best ? [best.passage] : [],
+  };
+}
+
+function forestMeasurementMethodEvidence(document) {
+  const matches = evidenceSourcePassages(document)
+    .map((passage, index) => {
+      const text = normalize(passage);
+      const hasSmi = /\b(?:smi|statistiline\s+metsainvent\w*)\b/u.test(text);
+      const hasSampleStudy = /\bvalikuuring\w*\b/u.test(text);
+      const hasSamplePlots = /\bproovitukk\w*\b/u.test(text);
+      const hasNationalGeneralization = /\b(?:kogu\s+eesti\w*|uleriigil\w*|uldistat\w*)\b/u.test(text);
+      const explainsGeneralization = /\b(?:kogu\s+eesti\w*|uldistat\w*)\b/u.test(text);
+      const satisfies = hasSmi && hasSampleStudy && hasSamplePlots && hasNationalGeneralization;
+      return {
+        passage,
+        index,
+        satisfies,
+        score: (satisfies ? 100 : 0)
+          + (hasSmi ? 12 : 0)
+          + (hasSampleStudy ? 18 : 0)
+          + (hasSamplePlots ? 18 : 0)
+          + (hasNationalGeneralization ? 18 : 0)
+          + (explainsGeneralization ? 12 : 0),
+      };
+    })
+    .filter((candidate) => candidate.satisfies)
+    .sort((left, right) => right.score - left.score || left.index - right.index);
+  const best = matches[0] || null;
+  return {
+    satisfies: Boolean(best),
+    score: best?.score || 0,
+    passages: best ? [best.passage] : [],
+  };
+}
+
 function forestDepletionEvidence(document) {
   const passages = evidenceSourcePassages(document);
   const statusPassage = passages.find((passage) => {
@@ -663,7 +715,8 @@ export function selectAnswerEvidence(query, documents = []) {
   if (containsPrivatePersonLookup(query)) return null;
   const intent = forestEvidenceIntent(query);
   if (!intent) return null;
-  const numericForestAreaIntent = ["forest-area", "forest-covered-area"].includes(intent.kind);
+  const numericForestAreaIntent = ["forest-area", "forest-covered-area", "forest-area-method"]
+    .includes(intent.kind);
   const geographyScope = classifyForestryGeographyScope(query);
   const unresolvedAreaEntity = hasUnresolvedForestryAreaEntity(query);
   const unsupportedAreaBreakdown = numericForestAreaIntent
@@ -728,6 +781,72 @@ export function selectAnswerEvidence(query, documents = []) {
           : "query-bound-geography-year-unit-value"],
     };
   }
+  const queryYear = requestedQueryYear(query);
+  if (intent.kind === "forest-area-method") {
+    const requiredIds = new Set(intent.serviceDocumentIds || []);
+    const candidates = (documents || [])
+      .filter((document) => requiredIds.has(document?.id))
+      .map((document, index) => ({
+        document,
+        index,
+        publishedAt: Number(document?._ranking?.publishedAt) || resultPublishedAt(document) || 0,
+        area: forestAreaOnlyEvidence(document),
+        method: forestMeasurementMethodEvidence(document),
+      }));
+    const area = candidates
+      .filter((candidate) => candidate.area.satisfies
+        && measurementPassagesContainRequestedYear(candidate.area.passages, queryYear))
+      .map((candidate) => ({
+        ...candidate,
+        requestedYearMatch: requestedEvidenceYearMatch(
+          candidate.document,
+          queryYear,
+          candidate.area.passages,
+        ),
+      }))
+      .sort((left, right) => (queryYear
+        ? right.requestedYearMatch - left.requestedYearMatch
+          || right.area.score - left.area.score
+          || right.publishedAt - left.publishedAt
+        : right.publishedAt - left.publishedAt
+          || right.area.score - left.area.score)
+        || left.index - right.index)[0] || null;
+    const method = candidates
+      .filter((candidate) => candidate.document.id !== area?.document?.id
+        && candidate.method.satisfies)
+      .sort((left, right) => right.method.score - left.method.score
+        || right.publishedAt - left.publishedAt
+        || left.index - right.index)[0] || null;
+    const strong = Boolean(area && method);
+    const supportingDocumentIds = strong
+      ? [area.document.id, method.document.id]
+      : [];
+    const missingEvidenceRequirements = [
+      !area ? "national-area-year-unit-value" : null,
+      !method ? "national-smi-measurement-method" : null,
+    ].filter(Boolean);
+    return {
+      kind: intent.kind,
+      strong,
+      evidenceGroups: [],
+      directDocumentId: strong ? area.document.id : null,
+      passages: strong ? area.area.passages : [],
+      supportingDocumentIds,
+      passagesByDocument: strong ? {
+        [area.document.id]: area.area.passages,
+        [method.document.id]: method.method.passages,
+      } : {},
+      navigationDocumentIds: (documents || [])
+        .filter((document) => document?.id === "forest-overview")
+        .map((document) => document.id),
+      evidenceRoles: strong ? {
+        area: area.document.id,
+        method: method.document.id,
+      } : null,
+      reason: strong ? undefined : "national-area-method-evidence-required",
+      missingEvidenceRequirements,
+    };
+  }
   if (!["forest-area", "forest-covered-area", "forest-depletion", "forest-data-sources"].includes(intent.kind)) {
     const candidates = (documents || [])
       .map((document, index) => ({ document, index, ...genericForestryEvidence(intent, document) }))
@@ -778,7 +897,6 @@ export function selectAnswerEvidence(query, documents = []) {
         : [],
     };
   }
-  const queryYear = requestedQueryYear(query);
   const candidates = (documents || [])
     .map((document, index) => {
       const evidence = intentEvidenceForDocument(intent, document);
@@ -959,9 +1077,16 @@ function isMiningWaterImpactIntent(roots) {
     && roots.some((root) => ["vesi", "pohjavesi", "puurkaev", "joogivesi", "polevkivi"].includes(root));
 }
 
+function isForestOverviewDocument(document) {
+  return document?.id === "forest-overview"
+    || canonicalResultUrl(document?.url) === canonicalResultUrl(FOREST_OVERVIEW_URL);
+}
+
 function serviceIntentPriority(query, roots, document, analysis = analyzePublicSearchQuery(query)) {
   const liveScore = liveServiceIntentScore(query, roots, document, analysis);
   const normalizedQuery = normalize(query);
+  const reviewedProtectedAreaConsent = isReviewedGenericProtectedAreaConsentQuery(query)
+    || isReviewedPublicOrganizationProtectedBuildingContactQuery(query);
   const latestPublishedHydrology = isLatestPublishedHydrologyQuery(query);
   const eelisEmajogiPublicWatercourse = isEelisEmajogiPublicWatercourseQuery(query);
   const eelisNaturaSite = isEelisNaturaSiteQuery(query);
@@ -969,6 +1094,10 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
   const statisticsWastewaterBht7 = isStatisticsWastewaterBht7Query(query);
   const statisticsHazardousWaste = isStatisticsHazardousWasteQuery(query);
   const statisticsTotalWasteRecovery = isStatisticsTotalWasteRecoveryQuery(query);
+  if (reviewedProtectedAreaConsent) {
+    if (document.id === "protected-area-construction") return 7;
+    if (document.id === "protected-nature-guidance") return 3;
+  }
   const climateDailyMean = isClimateDailyMeanQuery(query);
   const requestsHistoricalYear = /\b(?:19|20)\d{2}\b/u.test(normalizedQuery);
   const requestsHistoricalObservations = requestsHistoricalYear
@@ -1114,7 +1243,7 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
   if (roots.includes("kaart")
     && roots.some((root) => ["natura", "kaitseala"].includes(root))
     && document.id === "environment-register") return 4;
-  if (roots.includes("mets") && roots.includes("mootmine") && document.id === "forest-overview") return 4;
+  if (roots.includes("mets") && roots.includes("mootmine") && isForestOverviewDocument(document)) return 4;
   if (roots.includes("vesi") && roots.includes("seisund") && roots.includes("seire")
     && document.id === "water-monitoring") return 4;
   if (roots.includes("kiirgus") && roots.includes("automaatjaam")
@@ -1370,6 +1499,7 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
     + coverageScore
     + ageIntentScore(document, roots, now)
     + liveService
+    + servicePriority
     + routeClassScore
     + (cadastreService ? 48 : 0)
     + authorityScore(document.sourceTier)
@@ -1634,8 +1764,9 @@ export async function prepareRankedSearchResults(query, {
   const offset = (safePage - 1) * safePageSize;
   const canonicalInput = canonicalizePublicSearchQuery(query);
   const acceptedQuery = canonicalInput.ok ? canonicalInput.query : "";
-  const assessment = assessSearchQuery(canonicalInput.ok ? acceptedQuery : query);
-  const privatePersonLookup = canonicalInput.ok && containsPrivatePersonLookup(acceptedQuery);
+  const assessment = assessSearchQuery(query);
+  const privatePersonLookup = canonicalInput.ok
+    && (containsPrivatePersonLookup(query) || containsPrivatePersonLookup(acceptedQuery));
   // Do not send private-person, injection, or other explicitly out-of-scope
   // queries to PostgreSQL or any external discovery provider. This guard is
   // deliberately inside retrieval so every current and future route inherits
@@ -1850,7 +1981,7 @@ export function blockedFollowUpAssessment(rootQuery, question, previousQuestions
     if (input.reason === "empty") continue;
     if (!input.ok) return assessSearchQuery(value);
     const fragment = input.query;
-    if (containsPrivatePersonLookup(fragment)) {
+    if (containsPrivatePersonLookup(value) || containsPrivatePersonLookup(fragment)) {
       return {
         kind: "out-of-scope",
         topic: null,
@@ -1870,8 +2001,9 @@ export function conversationContext(rootQuery, previousQuestions = []) {
     const input = canonicalizePublicSearchQuery(value);
     const cleaned = input.ok ? input.query : "";
     if (!cleaned) return "";
-    const assessment = assessSearchQuery(cleaned);
-    return assessment.kind !== "out-of-scope" || (allowEllipsis && isSafeEllipticalFollowUp(cleaned))
+    const assessment = assessSearchQuery(value);
+    return !containsPrivatePersonLookup(value)
+      && (assessment.kind !== "out-of-scope" || (allowEllipsis && isSafeEllipticalFollowUp(cleaned)))
       ? cleaned
       : "";
   };

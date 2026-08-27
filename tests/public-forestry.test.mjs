@@ -18,6 +18,8 @@ import {
   publicResponse,
   searchEnvironmentLive,
 } from "../server/pipeline.mjs";
+import { buildLlmRequest } from "../server/llm.mjs";
+import { searchOfficialSites } from "../server/integrations.mjs";
 import {
   forestHarvestBalanceDocumentsFromJson,
   isForestHarvestBalanceQuery,
@@ -186,6 +188,147 @@ test("the 26 source-directory forestry routes render explanatory, visibly cited 
     if (expectedIntent === "forest-age-trend") assert.match(witnesses, /nii noorte kui ka vanade/iu, query);
     if (expectedIntent === "logging-in-protected-areas") assert.match(witnesses, /ei tõenda tehtud raietöid/iu, query);
   }
+});
+
+test("national forest area and measurement method keep distinct, claim-complete citations", async () => {
+  const directory = officialServiceCatalogueDocuments();
+  const queries = [
+    "Kui palju metsa Eestis on ja kuidas seda mõõdetakse?",
+    "Kuidas Eesti metsa mõõdetakse ja kui palju seda on?",
+    "How much forest is in Estonia and how is it measured?",
+    "How much forest is there in Estonia and how is it measured?",
+    "How much forest does Estonia have and how is it measured?",
+    "What is the forest area in Estonia and how is it measured?",
+  ];
+  for (const query of queries) {
+    assert.equal(forestEvidenceIntent(query)?.kind, "forest-area-method", query);
+    const visible = rankPublicSearchCandidates(query, directory, {
+      intentDocuments: directory,
+      now: NOW,
+    }).slice(0, 12);
+    assert.ok(["forest-overview", "forest-stock-stable"].includes(visible[0]?.id), query);
+    const plan = selectAnswerEvidence(query, visible);
+    assert.equal(plan?.kind, "forest-area-method", query);
+    assert.equal(plan?.strong, true, query);
+    assert.ok(plan.evidenceRoles?.area, query);
+    assert.ok(plan.evidenceRoles?.method, query);
+    assert.notEqual(plan.evidenceRoles.area, plan.evidenceRoles.method, query);
+    const areaWitness = (plan.passagesByDocument[plan.evidenceRoles.area] || []).join(" ");
+    const methodWitness = (plan.passagesByDocument[plan.evidenceRoles.method] || []).join(" ");
+    assert.match(areaWitness, /2,36\s+miljonit hektarit[\s\S]*52,1%/u, query);
+    assert.doesNotMatch(areaWitness, /466|tagavara|raiemaht|m[³3]|tihumeet/iu, query);
+    assert.match(methodWitness, /(?:SMI|statistiline metsainventuur)[\s\S]*proovitükk[\s\S]*valikuuring/iu, query);
+    assert.match(methodWitness, /(?:kogu Eesti|üleriigil|üldistat)/iu, query);
+
+    const result = await searchEnvironmentLive(query, {
+      deadlineAt: Date.now() + 400,
+      searchResults: { total: visible.length, items: visible },
+      useCache: false,
+    });
+    const text = answerText(result);
+    assert.match(text, /2,36\s+miljonit hektarit[\s\S]*52,1%/u, query);
+    assert.match(text, /(?:SMI|statistiline metsainventuur)[\s\S]*proovitükk[\s\S]*valikuuring/iu, query);
+    assert.doesNotMatch(text, /466|tagavara|raiemaht|m[³3]|tihumeet/iu, query);
+    const citations = usedCitations(result);
+    assert.equal(citations.size, 2, query);
+    assert.ok([...citations].every((citation) => (
+      result.sources.find((source) => source.citation === citation)?.evidenceExcerpt
+    )), query);
+    assertNumericClaimsHaveVisibleWitnesses(result, query);
+  }
+});
+
+test("parcel and source-comparison area questions outrank the national composite route", () => {
+  const directory = officialServiceCatalogueDocuments();
+  const cases = [
+    ["Kuidas mõõdetakse kinnistu metsa pindala ja kui palju seda on?", "property-forest-data"],
+    ["Kuidas mõõdetakse metsa kinnistul ja kui palju seda on?", "property-forest-data"],
+    ["Kui palju on metsa maaüksusel ning kuidas seda mõõdetakse?", "property-forest-data"],
+    ["Milline on metsa pindala SMI ja Metsaregistri järgi ning kuidas see mõõdetakse?", "forest-data-sources"],
+    ["Kui palju metsa on Eestis SMI järgi ja kuidas Metsaregister seda mõõdab?", "forest-data-sources"],
+  ];
+  for (const [query, expectedIntent] of cases) {
+    assert.equal(forestEvidenceIntent(query)?.kind, expectedIntent, query);
+    const visible = rankPublicSearchCandidates(query, directory, {
+      intentDocuments: directory,
+      now: NOW,
+    }).slice(0, 12);
+    const plan = selectAnswerEvidence(query, visible);
+    assert.equal(plan?.kind, expectedIntent, query);
+    assert.ok(!(plan?.supportingDocumentIds || []).includes("forest-stock-stable"), query);
+    assert.notEqual(plan?.directDocumentId, "forest-stock-stable", query);
+  }
+});
+
+test("lossy Unicode residuals cannot dispatch the national forest answer to a model", async () => {
+  const directory = officialServiceCatalogueDocuments();
+  for (const suffix of ["山田太郎の住所", "김민수 주소", "عنوان محمد"]) {
+    const query = `Kui palju metsa Eestis on ja kuidas seda mõõdetakse? ${suffix}`;
+    const visible = rankPublicSearchCandidates(query, directory, {
+      intentDocuments: directory,
+      now: NOW,
+    }).slice(0, 12);
+    assert.notEqual(selectAnswerEvidence(query, visible)?.strong, true, query);
+    let modelCalls = 0;
+    const result = await searchEnvironmentLive(query, {
+      deadlineAt: Date.now() + 1_000,
+      searchResults: { total: visible.length, items: visible },
+      useCache: false,
+      generateAnswer: async () => {
+        modelCalls += 1;
+        return { answer: null, status: "test", provider: "test" };
+      },
+    });
+    assert.equal(modelCalls, 0, query);
+    assert.equal(usedCitations(result).size, 0, query);
+    assert.doesNotMatch(answerText(result), /2,36\s+miljonit hektarit|52,1%/u, query);
+    assert.throws(() => buildLlmRequest({
+      selectedModel: "gpt-5.6-luna",
+      query,
+      evidence: [],
+      singleSource: true,
+    }), /private-person|provider boundary/iu, query);
+    let discoveryCalls = 0;
+    const discovery = await searchOfficialSites(query, 5, {
+      requestText: async () => {
+        discoveryCalls += 1;
+        throw new Error("must not dispatch");
+      },
+    });
+    assert.equal(discoveryCalls, 0, query);
+    assert.deepEqual(discovery, { documents: [], total: 0, services: [] }, query);
+  }
+});
+
+test("a missing forest measurement method yields no partial numeric answer and keeps the overview", async () => {
+  const query = "Kui palju metsa Eestis on ja kuidas seda mõõdetakse?";
+  const directory = officialServiceCatalogueDocuments();
+  const visible = rankPublicSearchCandidates(query, directory, {
+    intentDocuments: directory,
+    now: NOW,
+  }).slice(0, 12);
+  const methodIds = new Set([
+    "smi",
+    "forest-smi-2025-presentation",
+    "forest-smi-methodology-20-years",
+  ]);
+  const withoutMethod = visible.filter((document) => !methodIds.has(document.id));
+  const plan = selectAnswerEvidence(query, withoutMethod);
+  assert.equal(plan?.strong, false);
+  assert.equal(plan?.directDocumentId, null);
+  assert.deepEqual(plan?.supportingDocumentIds, []);
+  assert.equal(plan?.reason, "national-area-method-evidence-required");
+  assert.deepEqual(plan?.missingEvidenceRequirements, ["national-smi-measurement-method"]);
+
+  const result = await searchEnvironmentLive(query, {
+    deadlineAt: Date.now() + 400,
+    searchResults: { total: withoutMethod.length, items: withoutMethod },
+    useCache: false,
+  });
+  assert.equal(usedCitations(result).size, 0);
+  assert.doesNotMatch(answerText(result), /2[,.](?:36|350)|51[,.]84|52[,.]1|54[,.]08/u);
+  assert.match(result.clarification, /ei kata korraga[\s\S]*mõõtmismeetodit/iu);
+  assert.ok(result.sources.some((source) => source.title === "Kui palju ja millist metsa Eestis on?"));
 });
 
 test("the 20-year harvest answer excludes clearcut area and damage side facts", async () => {

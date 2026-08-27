@@ -2,6 +2,30 @@ const DEFAULT_HTTP_CONNECTIONS = 256;
 const DEFAULT_RESPONSE_IDLE_TIMEOUT_MS = 20_000;
 const DEFAULT_RESPONSE_ABSOLUTE_TIMEOUT_MS = 60_000;
 
+const RESERVED_HEALTH_PATHS = new Set([
+  "/api/health",
+  "/api/health/container-readiness",
+]);
+
+function requestHeader(request, name) {
+  const viaGetter = request?.get?.(name);
+  if (viaGetter !== undefined) return String(viaGetter || "").trim();
+  return String(request?.headers?.[String(name).toLocaleLowerCase("en-US")] || "").trim();
+}
+
+export function isReservedHealthRequest(request) {
+  const method = String(request?.method || "").toLocaleUpperCase("en-US");
+  if (!["GET", "HEAD"].includes(method)
+    || !RESERVED_HEALTH_PATHS.has(String(request?.path || ""))) return false;
+  const contentLength = requestHeader(request, "content-length");
+  const transferEncoding = requestHeader(request, "transfer-encoding");
+  return (!contentLength || contentLength === "0") && !transferEncoding;
+}
+
+export function isHealthRequestPath(request) {
+  return RESERVED_HEALTH_PATHS.has(String(request?.path || ""));
+}
+
 function boundedInteger(value, fallback, minimum, maximum) {
   const parsed = Math.trunc(Number(value));
   return Math.max(minimum, Math.min(Number.isFinite(parsed) ? parsed : fallback, maximum));
@@ -69,6 +93,83 @@ function decrement(map, key) {
   const next = Math.max(0, (map.get(key) || 0) - 1);
   if (next) map.set(key, next);
   else map.delete(key);
+}
+
+/**
+ * Admit TCP peers before Node has parsed their HTTP headers. Ordinary peers
+ * share a bounded pool below the process-wide ceiling, leaving capacity for a
+ * loopback readiness probe. A trusted ingress may bypass the direct-client
+ * per-peer cap, but it still cannot consume that readiness reserve.
+ */
+export function createPublicSocketBudget({
+  keyForSocket = (socket) => socket?.remoteAddress,
+  isReservedSocket = () => false,
+  isTrustedIngressSocket = () => false,
+  maximumActive = DEFAULT_HTTP_CONNECTIONS,
+  maximumGeneral,
+  maximumPerPeer,
+} = {}) {
+  if (typeof keyForSocket !== "function") {
+    throw new TypeError("A public socket budget requires a peer-key resolver");
+  }
+  const totalLimit = boundedInteger(maximumActive, DEFAULT_HTTP_CONNECTIONS, 16, 2_048);
+  const defaultReserve = Math.max(8, Math.ceil(totalLimit / 8));
+  const generalLimit = boundedInteger(
+    maximumGeneral,
+    totalLimit - defaultReserve,
+    8,
+    totalLimit - 8,
+  );
+  const peerLimit = boundedInteger(
+    maximumPerPeer,
+    Math.min(32, generalLimit),
+    2,
+    generalLimit,
+  );
+  const activeByPeer = new Map();
+  let active = 0;
+  let generalActive = 0;
+
+  const admit = (socket) => {
+    const key = String(keyForSocket(socket) || "unknown").slice(0, 256);
+    const reserved = Boolean(isReservedSocket(socket));
+    const trustedIngress = !reserved && Boolean(isTrustedIngressSocket(socket));
+    const peerActive = activeByPeer.get(key) || 0;
+    const atCapacity = active >= totalLimit
+      || (!reserved && generalActive >= generalLimit)
+      || (!reserved && !trustedIngress && peerActive >= peerLimit);
+    if (atCapacity) {
+      socket.destroy?.();
+      return false;
+    }
+
+    let released = false;
+    active += 1;
+    increment(activeByPeer, key);
+    if (!reserved) generalActive += 1;
+    const release = () => {
+      if (released) return;
+      released = true;
+      socket.off?.("close", release);
+      socket.off?.("error", release);
+      active = Math.max(0, active - 1);
+      decrement(activeByPeer, key);
+      if (!reserved) generalActive = Math.max(0, generalActive - 1);
+    };
+    socket.once?.("close", release);
+    socket.once?.("error", release);
+    return true;
+  };
+
+  admit.stats = () => ({
+    active,
+    generalActive,
+    peers: activeByPeer.size,
+    maximumActive: totalLimit,
+    maximumGeneral: generalLimit,
+    maximumPerPeer: peerLimit,
+  });
+  return admit;
 }
 
 /**

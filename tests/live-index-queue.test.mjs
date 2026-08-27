@@ -207,7 +207,7 @@ test("official discovery keeps every accepted URL suppressed through the success
   assert.equal(writes, 4_002);
 });
 
-test("official discovery indexing enforces rolling process and client URL budgets", async () => {
+test("official discovery indexing charges every admitted write against rolling process and client URL budgets", async () => {
   let currentTime = 10_000;
   const written = [];
   const queue = createOfficialDiscoveryIndexQueue({
@@ -246,9 +246,16 @@ test("official discovery indexing enforces rolling process and client URL budget
   assert.equal(queue.stats().acceptedInWindow, 3);
   assert.equal(queue.stats().clientsInWindow, 2);
 
-  // Refreshing an already-counted URL does not consume another new-URL slot.
+  // A refresh after success suppression expires would start another database
+  // transaction, so it is charged and rejected while the process quota is
+  // full even though the canonical URL was seen before.
   currentTime += 1_001;
-  assert.equal(queue.enqueue([document("https://example.test/a")], { clientKey: "client-b" }).accepted, 1);
+  assert.deepEqual(queue.enqueue([document("https://example.test/a")], { clientKey: "client-b" }), {
+    accepted: 0,
+    coalesced: 0,
+    dropped: 1,
+    closed: false,
+  });
   await queue.idle();
   assert.equal(queue.stats().acceptedInWindow, 3);
 
@@ -258,6 +265,48 @@ test("official discovery indexing enforces rolling process and client URL budget
   await queue.idle();
   assert.equal(queue.stats().acceptedInWindow, 1);
   assert.equal(queue.stats().clientsInWindow, 1);
+});
+
+test("official discovery replay after suppression consumes a fresh event budget slot", async () => {
+  let currentTime = 20_000;
+  let writes = 0;
+  const queue = createOfficialDiscoveryIndexQueue({
+    keyOf: (item) => item.url,
+    acceptanceWindowMs: 5_000,
+    maximumAcceptedPerWindow: 2,
+    maximumAcceptedPerClient: 2,
+    successTtlMs: 1_000,
+    retryBackoffMs: 1_000,
+    clientScopeSecret: Buffer.alloc(32, 8),
+    now: () => currentTime,
+    writeBatch: async (documents) => {
+      writes += documents.length;
+      return { status: "ready" };
+    },
+  });
+  const item = document("https://example.test/replayed");
+
+  assert.equal(queue.enqueue([item], { clientKey: "client-a" }).accepted, 1);
+  await queue.idle();
+  assert.equal(queue.enqueue([item], { clientKey: "client-a" }).coalesced, 1);
+  assert.equal(queue.stats().acceptedInWindow, 1);
+
+  currentTime += 1_001;
+  assert.equal(queue.enqueue([item], { clientKey: "client-a" }).accepted, 1);
+  await queue.idle();
+  assert.equal(writes, 2);
+  assert.equal(queue.stats().acceptedInWindow, 2);
+
+  currentTime += 1_001;
+  assert.equal(queue.enqueue([item], { clientKey: "client-a" }).dropped, 1);
+  await queue.idle();
+  assert.equal(writes, 2);
+
+  currentTime += 3_000;
+  assert.equal(queue.enqueue([item], { clientKey: "client-a" }).accepted, 1);
+  await queue.idle();
+  assert.equal(writes, 3);
+  assert.equal(queue.stats().acceptedInWindow, 2);
 });
 
 test("official discovery indexing records success TTL only after a completed write", async () => {

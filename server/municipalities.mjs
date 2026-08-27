@@ -476,6 +476,28 @@ const FORESTRY_AREA_SUFFIX_ENTITY_PATTERNS = Object.freeze([
   /\bkui\s+palju\s+metsa\b\s+(.+)$/u,
 ]);
 const FORESTRY_AREA_COMPARISON_PATTERN = /\b(?:compare|comparison|compared\s+(?:with|to|against)|versus|vs|relative\s+to|alongside|against|differ(?:s|ed|ing)?\s+from|difference\s+between|and)\b/u;
+// A narrow national area + methodology question must not turn its complete
+// explanatory suffix into an open-class locality. The anchors are deliberate:
+// appended places or private clauses remain unresolved and fail closed.
+const FORESTRY_REVIEWED_NATIONAL_MIXED_AREA_METHOD_PATTERNS = Object.freeze([
+  /^kui\s+palju\s+metsa\s+(?:eestis\s+on|on\s+eestis)\s+ja\s+kuidas\s+(?:seda|metsa)\s+(?:moodetakse|hinnatakse)$/u,
+  /^how\s+much\s+(?:forest|woodland)(?:\s+area)?\s+(?:is(?:\s+there)?\s+in\s+estonia|does\s+estonia\s+have)\s+and\s+how\s+is\s+it\s+(?:measured|estimated|calculated|surveyed|inventoried)$/u,
+  /^what\s+is\s+the\s+(?:forest|woodland)\s+(?:area|cover(?:age)?)\s+in\s+estonia\s+and\s+how\s+is\s+it\s+(?:measured|estimated|calculated|surveyed|inventoried)$/u,
+  /^(?:what\s+is\s+)?estonia\s+s\s+(?:forest|woodland)\s+(?:area|cover(?:age)?)\s+and\s+how\s+is\s+it\s+(?:measured|estimated|calculated|surveyed|inventoried)$/u,
+  /^(?:what\s+is\s+)?(?:the\s+)?(?:country|nation)\s+s\s+(?:forest|woodland)\s+(?:area|cover(?:age)?)\s+in\s+estonia\s+and\s+how\s+is\s+it\s+(?:measured|estimated|calculated|surveyed|inventoried)$/u,
+]);
+
+function isReviewedNationalMixedForestAreaMethodQuestion(value) {
+  // The matcher below intentionally uses the lossy Estonian/English catalogue
+  // normalization. Refuse that shortcut when another script would disappear;
+  // otherwise an appended name or locality could make a non-complete query
+  // look exactly like one of these anchored national questions.
+  if (hasLossyUnicodeForestryAreaResidual(value)) return false;
+  const text = normalizeMunicipalityText(value);
+  return FORESTRY_REVIEWED_NATIONAL_MIXED_AREA_METHOD_PATTERNS.some(
+    (pattern) => pattern.test(text),
+  );
+}
 const FORESTRY_BREAKDOWN_METRIC_SOURCE = String.raw`(?:(?:forest|woodland)\s+(?:area|cover(?:age)?(?:\s+(?:percentage|percent|share))?)|metsamaa\w*(?:\s+pindala\w*)?|metsasus\w*|metsa\s+pindala\w*)`;
 const FORESTRY_BREAKDOWN_DIMENSION_SOURCE = String.raw`(?:ownership|tenure|owner|management|protection|conservation|age|species|land[-\s]+use|harvest|productivity|omandivorm\w*|omandiliik\w*|omanikuliig\w*|kaitsekategoori\w*|kaitseklas\w*|kaitsestaatu\w*|kaitsere[zž]iim\w*|majandamiskategoori\w*|majandamisviis\w*|majandamisstaatu\w*|puuliig\w*|vanuseklas\w*|maakasutus\w*|tootlikkus\w*)`;
 const FORESTRY_BREAKDOWN_CONNECTOR_SUFFIX_SOURCE = String.raw`(?:\s+(?:j[aä]rgi|kaupa|l[oõ]ikes))?`;
@@ -492,6 +514,7 @@ const UNSUPPORTED_FOREST_AREA_BREAKDOWN_PATTERNS = Object.freeze([
   /\b(?:forest|woodland)\s+(?:area|cover(?:age)?)\s+(?:of|for)\s+(?:privately\s+owned|publicly\s+owned|state(?:[-\s]+owned)?|municipal|protected|unprotected|commercial|productive)\s+(?:forests?|woodlands?)\b/iu,
   /\b(?:omandivorm\w*|omanikuliig\w*|kaitsealuse\w*|kaitsmata\w*|erametsa\w*|riigimetsa\w*|majandatava\w*|majandamata\w*)\b[\s\S]{0,45}\b(?:metsamaa\w*|metsasus\w*|pindala\w*)\b/iu,
   /\b(?:metsamaa\w*|metsasus\w*|metsa\s+pindala\w*)\b[\s\S]{0,45}\b(?:omandivorm\w*|omanikuliig\w*|omanike\s+kaupa|kaitsekategoori\w*|majandamiskategoori\w*|puuliigi\w*|vanuseklassi\w*)\b/iu,
+  /\b(?:kui\s+palju\s+metsa|mitu\s+hektarit\s+metsa)\b[\s\S]{0,70}\b(?:(?:omandivorm|omanikuliig)\w*|omanike)\s+(?:j[aä]rgi|kaupa|l[oõ]ikes)\b/iu,
   // A user can mix the English metric with an Estonian dimension or
   // connector. Treat the metric and dimension independently instead of
   // requiring the whole phrase to use one language; otherwise a national
@@ -504,6 +527,43 @@ export function requestsUnsupportedForestAreaBreakdown(value) {
   return UNSUPPORTED_FOREST_AREA_BREAKDOWN_PATTERNS.some(
     (pattern) => pattern.test(String(value || "")),
   );
+}
+
+const REVIEWED_NATIONAL_FOREST_BREAKDOWN_DIMENSION_SOURCE = String.raw`(?:(?:(?:legal|forest|woodland|public|private|state|municipal|government|corporate|individual)\s+){0,2}(?:ownership|tenure|management|protection|conservation|age|species|land\s+use|harvest|productivity))(?:\s+(?:breakdown|categor(?:y|ies)|class(?:es)?|type(?:s)?|status(?:es)?|regime(?:s)?|group(?:s)?))?`;
+const REVIEWED_NATIONAL_FOREST_BREAKDOWN_SUFFIX_SOURCE = String.raw`(?:(?:by|according\s+to|across)\s+${REVIEWED_NATIONAL_FOREST_BREAKDOWN_DIMENSION_SOURCE}|(?:broken\s+down|grouped|divided|split|disaggregated)\s+by\s+${REVIEWED_NATIONAL_FOREST_BREAKDOWN_DIMENSION_SOURCE})`;
+const REVIEWED_NATIONAL_FOREST_BREAKDOWN_PATTERNS = Object.freeze([
+  new RegExp(
+    String.raw`^how\s+much\s+(?:forest|woodland)(?:\s+area)?\s+(?:is(?:\s+there)?\s+in\s+estonia|does\s+estonia\s+have)\s+and\s+how\s+is\s+it\s+(?:measured|estimated|calculated|surveyed|inventoried)\s+${REVIEWED_NATIONAL_FOREST_BREAKDOWN_SUFFIX_SOURCE}$`,
+    "u",
+  ),
+  new RegExp(
+    String.raw`^what\s+is\s+the\s+(?:forest|woodland)\s+(?:area|cover(?:age)?)\s+in\s+estonia\s+and\s+how\s+is\s+it\s+(?:measured|estimated|calculated|surveyed|inventoried)\s+${REVIEWED_NATIONAL_FOREST_BREAKDOWN_SUFFIX_SOURCE}$`,
+    "u",
+  ),
+  new RegExp(
+    String.raw`^(?:forest|woodland)\s+(?:area|cover(?:age)?)\s+in\s+estonia\s+and\s+how\s+is\s+it\s+(?:measured|estimated|calculated|surveyed|inventoried)\s+${REVIEWED_NATIONAL_FOREST_BREAKDOWN_SUFFIX_SOURCE}$`,
+    "u",
+  ),
+  new RegExp(
+    String.raw`^(?:forest|woodland)\s+(?:area|cover(?:age)?)\s+in\s+estonia\s+${REVIEWED_NATIONAL_FOREST_BREAKDOWN_SUFFIX_SOURCE}$`,
+    "u",
+  ),
+  new RegExp(
+    String.raw`^(?:forest|woodland)\s+(?:area|cover(?:age)?)\s+in\s+estonia\s+${REVIEWED_NATIONAL_FOREST_BREAKDOWN_SUFFIX_SOURCE}\s+and\s+how\s+is\s+it\s+(?:measured|estimated|calculated|surveyed|inventoried)$`,
+    "u",
+  ),
+  /^(?:metsamaa(?:\s+pindala)?|metsa\s+pindala|metsasus)\s+eestis\s+(?:(?:omandivorm|omanikuliig)\w*|omanike)\s+(?:jargi|kaupa|loikes)$/u,
+  /^kui\s+palju\s+metsa\s+(?:eestis\s+on|on\s+eestis)\s+(?:(?:omandivorm|omanikuliig)\w*|omanike)\s+(?:jargi|kaupa|loikes)\s+ja\s+kuidas\s+(?:seda|metsa)\s+(?:moodetakse|hinnatakse|arvutatakse|inventeeritakse)$/u,
+]);
+
+// These are complete, public aggregate questions. Keep the grammar closed so
+// an appended locality, natural-person name, contact field or private asset
+// can never inherit the national SMI route merely because the prefix is safe.
+export function isReviewedNationalUnsupportedForestAreaBreakdownQuestion(value) {
+  if (hasLossyUnicodeForestryAreaResidual(value)) return false;
+  const text = normalizeMunicipalityText(value);
+  return requestsUnsupportedForestAreaBreakdown(value)
+    && REVIEWED_NATIONAL_FOREST_BREAKDOWN_PATTERNS.some((pattern) => pattern.test(text));
 }
 
 const UNSUPPORTED_FOREST_AREA_TIME_SERIES_PATTERNS = Object.freeze([
@@ -539,6 +599,23 @@ function unresolvedEntityTokens(value) {
       && !FORESTRY_REVIEWED_NON_ENTITY_TOKEN_PATTERNS.some((pattern) => pattern.test(token)));
 }
 
+export function hasLossyUnicodeForestryAreaResidual(value) {
+  // normalizeMunicipalityText intentionally folds reviewed Estonian/English
+  // wording to ASCII for catalogue matching. Any other Unicode letter or
+  // number would disappear at that boundary, so keep it as an unresolved
+  // query-bound residual instead of letting a reviewed national prefix absorb
+  // an appended name, address or locality in another script.
+  const normalizedText = normalizeMunicipalityText(value);
+  if (!FORESTRY_AREA_ENTITY_CONTEXT_PATTERN.test(normalizedText)) return false;
+  const decomposed = String(value || "")
+    .normalize("NFKD")
+    .replace(/\p{Mark}/gu, "");
+  return [...decomposed].some((character) => (
+    /[\p{Letter}\p{Number}]/u.test(character)
+    && !/[0-9A-Za-z]/u.test(character)
+  ));
+}
+
 // National SMI evidence is eligible only when an English forest-area query
 // leaves no unreviewed entity around its metric. This catches open-class place
 // names before the metric, as the subject of “does … have”, in comparisons,
@@ -548,6 +625,9 @@ function unresolvedEntityTokens(value) {
 export function hasUnresolvedForestryAreaEntity(value) {
   const text = normalizeMunicipalityText(value);
   if (!FORESTRY_AREA_ENTITY_CONTEXT_PATTERN.test(text)) return false;
+  if (hasLossyUnicodeForestryAreaResidual(value)) return true;
+  if (isReviewedNationalMixedForestAreaMethodQuestion(value)) return false;
+  if (isReviewedNationalUnsupportedForestAreaBreakdownQuestion(value)) return false;
 
   const prefixEntity = text.match(FORESTRY_AREA_PREFIX_ENTITY_PATTERN)?.[1] || "";
   if (prefixEntity && unresolvedEntityTokens(prefixEntity).length) return true;
@@ -642,6 +722,12 @@ export function classifyForestryGeographyScope(value) {
   }
   if (hasUnresolvedForestryLocalityScope(value)) {
     return { kind: "unknown-locality", identity: null, matched: null };
+  }
+  if (isReviewedNationalMixedForestAreaMethodQuestion(value)) {
+    return { kind: "national-estonia", identity: "estonia", matched: null };
+  }
+  if (isReviewedNationalUnsupportedForestAreaBreakdownQuestion(value)) {
+    return { kind: "national-estonia", identity: "estonia", matched: null };
   }
   // “in/of/for” can introduce either a geography or a requested period/unit.
   // Consume reviewed complete temporal, unit and aggregate complements before

@@ -65,6 +65,7 @@ import {
   publicResponse,
   reassociateHydratedDocuments,
   requestCanStillPersist,
+  retainSearchPersistence,
   SEARCH_RESPONSE_REVISION,
   searchListingRevision,
   searchEnvironmentLive as searchEnvironmentLiveImplementation,
@@ -145,6 +146,7 @@ import {
   rankPublicSearchCandidates,
 } from "../server/retrieval.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
+import { relationshipClaimHasPassageWitness } from "../server/proposition-grounding.mjs";
 
 function explicitEvidenceSource(source = {}) {
   return {
@@ -420,6 +422,9 @@ test("container readiness is withdrawn before the old listener drains", async ()
   assert.match(dockerfile, /HEALTHCHECK --interval=1s --timeout=2s --start-period=20s --retries=3/u);
   assert.match(dockerfile, /api\/health\/container-readiness/u);
   assert.match(compose, /test: \["CMD", "wget", "-qO-", "http:\/\/127\.0\.0\.1:3000\/api\/health\/container-readiness"\][\s\S]*?interval: 1s[\s\S]*?timeout: 2s[\s\S]*?retries: 3/u);
+  assert.match(compose, /MAX_GENERAL_HTTP_SOCKETS: \$\{MAX_GENERAL_HTTP_SOCKETS:-224\}/u);
+  assert.match(compose, /MAX_HTTP_SOCKETS_PER_PEER: \$\{MAX_HTTP_SOCKETS_PER_PEER:-32\}/u);
+  assert.doesNotMatch(compose, /^\s+ports:/mu);
   assert.match(index, /app\.get\("\/api\/health\/container-readiness"/u);
   assert.match(index, /if \(containerReadiness !== "ready"\)/u);
   assert.doesNotMatch(index, /request\.query\.readiness/u);
@@ -443,8 +448,13 @@ test("API admission precedes JSON parsing and HTTP receive budgets are explicit"
   assert.match(index, /server\.headersTimeout = 5_000/u);
   assert.match(index, /server\.requestTimeout = 10_000/u);
   assert.match(index, /server\.maxConnections = publicResponseConfiguration\.maximumConnections/u);
+  assert.match(index, /server\.on\("connection", publicSocketBudget\)/u);
+  assert.match(index, /createPublicSocketBudget\(\{[\s\S]*?isReservedSocket:[\s\S]*?isTrustedIngressSocket:/u);
   assert.match(index, /server\.setTimeout\(publicResponseConfiguration\.idleTimeoutMs, \(socket\) => socket\.destroy\(\)\)/u);
   assert.match(index, /app\.use\(publicResponseBudget\)/u);
+  assert.match(index, /isReservedRequest: isReservedHealthRequest/u);
+  assert.match(index, /isHealthRequestPath\(request\)[\s\S]*?setHeader\("Connection", "close"\)/u);
+  assert.match(index, /isHealthRequestPath\(request\)[\s\S]*?isReservedHealthRequest\(request\)[\s\S]*?status\(methodAllowed \? 400 : 405\)/u);
   assert.match(index, /const terrapointAdmission = createFairSearchAdmission\(\{[\s\S]*?maximumActive: MAX_CONCURRENT_TERRAPOINT_REQUESTS,[\s\S]*?maximumActivePerClient: MAX_CONCURRENT_TERRAPOINT_REQUESTS_PER_CLIENT,[\s\S]*?maximumQueuedPerClient: MAX_QUEUED_TERRAPOINT_REQUESTS_PER_CLIENT,[\s\S]*?capacityCode: "UPSTREAM_CAPACITY"/u);
   assert.match(index, /clientKey: requestRateLimitAddress\(request, proxyConfiguration\.trustedProxyCidrs/u);
   assert.match(index, /terrapointAdmission\.close\(\)/u);
@@ -452,8 +462,11 @@ test("API admission precedes JSON parsing and HTTP receive budgets are explicit"
   assert.match(index, /maximumBytes: MAX_TERRAPOINT_RESPONSE_BYTES/u);
   assert.match(index, /approvedOrigins: TERRAPOINT_OUTBOUND_ORIGINS/u);
   assert.doesNotMatch(index, /upstream\.json\(\)|upstream\.arrayBuffer\(\)/u);
-  assert.match(cadastre, /readBoundedResponseJson\(response, MAX_RESPONSE_BYTES/u);
-  assert.doesNotMatch(cadastre, /response\.arrayBuffer\(\)|response\.json\(\)/u);
+  assert.match(cadastre, /requestApprovedPublicHttpsText/u);
+  assert.match(cadastre, /approvedOrigins: GEOSERVER_ORIGINS/u);
+  assert.match(cadastre, /maximumBytes: MAX_RESPONSE_BYTES/u);
+  assert.match(cadastre, /maximumRedirects: 0/u);
+  assert.doesNotMatch(cadastre, /\bfetch\s*\(/u);
   assert.match(corpus, /requestApprovedPublicHttpsText/u);
   assert.match(corpus, /maximumBytes: byteLimit/u);
   assert.match(corpus, /Math\.trunc\(Number\(maximumBytes\) \|\| MAX_FETCH_BYTES\)[\s\S]*?MAX_FETCH_BYTES/u);
@@ -1646,6 +1659,37 @@ test("a grounded SMI comparison may state the supported non-synonym conclusion",
 
   assert.equal(answer.eyebrow, "AI koondvastus");
   assert.match(answer.intro, /ei ole metsaandmed SMI sünonüüm/u);
+  assert.deepEqual(answer.introCitations, [1, 2]);
+});
+
+test("LLM citation binding removes an unrelated aggregate source", () => {
+  const query = "Tallinn air quality monitoring at permanent stations";
+  const draft = {
+    evidence: { kind: "ranked-search-results", answerable: true },
+    answer: {
+      title: query,
+      intro: "Tallinn monitors air quality at permanent stations.",
+      introCitations: [1],
+      parts: [],
+      note: "Check the official source.",
+    },
+    sources: [{
+      citation: 1,
+      title: "Tallinn air monitoring",
+      content: "Tallinn monitors air quality at permanent stations.",
+    }, {
+      citation: 2,
+      title: "Tartu waste reports",
+      content: "Tartu publishes annual waste reports.",
+    }],
+  };
+
+  const answer = validateGroundedAnswer({
+    intro: draft.answer.intro,
+    intro_citations: [1, 2],
+    parts: [],
+  }, draft, query);
+  assert.deepEqual(answer.introCitations, [1]);
 });
 
 test("degraded SMI comparison fallback gives visible-source roles instead of a chronology fragment", async () => {
@@ -1661,8 +1705,9 @@ test("degraded SMI comparison fallback gives visible-source roles instead of a c
 
   assert.equal(draft.evidence.answerable, true);
   assert.match(draft.answer.intro, /metsaandmed.*katusmõiste/iu);
-  assert.match(draft.answer.intro, /SMI.*üleriigiline.*proovitükk.*statistiline/iu);
-  assert.match(draft.answer.intro, /Metsaregister.*kinnistu.*metsaeraldis.*inventeerimisandm.*metsateatis/iu);
+  assert.match(draft.answer.intro, /SMI.*üleriigili.*proovitükk.*statistilis/iu);
+  assert.match(draft.answer.intro, /Metsaregister.*kinnistu.*metsainventeerimise.*metsateatis/iu);
+  assert.match(draft.answer.intro, /Registri andmestik.*kinnistu.*metsaeraldis/iu);
   assert.doesNotMatch(draft.answer.intro, /\b1999\b/u);
   assert.equal(draft.answer.parts.length, 3);
   assert.equal(assertAnswerAddressesQuery(draft.answer.intro, query), true);
@@ -1673,7 +1718,7 @@ test("degraded SMI comparison fallback gives visible-source roles instead of a c
     ...draft.answer.introCitations,
     ...draft.answer.parts.flatMap((part) => part.citations),
   ]);
-  assert.ok(usedCitations.size >= 3);
+  assert.ok(usedCitations.size >= 2);
   assert.ok([...usedCitations].every((citation) => visibleByCitation.has(citation)));
   const sourceText = (citation) => {
     const source = visibleByCitation.get(citation);
@@ -2110,7 +2155,11 @@ test("model credentials are bound to the approved HTTPS provider origin", async 
   }
   const llm = await readFile(new URL("../server/llm.mjs", import.meta.url), "utf8");
   assert.ok(llm.indexOf("validateLlmProviderUrl(resolvedLlmTarget.baseUrl)") < llm.indexOf("const apiKey = String("));
-  assert.match(llm, /method: "POST",\s*redirect: "error",/u);
+  assert.match(llm, /requestApprovedPublicHttpsJsonPost\(`\$\{baseUrl\}\$\{request\.endpoint\}`/u);
+  assert.match(llm, /approvedOrigins: LLM_PROVIDER_ORIGINS/u);
+  assert.match(llm, /maximumRequestBytes: 256_000/u);
+  assert.match(llm, /maximumBytes: 1_000_000/u);
+  assert.doesNotMatch(llm, /\bfetch\s*\(/u);
 });
 
 test("successful LLM work consumes one process-wide rolling allowance", () => {
@@ -3830,7 +3879,7 @@ test("grounding accepts ordinary Estonian inflection without weakening citation 
     sources: [{
       citation: 1,
       title: "Välisõhk ja õhukvaliteet",
-      content: "Õhukvaliteeti hinnatakse saasteainete kaupa ning tulemust mõjutavad mõõtekoht ja ajavahemik; võrdle hetkenäitu pikema perioodi seireandmetega.",
+      content: "Tallinna õhukvaliteeti hinnatakse saasteainete kaupa ning tulemust mõjutavad mõõtekoht ja ajavahemik; võrdle hetkenäitu pikema perioodi seireandmetega.",
     }],
   };
   const answer = validateGroundedAnswer({
@@ -3954,6 +4003,333 @@ test("citation metadata cannot ground a claim and unrelated cited parts are omit
   }, groundedDraft, query);
   assert.equal(retained.parts.length, 1);
   assert.match(retained.parts[0].text, /Keskkonnaameti nõusolekut/iu);
+});
+
+test("citation grounding binds named entities and relations inside one evidence passage", () => {
+  const query = "Tallinn air quality monitoring";
+  const sourceProfile = {
+    organization: "Keskkonnaagentuur",
+    sourceTier: "official",
+    evidencePolicy: "claim-specific",
+    _answerEvidenceEligible: true,
+  };
+  const draft = {
+    answer: {
+      title: query,
+      intro: "Tallinn monitors air quality.",
+      introCitations: [1],
+      parts: [],
+      note: "",
+    },
+    sources: [
+      { citation: 1, title: "Tallinn air monitoring", content: "Tallinn monitors air quality.", ...sourceProfile },
+      { citation: 2, title: "Tartu reports", content: "Tartu publishes annual reports.", ...sourceProfile },
+    ],
+    evidence: { kind: "ranked-search-results", answerable: true },
+  };
+  const passages = draft.sources.map((source) => source.content);
+
+  for (const unsupported of [
+    "Tartu monitors air quality.",
+    "Tallinn publishes annual reports.",
+    "Tartu monitors Tallinn.",
+    "Tartu handles air quality and Tallinn handles annual reports.",
+    "Pärnu handles air quality.",
+    "Tartu is the air-quality operator.",
+    "Air quality is monitored by Tartu.",
+    "Tallinn and Tartu monitor air quality.",
+    "It says Tartu handles air quality.",
+    "The report says Tartu handles air quality.",
+    "According to data, Tartu handles air quality.",
+    "Reported: Tartu handles air quality.",
+    "Based on evidence, Tartu handles air quality.",
+    "We learn that Tartu handles air quality.",
+    "Tallinn says Tartu handles air quality.",
+    "Tallinn notes that Tartu handles air quality.",
+    "Tallinn reports: Tartu handles air quality.",
+    "Tallinn teatab, et Tartu handles air quality.",
+    "Tallinn attributes air-quality handling to Tartu.",
+    "Tartu, Tallinn claims, handles air quality.",
+    "Tallinn delegates air-quality handling to Tartu.",
+    "Tallinn assigns air-quality oversight to Tartu.",
+    "Tallinn names Tartu as air-quality operator.",
+    "Tallinn’s air-quality operator is Tartu.",
+    "Air-quality responsibility passes from Tallinn to Tartu.",
+    "Tartu, according to Tallinn, handles air quality.",
+    "tartu handles air quality and tallinn handles annual reports.",
+  ]) {
+    assert.equal(
+      relationshipClaimHasPassageWitness(unsupported, passages),
+      false,
+      unsupported,
+    );
+    assert.throws(() => validateGroundedAnswer({
+      intro: unsupported,
+      intro_citations: [1, 2],
+      parts: [],
+    }, draft, query), /entity relationship/u, unsupported);
+  }
+
+  const accepted = validateGroundedAnswer({
+    intro: "Tallinn monitors air quality.",
+    intro_citations: [1],
+    parts: [{
+      text: "Tartu publishes annual reports.",
+      citations: [2],
+    }],
+  }, draft, query);
+  assert.equal(accepted.intro, "Tallinn monitors air quality.");
+  // The side fact is grounded but intentionally omitted because it does not
+  // answer the Tallinn monitoring query.
+  assert.deepEqual(accepted.parts, []);
+
+  assert.equal(
+    relationshipClaimHasPassageWitness(
+      "Tartu handles air quality and Tallinn handles annual reports.",
+      passages,
+    ),
+    false,
+  );
+  assert.equal(
+    relationshipClaimHasPassageWitness("Air quality is monitored by Tallinn.", passages),
+    true,
+  );
+  assert.doesNotThrow(() => validateGroundedAnswer({
+    intro: "Air quality is monitored by Tallinn.",
+    intro_citations: [1],
+    parts: [],
+  }, draft, query));
+
+  for (const [claim, evidence] of [
+    ["The Environment Board monitors habitats.", "Environment Board monitors habitats."],
+    ["Õhukvaliteeti seiratakse Tallinna poolt.", "Tallinn seirab õhukvaliteeti."],
+    ["Kaitseala haldab Keskkonnaamet.", "Keskkonnaamet haldab kaitseala."],
+  ]) {
+    assert.equal(relationshipClaimHasPassageWitness(claim, [evidence]), true, claim);
+    const localDraft = {
+      answer: { title: claim, intro: evidence, introCitations: [1], parts: [], note: "" },
+      evidence: { kind: "ranked-search-results", answerable: true },
+      sources: [{ citation: 1, title: "Direct evidence", content: evidence, ...sourceProfile }],
+    };
+    assert.doesNotThrow(() => validateGroundedAnswer({
+      intro: claim,
+      intro_citations: [1],
+      parts: [],
+    }, localDraft, claim), claim);
+  }
+
+  for (const claim of [
+    "Tallinn attributes air-quality handling to Tartu.",
+    "Tartu, Tallinn claims, handles air quality.",
+    "Tallinn delegates air-quality handling to Tartu.",
+    "Tallinn assigns air-quality oversight to Tartu.",
+    "Tallinn names Tartu as air-quality operator.",
+    "Tallinn’s air-quality operator is Tartu.",
+    "Air-quality responsibility passes from Tallinn to Tartu.",
+    "Tartu, according to Tallinn, handles air quality.",
+  ]) {
+    assert.equal(relationshipClaimHasPassageWitness(claim, [claim]), true, claim);
+  }
+
+  for (const [claim, reversedEvidence] of [
+    [
+      "Responsibility for air quality moved from Tartu to Tallinn.",
+      "Responsibility for air quality moved from Tallinn to Tartu.",
+    ],
+    [
+      "Air-quality responsibility was passed from Tartu to Tallinn.",
+      "Air-quality responsibility was passed from Tallinn to Tartu.",
+    ],
+    [
+      "Air-quality responsibility moved to Tallinn from Tartu.",
+      "Air-quality responsibility moved to Tartu from Tallinn.",
+    ],
+    [
+      "Monitoring responsibility moved from Tartu to Tallinn.",
+      "Monitoring responsibility moved from Tallinn to Tartu.",
+    ],
+    [
+      "Between Tartu and Tallinn, duty shifted to Tartu.",
+      "Between Tartu and Tallinn, duty shifted to Tallinn.",
+    ],
+    [
+      "Vastutus anti Tartu — poolt — Tallinnale.",
+      "Vastutus anti Tallinn — poolt — Tartule.",
+    ],
+  ]) {
+    assert.equal(
+      relationshipClaimHasPassageWitness(claim, [reversedEvidence]),
+      false,
+      claim,
+    );
+    assert.equal(relationshipClaimHasPassageWitness(claim, [claim]), true, claim);
+    const localDraft = {
+      answer: { title: claim, intro: reversedEvidence, introCitations: [1], parts: [], note: "" },
+      evidence: { kind: "ranked-search-results", answerable: true },
+      sources: [{ citation: 1, title: "Directional evidence", content: reversedEvidence, ...sourceProfile }],
+    };
+    assert.throws(() => validateGroundedAnswer({
+      intro: claim,
+      intro_citations: [1],
+      parts: [],
+    }, localDraft, claim), /entity relationship/u, claim);
+  }
+
+  for (const [claim, reversedEvidence] of [
+    ["Tallinn monitors Tartu for Pärnu.", "Tallinn monitors Pärnu for Tartu."],
+    ["Tallinn manages Tartu for Pärnu.", "Tallinn manages Pärnu for Tartu."],
+    ["Tallinn protects Tartu from Pärnu.", "Tallinn protects Pärnu from Tartu."],
+    ["Tallinn grants Tartu for Pärnu.", "Tallinn grants Pärnu for Tartu."],
+    ["Tallinn operates Tartu for Pärnu.", "Tallinn operates Pärnu for Tartu."],
+    ["Tallinn maintains Tartu for Pärnu.", "Tallinn maintains Pärnu for Tartu."],
+    ["Tallinn coordinates Tartu with Pärnu.", "Tallinn coordinates Pärnu with Tartu."],
+    ["Tallinn publishes Tartu for Pärnu.", "Tallinn publishes Pärnu for Tartu."],
+    ["Tallinn owns Tartu in Pärnu.", "Tallinn owns Pärnu in Tartu."],
+    ["Tallinn monitors Tartu on behalf of Pärnu.", "Tallinn monitors Pärnu on behalf of Tartu."],
+    ["Tallinn protects Tartu against Pärnu.", "Tallinn protects Pärnu against Tartu."],
+    ["Tallinn monitors Tartu, for Pärnu.", "Tallinn monitors Pärnu, for Tartu."],
+  ]) {
+    assert.equal(
+      relationshipClaimHasPassageWitness(claim, [reversedEvidence]),
+      false,
+      claim,
+    );
+    assert.equal(relationshipClaimHasPassageWitness(claim, [claim]), true, claim);
+  }
+
+  assert.equal(
+    relationshipClaimHasPassageWitness(
+      "Tallinn protects Tartu from Pärnu.",
+      ["Tartu is protected from Pärnu by Tallinn."],
+    ),
+    true,
+  );
+  const roleSwapClaim = "Tallinn monitors Tartu for Pärnu.";
+  const roleSwapEvidence = "Tallinn monitors Pärnu for Tartu.";
+  const roleSwapDraft = {
+    answer: { title: roleSwapClaim, intro: roleSwapEvidence, introCitations: [1], parts: [], note: "" },
+    evidence: { kind: "ranked-search-results", answerable: true },
+    sources: [{ citation: 1, title: "Reversed roles", content: roleSwapEvidence, ...sourceProfile }],
+  };
+  assert.throws(() => validateGroundedAnswer({
+    intro: roleSwapClaim,
+    intro_citations: [1],
+    parts: [],
+  }, roleSwapDraft, roleSwapClaim), /entity relationship/u);
+
+  for (const [claim, evidence] of [
+    ["Tallinn coordinates Tartu monitoring.", "Tartu monitoring is coordinated by Tallinn."],
+    ["Tallinn monitors Tartu against Pärnu.", "Tartu is monitored against Pärnu by Tallinn."],
+    ["Tallinn monitors Tartu on behalf of Pärnu.", "Tartu is monitored on behalf of Pärnu by Tallinn."],
+    ["Tallinn seirab Tartut Pärnu jaoks.", "Tartut seiratakse Tallinna poolt Pärnu jaoks."],
+    ["Keskkonnaamet haldab Tartu kaitseala.", "Tartu kaitseala on Keskkonnaameti poolt hallatud."],
+  ]) {
+    assert.equal(relationshipClaimHasPassageWitness(claim, [evidence]), true, claim);
+  }
+
+  const commaClaim = "Tallinn monitors air quality, Tartu delegates waste oversight for Pärnu.";
+  const commaEvidence = "Tallinn monitors air quality, Tartu publishes waste oversight for Pärnu.";
+  assert.equal(relationshipClaimHasPassageWitness(commaClaim, [commaEvidence]), false);
+  assert.equal(relationshipClaimHasPassageWitness(commaClaim, [commaClaim]), true);
+  const commaDraft = {
+    answer: { title: commaClaim, intro: commaEvidence, introCitations: [1], parts: [], note: "" },
+    evidence: { kind: "ranked-search-results", answerable: true },
+    sources: [{ citation: 1, title: "Different predicate", content: commaEvidence, ...sourceProfile }],
+  };
+  assert.throws(() => validateGroundedAnswer({
+    intro: commaClaim,
+    intro_citations: [1],
+    parts: [],
+  }, commaDraft, commaClaim), /entity relationship/u);
+
+  for (const [separator, suffix] of [
+    [": ", ""],
+    [" — ", ""],
+    [" – ", ""],
+    [" / ", ""],
+    ["(", ")"],
+    [",", ""],
+  ]) {
+    const claim = `Tallinn monitors air quality${separator}Tartu delegates waste oversight for Pärnu.${suffix}`;
+    const evidence = `Tallinn monitors air quality${separator}Tartu publishes waste oversight for Pärnu.${suffix}`;
+    assert.equal(relationshipClaimHasPassageWitness(claim, [evidence]), false, separator);
+    assert.equal(relationshipClaimHasPassageWitness(claim, [claim]), true, separator);
+  }
+  for (const [separator, suffix] of [
+    [" | ", ""],
+    [" ~ ", ""],
+    [" ： ", ""],
+    [" ／ ", ""],
+    [" [", "]"],
+    [" « ", ""],
+    [" → ", ""],
+    [" = ", ""],
+  ]) {
+    const claim = `Tallinn monitors air quality${separator}Tartu had waste oversight for Pärnu.${suffix}`;
+    const evidence = `Tallinn monitors air quality${separator}Tartu publishes waste oversight for Pärnu.${suffix}`;
+    assert.equal(relationshipClaimHasPassageWitness(claim, [evidence]), false, separator);
+    assert.equal(relationshipClaimHasPassageWitness(claim, [claim]), true, separator);
+  }
+  for (const predicate of ["oversees", "had"]) {
+    const claim = `Tallinn monitors air quality, Tartu ${predicate} waste oversight for Pärnu.`;
+    const evidence = "Tallinn monitors air quality, Tartu publishes waste oversight for Pärnu.";
+    assert.equal(relationshipClaimHasPassageWitness(claim, [evidence]), false, predicate);
+    assert.equal(relationshipClaimHasPassageWitness(claim, [claim]), true, predicate);
+  }
+
+  assert.equal(
+    relationshipClaimHasPassageWitness(
+      "Tartu is monitored by: Tallinn for Pärnu.",
+      ["Tallinn monitors Tartu for Pärnu."],
+    ),
+    true,
+  );
+  assert.equal(
+    relationshipClaimHasPassageWitness(
+      "Keskkonnaamet peab Tartut jälgima Pärnu abil.",
+      ["Keskkonnaamet peab Pärnut jälgima Tartu abil."],
+    ),
+    false,
+  );
+  assert.equal(
+    relationshipClaimHasPassageWitness(
+      "Keskkonnaamet peab Tartut jälgima Pärnu abil.",
+      ["Keskkonnaamet peab Tartut jälgima Pärnu abil."],
+    ),
+    true,
+  );
+  assert.equal(
+    relationshipClaimHasPassageWitness(
+      "Tartut seiratakse Tallinna poolt Pärnu jaoks.",
+      ["Tallinn seirab Tartut Pärnu jaoks."],
+    ),
+    true,
+  );
+  for (const [claim, changedEvidence] of [
+    [
+      "Tallinn monitors permanent air-quality stations nationwide, which Tartu delegates to Pärnu for annual environmental reporting.",
+      "Tallinn monitors permanent air-quality stations nationwide, which Tartu publishes to Pärnu for annual environmental reporting.",
+    ],
+    [
+      "SMI monitors Estonia-wide plots, which Tartu delegates to Pärnu for annual reporting.",
+      "SMI monitors Estonia-wide plots, which Tartu publishes to Pärnu for annual reporting.",
+    ],
+    [
+      "Tallinn seirab õhukvaliteeti, mida Tartu delegeerib Pärnule iga-aastaseks aruandluseks.",
+      "Tallinn seirab õhukvaliteeti, mida Tartu avaldab Pärnule iga-aastaseks aruandluseks.",
+    ],
+  ]) {
+    assert.equal(relationshipClaimHasPassageWitness(claim, [changedEvidence]), false, claim);
+    assert.equal(relationshipClaimHasPassageWitness(claim, [claim]), true, claim);
+  }
+
+  assert.equal(
+    relationshipClaimHasPassageWitness(
+      "Tallinn, the capital, monitors Tartu for Pärnu.",
+      ["Tallinn, the capital, monitors Tartu for Pärnu."],
+    ),
+    true,
+  );
 });
 
 test("answer draft is built from the supplied current ranked result set", async () => {
@@ -4850,6 +5226,34 @@ test("deadline response is prompt while admission cleanup waits for non-cooperat
   assert.equal(finalized, 1);
 });
 
+test("optional search persistence is synchronously retained by the admission cleanup lease", async () => {
+  let resolvePersistence;
+  let finalized = 0;
+  const lease = createDeadlineCleanupLease(() => {
+    finalized += 1;
+  });
+  const persistence = new Promise((resolve) => {
+    resolvePersistence = resolve;
+  });
+
+  await retainSearchPersistence(persistence, lease.track);
+  lease.finish();
+  assert.equal(lease.pendingCount(), 1);
+  assert.equal(finalized, 0);
+
+  resolvePersistence("stored");
+  await persistence;
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(lease.pendingCount(), 0);
+  assert.equal(finalized, 1);
+
+  let untrackedResolved = false;
+  await retainSearchPersistence(Promise.resolve().then(() => {
+    untrackedResolved = true;
+  }));
+  assert.equal(untrackedResolved, true);
+});
+
 test("an aborted or expired search cannot persist a late result", () => {
   const active = new AbortController();
   assert.equal(requestCanStillPersist({ signal: active.signal, deadlineAt: 2_000, now: 1_999 }), true);
@@ -5220,6 +5624,42 @@ test("a ready model answer rebinds every cited final claim to the visible source
   assert.doesNotMatch(JSON.stringify(result.related), /INJECTED_UNCITED/u);
 });
 
+test("the public visible-witness boundary removes an unrelated extra citation", async () => {
+  const query = "Kui suur osa metsadest on kaitse all?";
+  const catalogue = officialServiceCatalogueDocuments();
+  const relevant = catalogue.find((item) => item.id === "protected-forest-share");
+  const unrelated = catalogue.find((item) => item.id === "waste-facilities-map");
+  assert.ok(relevant);
+  assert.ok(unrelated);
+  const startedAt = Date.now();
+  const result = await searchEnvironmentLive(query, {
+    startedAt,
+    deadlineAt: startedAt + 3_000,
+    useCache: false,
+    searchResults: { total: 2, items: [relevant, unrelated] },
+    generateAnswer(_providerQuery, providerDraft) {
+      const relevantCitation = providerDraft.sources.find((source) => source.id === relevant.id)?.citation;
+      const unrelatedCitation = providerDraft.sources.find((source) => source.id === unrelated.id)?.citation;
+      assert.ok(relevantCitation);
+      assert.ok(unrelatedCitation);
+      return {
+        answer: {
+          ...providerDraft.answer,
+          introCitations: [relevantCitation, unrelatedCitation],
+          parts: [],
+        },
+        related: [],
+        status: "ready",
+        provider: "test-provider",
+      };
+    },
+  });
+
+  assert.ok(result.answer.introCitations.length > 0);
+  assert.ok(result.sources.some((source) => source.id === relevant.id));
+  assert.ok(result.sources.every((source) => source.id !== unrelated.id));
+});
+
 test("source failures degrade without turning an outage into an absence claim", () => {
   const result = searchTimeoutFallback("kaevandamise keskkonnamõju Ida-Virumaal", {
     reason: "source-error",
@@ -5506,7 +5946,7 @@ test("persisted search identifiers use a secret HMAC instead of a reversible pla
 });
 
 test("answer cache revision follows ranked membership, order, metadata and content", () => {
-  assert.equal(SEARCH_RESPONSE_REVISION, "answer-v45-whole-municipality-privacy");
+  assert.equal(SEARCH_RESPONSE_REVISION, "answer-v50-citation-rebinding");
   const first = {
     items: [{
       id: "reviewed-guidance",
@@ -5670,6 +6110,11 @@ test("unknown API paths never fall through to the SPA HTML shell", async () => {
   assert.match(server, /Strict-Transport-Security", "max-age=31536000; includeSubDomains"/u);
   assert.match(server, /handleSearch[\s\S]*?Cache-Control", "no-store"/u);
   assert.match(server, /api\/search\/follow-up[\s\S]*?Cache-Control", "no-store"/u);
+  const suggestionsStart = server.indexOf("async function handleSuggestions");
+  const suggestionsEnd = server.indexOf('app.post("/api/suggestions"', suggestionsStart);
+  const suggestions = server.slice(suggestionsStart, suggestionsEnd);
+  assert.match(suggestions, /response\.setHeader\("Cache-Control", "private, no-store"\)/u);
+  assert.doesNotMatch(suggestions, /public, max-age/u);
 });
 
 test("follow-up privacy assessment precedes admission, retrieval and model work", async () => {
@@ -5677,6 +6122,10 @@ test("follow-up privacy assessment precedes admission, retrieval and model work"
   const start = server.indexOf('app.post("/api/search/follow-up"');
   const end = server.indexOf('app.post("/api/suggestions"', start);
   const route = server.slice(start, end);
+  const historyCardinalityGate = route.indexOf("previousQuestionValues.length <= 4");
+  const historyCanonicalization = route.indexOf("previousQuestionValues.map((value) => canonicalizePublicSearchQuery(value))");
+  assert.ok(historyCardinalityGate >= 0);
+  assert.ok(historyCanonicalization > historyCardinalityGate);
   const privacyGate = route.indexOf("blockedFollowUpAssessment(rootQuery, question, previousQuestions)");
   assert.ok(privacyGate >= 0);
   assert.ok(route.indexOf("acquireSearchSlot", privacyGate) > privacyGate);

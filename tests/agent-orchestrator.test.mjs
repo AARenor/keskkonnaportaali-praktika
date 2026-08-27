@@ -331,6 +331,51 @@ test("Agents transport rejects redirects, bounds bodies and charges total provid
   assert.equal(client.baseURL, "https://opencode.ai/zen/go/v1");
 });
 
+test("Agents default transport pins provider origin, credentials and byte limits", async () => {
+  const calls = [];
+  const boundedFetch = createBoundedOpenAiFetch({
+    baseUrl: "https://opencode.ai/zen/go/v1",
+    maximumRequestBytes: 512,
+    maximumResponseBytes: 1_024,
+    requestJsonImpl: async (url, options) => {
+      calls.push({ url, options });
+      return {
+        status: 200,
+        body: JSON.stringify({
+          id: "safe-response",
+          usage: { input_tokens: 2, output_tokens: 3, total_tokens: 5 },
+        }),
+        headers: { "content-type": "application/json" },
+      };
+    },
+  });
+  const requestBody = JSON.stringify({ model: "gpt-5.6-luna", input: "mets" });
+  const response = await boundedFetch("https://opencode.ai/zen/go/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer test-only",
+      "Content-Type": "application/json",
+      Host: "attacker.invalid",
+    },
+    body: requestBody,
+  });
+
+  assert.equal((await response.json()).id, "safe-response");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "https://opencode.ai/zen/go/v1/responses");
+  assert.deepEqual([...calls[0].options.approvedOrigins], ["https://opencode.ai"]);
+  assert.equal(calls[0].options.body, requestBody);
+  assert.equal(calls[0].options.headers.Authorization, "Bearer test-only");
+  assert.equal(calls[0].options.maximumRequestBytes, 512);
+  assert.equal(calls[0].options.maximumBytes, 1_024);
+
+  await assert.rejects(boundedFetch("https://opencode.ai/zen/go/v1/responses", {
+    method: "GET",
+    body: "{}",
+  }), /only POST/u);
+  assert.equal(calls.length, 1);
+});
+
 test("Agents transport denies before dispatch and fully charges unknown oversized responses", async () => {
   let deniedCalls = 0;
   const deniedBudget = createRollingLlmBudget({ requestBudget: 10, tokenBudget: 1_000 });

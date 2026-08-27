@@ -1,6 +1,7 @@
-import { readBoundedResponseJson } from "./upstream.mjs";
+import { requestApprovedPublicHttpsText } from "./public-https.mjs";
 
 const GEOSERVER_BASE = "https://gsavalik.envir.ee/geoserver";
+const GEOSERVER_ORIGINS = new Set([new URL(GEOSERVER_BASE).origin]);
 const CADASTRE_PATTERN = /\b\d{5}:\d{3}:\d{4}\b/u;
 const MAX_RESPONSE_BYTES = 3_000_000;
 const snapshotCache = new Map();
@@ -72,23 +73,37 @@ function wfsUrl(workspace, typeName, cqlFilter, propertyName, count) {
   return url;
 }
 
-async function fetchFeatureCollection(url, timeoutMs = 4_800, externalSignal) {
+export async function fetchFeatureCollection(
+  url,
+  timeoutMs = 4_800,
+  externalSignal,
+  requestText = requestApprovedPublicHttpsText,
+) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const signal = externalSignal && typeof AbortSignal.any === "function"
     ? AbortSignal.any([controller.signal, externalSignal])
     : controller.signal;
   try {
-    const response = await fetch(url, {
+    const response = await requestText(url, {
+      approvedOrigins: GEOSERVER_ORIGINS,
       headers: {
         Accept: "application/geo+json,application/json",
         "User-Agent": "Keskkonnaportaali-praktika/3.0 (+https://praktika.arleserver.cfd)",
       },
-      redirect: "error",
       signal,
+      maximumBytes: MAX_RESPONSE_BYTES,
+      maximumRedirects: 0,
     });
-    if (!response.ok) throw new Error(`Official WFS returned ${response.status}`);
-    const payload = await readBoundedResponseJson(response, MAX_RESPONSE_BYTES, "Official WFS response");
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`Official WFS returned ${response.status}`);
+    }
+    let payload;
+    try {
+      payload = JSON.parse(response.body);
+    } catch {
+      throw new Error("Official WFS returned invalid JSON");
+    }
     if (!payload || payload.type !== "FeatureCollection" || !Array.isArray(payload.features)) {
       throw new Error("Official WFS returned an invalid feature collection");
     }

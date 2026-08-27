@@ -146,7 +146,15 @@ test("public HTTPS JSON POST pins method, body contract and forbids redirects", 
   const result = await requestApprovedPublicHttpsJsonPost("https://public.example/stat", {
     approvedOrigins: origins,
     body,
+    headers: {
+      Authorization: "Bearer test-only",
+      Host: "attacker.invalid",
+      "X-Stainless-Retry-Count": "0",
+    },
     maximumBytes: 64,
+    maximumRequestBytes: 128,
+    ca: "test-ca",
+    family: 4,
     requestImpl: mockHttpsRequest([
       { status: 200, body: '{"value":[654301]}' },
     ], calls),
@@ -157,6 +165,12 @@ test("public HTTPS JSON POST pins method, body contract and forbids redirects", 
   assert.equal(calls[0].options.headers.Accept, "application/json");
   assert.equal(calls[0].options.headers["Content-Type"], "application/json");
   assert.equal(calls[0].options.headers["Content-Length"], String(Buffer.byteLength(body)));
+  assert.equal(calls[0].options.headers.authorization, "Bearer test-only");
+  assert.equal(calls[0].options.headers["x-stainless-retry-count"], "0");
+  assert.equal(calls[0].options.headers.host, undefined);
+  assert.equal(calls[0].options.ca, "test-ca");
+  assert.equal(calls[0].options.family, 4);
+  assert.equal(typeof calls[0].options.lookup, "function");
   assert.equal(calls[0].body, body);
 
   await assert.rejects(requestApprovedPublicHttpsJsonPost("https://public.example/stat", {
@@ -171,6 +185,12 @@ test("public HTTPS JSON POST pins method, body contract and forbids redirects", 
     body: "not json",
     requestImpl: mockHttpsRequest([], []),
   }), /invalid/u);
+  await assert.rejects(requestApprovedPublicHttpsJsonPost("https://public.example/stat", {
+    approvedOrigins: origins,
+    body,
+    maximumRequestBytes: Buffer.byteLength(body, "utf8") - 1,
+    requestImpl: mockHttpsRequest([], []),
+  }), /too large/u);
 });
 
 test("grounding audit approves every HTTPS locator in the official source catalogue", () => {

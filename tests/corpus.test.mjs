@@ -460,6 +460,46 @@ test("portal search parser preserves upstream total and card metadata", () => {
   assert.equal(result.documents[0].sourceTier, "official");
 });
 
+test("portal search parser rejects placeholder result URLs", () => {
+  const card = (href, title) => `
+    <div class="search-results__item-wrap">
+      <div class="search-results__item"><a href="${href}">
+        <h2 class="search-results__title">${title}</h2>
+      </a></div>
+    </div>`;
+  const result = parsePortalSearchPage(`
+    <main>
+      <h1>Tulemused otsingule (5)</h1>
+      ${card("/et/kehtiv", "Kehtiv tulemus")}
+      ${card("/et/undefined", "Undefined placeholder")}
+      ${card("undefined", "Relative placeholder")}
+      ${card("/et/null?source=portal", "Null placeholder")}
+      ${card("/et/%75ndefined", "Encoded placeholder")}
+    </main>`);
+  assert.deepEqual(result.documents.map((document) => document.url), [
+    "https://keskkonnaportaal.ee/et/kehtiv",
+  ]);
+});
+
+test("portal search parser accepts links nested inside result titles", () => {
+  const result = parsePortalSearchPage(`
+    <main>
+      <h1>Tulemused otsingule (1)</h1>
+      <div class="search-results__item-wrap">
+        <div class="search-results__category">Mõõdik</div>
+        <div class="search-results__item">
+          <h2 class="search-results__title">
+            <a href="/et/riigivalitsemine">Riigivalitsemine</a>
+          </h2>
+          <p class="search-results__text">Keskkonna valdkonna mõõdiku kaart.</p>
+        </div>
+      </div>
+    </main>`);
+  assert.equal(result.documents.length, 1);
+  assert.equal(result.documents[0].url, "https://keskkonnaportaal.ee/et/riigivalitsemine");
+  assert.equal(result.documents[0].title, "Riigivalitsemine");
+});
+
 test("portal result counts are bounded before they can control crawl work", () => {
   assert.equal(parsePortalReportedTotal("953"), 953);
   assert.throws(() => parsePortalReportedTotal("999999"), /configured result limit/u);

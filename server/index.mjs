@@ -50,6 +50,9 @@ import {
 } from "./request-budget.mjs";
 import {
   createPublicResponseBudget,
+  createPublicSocketBudget,
+  isHealthRequestPath,
+  isReservedHealthRequest,
   resolvePublicResponseBudget,
 } from "./response-budget.mjs";
 import {
@@ -128,8 +131,25 @@ const publicResponseBudget = createPublicResponseBudget({
     proxyConfiguration.trustedProxyCidrs,
     { ipv6PrefixBits: ipv6ClientPrefixBits },
   ),
-  isReservedRequest: (request) => request.path === "/api/health"
-    || request.path === "/api/health/container-readiness",
+  isReservedRequest: isReservedHealthRequest,
+});
+const publicSocketBudget = createPublicSocketBudget({
+  maximumActive: publicResponseConfiguration.maximumConnections,
+  maximumGeneral: process.env.MAX_GENERAL_HTTP_SOCKETS,
+  maximumPerPeer: process.env.MAX_HTTP_SOCKETS_PER_PEER,
+  keyForSocket: (socket) => requestRateLimitAddress({ socket }, "", {
+    ipv6PrefixBits: ipv6ClientPrefixBits,
+  }),
+  isReservedSocket: (socket) => {
+    const address = String(socket?.remoteAddress || "").split("%", 1)[0].toLocaleLowerCase("en");
+    return address === "::1"
+      || address === "127.0.0.1"
+      || address === "::ffff:127.0.0.1";
+  },
+  isTrustedIngressSocket: (socket) => requestFromTrustedProxy(
+    { socket },
+    proxyConfiguration.trustedProxyCidrs,
+  ),
 });
 let containerReadiness = "ready";
 let officialDiscoveryMaintenanceTimer;
@@ -143,6 +163,21 @@ searchDataMaintenance.unref();
 app.disable("x-powered-by");
 app.set("trust proxy", proxyConfiguration.trust);
 app.use(publicResponseBudget);
+// Only the exact bodyless GET/HEAD probes may consume the health reserve.
+// Reject method or framing variants before generic API rate limiting and JSON
+// buffering so they cannot turn the reserved pool into an anonymous bypass.
+app.use((request, response, next) => {
+  if (!isHealthRequestPath(request) || isReservedHealthRequest(request)) return next();
+  response.setHeader("Cache-Control", "no-store");
+  response.setHeader("Connection", "close");
+  response.setHeader("Allow", "GET, HEAD");
+  const methodAllowed = ["GET", "HEAD"].includes(String(request.method || "").toLocaleUpperCase("en-US"));
+  return response.status(methodAllowed ? 400 : 405).json({
+    error: methodAllowed
+      ? "Tervisekontrolli päringul ei tohi olla keha."
+      : "Tervisekontroll toetab ainult GET- ja HEAD-päringuid.",
+  });
+});
 app.use((request, response, next) => {
   const trustedProxy = requestFromTrustedProxy(request, proxyConfiguration.trustedProxyCidrs);
   if (publicOrigin && trustedProxy && !request.secure) {
@@ -696,8 +731,11 @@ app.post("/api/search/results", handleSearchResults);
 app.post("/api/search/follow-up", async (request, response) => {
   const rootInput = canonicalizePublicSearchQuery(request.body?.root_query || "");
   const questionInput = canonicalizePublicSearchQuery(request.body?.question || "");
-  const previousInputs = Array.isArray(request.body?.previous_questions)
-    ? request.body.previous_questions.map((value) => canonicalizePublicSearchQuery(value))
+  const previousQuestionValues = Array.isArray(request.body?.previous_questions)
+    ? request.body.previous_questions
+    : [];
+  const previousInputs = previousQuestionValues.length <= 4
+    ? previousQuestionValues.map((value) => canonicalizePublicSearchQuery(value))
     : [];
   const rootQuery = rootInput.query;
   const question = questionInput.query;
@@ -708,7 +746,7 @@ app.post("/api/search/follow-up", async (request, response) => {
   if (rootInput.reason === "empty" || questionInput.reason === "empty") {
     return response.status(400).json({ error: "Sisesta jätkuküsimus." });
   }
-  if (!rootInput.ok || !questionInput.ok || previousInputs.length > 4
+  if (!rootInput.ok || !questionInput.ok || previousQuestionValues.length > 4
     || previousInputs.some((input) => input.reason === "too-long")) {
     return response.status(400).json({ error: "Jätkuküsimuse kontekst on liiga pikk." });
   }
@@ -833,6 +871,7 @@ app.get("/api/corpus", async (request, response) => {
 });
 
 async function handleSuggestions(request, response) {
+  response.setHeader("Cache-Control", "private, no-store");
   const queryInput = searchQuery(request, 80);
   const query = queryInput.query;
   if (queryInput.reason === "too-long") return response.status(400).json({ error: "Otsing on liiga pikk." });
@@ -844,10 +883,6 @@ async function handleSuggestions(request, response) {
   // query gets no upstream autocomplete call even if a future classifier or
   // normalizer change makes it resemble one of those local aliases.
   if (reviewedAlias || assessment.kind === "out-of-scope") {
-    response.setHeader(
-      "Cache-Control",
-      reviewedAlias ? "public, max-age=300, stale-while-revalidate=900" : "no-store",
-    );
     return response.json({ suggestions: reviewedAlias ? curated.slice(0, 5) : [] });
   }
   const lifecycle = bindRequestAbort(request, response);
@@ -867,7 +902,6 @@ async function handleSuggestions(request, response) {
         return true;
       })
       .slice(0, 5);
-    response.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=900");
     return response.json({ suggestions });
   } catch {
     if (response.destroyed) return undefined;
@@ -1024,8 +1058,8 @@ app.get("/api/terrapoint/address", async (request, response) => {
         ipv6PrefixBits: ipv6ClientPrefixBits,
       }),
     });
-    response.setHeader("Cache-Control", "public, max-age=300");
-    return response.json({ ...result.data, proxy: { cache: result.cache, stale: result.stale } });
+    response.setHeader("Cache-Control", "private, no-store");
+    return response.json(result.data);
   } catch (error) {
     if (response.destroyed) return undefined;
     return terrapointError(response, error);
@@ -1054,8 +1088,8 @@ app.get("/api/terrapoint/parcel/:number", async (request, response) => {
         }),
       },
     );
-    response.setHeader("Cache-Control", "public, max-age=600");
-    return response.json({ ...result.data, proxy: { cache: result.cache, stale: result.stale } });
+    response.setHeader("Cache-Control", "private, no-store");
+    return response.json(result.data);
   } catch (error) {
     if (response.destroyed) return undefined;
     return terrapointError(response, error);
@@ -1085,6 +1119,7 @@ app.use((request, response, next) => {
 app.use((_request, response) => response.status(404).json({ error: "Lehte ei leitud." }));
 
 const server = createServer({ maxHeaderSize: 16 * 1024 }, app);
+server.on("connection", publicSocketBudget);
 server.headersTimeout = 5_000;
 server.requestTimeout = 10_000;
 server.keepAliveTimeout = 5_000;

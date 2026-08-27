@@ -7,8 +7,10 @@ import {
 import {
   REVIEWED_ESTONIAN_MUNICIPALITY_BASES,
   classifyForestryGeographyScope,
+  hasLossyUnicodeForestryAreaResidual,
   isReviewedEstonianMunicipalityIdentity,
   isReviewedNationalDefaultForestryAreaComplement,
+  isReviewedNationalUnsupportedForestAreaBreakdownQuestion,
   removeFirstReviewedMunicipalityOrganizationName,
   requestsUnsupportedForestAreaBreakdown,
   requestsUnsupportedForestAreaTimeSeries,
@@ -20,6 +22,8 @@ import {
 import { withOfficialSourceProfile } from "./source-registry.mjs";
 import { isStatisticsWaterAbstractionQuery } from "./statistics.mjs";
 
+export const FOREST_OVERVIEW_URL = "https://www.keskkonnaagentuur.ee/uudised/blogis-kui-palju-ja-millist-metsa-eestis";
+
 const SEARCH_DOCUMENTS = [
   {
     id: "forest-overview",
@@ -27,7 +31,7 @@ const SEARCH_DOCUMENTS = [
     organization: "Keskkonnaagentuur",
     type: "Ülevaade",
     published: "12.08.2026",
-    url: "https://www.keskkonnaagentuur.ee/uudised/blogis-kui-palju-ja-millist-metsa-eestis",
+    url: FOREST_OVERVIEW_URL,
     tags: ["mets", "metsandus", "metsainventeerimine", "SMI", "puistu"],
     summary:
       "Eesti metsa seisundit ja muutusi hinnatakse statistilise metsainventeerimise abil. Ülevaade selgitab, kuidas valimipõhised mõõtmised kirjeldavad metsamaa pindala, puistute koosseisu ja tagavara.",
@@ -644,9 +648,14 @@ const SEARCH_DOCUMENTS = [
     type: "Ametlik juhend",
     published: "jooksev",
     url: "https://keskkonnaamet.ee/elusloodus-looduskaitse/tegevused-kaitstavatel-aladel/planeerimine-ja-ehitamine",
-    tags: ["Natura 2000", "kaitseala", "piirang", "ehitamine", "planeerimine", "Keskkonnaameti nõusolek"],
+    tags: [
+      "Natura 2000", "kaitseala", "püsielupaik", "piirang", "ehitamine", "rajamine",
+      "renoveerimine", "hoone", "maja", "saunamaja", "luba", "kooskõlastus",
+      "Keskkonnaameti nõusolek", "protected area", "national park", "building renovation",
+      "building construction", "Environment Board", "official contact",
+    ],
     summary:
-      "Keskkonnaameti juhend selgitab kaitstaval alal planeerimise ja ehitamise piiranguid, eelneva nõusoleku vajadust ning seost Natura hindamisega.",
+      "Keskkonnaameti juhend selgitab kaitstaval alal, sealhulgas püsielupaigas, hoone rajamise või renoveerimise piiranguid, eelneva nõusoleku vajadust ning seost Natura hindamisega.",
   },
   {
     id: "groundwater-status",
@@ -1316,8 +1325,12 @@ function discoveryTerm(word) {
 
 export function buildDiscoveryQuery(query) {
   const canonicalInput = canonicalizePublicSearchQuery(query);
-  if (!canonicalInput.ok || containsPrivatePersonLookup(canonicalInput.query)) return "";
-  const words = canonicalInput.query.match(/[\p{L}\p{N}:-]+/gu) || [];
+  if (!canonicalInput.ok
+    || containsPrivatePersonLookup(query)
+    || containsPrivatePersonLookup(canonicalInput.query)) return "";
+  const providerQuery = minimizePublicProviderQuery(query);
+  if (!providerQuery) return "";
+  const words = providerQuery.match(/[\p{L}\p{N}:-]+/gu) || [];
   const terms = words
     .filter((word) => {
       const normalized = normalize(word);
@@ -1436,7 +1449,8 @@ function topicRoot(word) {
   if (word.startsWith("forest") || word.startsWith("woodland")) return "mets";
   if (word.startsWith("kaitsemets")) return "mets";
   if (word.startsWith("wildlife") || word.startsWith("animal") || word.startsWith("bear") || word.startsWith("wolf")) return "uluk";
-  if (/^(?:beaver|bird|boar|deer|eagle|fox|frog|lynx|mink|otter|salmon|seal|snake|squirrel|stork|toad|trout)\w*$/u.test(word)) return "uluk";
+  if (/^(?:beaver|bird|deer|eagle|fox|frog|lynx|mink|otter|salmon|seal|snake|squirrel|stork|toad|trout)\w*$/u.test(word)
+    || /^boars?$/u.test(word)) return "uluk";
   if (word.startsWith("biodiversity") || word.startsWith("biodiversite") || word === "nature") return "elurikkus";
   if (word.startsWith("species")) return "liik";
   if (word.startsWith("habitat")) return "elupaik";
@@ -1462,6 +1476,8 @@ function topicRoot(word) {
   if (word.startsWith("permit")) return "keskkonnaluba";
   if (word.startsWith("application")) return "taotlemine";
   if (word.startsWith("assessment")) return "hindamine";
+  if (word.startsWith("renovat") || word.startsWith("reconstruct")
+    || word.startsWith("construct") || word === "building") return "ehitamine";
   if (word.startsWith("scenario")) return "stsenaarium";
   if (word.startsWith("climate")) return "kliima";
   if (word.startsWith("historical")) return "ajalooline";
@@ -1546,6 +1562,7 @@ function topicRoot(word) {
   if (word.startsWith("elupaik") || word.startsWith("elupaig") || word.startsWith("vaariselupa") || word.startsWith("varjepaig")) return "elupaik";
   if (word.startsWith("pusielupai")) return "pusielupaik";
   if (word.startsWith("hoiual")) return "kaitseala";
+  if (word.startsWith("rahvuspar")) return "kaitseala";
   if (word.startsWith("kaitseal")) return "kaitseala";
   if (word.startsWith("kaitstav")) return "kaitstav";
   if (word.startsWith("liig") || word.startsWith("rahni") || word.startsWith("nahkhiir") || word.startsWith("hulj")
@@ -1608,7 +1625,8 @@ function topicRoot(word) {
   if (word.startsWith("staatus")) return "staatus";
   if (word.startsWith("nousole")) return "nousolek";
   if (word.startsWith("ettevot")) return "ettevote";
-  if (word.startsWith("ehita") || word.startsWith("ehitus")) return "ehitamine";
+  if (word.startsWith("ehita") || word.startsWith("ehitus")
+    || word.startsWith("raja") || word.startsWith("pustita")) return "ehitamine";
   if (word.startsWith("seisund") || word.startsWith("hinnang")) return "seisund";
   if (word.startsWith("hinnat") || word.startsWith("hindam")) return "hindamine";
   if (word.startsWith("kvalite")) return "seisund";
@@ -2029,7 +2047,11 @@ const NAMED_PERSON_CADASTRAL_FIELD_PATTERN = new RegExp(
 );
 const ANY_CASE_PERSON_CADASTRAL_FIELD_PATTERN = new RegExp(
   String.raw`(?<!\p{L})([\p{L}][\p{L}'’.-]{1,39})\s+([\p{L}][\p{L}'’.-]{1,39})\s+(?:(?:cadastral|katastri)\s+(?:id|parcel|unit|number|identifier)|(?:parcel|unit|property|plot|land)\s+(?:id|number|identifier))(?!\p{L})`,
-  "iu",
+  "giu",
+);
+const CADASTRAL_TO_NAMED_PERSON_ASSOCIATION_PATTERN = new RegExp(
+  String.raw`(?<![\p{L}\p{N}])\d{5}:\d{3}:\d{4}\s+(?:(?:for|of|to)|(?:owned|held|managed|registered|recorded|assigned|attributed|linked|associated)\s+(?:by|for|to|under|with))\s+(?:the\s+)?(${ENGLISH_PERSON_NAME_SOURCE})(?=$|[\s]*[.?!,;:])`,
+  "giu",
 );
 const GENERIC_CADASTRAL_FIELD_PREFIXES = new Set([
   "cadastral parcel", "cadastral unit", "find the", "forest area", "forest cover",
@@ -2038,10 +2060,26 @@ const GENERIC_CADASTRAL_FIELD_PREFIXES = new Set([
 ]);
 
 function hasNamedPersonCadastralAssociation(value) {
-  const match = String(value || "").match(ANY_CASE_PERSON_CADASTRAL_FIELD_PATTERN);
-  if (!match) return false;
-  const prefix = `${match[1]} ${match[2]}`.toLocaleLowerCase("en");
-  return !GENERIC_CADASTRAL_FIELD_PREFIXES.has(prefix);
+  const text = String(value || "");
+  ANY_CASE_PERSON_CADASTRAL_FIELD_PATTERN.lastIndex = 0;
+  for (const match of text.matchAll(ANY_CASE_PERSON_CADASTRAL_FIELD_PATTERN)) {
+    const prefix = `${match[1]} ${match[2]}`.toLocaleLowerCase("en");
+    if (!GENERIC_CADASTRAL_FIELD_PREFIXES.has(prefix)) {
+      ANY_CASE_PERSON_CADASTRAL_FIELD_PATTERN.lastIndex = 0;
+      return true;
+    }
+  }
+  ANY_CASE_PERSON_CADASTRAL_FIELD_PATTERN.lastIndex = 0;
+  CADASTRAL_TO_NAMED_PERSON_ASSOCIATION_PATTERN.lastIndex = 0;
+  for (const match of text.matchAll(CADASTRAL_TO_NAMED_PERSON_ASSOCIATION_PATTERN)) {
+    const candidate = match[1] || "";
+    if (!isReviewedPublicEntityName(candidate)) {
+      CADASTRAL_TO_NAMED_PERSON_ASSOCIATION_PATTERN.lastIndex = 0;
+      return true;
+    }
+  }
+  CADASTRAL_TO_NAMED_PERSON_ASSOCIATION_PATTERN.lastIndex = 0;
+  return false;
 }
 const ENGLISH_PERSON_ROLE_ASSET_PATTERN = new RegExp(
   String.raw`(?<!\p{L})${ENGLISH_PERSON_NAME_SOURCE}\s+is\s+(?:(?:listed|recorded)\s+as\s+)?(?:the\s+)?(?:owner|landowner|homeowner|tenant|lessee|renter|occupant)\s+of\s+(?:an?\s+|the\s+|this\s+)?${ENGLISH_PRIVATE_ASSET_SOURCE}(?!\p{L})`,
@@ -2092,6 +2130,9 @@ const PUBLIC_ORGANIZATION_EXACT_NAME_PATTERNS = Object.freeze([
   /\briigi\s+ilmateenistus[\p{L}-]*\b/giu,
   /\beesti\s+loodusmuuseum[\p{L}-]*\b/giu,
   /\bestonian\s+environment(?:al)?\s+(?:board|agency|research\s+centre)\b/giu,
+  /\beuropean\s+environment(?:al)?\s+(?:board|agency)\b/giu,
+  /\beuropean\s+forest\s+service\b/giu,
+  /\beuropean\s+climate\s+ministry\b/giu,
   /\benvironment(?:al)?\s+(?:board|agency)\b/giu,
   /\bforest\s+service\b/giu,
   /\bclimate\s+ministry\b/giu,
@@ -2110,7 +2151,7 @@ const PUBLIC_ORGANIZATION_NAME_PATTERNS = Object.freeze([
   // an organization, even when it is not one of the catalogue's known
   // agencies. Removing the whole span prevents names such as "Blue Valley
   // Agency" and "North District Team" from being reinterpreted as people.
-  /(?<![\p{L}\p{N}])(?:\p{Lu}[\p{L}'’.-]{1,39}\s+){1,4}?(?:[Aa]genc(?:y|ies)|[Aa]ssociations?|[Aa]uthorit(?:y|ies)|[Tt]eam|[Oo]ffice|[Dd]epartment|[Ss]ervice|[Oo]rgani[sz]ation|[Ii]nstitutes?|[Ii]nstitution|[Uu]niversity|[Cc]ouncil|[Bb]oard|[Cc]ommission|[Cc]ommittees?|[Cc]oalition|[Aa]lliance|[Pp]artnership|[Cc]onsortium|[Cc]ooperatives?|[Cc]orporation|[Cc]ompany|[Ff]ederations?|[Ff]oundation|[Tt]rust|[Nn]onprofit|[Ii]nitiative|[Pp]roject|[Hh]ub|[Ll]aboratory|[Nn]etwork|[Ss]ociet(?:y|ies)|[Cc]ollectives?|[Pp]anels?|LLC|Ltd|Inc|PLC|[Üü]hing|[Ss]elts|[Oo]saühing|[Aa]ktsiaselts|[Ss]ihtasutus|[Tt]ulundusühistu|[Mm]ittetulundusühing)(?![\p{L}\p{N}])/gu,
+  /(?<![\p{L}\p{N}])(?:\p{Lu}[\p{L}'’.-]{1,39}\s+){1,4}?(?:[Aa]genc(?:y|ies)|[Aa]ssociations?|[Aa]uthorit(?:y|ies)|[Tt]eam|[Oo]ffice|[Dd]epartment|[Ss]ervice|[Oo]rgani[sz]ation|[Ii]nstitutes?|[Ii]nstitution|[Uu]niversity|[Cc]ouncil|[Bb]oard|[Cc]ommission|[Cc]ommittees?|[Cc]oalition|[Aa]lliance|[Pp]artnership|[Cc]onsortium|[Cc]ooperatives?|[Cc]orporation|[Cc]ompany|[Ff]ederations?|[Ff]oundation|[Tt]rust|[Nn]onprofit|[Ii]nitiative|[Pp]roject|[Hh]ub|[Ll]aboratory|[Nn]etwork|[Ss]ociet(?:y|ies)|[Cc]ollectives?|[Pp]anels?|[Aa]met[\p{L}-]*|[Aa]gentuur[\p{L}-]*|[Mm]inisteerium[\p{L}-]*|[Kk]eskus[\p{L}-]*|[Ll]innavalitsus[\p{L}-]*|[Vv]allavalitsus[\p{L}-]*|[Oo]mavalitsus[\p{L}-]*|[Üü]likool[\p{L}-]*|[Ii]nstituut[\p{L}-]*|[Tt]eenistus[\p{L}-]*|[Mm]uuseum[\p{L}-]*|LLC|Ltd|Inc|PLC|[Üü]hing|[Ss]elts|[Oo]saühing|[Aa]ktsiaselts|[Ss]ihtasutus|[Tt]ulundusühistu|[Mm]ittetulundusühing)(?![\p{L}\p{N}])/gu,
   /(?<![\p{L}\p{N}])(?:\p{Lu}[\p{Lu}'’.-]{1,39}\s+){1,4}?(?:AGENC(?:Y|IES)|ASSOCIATIONS?|AUTHORIT(?:Y|IES)|TEAM|OFFICE|DEPARTMENT|SERVICE|ORGANI[ZS]ATION|INSTITUTES?|INSTITUTION|UNIVERSITY|COUNCIL|BOARD|COMMISSION|COMMITTEES?|COALITION|ALLIANCE|PARTNERSHIP|CONSORTIUM|COOPERATIVES?|CORPORATION|COMPANY|FEDERATIONS?|FOUNDATION|TRUST|NONPROFIT|INITIATIVE|PROJECT|HUB|LABORATORY|NETWORK|SOCIET(?:Y|IES)|COLLECTIVES?|PANELS?|LLC|LTD|INC|PLC)(?![\p{L}\p{N}])/gu,
   /(?<![\p{L}\p{N}])[\p{L}-]{2,50}\s+(?:AS|OÜ|MTÜ|SA)(?![\p{L}\p{N}])/gu,
 ]);
@@ -2129,6 +2170,18 @@ function removeFirstPublicOrganizationName(value) {
   }
   if (!selected) return value;
   return `${value.slice(0, selected.index)} ${value.slice(selected.index + selected.text.length)}`;
+}
+
+function isWholeReviewedPublicOrganizationName(value) {
+  const name = String(value || "").replace(/[.?!,;:]+$/gu, "").trim();
+  if (!name) return false;
+  for (const pattern of PUBLIC_ORGANIZATION_EXACT_NAME_PATTERNS) {
+    pattern.lastIndex = 0;
+    const match = pattern.exec(name);
+    pattern.lastIndex = 0;
+    if (match?.index === 0 && match[0].length === name.length) return true;
+  }
+  return false;
 }
 
 const PRIVATE_CONTACT_FIELD_PATTERN = /^(?:(?:üld|uld|yld)?kontakt\w*|contact\w*|(?:üld|uld|yld)?telefoni?\w*|telephone\w*|phone\w*|telefoninumber\w*|mobiili?\w*|mobile\w*|e-?post\w*|email\w*|meil\w*|mail\w*|sideandm\w*|[\p{L}-]*postkast\w*|[\p{L}-]*postikanal\w*|postal\w*|channels?|kanal\w*|gps|koordinaat\w*|coordinate\w*|asukoht\w*|location\w*|asupaik\w*|a?adress\w*|address\w*|koduaadress\w*|homeaddress\w*|kodutänav\w*|kodutanav\w*|elukoh\w*|residence\w*|residentsus\w*|kodukoht\w*|viibimiskoht\w*|erakodu\w*|kodu|elamu\w*|elupai[kg]\w*)$/iu;
@@ -2171,8 +2224,38 @@ const ANY_CASE_ESTONIAN_FOREST_TRANSFER_TO_NAMED_PERSON_PATTERN = new RegExp(
   "giu",
 );
 const ANY_CASE_OWNERSHIP_TO_NAMED_PERSON_PATTERN = new RegExp(
-  String.raw`(?<!\p{L})(?:by\s+)?(?:ownership|registered\s+owner|owners?|omand|omandiõigus|kasutusõigus|omanik)\s*(?:\s+(?:(?:of|by|held\s+by|attributed\s+to|assigned\s+to|registered\s+to)|kuulu(?:b|vad))\s+|\s*[:=]\s*|\s*\p{Pd}+\s*|\s+)${CAPTURED_ANY_CASE_PERSON_NAME_SOURCE}(?!\p{L})`,
+  String.raw`(?<!\p{L})(?:by\s+)?(?:ownership(?:\s+(?:breakdown|categor(?:y|ies)|class(?:es)?|type(?:s)?|status(?:es)?))?|registered\s+owner|owners?|omand|omandiõigus|kasutusõigus|omanik)\s*(?:\s+(?:(?:of|by|for|held\s+by|attributed\s+to|assigned\s+to|registered\s+to)|kuulu(?:b|vad))\s+|\s*[,/:=]\s*|\s*\p{Pd}+\s*|\s+)${CAPTURED_ANY_CASE_PERSON_NAME_SOURCE}(?!\p{L})`,
   "giu",
+);
+const ANY_CASE_CONNECTOR_NAMED_PERSON_PRIVATE_ASSET_PATTERN = new RegExp(
+  String.raw`(?<!\p{L})(?:for|on|of|at|within)\s+(?:the\s+)?${CAPTURED_ANY_CASE_PERSON_NAME_SOURCE}(?:'s|’s)?\s+${ENGLISH_PRIVATE_ASSET_SOURCE}(?!\p{L})`,
+  "giu",
+);
+const CLAUSE_LEADING_NAMED_PERSON_PRIVATE_ASSET_PATTERN = new RegExp(
+  String.raw`(?:[^\p{L}\p{N}\s'’]+\s*)${CAPTURED_ANY_CASE_PERSON_NAME_SOURCE}(?:'s|’s)?\s+${ENGLISH_PRIVATE_ASSET_SOURCE}(?!\p{L}|\s+(?:habitats?|ecology|range|distribution|biodiversity|conservation|monitoring|research|policy|guidance|data|information|map|maps)\b)`,
+  "giu",
+);
+const ANY_CASE_ESTONIAN_NAMED_PERSON_PRIVATE_LAND_PATTERN = new RegExp(
+  String.raw`(?<!\p{L})${CAPTURED_ANY_CASE_PERSON_NAME_SOURCE}\s+(?:era)?(?:maal|metsamaal|kinnistul|maa(?:u|ü)ksusel|maat(?:ü|u)kil|metsas)(?!\p{L})`,
+  "giu",
+);
+const HYPHENATED_ESTONIAN_NAMED_PERSON_PRIVATE_ASSET_PATTERN = new RegExp(
+  String.raw`(?<!\p{L})(${ENGLISH_PERSON_TOKEN_SOURCE})\s*[\p{Pd}./·:_]+\s*(${ENGLISH_PERSON_TOKEN_SOURCE})\s+(?:era|perekonna|isiklik)[\s\p{Pd}./·:_]*(?:mets(?:a(?:s|st|le|l|ga)?|ad|ade)?|metsamaa\p{L}*|metsaala\p{L}*|kinnist(?:u|ut|ul|ult|ule|uga|ute|uid)?|maa(?:u|ü)ksus\p{L}*|maat(?:ü|u)k\p{L}*|puurkaev\p{L}*|kaev(?:u|us|ust|ule|ul|uga)?)(?!\p{L})`,
+  "giu",
+);
+const ENGLISH_SINGLE_POSSESSIVE_PRIVATE_ASSET_SOURCE = String.raw`(?:(?:(?:the|this|that|specific|private|family|household|residential|neighbor(?:ing)?|neighbour(?:ing)?|adjacent|forest|woodland|land|cadastral|groundwater|riverside|lakeshore|wetland)\s+){0,3}(?:property|parcel|plot|lot|estate|land|house|home|farm|well|borehole|building|dwelling|cottage|premises|site|landholding|holding)|(?:forest|woodland)\s+(?:area|cover(?:age)?))`;
+const ENGLISH_SINGLE_TOKEN_POSSESSIVE_PRIVATE_ASSET_PATTERN = new RegExp(
+  String.raw`(?<!\p{L})([\p{L}][\p{L}'’.-]{1,39}?)(?:'s|’s)\s+${ENGLISH_SINGLE_POSSESSIVE_PRIVATE_ASSET_SOURCE}(?!\p{L})`,
+  "giu",
+);
+const ENGLISH_CONNECTOR_SINGLE_TOKEN_POSSESSIVE_PRIVATE_ASSET_PATTERN = new RegExp(
+  String.raw`(?<!\p{L})(?:for|on|of|at|within|in)\s+(?:the\s+)?([\p{L}][\p{L}'’.-]{1,39}?)(?:'s|’s)\s+${ENGLISH_PRIVATE_ASSET_SOURCE}(?!\p{L})`,
+  "giu",
+);
+const ENGLISH_PRONOUN_PRIVATE_ASSET_SOURCE = String.raw`(?:(?:(?:private|family|household|residential|neighbor(?:ing)?|neighbour(?:ing)?|adjacent|forest|woodland|land|cadastral)\s+){0,3}(?:property|parcel|plot|lot|estate|land|house|home|farm|well|borehole|building|dwelling|cottage|premises|site|landholding|holding))`;
+const ENGLISH_POSSESSIVE_PRONOUN_PRIVATE_ASSET_PATTERN = new RegExp(
+  String.raw`(?<!\p{L})(?:my|your|his|her|our|their)\s+${ENGLISH_PRONOUN_PRIVATE_ASSET_SOURCE}(?!\p{L})`,
+  "iu",
 );
 const ANY_CASE_ROLE_LABEL_TO_NAMED_PERSON_PATTERN = new RegExp(
   String.raw`(?<!\p{L})(?:title(?:\s+holder)?|beneficiar(?:y|ies)|holders?|possessors?|proprietors?|landholders?|rights?\s+holders?|kasutaja|õigustatud\s+isik|valdaja|haldaja|kasusaaja)\s*(?:[:=]\s*|\p{Pd}+\s*|\s+(?:is|of|on)\s+)${CAPTURED_ANY_CASE_PERSON_NAME_SOURCE}(?!\p{L})`,
@@ -2211,7 +2294,7 @@ const ANY_CASE_FOREST_ASSET_GIVEN_TO_NAMED_PERSON_PATTERN = new RegExp(
   "giu",
 );
 const NAMED_PERSON_ASSOCIATION_ORGANIZATION_DESIGNATOR_PATTERN = /^(?:agenc(?:y|ies)|association\w*|authority|board|business|city|commission|committee|company|corporation|council|department|foundation|government|institute|institution|llc|ltd|ministry|municipalit\w*|nonprofit|office|organization|organisation|service|team|trust|university|amet\w*|asutus\w*|büroo\w*|buroo\w*|linnavalitsus\w*|ministeerium\w*|omavalitsus\w*|osakond\w*|selts\w*|teenistus\w*|vallavalitsus\w*|ühing\w*|uhing\w*)$/iu;
-const OWNERSHIP_ASSOCIATION_NON_PERSON_TOKEN_PATTERN = /^(?:against|all|alongside|and|annual\w*|area|available|beneficiar\w*|bind|binding|binds|category|class|compare|comparison|compliance|conservation|corporate|county|current|data|each|ecological|environmental|estonia\w*|estimate\w*|every|figure|forest|forests|government|group|historical|holder\w*|individual|land|latest|leased|legal|management|managed|measurement\w*|middle|earth|municipal|municipality|national|natural|official|or|overall|owned|owner|owners|ownership|period|possessor\w*|post|privat\w*|proprietor\w*|protected|protection|public|published|recent|relative|reported|rented|rule|rules|sector|source|state|status|tenure|title|total|type|value|versus|vs|was|were|whoever|woodland|woodlands|years?|ajalool\w*|andm\w*|aasta\w*|avalik\w*|eesti\w*|eramets\w*|hallatav\w*|haldaj\w*|hinnang\w*|kaitst\w*|kategoori\w*|kasutaj\w*|kehti\w*|klass\w*|kohustus\w*|kogu|loodus\w*|maaomanik\w*|maakon\w*|majandat\w*|mets\w*|metsamaa\w*|millis\w*|munitsipaal\w*|omanik\w*|omandivorm\w*|peab|periood\w*|pindala\w*|praegune|reegl\w*|registreeritud|renditud|riigi\w*|riiklik\w*|staatus\w*|tüüp\w*|tuup\w*|uusim|valdaj\w*|viimane|v[õo]rdle|üld\w*|uld\w*)$/iu;
+const OWNERSHIP_ASSOCIATION_NON_PERSON_TOKEN_PATTERN = /^(?:against|all|alongside|and|annual\w*|area|available|administrator\w*|beneficiar\w*|bind|binding|binds|calculat\w*|caretaker\w*|category|class|compare|comparison|compliance|conservation|contractor\w*|corporate|county|current|custodian\w*|data|each|ecological|environmental|estonia\w*|estimat\w*|every|fiduciar\w*|figure|forest|forests|government|group|historical|holder\w*|individual|inventor\w*|it|land|landowner\w*|latest|leased|legal|management|manag\w*|measur\w*|measurement\w*|middle|earth|municipal|municipality|national|natural|official|operator\w*|or|overall|owned|owner|owners|ownership|people|period|possessor\w*|post|privat\w*|proprietor\w*|protected|protection|public|published|recent|relative|reported|rented|rule|rules|sector|source|state|status|steward\w*|survey\w*|tenant\w*|tenure|title|total|trustee\w*|type|value|versus|volunteer\w*|vs|was|were|whoever|woodland|woodlands|years?|ajalool\w*|andm\w*|aasta\w*|avalik\w*|eesti\w*|eramets\w*|hallatav\w*|haldaj\w*|hinnang\w*|kaitst\w*|kategoori\w*|kasutaj\w*|kehti\w*|klass\w*|kohustus\w*|kogu|loodus\w*|maaomanik\w*|maakon\w*|majandat\w*|mets\w*|metsamaa\w*|millis\w*|munitsipaal\w*|omanik\w*|omandivorm\w*|peab|periood\w*|pindala\w*|praegune|reegl\w*|registreeritud|renditud|riigi\w*|riiklik\w*|staatus\w*|tüüp\w*|tuup\w*|uusim|valdaj\w*|viimane|v[õo]rdle|üld\w*|uld\w*)$/iu;
 
 function isReviewedPublicEntityName(value) {
   const name = String(value || "").replace(/[.?!,;:]+$/gu, "").trim();
@@ -2319,6 +2402,153 @@ function isCompletePublicNationalForestAreaQuestion(value) {
     || /^mitu\s+hektarit\s+(?:oli|on)\s+(?:eesti|eestis)\s+(?:metsamaad|metsaga\s+kaetud\s+ala|metsa|metsakatet)(?:\s+(?:19|20)\d{2}(?:\.?\s+aastal)?)?\??$/iu.test(text)
     || /^how\s+many\s+hectares?\s+did\s+estonia\s+(?:report|record|have)\s+as\s+(?:forest\s+area|forest\s+land|woodland\s+coverage|forest\s+cover)\s+(?:in|for)\s+(?:19|20)\d{2}\??$/iu.test(text)
     || /^how\s+(?:much|many\s+hectares?\s+of)\s+(?:forest\s+area|forest\s+land|woodland\s+coverage|forest\s+cover)\s+did\s+estonia\s+(?:report|record|have)\s+(?:in|for)\s+(?:19|20)\d{2}\??$/iu.test(text);
+}
+
+function completePossessiveForestAggregatePossessor(value) {
+  const text = String(value || "").trim();
+  // A single possessive token is often a person's given name, so do not make
+  // arbitrary possessives public. This grammar is deliberately full-query and
+  // admits only reviewed public geographies/ecological programmes plus a
+  // bounded environmental metric. Appended identity or private-asset clauses
+  // therefore fall through to the privacy classifier.
+  const possessorSource = String.raw`(?<possessor>[\p{L}\p{N}][\p{L}\p{N}&.-]{0,49}(?:\s+[\p{L}\p{N}][\p{L}\p{N}&.-]{0,49}){0,5})`;
+  const forestMetric = String.raw`(?:(?:forest|forestry|woodland)\s+(?:statistics|data|area|land|cover(?:age)?|habitats?|biodiversity|inventory|polic(?:y|ies)|management|monitoring|conservation|research|guidance))`;
+  const durationAmount = String.raw`(?:a|an|all|each|every|multiple|several|\d{1,3}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|hundred)`;
+  const durationPeriod = String.raw`(?:calendar\s+)?(?:years?|decades?)`;
+  const durationPhrase = String.raw`(?:(?:the\s+)?(?:last|past|previous|recent)\s+(?:${durationAmount}\s+)?${durationPeriod}|${durationAmount}\s+${durationPeriod}|(?:the\s+)?decade)`;
+  const yearRange = String.raw`(?:(?:19|20)\d{2}\s*[-–—]\s*(?:19|20)\d{2}|(?:from\s+(?:19|20)\d{2}\s+(?:to|through|until)|between\s+(?:19|20)\d{2}\s+and)\s+(?:19|20)\d{2})`;
+  const temporalSuffix = String.raw`(?:\s+(?:(?:in|for)\s+(?:19|20)\d{2}|today|now|currently|(?:yearly|annually)(?:\s+${yearRange})?|annual(?:ly)?\s+(?:trend|history|time\s+series)|historical\s+(?:trend|history|time\s+series)|(?:by|per)\s+(?:calendar\s+)?year|year[-\s]+by[-\s]+year|(?:this|current|latest|most\s+recent)\s+year|(?:over|for|through|during|across|throughout)\s+${durationPhrase}|(?:in|for)\s+(?:successive|consecutive|multiple|several|all|each|every)\s+(?:calendar\s+)?years?|since\s+(?:19|20)\d{2}|${durationPhrase}|(?:in\s+)?${yearRange}))?`;
+  const methodSuffix = String.raw`(?:\s+in\s+estonia)?\s+and\s+how\s+is\s+it\s+(?:measured|estimated|calculated|surveyed|inventoried)`;
+  const patterns = [
+    new RegExp(
+      String.raw`^(?:what\s+(?:is|are)|how\s+much\s+is)\s+(?:the\s+)?${possessorSource}(?:'s|’s)\s+${forestMetric}(?:${temporalSuffix}|${methodSuffix})\??$`,
+      "iu",
+    ),
+    new RegExp(
+      String.raw`^(?:the\s+)?${possessorSource}(?:'s|’s)\s+${forestMetric}(?:${temporalSuffix}|${methodSuffix})\??$`,
+      "iu",
+    ),
+  ];
+  const match = patterns.map((pattern) => text.match(pattern)).find(Boolean);
+  return match?.groups?.possessor || null;
+}
+
+function denyOnlyPossessiveForestAggregatePossessor(value) {
+  const text = String(value || "").trim();
+  // The public grammar above deliberately accepts only ordinary word spacing.
+  // This second, bounded parser is never an allowlist: it exists solely so a
+  // punctuation-separated person/geography collision cannot evade the
+  // partial-identity privacy check before reaching an upstream provider.
+  const possessorSource = String.raw`(?<possessor>[\p{L}\p{N}][\p{L}\p{N}\p{P}\p{S}\p{Z}\p{M}&]{0,119}?)`;
+  const metricSource = String.raw`(?:(?:forest|forestry|woodland)\s+(?:statistics|data|area|land|cover(?:age)?|habitats?|biodiversity|inventory|polic(?:y|ies)|management|monitoring|conservation|research|guidance))`;
+  const patterns = [
+    new RegExp(
+      String.raw`^(?:what\s+(?:is|are)|how\s+much\s+is)\s+(?:the\s+)?${possessorSource}(?:'s|’s)\s+${metricSource}(?:[\s\S]{0,100})?\??$`,
+      "iu",
+    ),
+    new RegExp(
+      String.raw`^(?!what\b|how\b|forest\b|forestry\b|woodland\b)(?:the\s+)?${possessorSource}(?:'s|’s)\s+${metricSource}(?:[\s\S]{0,100})?\??$`,
+      "iu",
+    ),
+  ];
+  const match = patterns.map((pattern) => text.match(pattern)).find(Boolean);
+  return match?.groups?.possessor || null;
+}
+
+function isReviewedPublicPossessiveForestAggregatePossessor(possessor) {
+  if (!possessor) return false;
+  const normalizedPossessor = normalize(possessor);
+  const reviewedGeographyOrProgramme = /^(?:estonia|country|nation|state|world|europe|eu|natura(?:\s+2000)?|lahemaa|vilsandi|matsalu|soomaa|karula|alutaguse|gondor|atlantis|middle\s+earth)$/u.test(normalizedPossessor);
+  const foreignScope = classifyForestryGeographyScope(`${possessor} forest area`);
+  const normalizedForeignIdentity = normalize(foreignScope.identity || foreignScope.matched || "");
+  const municipalityScope = reviewedEstonianForestryMunicipalityScope(possessor);
+  const municipalityMatches = Array.isArray(municipalityScope?.matched)
+    ? municipalityScope.matched
+    : [municipalityScope?.matched].filter(Boolean);
+  const completeReviewedMunicipality = municipalityScope?.status === "exact"
+    && municipalityMatches.some((matched) => normalize(matched) === normalizedPossessor);
+  return reviewedGeographyOrProgramme
+    || (foreignScope.kind === "foreign-or-other-region"
+      && Boolean(normalizedForeignIdentity)
+      && normalizedPossessor === normalizedForeignIdentity)
+    || completeReviewedMunicipality
+    || isReviewedEstonianMunicipalityIdentity(possessor)
+    || removeFirstReviewedMunicipalityOrganizationName(possessor).trim() === ""
+    || isWholeReviewedPublicOrganizationName(possessor);
+}
+
+function isCompletePublicPossessiveForestAggregateQuestion(value) {
+  const possessor = completePossessiveForestAggregatePossessor(value);
+  return Boolean(possessor)
+    && !hasLossyUnicodeLetterOrNumber(possessor)
+    && isReviewedPublicPossessiveForestAggregatePossessor(possessor);
+}
+
+function hasUnreviewedPossessiveForestAggregateQuestion(value) {
+  const possessor = completePossessiveForestAggregatePossessor(value);
+  return Boolean(possessor)
+    && (hasLossyUnicodeLetterOrNumber(possessor)
+      || !isReviewedPublicPossessiveForestAggregatePossessor(possessor));
+}
+
+function isCompletePublicEcologicalPossessiveForestQuestion(value) {
+  const text = String(value || "").trim();
+  const match = text.match(
+    /^(?:(?:what|which)\s+(?:is|are)\s+(?:the\s+)?)?(?<subject>[\p{L}-]+(?:\s+[\p{L}-]+){0,3})(?:'s|’s)\s+(?:forest|woodland)\s+(?:habitats?|ecology|range|distribution|biodiversity|conservation)(?:\s+(?:data|information|map|maps|status|description|guidance))?\??$/iu,
+  );
+  if (!match?.groups?.subject) return false;
+  const subjectWords = match.groups.subject.split(/\s+/u);
+  const species = subjectWords.at(-1) || "";
+  return ECOLOGICAL_SUBJECT_PATTERN.test(species)
+    && subjectWords.slice(0, -1).every((word) => (
+      ECOLOGICAL_MODIFIER_PATTERN.test(word) || ECOLOGICAL_SUBJECT_PATTERN.test(word)
+    ));
+}
+
+function normalizePossessivePrivacyCandidate(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/\p{Mark}/gu, "")
+    .replace(/[\p{P}\p{S}\p{Z}\p{C}_]+/gu, " ")
+    .toLocaleLowerCase("et")
+    .replace(/[^a-z0-9]+/gu, " ")
+    .trim();
+}
+
+function hasPartialReviewedGeographyPossessiveForestAggregate(value) {
+  const completePossessor = completePossessiveForestAggregatePossessor(value);
+  if (completePossessor
+    && !hasLossyUnicodeLetterOrNumber(completePossessor)
+    && isReviewedPublicPossessiveForestAggregatePossessor(completePossessor)) return false;
+  const possessor = completePossessor || denyOnlyPossessiveForestAggregatePossessor(value);
+  if (!possessor) return false;
+  const rawPossessorHasLossyUnicode = hasLossyUnicodeLetterOrNumber(possessor);
+  // The complete public grammar is Latin/public-entity scoped. A residual
+  // caseless or mixed-script possessor that was not accepted above must never
+  // be normalized away and forwarded as an ordinary forestry aggregate.
+  if (rawPossessorHasLossyUnicode) return true;
+  const normalizedPossessor = normalizePossessivePrivacyCandidate(possessor);
+  const foreignScope = classifyForestryGeographyScope(`${normalizedPossessor} forest area`);
+  const normalizedForeignIdentity = normalizePossessivePrivacyCandidate(
+    foreignScope.identity || foreignScope.matched || "",
+  );
+  const hasPartialForeignIdentity = foreignScope.kind === "foreign-or-other-region"
+    && Boolean(normalizedForeignIdentity)
+    && (rawPossessorHasLossyUnicode || normalizedPossessor !== normalizedForeignIdentity);
+  const isExactReviewedProgramme = /^(?:estonia|country|nation|state|world|europe|eu|natura(?:\s+2000)?|lahemaa|vilsandi|matsalu|soomaa|karula|alutaguse|gondor|atlantis)$/u
+    .test(normalizedPossessor);
+  const hasPartialReviewedProgramme = /(?:^|\s)(?:estonia|country|nation|state|world|europe|eu|natura(?:\s+2000)?|lahemaa|vilsandi|matsalu|soomaa|karula|alutaguse|gondor|atlantis)(?:\s|$)/u
+    .test(normalizedPossessor)
+    && (rawPossessorHasLossyUnicode || !isExactReviewedProgramme);
+  const municipalityScope = reviewedEstonianForestryMunicipalityScope(normalizedPossessor);
+  const municipalityMatches = Array.isArray(municipalityScope?.matched)
+    ? municipalityScope.matched
+    : [municipalityScope?.matched].filter(Boolean);
+  const hasPartialMunicipality = municipalityMatches.some((matched) => (
+    rawPossessorHasLossyUnicode
+      || normalizePossessivePrivacyCandidate(matched) !== normalizedPossessor
+  ));
+  return hasPartialForeignIdentity || hasPartialReviewedProgramme || hasPartialMunicipality;
 }
 
 function isCompletePublicForestOwnershipAggregate(value) {
@@ -2462,6 +2692,75 @@ function hasEarlyNamedPersonSensitiveAssociation(value) {
   return false;
 }
 
+function hasEarlyBoundedNamedPrivateAssetAssociation(value) {
+  const text = String(value || "");
+  if (ENGLISH_POSSESSIVE_PRONOUN_PRIVATE_ASSET_PATTERN.test(text)) return true;
+  for (const pattern of [
+    ENGLISH_SINGLE_TOKEN_POSSESSIVE_PRIVATE_ASSET_PATTERN,
+    ENGLISH_CONNECTOR_SINGLE_TOKEN_POSSESSIVE_PRIVATE_ASSET_PATTERN,
+  ]) {
+    pattern.lastIndex = 0;
+    for (const match of text.matchAll(pattern)) {
+      const possessor = match[1] || "";
+      const normalizedPossessor = normalize(possessor);
+      const isReviewedPublicPossessor = OWNERSHIP_ASSOCIATION_NON_PERSON_TOKEN_PATTERN.test(possessor)
+        || NAMED_PERSON_ASSOCIATION_ORGANIZATION_DESIGNATOR_PATTERN.test(possessor)
+        || PUBLIC_ORGANIZATION_PATTERN.test(possessor)
+        || removeFirstPublicOrganizationName(possessor).trim() === ""
+        || Boolean(reviewedEstonianForestryMunicipalityScope(possessor))
+        || /^(?:today|tomorrow|yesterday|world|country|nation|europe|eu|lahemaa|vilsandi|matsalu|soomaa|karula|alutaguse)$/u.test(normalizedPossessor)
+        || ECOLOGICAL_SUBJECT_PATTERN.test(possessor)
+        || ECOLOGICAL_MODIFIER_PATTERN.test(possessor);
+      if (!isReviewedPublicPossessor) {
+        pattern.lastIndex = 0;
+        return true;
+      }
+    }
+    pattern.lastIndex = 0;
+  }
+  const pairIsPersonShaped = (first, second) => (
+    !PERSON_CONTEXT_STOPWORD_PATTERN.test(first)
+    && !PERSON_CONTEXT_STOPWORD_PATTERN.test(second)
+    && !OWNERSHIP_ASSOCIATION_NON_PERSON_TOKEN_PATTERN.test(first)
+    && !OWNERSHIP_ASSOCIATION_NON_PERSON_TOKEN_PATTERN.test(second)
+    && !PUBLIC_ORGANIZATION_PATTERN.test(`${first} ${second}`)
+    && !isReviewedEstonianMunicipalityIdentity(`${first} ${second}`)
+    && !NAMED_PERSON_ASSOCIATION_ORGANIZATION_DESIGNATOR_PATTERN.test(first)
+    && !NAMED_PERSON_ASSOCIATION_ORGANIZATION_DESIGNATOR_PATTERN.test(second)
+    && !(ECOLOGICAL_SUBJECT_PATTERN.test(second)
+      && (ECOLOGICAL_SUBJECT_PATTERN.test(first)
+        || ECOLOGICAL_MODIFIER_PATTERN.test(first)))
+  );
+  const namePartsContainPersonPair = (nameParts) => {
+    if (nameParts.length < 2
+      || nameParts.some((part) => NAMED_PERSON_ASSOCIATION_ORGANIZATION_DESIGNATOR_PATTERN.test(part))
+      || removeFirstPublicOrganizationName(nameParts.join(" ")).trim() === ""
+      || isReviewedEstonianMunicipalityIdentity(nameParts.join(" "))) return false;
+    const pairs = nameParts.length === 3
+      ? [[nameParts[0], nameParts[1]], [nameParts[1], nameParts[2]]]
+      : [[nameParts[0], nameParts[1]]];
+    return pairs.some(([first, second]) => pairIsPersonShaped(first, second));
+  };
+  for (const pattern of [
+    ANY_CASE_CONNECTOR_NAMED_PERSON_PRIVATE_ASSET_PATTERN,
+    CLAUSE_LEADING_NAMED_PERSON_PRIVATE_ASSET_PATTERN,
+    ANY_CASE_ESTONIAN_NAMED_PERSON_PRIVATE_LAND_PATTERN,
+    HYPHENATED_ESTONIAN_NAMED_PERSON_PRIVATE_ASSET_PATTERN,
+    ANY_CASE_OWNERSHIP_TO_NAMED_PERSON_PATTERN,
+  ]) {
+    pattern.lastIndex = 0;
+    for (const match of text.matchAll(pattern)) {
+      const nameParts = [match[1], match[2], match[3]].filter(Boolean);
+      if (namePartsContainPersonPair(nameParts)) {
+        pattern.lastIndex = 0;
+        return true;
+      }
+    }
+    pattern.lastIndex = 0;
+  }
+  return false;
+}
+
 function isPlainEcologicalResidenceDescriptionQuestion(value) {
   const text = String(value || "").trim();
   const match = text.match(
@@ -2501,6 +2800,260 @@ const PUBLIC_FOREST_RELATION_TOKEN_PATTERN = /^(?:rahvusparg\w*|loodusparg\w*|ma
 const ESTONIAN_BELONGING_PARTICIPLE_PATTERN = /^kuuluv(?:a(?:s|st|le|lt|ga|ks|na|d|te(?:s|st|le|lt|ga)?)?|at|ad)?$/iu;
 const ESTONIAN_BELONGS_VERB_PATTERN = /^kuulu(?:b|vad|nud|s|sid)$/iu;
 const CADASTRE_PATTERN = /\b\d{5}:\d{3}:\d{4}\b/u;
+const ESTONIAN_REGULATORY_CONSENT_SOURCE = String.raw`kelle\s+(?:(?:eelnev|eelneva|eelnevat|kirjalik|kirjaliku|kirjalikku|ametlik|ametliku|ametlikku)\s+)?(?:nousolek|nousoleku|nousolekut|kooskolastus|kooskolastuse|kooskolastust|heakskiit|heakskiidu|heakskiitu|luba|loa)`;
+const ESTONIAN_REGULATORY_REQUIREMENT_SOURCE = String.raw`(?:(?:on\s+)?(?:vaja|vajalik|noutav)|tuleb\s+(?:taotleda|taotlema|saada|kusida)|peab\s+(?:taotlema|saama|kusima))`;
+const ESTONIAN_REVIEWED_NATIONAL_PARK_NAME_SOURCE = String.raw`(?:lahemaa|vilsandi|matsalu|soomaa|karula|alutaguse)`;
+const ESTONIAN_PROTECTED_BUILDING_LOCATION_SOURCE = String.raw`(?:kaitseala|kaitsealal|kaitsealale|kaitsealalt|looduskaitseala|looduskaitsealal|looduskaitsealale|looduskaitsealalt|maastikukaitseala|maastikukaitsealal|maastikukaitsealale|maastikukaitsealalt|(?:${ESTONIAN_REVIEWED_NATIONAL_PARK_NAME_SOURCE}\s+)?(?:rahvuspark|rahvuspargi|rahvuspargis|rahvusparki|rahvuspargil|rahvuspargile)|natura(?:\s+2000)?\s+(?:ala|alal|alale|alalt)|hoiuala|hoiualal|hoiualale|hoiualalt|pusielupaik|pusielupaigas|pusielupaika|pusielupaigal|pusielupaigale)`;
+// This allowlist is intentionally token-exact. Prefix-open forms such as
+// `van\w*` or `uu\w*` would also consume kinship terms (vanaema) and names
+// (Uuno), incorrectly turning a private-asset lookup into a public question.
+const ESTONIAN_PUBLIC_BUILDING_DESCRIPTOR_TOKEN_SOURCE = String.raw`(?:vana|vanas|uus|uue|uut|uues|uuel|puidust|kivist|betoonist|palkidest|uhe|kahe|kolme|nelja|viie|kuue|seitsme|kaheksa|uheksa|kumne|mitme|korrusega|korruselise|uhekorruseline|uhekorruselise|kahekorruseline|kahekorruselise|kolmekorruseline|kolmekorruselise|neljakorruseline|neljakorruselise|viiekorruseline|viiekorruselise|riigi|riiklik|riikliku|avalik|avaliku|munitsipaal|olemasolev|olemasoleva|kavandatav|kavandatava|planeeritav|planeeritava|renoveeritud|renoveeritav|renoveeritava|renoveeritavat|kaitstav|kaitstava|vaike|vaikese|vaikest|suur|suure|suurt|ajutine|ajutise|ajutist|pusiv|pusiva|pusivat|energiatohus|energiatohusa|kohalik|kohaliku|ajalooline|ajaloolise|ajaloolist|asutuse|riigiasutuse|munitsipaalasutuse|linnavalitsuse|vallavalitsuse|ameti|agentuuri|ministeeriumi|valitsuse|omavalitsuse|kooli|haigla|teenistuse|instituudi|linna|valla)`;
+const ESTONIAN_PUBLIC_BUILDING_DESCRIPTOR_SOURCE = String.raw`(?:${ESTONIAN_PUBLIC_BUILDING_DESCRIPTOR_TOKEN_SOURCE}\s+){0,12}`;
+const ESTONIAN_PUBLIC_BUILDING_DESCRIPTOR_TOKEN_PATTERN = new RegExp(
+  String.raw`^${ESTONIAN_PUBLIC_BUILDING_DESCRIPTOR_TOKEN_SOURCE}$`,
+  "u",
+);
+const ESTONIAN_REGULATORY_BUILDING_TOKEN_SOURCE = String.raw`(?:eramaja|maja|abihoone|abihoonet|korterelamu|korterelamut|ridaelamu|ridaelamut|uksikelamu|uksikelamut|uhepereelamu|uhepereelamut|kahepereelamu|kahepereelamut|saun|sauna|saunamaja|suvemaja|puhkemaja|kulalistemaja|kogukonnamaja|moodulmaja|palkmaja|elementmaja|kasvuhoone|kasvuhoonet|tootmishoone|tootmishoonet|toostushoone|toostushoonet|arihoone|arihoonet|eluhoone|eluhoonet|laohoone|laohoonet|buroohoone|buroohoonet|korvalhoone|korvalhoonet|majandushoone|majandushoonet|spordihoone|spordihoonet|oppehoone|oppehoonet|koolihoone|koolihoonet|lasteaiahoone|lasteaiahoonet|haiglahoone|haiglahoonet|kultuurihoone|kultuurihoonet|farmihoone|farmihoonet|kortermaja|ridamaja|paarismaja|talumaja|aiamaja|elumaja|sotsiaalmaja|hoone|hoonet|elamu|elamut|eramu|eramut|suvila|suvilat|korter|korteri|korterit|talu|kuun|kuuni|laut|lauda|majake|majakese|majakest|suvemajake|suvemajakese|suvemajakest|moodulmajake|moodulmajakese|moodulmajakest|garaaz|garaazi|kuur|kuuri|ait|aida|varjualune|varjualuse|varjualust|ehitis|ehitise|ehitist|rajatis|rajatise|rajatist)`;
+const ESTONIAN_REGULATORY_BUILDING_TOKEN_PATTERN = new RegExp(
+  String.raw`(?:^|\s)${ESTONIAN_REGULATORY_BUILDING_TOKEN_SOURCE}(?=\s|$)`,
+  "u",
+);
+const ESTONIAN_REGULATORY_BUILDING_EXACT_TOKEN_PATTERN = new RegExp(
+  String.raw`^${ESTONIAN_REGULATORY_BUILDING_TOKEN_SOURCE}$`,
+  "u",
+);
+// Unknown compounds are private-asset context but never cross the public
+// exception. This closes the whole `...maja`/`...hoone`/`...elamu` class
+// without admitting an arbitrary person-name prefix into the safe grammar.
+const ESTONIAN_COMPOUND_BUILDING_ASSET_PATTERN = /(?<!\p{L})(?:[\p{L}-]{1,40})?(?:maja(?:s|st|le|lt|ga|ks|ni|d|de|des|dest|dele|delt|dega)?|hoone(?:t|s|st|le|lt|ga|ks|ni|d|te|tes|test|tele|telt|tega)?|elamu(?:t|s|st|le|lt|ga|ks|ni|d|te|tes|test|tele|telt|tega)?)(?!\p{L})/iu;
+const ESTONIAN_PRIVATE_DWELLING_TOKEN_PATTERN = /(?<!\p{L})(?:(?:[\p{L}-]{1,40})?(?:majake|majakese|majakest|majakeses|majakesse|majakesele|hooneke|hoonekese|hoonekest|hoonekeses|hoonekesesse|hoonekesele|elamuke|elamukese|elamukest|elamukeses|elamukesse|elamukesele)|korter(?:i|it|is|isse|ist|ile|ilt|iga|iks|id|ite|ites|itest|itele|itelt|itega)?)(?!\p{L})/iu;
+const ESTONIAN_GENERIC_BUILDING_SOURCE = ESTONIAN_REGULATORY_BUILDING_TOKEN_SOURCE;
+const ESTONIAN_BUILDING_ACTIVITY_SOURCE = String.raw`(?:ehitada|ehitamiseks|ehitamine|ehitamise|rajada|rajamiseks|rajamine|rajamise|planeerida|planeerimiseks|planeerimine|planeerimise|pustitada|pustitamiseks|pustitamine|pustitamise|renoveerida|renoveerimiseks|renoveerimine|renoveerimise|rekonstrueerida|rekonstrueerimiseks|rekonstrueerimine|rekonstrueerimise)`;
+const ESTONIAN_BUILDING_ACTIVITY_TOKEN_PATTERN = new RegExp(
+  String.raw`^${ESTONIAN_BUILDING_ACTIVITY_SOURCE}$`,
+  "u",
+);
+const ESTONIAN_BUILDING_ACTIVITY_IN_TEXT_PATTERN = new RegExp(
+  String.raw`(?:^|\s)${ESTONIAN_BUILDING_ACTIVITY_SOURCE}(?=\s|$)`,
+  "u",
+);
+const ESTONIAN_REGULATORY_CONSENT_IN_TEXT_PATTERN = new RegExp(
+  String.raw`(?:^|\s)${ESTONIAN_REGULATORY_CONSENT_SOURCE}(?=\s|$)`,
+  "u",
+);
+const ESTONIAN_PROTECTED_BUILDING_LOCATION_IN_TEXT_PATTERN = new RegExp(
+  String.raw`(?:^|\s)${ESTONIAN_PROTECTED_BUILDING_LOCATION_SOURCE}(?=\s|$)`,
+  "u",
+);
+const ESTONIAN_PROTECTED_BUILDING_LOCATION_TOKEN_PATTERN = /^(?:kaitseala|kaitsealal|kaitsealale|kaitsealalt|looduskaitseala|looduskaitsealal|looduskaitsealale|looduskaitsealalt|maastikukaitseala|maastikukaitsealal|maastikukaitsealale|maastikukaitsealalt|rahvuspark|rahvuspargi|rahvuspargis|rahvusparki|rahvuspargil|rahvuspargile|natura|ala|alal|alale|alalt|hoiuala|hoiualal|hoiualale|hoiualalt|pusielupaik|pusielupaigas|pusielupaika|pusielupaigal|pusielupaigale)$/u;
+const ESTONIAN_PRIVATE_CONSTRUCTION_POSSESSOR_SOURCE = String.raw`(?:minu|meie(?:\s+pere)?|oma|tema|nende|naabri|sobra|sopra|perekonna|pereliikme|vanaema|vanaisa|vanavanema|vanatadi|tadi|onu|ema|isa|oe|venna|abikaasa|elukaaslase|lapse|tutre|poja|sugulase|kolleegi|selle\s+(?:(?:konkreetse|nimetatud)\s+)?inimese)`;
+const ESTONIAN_REGULATORY_OBJECT_TOKEN_SOURCE = String.raw`[a-z][a-z-]{1,39}`;
+const ESTONIAN_PRIVATE_CONSTRUCTION_POSSESSOR_PATTERNS = Object.freeze([
+  new RegExp(
+    String.raw`(?:^|\s)${ESTONIAN_PRIVATE_CONSTRUCTION_POSSESSOR_SOURCE}\s+(?:${ESTONIAN_PUBLIC_BUILDING_DESCRIPTOR_TOKEN_SOURCE}\s+){0,4}${ESTONIAN_REGULATORY_OBJECT_TOKEN_SOURCE}\s+${ESTONIAN_BUILDING_ACTIVITY_SOURCE}(?=\s|$)`,
+    "u",
+  ),
+  new RegExp(
+    String.raw`(?:^|\s)${ESTONIAN_BUILDING_ACTIVITY_SOURCE}\s+${ESTONIAN_PRIVATE_CONSTRUCTION_POSSESSOR_SOURCE}\s+(?:${ESTONIAN_PUBLIC_BUILDING_DESCRIPTOR_TOKEN_SOURCE}\s+){0,4}${ESTONIAN_REGULATORY_OBJECT_TOKEN_SOURCE}(?=\s|$)`,
+    "u",
+  ),
+]);
+const ESTONIAN_REGULATORY_POLITE_PREFIX_SOURCE = String.raw`(?:palun(?:\s+(?:oelge|selgitage))?\s+)?`;
+const ESTONIAN_REVIEWED_GENERIC_REGULATORY_CONSENT_PATTERNS = Object.freeze([
+  new RegExp(
+    String.raw`^kas\s+${ESTONIAN_PROTECTED_BUILDING_LOCATION_SOURCE}\s+(?:voib|tohib|saab)\s+${ESTONIAN_PUBLIC_BUILDING_DESCRIPTOR_SOURCE}${ESTONIAN_GENERIC_BUILDING_SOURCE}\s+${ESTONIAN_BUILDING_ACTIVITY_SOURCE}\s+(?:(?:ja|ning)\s+)?${ESTONIAN_REGULATORY_CONSENT_SOURCE}\s+${ESTONIAN_REGULATORY_REQUIREMENT_SOURCE}$`,
+    "u",
+  ),
+  new RegExp(
+    String.raw`^kas\s+${ESTONIAN_PROTECTED_BUILDING_LOCATION_SOURCE}\s+(?:voib|tohib|saab)\s+${ESTONIAN_BUILDING_ACTIVITY_SOURCE}\s+${ESTONIAN_PUBLIC_BUILDING_DESCRIPTOR_SOURCE}${ESTONIAN_GENERIC_BUILDING_SOURCE}\s+(?:(?:ja|ning)\s+)?${ESTONIAN_REGULATORY_CONSENT_SOURCE}\s+${ESTONIAN_REGULATORY_REQUIREMENT_SOURCE}$`,
+    "u",
+  ),
+  new RegExp(
+    String.raw`^${ESTONIAN_REGULATORY_POLITE_PREFIX_SOURCE}${ESTONIAN_REGULATORY_CONSENT_SOURCE}\s+${ESTONIAN_REGULATORY_REQUIREMENT_SOURCE}\s+(?:et\s+)?${ESTONIAN_PROTECTED_BUILDING_LOCATION_SOURCE}\s+${ESTONIAN_PUBLIC_BUILDING_DESCRIPTOR_SOURCE}${ESTONIAN_GENERIC_BUILDING_SOURCE}\s+${ESTONIAN_BUILDING_ACTIVITY_SOURCE}$`,
+    "u",
+  ),
+  new RegExp(
+    String.raw`^${ESTONIAN_REGULATORY_POLITE_PREFIX_SOURCE}${ESTONIAN_REGULATORY_CONSENT_SOURCE}\s+${ESTONIAN_REGULATORY_REQUIREMENT_SOURCE}\s+(?:et\s+)?${ESTONIAN_PUBLIC_BUILDING_DESCRIPTOR_SOURCE}${ESTONIAN_GENERIC_BUILDING_SOURCE}\s+${ESTONIAN_PROTECTED_BUILDING_LOCATION_SOURCE}\s+${ESTONIAN_BUILDING_ACTIVITY_SOURCE}$`,
+    "u",
+  ),
+  new RegExp(
+    String.raw`^${ESTONIAN_REGULATORY_POLITE_PREFIX_SOURCE}${ESTONIAN_REGULATORY_CONSENT_SOURCE}\s+(?:on\s+)?${ESTONIAN_PROTECTED_BUILDING_LOCATION_SOURCE}\s+${ESTONIAN_PUBLIC_BUILDING_DESCRIPTOR_SOURCE}${ESTONIAN_GENERIC_BUILDING_SOURCE}\s+${ESTONIAN_BUILDING_ACTIVITY_SOURCE}\s+${ESTONIAN_REGULATORY_REQUIREMENT_SOURCE}$`,
+    "u",
+  ),
+  new RegExp(
+    String.raw`^${ESTONIAN_PROTECTED_BUILDING_LOCATION_SOURCE}\s+${ESTONIAN_PUBLIC_BUILDING_DESCRIPTOR_SOURCE}${ESTONIAN_GENERIC_BUILDING_SOURCE}\s+${ESTONIAN_BUILDING_ACTIVITY_SOURCE}\s+(?:(?:ja|ning)\s+)?${ESTONIAN_REGULATORY_CONSENT_SOURCE}\s+${ESTONIAN_REGULATORY_REQUIREMENT_SOURCE}$`,
+    "u",
+  ),
+  new RegExp(
+    String.raw`^${ESTONIAN_PUBLIC_BUILDING_DESCRIPTOR_SOURCE}${ESTONIAN_GENERIC_BUILDING_SOURCE}\s+${ESTONIAN_BUILDING_ACTIVITY_SOURCE}\s+${ESTONIAN_PROTECTED_BUILDING_LOCATION_SOURCE}\s+(?:(?:ja|ning)\s+)?${ESTONIAN_REGULATORY_CONSENT_SOURCE}\s+${ESTONIAN_REGULATORY_REQUIREMENT_SOURCE}$`,
+    "u",
+  ),
+]);
+const ESTONIAN_REVIEWED_INSTITUTIONAL_REGULATORY_CONSENT_PATTERNS = Object.freeze([
+  // A known public institution's building can be the grammatical possessor
+  // even when the construction verb is implicit ("RMK maja rahvuspargis:
+  // kelle luba on vaja?"). This form is considered only after an exact public
+  // organization span has been removed, so a person's surname cannot occupy
+  // the same slot.
+  new RegExp(
+    String.raw`^${ESTONIAN_PUBLIC_BUILDING_DESCRIPTOR_SOURCE}${ESTONIAN_GENERIC_BUILDING_SOURCE}\s+${ESTONIAN_PROTECTED_BUILDING_LOCATION_SOURCE}\s+${ESTONIAN_REGULATORY_CONSENT_SOURCE}\s+${ESTONIAN_REGULATORY_REQUIREMENT_SOURCE}$`,
+    "u",
+  ),
+]);
+
+function hasLossyUnicodeLetterOrNumber(value) {
+  const compatibilityText = String(value || "")
+    .normalize("NFKD")
+    .replace(/\p{Mark}/gu, "");
+  return [...compatibilityText].some((character) => (
+    /[\p{L}\p{N}]/u.test(character) && !/[A-Za-z0-9]/u.test(character)
+  ));
+}
+
+function hasLossyUnicodeProtectedConstructionResidual(value) {
+  const canonicalText = canonicalSecurityText(value);
+  if (!hasLossyUnicodeLetterOrNumber(canonicalText)) return false;
+  const normalizedText = normalize(canonicalText);
+  return ESTONIAN_PROTECTED_BUILDING_LOCATION_IN_TEXT_PATTERN.test(normalizedText)
+    && (
+      ESTONIAN_BUILDING_ACTIVITY_IN_TEXT_PATTERN.test(normalizedText)
+      || ESTONIAN_REGULATORY_CONSENT_IN_TEXT_PATTERN.test(normalizedText)
+    )
+    && (
+      ESTONIAN_REGULATORY_BUILDING_TOKEN_PATTERN.test(normalizedText)
+      || ESTONIAN_COMPOUND_BUILDING_ASSET_PATTERN.test(canonicalText)
+    );
+}
+
+export function isReviewedGenericProtectedAreaConsentQuery(value) {
+  const canonicalText = canonicalSecurityText(value);
+  const withoutReviewedMunicipality = removeFirstReviewedMunicipalityOrganizationName(canonicalText);
+  const withoutExactPublicOrganization = PUBLIC_ORGANIZATION_EXACT_NAME_PATTERNS.reduce(
+    (remaining, pattern) => remaining.replace(pattern, " "),
+    withoutReviewedMunicipality,
+  );
+  const matchesGenericGrammar = [canonicalText, withoutExactPublicOrganization].some((candidate) => {
+    if (hasLossyUnicodeLetterOrNumber(candidate)) return false;
+    const normalizedQuery = normalize(candidate);
+    return ESTONIAN_REVIEWED_GENERIC_REGULATORY_CONSENT_PATTERNS
+      .some((pattern) => pattern.test(normalizedQuery));
+  });
+  if (matchesGenericGrammar) return true;
+  const removedExactPublicOrganization = normalize(withoutExactPublicOrganization)
+    !== normalize(withoutReviewedMunicipality);
+  return removedExactPublicOrganization
+    && !hasLossyUnicodeLetterOrNumber(withoutExactPublicOrganization)
+    && ESTONIAN_REVIEWED_INSTITUTIONAL_REGULATORY_CONSENT_PATTERNS.some(
+      (pattern) => pattern.test(normalize(withoutExactPublicOrganization)),
+    );
+}
+
+const REVIEWED_PROTECTED_BUILDING_CONTACT_ORGANIZATION_PATTERNS = Object.freeze([
+  /\b(?:eesti\s+)?keskkonnaamet(?:i(?:ga|le|lt|l|s|st)?)?\b/giu,
+  /\b(?:euroopa\s+)?keskkonnaagentuur(?:i(?:ga|le|lt|l|s|st)?)?\b/giu,
+  /\bkliimaministeerium(?:i(?:ga|le|lt|l|s|st)?)?\b/giu,
+  /\briigimetsa\s+majandamise\s+keskus(?:e(?:ga|le|lt|l|s|st)?)?\b/giu,
+  /\b(?:estonian\s+)?environment(?:al)?\s+board\b/giu,
+  /\b(?:rmk|kik)\b/giu,
+]);
+
+export function isReviewedPublicOrganizationProtectedBuildingContactQuery(value) {
+  const canonicalText = canonicalSecurityText(value);
+  const withoutPublicOrganization = REVIEWED_PROTECTED_BUILDING_CONTACT_ORGANIZATION_PATTERNS.reduce(
+    (remaining, pattern) => remaining.replace(pattern, " "),
+    canonicalText,
+  );
+  const removedReviewedPublicOrganization = normalize(withoutPublicOrganization)
+    !== normalize(canonicalText);
+  const rawResidual = withoutPublicOrganization.trim();
+  if (hasLossyUnicodeLetterOrNumber(rawResidual)) return false;
+  // Normalization intentionally removes punctuation and case, so inspect the
+  // raw residual first. Quoted or title-cased words immediately attached to a
+  // building may be a private name (for example `"Vana" maja`) and must reach
+  // the conservative person/asset classifier instead of this public exception.
+  const rawContactTokens = rawResidual.match(/[\p{L}]+(?:[-/'’][\p{L}]+)*/gu) || [];
+  const rawActivityIndex = rawContactTokens.findIndex((token) => (
+    ESTONIAN_BUILDING_ACTIVITY_TOKEN_PATTERN.test(normalize(token))
+  ));
+  const rawLocationIndex = rawContactTokens.findLastIndex((token, index) => (
+    index < rawActivityIndex
+      && ESTONIAN_PROTECTED_BUILDING_LOCATION_TOKEN_PATTERN.test(normalize(token))
+  ));
+  const rawConstructionObjectTokens = rawActivityIndex > rawLocationIndex
+    ? rawContactTokens.slice(rawLocationIndex + 1, rawActivityIndex)
+    : [];
+  if (/["“„«'‘”»’]/u.test(rawResidual)
+    || rawConstructionObjectTokens.some((token) => /\p{Lu}/u.test(token))) return false;
+  const normalizedResidual = normalize(withoutPublicOrganization);
+  const publicContactSource = String.raw`(?:(?:avalik|ametlik|uldine)\s+)?(?:kontakt|uldkontakt|telefon|uldtelefon|e\s+post|postiaadress)`;
+  const reviewedEstonianContact = new RegExp(
+    String.raw`^${publicContactSource}\s+${ESTONIAN_PROTECTED_BUILDING_LOCATION_SOURCE}\s+(?:${ESTONIAN_PUBLIC_BUILDING_DESCRIPTOR_SOURCE}${ESTONIAN_GENERIC_BUILDING_SOURCE}\s+)?${ESTONIAN_BUILDING_ACTIVITY_SOURCE}(?:\s+(?:loa|nousoleku|kooskolastuse))?\s+kohta$`,
+    "u",
+  ).test(normalizedResidual) || new RegExp(
+    String.raw`^${publicContactSource}\s+${ESTONIAN_PROTECTED_BUILDING_LOCATION_SOURCE}\s+(?:${ESTONIAN_PUBLIC_BUILDING_DESCRIPTOR_SOURCE}${ESTONIAN_GENERIC_BUILDING_SOURCE}\s+)?${ESTONIAN_BUILDING_ACTIVITY_SOURCE}(?:\s+(?:loa|nousoleku|kooskolastuse))?$`,
+    "u",
+  ).test(normalizedResidual) || new RegExp(
+    String.raw`^kuidas\s+(?:votta\s+uhendust|kontakteeruda)\s+${ESTONIAN_PROTECTED_BUILDING_LOCATION_SOURCE}\s+${ESTONIAN_PUBLIC_BUILDING_DESCRIPTOR_SOURCE}${ESTONIAN_GENERIC_BUILDING_SOURCE}\s+${ESTONIAN_BUILDING_ACTIVITY_SOURCE}$`,
+    "u",
+  ).test(normalizedResidual);
+  if (removedReviewedPublicOrganization && reviewedEstonianContact) return true;
+
+  const estonianNamedNationalPark = String.raw`${ESTONIAN_REVIEWED_NATIONAL_PARK_NAME_SOURCE}\s+rahvuspargi`;
+  const estonianBuildingActivityNoun = String.raw`(?:ehitamise|rajamise|renoveerimise|rekonstrueerimise)`;
+  const explicitEstonianContact = String.raw`(?:(?:avalik|ametlik|uldine)\s+)(?:kontakt|uldkontakt|telefon|uldtelefon|e\s+post)`;
+  if ([
+    new RegExp(
+      String.raw`^${estonianNamedNationalPark}\s+${ESTONIAN_PUBLIC_BUILDING_DESCRIPTOR_SOURCE}${ESTONIAN_GENERIC_BUILDING_SOURCE}\s+${estonianBuildingActivityNoun}\s+${explicitEstonianContact}$`,
+      "u",
+    ),
+    new RegExp(
+      String.raw`^kust\s+(?:leida|leian)\s+${explicitEstonianContact}\s+${ESTONIAN_PROTECTED_BUILDING_LOCATION_SOURCE}\s+${ESTONIAN_PUBLIC_BUILDING_DESCRIPTOR_SOURCE}${ESTONIAN_GENERIC_BUILDING_SOURCE}\s+${ESTONIAN_BUILDING_ACTIVITY_SOURCE}$`,
+      "u",
+    ),
+  ].some((pattern) => pattern.test(normalizedResidual))) return true;
+
+  // English organization-contact questions use a different word order from
+  // the established Estonian service form. Keep this exception full-query
+  // anchored and limited to reviewed protected-place names, a generic
+  // building object and a construction activity. Appended people, properties
+  // or contact fields therefore cannot be consumed by the public grammar.
+  const englishProtectedPlace = String.raw`(?:lahemaa|vilsandi|matsalu|soomaa|karula|alutaguse)\s+(?:national|nature)\s+park`;
+  const englishBuildingActivity = String.raw`(?:renovat(?:e|ing)\s+(?:a|the)\s+(?:building|house|structure)|renovation\s+(?:of\s+)?(?:a|the)\s+(?:building|house|structure)|reconstruct(?:ing)?\s+(?:a|the)\s+(?:building|house|structure)|reconstruction\s+(?:of\s+)?(?:a|the)\s+(?:building|house|structure)|construct(?:ing)?\s+(?:a|the)\s+(?:building|house|structure)|construction\s+of\s+(?:a|the)\s+(?:building|house|structure))`;
+  const englishBuildingActivityNoun = String.raw`(?:(?:building|house|structure)\s+)?(?:renovation|reconstruction|construction)`;
+  const englishContactPrompt = String.raw`how\s+(?:do|can|should)\s+i\s+(?:contact|reach)(?:\s+the)?\s+(?:about|regarding|concerning|for)`;
+  const englishContactChannel = String.raw`(?:(?:official|public|general)\s+)?(?:contact|email|phone|telephone)`;
+  const explicitEnglishContactChannel = String.raw`(?:official|public|general)\s+(?:contact|email|phone|telephone)`;
+  const reviewedOrganizationEnglishPatterns = [
+    new RegExp(
+      String.raw`^${englishProtectedPlace}\s+${englishContactPrompt}\s+${englishBuildingActivity}$`,
+      "u",
+    ),
+    new RegExp(
+      String.raw`^${englishContactPrompt}\s+${englishBuildingActivity}\s+(?:in|at|within)\s+(?:the\s+)?${englishProtectedPlace}$`,
+      "u",
+    ),
+    new RegExp(
+      String.raw`^(?:what\s+is\s+(?:the\s+)?)?${englishContactChannel}\s+(?:for|about|regarding|concerning)\s+(?:${englishBuildingActivity}|${englishBuildingActivityNoun})\s+(?:in|at|within)\s+(?:the\s+)?${englishProtectedPlace}$`,
+      "u",
+    ),
+    new RegExp(
+      String.raw`^${englishContactChannel}\s+(?:for|about|regarding|concerning)\s+(?:${englishBuildingActivity}|${englishBuildingActivityNoun})\s+(?:in|at|within)\s+(?:the\s+)?${englishProtectedPlace}$`,
+      "u",
+    ),
+  ];
+  if (removedReviewedPublicOrganization
+    && reviewedOrganizationEnglishPatterns.some((pattern) => pattern.test(normalizedResidual))) return true;
+  return [
+    new RegExp(
+      String.raw`^${englishProtectedPlace}\s+${englishBuildingActivityNoun}\s+${englishContactChannel}$`,
+      "u",
+    ),
+    new RegExp(
+      String.raw`^${explicitEnglishContactChannel}\s+(?:for|about|regarding|concerning)\s+${englishBuildingActivityNoun}\s+(?:in|at|within)\s+(?:the\s+)?${englishProtectedPlace}$`,
+      "u",
+    ),
+  ].some((pattern) => pattern.test(normalizedResidual));
+}
 export const MAX_PUBLIC_SEARCH_QUERY_LENGTH = 180;
 const MAX_PUBLIC_SEARCH_RAW_INPUT_LENGTH = 4_096;
 
@@ -2592,6 +3145,10 @@ SECURITY_OBFUSCATED_KEYWORD_PATTERN.lastIndex = 0;
 
 function canonicalSecurityText(value) {
   let text = decodeSecurityEscapes(value)
+    // Canonicalize the bounded apostrophe/prime lookalikes that are routinely
+    // accepted in natural-language input. Possessive privacy checks must not
+    // see weaker syntax than downstream discovery or model construction.
+    .replace(/[\u0060\u00B4\u02B9\u02BB\u02BC\u2018\u2019\u201B\u2032\u2035]/gu, "'")
     // Retrieval and corpus search both apply NFKC. Fold compatibility forms
     // here first so the privacy decision cannot see weaker semantics than a
     // downstream search sink; NFD then exposes inserted marks to the bounded
@@ -2602,6 +3159,10 @@ function canonicalSecurityText(value) {
     // compound-word grammars. This keeps public queries consistent while the
     // same canonical form still reaches every privacy classifier.
     .replace(/\p{Pd}/gu, "-")
+    // Preserve line and tab controls as visible clause boundaries. Deleting
+    // them would fuse otherwise separate tokens ("ownership\nJohn") before
+    // the named-private-asset detector has a chance to fail closed.
+    .replace(/[\t\n\v\f\r\u0085\u2028\u2029]+/gu, " ; ")
     .replace(/[\p{Default_Ignorable_Code_Point}\p{Cc}]/gu, "")
     .replace(/[аɑα]/giu, "a")
     .replace(/[еε]/giu, "e")
@@ -2668,6 +3229,50 @@ const REVIEWED_MUNICIPALITY_INSTITUTIONAL_CONTACT_PATTERNS = Object.freeze([
   /^[\p{L}'’-]{2,50}\s+(?:city|municipal)\s+(?:(?:environment(?:al)?|forest(?:ry)?|nature(?:\s+(?:protection|conservation))?|climate|water|waste|biodiversity|green\s+infrastructure)(?:\s+(?:monitoring|adaptation|planning|policy|information|statistics|data))?\s+)?(?:office|department|service|unit)\s+(?:(?:general|public|official)\s+)?(?:contact|phone|telephone|email|mailbox|address)\??$/iu,
 ]);
 
+const BENIGN_REGULATORY_CONTEXT_NAME_SOURCE = String.raw`(?:\p{Lu}[\p{Ll}'’-]{1,39}\s+\p{Lu}[\p{Ll}'’-]{1,39}|\p{Lu}[\p{Lu}'’-]{1,39}\s+\p{Lu}[\p{Lu}'’-]{1,39}|\p{Lu}\.\s*(?:\p{Lu}[\p{Ll}'’-]{1,39}|\p{Lu}[\p{Lu}'’-]{1,39}))`;
+const BENIGN_REGULATORY_ATTRIBUTION_SOURCE = String.raw`(?:küsib|küsis|palub|palus|annab|andis|kirjutas|koostas|avaldas|tutvustas|toimetas|selgitas|esitas|jagas|kommenteeris|kirjeldas)\s+(?:(?:üldist|avaliku|üldise)\s+)?(?:nõu|juhendi|selgituse|ülevaate|artikli|küsimuse)`;
+const BENIGN_NAMED_REGULATORY_CONTEXT_PATTERNS = Object.freeze([
+  new RegExp(String.raw`^${BENIGN_REGULATORY_CONTEXT_NAME_SOURCE}\s+${BENIGN_REGULATORY_ATTRIBUTION_SOURCE}$`, "u"),
+  new RegExp(String.raw`^(?:uuringu\s+autor|projekti\s+tutvustas|küsimuse\s+esitas)\s+${BENIGN_REGULATORY_CONTEXT_NAME_SOURCE}$`, "u"),
+]);
+
+function isBenignNaturalPersonAttributionClause(value) {
+  const clause = String(value || "").trim();
+  if (!BENIGN_NAMED_REGULATORY_CONTEXT_PATTERNS.some((pattern) => pattern.test(clause))) {
+    return false;
+  }
+  // The same title-case shape can name a public organization (for example
+  // “Eesti Energia” or “Environment Board”). Such an organization is part of
+  // the user's information need and must not be treated as disposable person
+  // attribution.
+  return normalize(removeFirstPublicOrganizationName(clause)) === normalize(clause);
+}
+
+function isReviewedBenignProtectedAreaAdviceTail(value) {
+  const tail = String(value || "").trim();
+  if (!tail || /["“„«'‘”»’]/u.test(tail)) return false;
+  const hasRawIdentitySignal = [...tail.matchAll(/\p{Lu}[\p{Ll}'’-]{1,39}/gu)]
+    .some((match) => {
+      const token = normalize(match[0]);
+      const protectedPlacePrefix = normalize(tail.slice(0, match.index));
+      const beginsReviewedQuestion = match.index === 0
+        && /^(?:kas|kelle|palun)$/u.test(token);
+      const beginsProtectedPlacePhrase = /^(?:lahemaa|vilsandi|matsalu|soomaa|karula|alutaguse|natura)$/u.test(token)
+        && /^(?:kas)?$/u.test(protectedPlacePrefix);
+      return !(
+        beginsReviewedQuestion
+        || beginsProtectedPlacePhrase
+        || PUBLIC_ORGANIZATION_PATTERN.test(match[0])
+      );
+    });
+  if (hasRawIdentitySignal) return false;
+  return isReviewedGenericProtectedAreaConsentQuery(tail)
+    || new RegExp(
+      String.raw`^${ESTONIAN_PROTECTED_BUILDING_LOCATION_SOURCE}\s+${ESTONIAN_PUBLIC_BUILDING_DESCRIPTOR_SOURCE}${ESTONIAN_GENERIC_BUILDING_SOURCE}\s+${ESTONIAN_BUILDING_ACTIVITY_SOURCE}\s+kohta$`,
+      "u",
+    ).test(normalize(tail));
+}
+
 function reviewedMunicipalityInstitutionalContactScope(value) {
   const text = canonicalSecurityText(value).trim();
   if (!REVIEWED_MUNICIPALITY_INSTITUTIONAL_CONTACT_PATTERNS.some(
@@ -2679,8 +3284,174 @@ function reviewedMunicipalityInstitutionalContactScope(value) {
   return reviewedEstonianForestryMunicipalityScope(text);
 }
 
-export function containsPrivatePersonLookup(value) {
+function isReviewedPublicOrganizationProtectedPlaceContactQuery(value) {
+  const text = canonicalSecurityText(value).trim();
+  const withoutPublicOrganization = removeFirstPublicOrganizationName(text).trim();
+  if (normalize(withoutPublicOrganization) === normalize(text)
+    || CADASTRE_PATTERN.test(text)
+    || PRIVATE_PERSON_ATTRIBUTE_PATTERN.test(text)
+    || PRIVATE_POSTAL_FIELD_PATTERN.test(text)
+    || /(?:'s|’s)\s+(?:contact|phone|telephone|email|address|property|parcel|land)\b/iu.test(withoutPublicOrganization)) return false;
+  const protectedPlace = String.raw`(?:lahemaa|vilsandi|matsalu|soomaa|karula|alutaguse)`;
+  return new RegExp(
+    String.raw`^(?:(?:official|public|general)\s+)?contact(?:\s+(?:channel|details|information|point))?\s+(?:for|about|regarding|concerning)\s+(?:the\s+)?${protectedPlace}(?:\s+(?:national\s+park|nature\s+park|rahvuspark|looduspark))?$`,
+    "u",
+  ).test(normalize(withoutPublicOrganization));
+}
+
+function privacyLanguageFold(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .normalize("NFD")
+    .replace(/\p{M}+/gu, "")
+    .toLocaleLowerCase("en")
+    .replace(/[’‘`´]/gu, "'")
+    .replace(/\s+/gu, " ")
+    .normalize("NFC")
+    .trim();
+}
+
+const FOREIGN_PRIVATE_RELATION_PATTERN = new RegExp([
+  // Spanish, Portuguese, French, Italian, German, Dutch and Nordic forms.
+  String.raw`\b(?:donde\s+)?(?:vive|reside|habita)\b|\b(?:direccion|domicilio)(?:\s+(?:de|particular))?\b|\b(?:posee|propietari[oa]|duen[oa])\b` ,
+  String.raw`\b(?:onde\s+)?(?:mora|vive|reside)\b|\benderec[oa](?:\s+(?:de|residencial))?\b|\b(?:possui|proprietari[oa])\b` ,
+  String.raw`\b(?:ou\s+)?(?:habite|vit|reside)\b|\b(?:adresse|domicile)(?:\s+(?:de|personnelle?|personnel))?\b|\b(?:possede|proprietaire|appartient\s+a)\b` ,
+  String.raw`\b(?:dove\s+)?(?:vive|abita|risiede)\b|\bindirizzo(?:\s+(?:di|privato))?\b|\b(?:possiede|proprietari[oa])\b` ,
+  String.raw`\b(?:wo\s+)?(?:wohnt|lebt)\b|\b(?:wohn(?:ort|adresse)|adresse(?:\s+von)?)\b|\b(?:besitzt|eigentumer|gehort\s+zu)\b` ,
+  String.raw`\b(?:waar\s+)?(?:woont|leeft)\b|\b(?:woonadres|adres(?:\s+van)?)\b|\b(?:bezit|eigenaar)\b` ,
+  String.raw`\b(?:var\s+)?bor\b|\b(?:bostadsadress|adress(?:\s+till)?)\b|\b(?:ager|agare)\b` ,
+  String.raw`\b(?:hvor\s+bor|bopel|adresse\s+til|(?:eier|ej er|ejer)\b)` ,
+  // Finnish, Polish and the Baltic languages.
+  String.raw`\b(?:missa\s+)?(?:asuu|oleskelee)\b|\b(?:kotiosoite|osoite(?:\s+henkilolle)?)\b|\b(?:omistaa|omistaja)\b` ,
+  String.raw`\b(?:gdzie\s+)?mieszka\b|\b(?:adres(?:\s+zamieszkania)?)\b|\b(?:posiada|wlasciciel|nalezy\s+do)\b` ,
+  String.raw`\b(?:kur\s+dzivo|dzivesvietas\s+adrese|(?:pieder|ipasnieks)\b)` ,
+  String.raw`\b(?:kur\s+gyvena|gyvenamosios\s+vietos\s+adresas|(?:priklauso|savininkas)\b)` ,
+  // Cyrillic residence, address and ownership constructions.
+  String.raw`(?:где\s+(?:живет|живёт|проживает)|место\s+жительства|домашн(?:ий|его)\s+адрес|адрес|(?:владеет|собственник|принадлежит))` ,
+  // CJK, Korean and Arabic scripts do not expose reliable title case, so the
+  // private relation itself is sufficient at this unsupported-language edge.
+  String.raw`(?:住在?哪里|住在哪|居住地|家庭住址|地址是什么|谁拥有|所有者|的(?:家|自宅|住所|住居))` ,
+  String.raw`(?:どこに住|どこで暮ら|住所|居住地|誰が所有|所有者|の(?:家|自宅|住所|住居))` ,
+  String.raw`(?:어디에\s*사|어디서\s*사|거주지|집\s*주소|주소(?:가\s*어디)?|누가\s*소유|소유자|의\s*(?:집|자택|주소|거주지))` ,
+  String.raw`(?:اين\s+(?:يسكن|يعيش)|عنوان(?:\s+(?:المنزل|السكن|[\p{Script=Arabic}]{2,40}))?|محل\s+الاقامة|(?:منزل|بيت|دار|مسكن)\s+[\p{Script=Arabic}]{2,40}|(?:يملك|مالك))` ,
+].join("|"), "iu");
+
+const FOREIGN_SCRIPT_PATTERN = /[\p{Script=Arabic}\p{Script=Armenian}\p{Script=Bengali}\p{Script=Cyrillic}\p{Script=Devanagari}\p{Script=Georgian}\p{Script=Greek}\p{Script=Han}\p{Script=Hangul}\p{Script=Hebrew}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}]/u;
+const UNREVIEWED_PERSON_NAME_PAIR_PATTERN = /(?<![\p{L}\p{N}])(?:\p{Lu}[\p{Ll}\p{M}'’-]{1,39}|\p{Lu}{2,}[\p{Lu}\p{M}'’-]{1,39})[\s,]+(?:\p{Lu}[\p{Ll}\p{M}'’-]{1,39}|\p{Lu}{2,}[\p{Lu}\p{M}'’-]{1,39})(?![\p{L}\p{N}])/u;
+
+function splitPublicQueryClauses(value) {
+  return String(value || "")
+    .split(/(?<!\b\p{Lu})\.+|[!?;,¿¡。！？；،]+|\s[-—–−]\s/gu)
+    .map((clause) => clause.trim())
+    .filter(Boolean);
+}
+
+function isReviewedPublicOrganizationContactClause(value) {
+  const clause = String(value || "").trim();
+  const withoutOrganization = removeFirstPublicOrganizationName(clause).trim();
+  if (!clause || normalize(withoutOrganization) === normalize(clause)) return false;
+  if (!(INSTITUTIONAL_CONTACT_CHANNEL_PATTERN.test(clause)
+    || PRIVATE_POSTAL_FIELD_PATTERN.test(clause))) return false;
+  return !CADASTRE_PATTERN.test(clause)
+    && !PRIVATE_PERSON_ATTRIBUTE_PATTERN.test(withoutOrganization)
+    && !UNREVIEWED_PERSON_NAME_PAIR_PATTERN.test(withoutOrganization);
+}
+
+function isReviewedForeignLanguageSelectorQuery(value) {
+  const text = String(value || "").normalize("NFKC").trim();
+  const match = text.match(/^([\s\S]+?)\s+(中文)$/u);
+  if (!match || FOREIGN_SCRIPT_PATTERN.test(match[1])) return false;
+  return (queryTerms(match[1]).some(rootIsDomain)
+      || /(?:vee|metsa?|õhu|ohu|kliima|keskkonna|loodus|jäätm|jaatm)[\p{L}-]*andm/iu.test(match[1]))
+    && !UNREVIEWED_PERSON_NAME_PAIR_PATTERN.test(removeFirstPublicOrganizationName(match[1]));
+}
+
+function hasForeignPrivatePersonClause(value) {
+  return splitPublicQueryClauses(value).some((clause) => (
+    !isReviewedPublicOrganizationContactClause(clause)
+      && FOREIGN_PRIVATE_RELATION_PATTERN.test(privacyLanguageFold(clause))
+  ));
+}
+
+function hasUnsupportedPublicProviderResidual(value) {
+  const text = String(value || "").normalize("NFKC").trim();
+  if (FOREIGN_SCRIPT_PATTERN.test(text)
+    && !isReviewedForeignLanguageSelectorQuery(text)) return true;
+  const clauses = splitPublicQueryClauses(value);
+  if (clauses.length < 2) return false;
+  // Autocomplete accepts arbitrary partial text. The residual rule applies
+  // when a reviewed environmental clause could otherwise carry unrelated
+  // text across the provider boundary; standalone non-domain text remains
+  // governed by the explicit instruction/person/script classifiers.
+  const hasEnvironmentalClause = clauses.some((clause) => (
+    queryTerms(clause).some(rootIsDomain)
+  ));
+  if (!hasEnvironmentalClause) return false;
+  return clauses.some((clause) => {
+    const roots = queryTerms(clause);
+    const hasDomainRoot = roots.some(rootIsDomain);
+    if (hasDomainRoot) return false;
+    if (isReviewedPublicOrganizationContactClause(clause)) return false;
+    if (/^\d+(?:[.,]\d+)?$/u.test(clause)) return false;
+    if (!UNREVIEWED_PERSON_NAME_PAIR_PATTERN.test(clause)) return false;
+    const withoutOrganization = removeFirstPublicOrganizationName(clause).trim();
+    return normalize(withoutOrganization) === normalize(clause)
+      && !isBenignNaturalPersonAttributionClause(clause);
+  });
+}
+
+function isReviewedIndependentPublicClause(value) {
+  const clause = String(value || "").trim();
+  if (!clause || FOREIGN_SCRIPT_PATTERN.test(clause)
+    || FOREIGN_PRIVATE_RELATION_PATTERN.test(privacyLanguageFold(clause))) return false;
+  if (isReviewedPublicOrganizationContactClause(clause)) return true;
+  const withoutOrganization = removeFirstPublicOrganizationName(clause).trim();
+  const identityCandidate = withoutOrganization.replace(
+    /^(?:kas|kelle|mida|mill(?:ine|al|est)|what|when|where|which|who|why|how|does|do|is|are)\s+/iu,
+    "",
+  );
+  return queryTerms(clause).some(rootIsDomain)
+    && !CADASTRE_PATTERN.test(clause)
+    && !PRIVATE_PERSON_ATTRIBUTE_PATTERN.test(clause)
+    && !PRIVATE_POSTAL_FIELD_PATTERN.test(withoutOrganization)
+    && !UNREVIEWED_PERSON_NAME_PAIR_PATTERN.test(identityCandidate);
+}
+
+function isReviewedPublicClauseComposition(value) {
+  const clauses = splitPublicQueryClauses(value);
+  return clauses.length > 1
+    && clauses.some(isReviewedPublicOrganizationContactClause)
+    && clauses.every(isReviewedIndependentPublicClause);
+}
+
+export function containsPrivatePersonLookup(value, {
+  allowReviewedPublicClauseComposition = true,
+} = {}) {
+  if (hasForeignPrivatePersonClause(decodeSecurityEscapes(value))) return true;
   const text = canonicalSecurityText(value);
+  // Unsupported-language residence and ownership clauses must fail before a
+  // public environmental prefix can admit the complete text. This guard is
+  // intentionally ahead of every reviewed public exception and is shared by
+  // all provider-facing minimization paths below.
+  if (hasForeignPrivatePersonClause(text)) return true;
+  // Reviewed protected-construction grammars are Latin/Estonian. Never grant
+  // their public exception after normalization has erased an unconsumed
+  // letter or number from another script; the intact query would otherwise
+  // cross suggestion, discovery and model-provider boundaries.
+  if (hasLossyUnicodeProtectedConstructionResidual(text)) return true;
+  // Do not fuse two independently public environmental/contact clauses into
+  // a person-shaped contact request. The lightweight composition grammar is
+  // only a candidate allowlist: every clause must also clear the complete
+  // privacy classifier in isolation before the composition may return public.
+  // Disable only this shortcut in the recursive calls so a private clause can
+  // never borrow a public organization's contact grammar.
+  if (allowReviewedPublicClauseComposition && isReviewedPublicClauseComposition(text)) {
+    return splitPublicQueryClauses(text).some((clause) => (
+      containsPrivatePersonLookup(clause, {
+        allowReviewedPublicClauseComposition: false,
+      })
+    ));
+  }
   // A canonical cadastral identifier is a public object key by itself, but a
   // query that explicitly binds it to a structured natural-person name is a
   // private association. Enforce this invariant before any public aggregate
@@ -2694,6 +3465,31 @@ export function containsPrivatePersonLookup(value) {
   // aggregate/contact exception so later routing cannot reinterpret the
   // residual natural-person name as a municipality question.
   if (hasPartialReviewedMunicipalityAssetAssociation(text)) return true;
+  if (isCompletePublicEcologicalPossessiveForestQuestion(text)) return false;
+  // A reviewed geography or municipality token cannot make a larger
+  // person-shaped possessive public (for example "John Canada" or
+  // "Alice Narva"). Exact complete public possessors remain allowed below.
+  if (hasPartialReviewedGeographyPossessiveForestAggregate(text)) return true;
+  // Generic organization suffixes are lexical hints, not reviewed identity
+  // proof: Board, Service, Trust, Council and Team are also real surnames.
+  // Deny an unreviewed complete possessor before any broader organization or
+  // environmental exception can reinterpret the name and reach a provider.
+  if (hasUnreviewedPossessiveForestAggregateQuestion(text)) return true;
+  // This helper consumes the complete query and validates its possessor as a
+  // reviewed geography, programme or public organization. Resolve it before
+  // the conservative one-token possessive guard; any appended private clause
+  // fails the full anchor and is still handled by that guard below.
+  if (isCompletePublicPossessiveForestAggregateQuestion(text)) return false;
+  // This construction-contact grammar consumes the whole query, removes only
+  // a bounded reviewed organization name, and rejects every private or lossy
+  // residual. Resolve it before generic title-case/private-asset heuristics can
+  // mistake an agency or reviewed national-park name for a natural person.
+  if (isReviewedPublicOrganizationProtectedBuildingContactQuery(text)) return false;
+  // Public aggregate and method questions can otherwise absorb a trailing
+  // person/property phrase. Give bounded named-person asset and ownership
+  // relations first refusal before any complete-query public exception.
+  if (hasEarlyBoundedNamedPrivateAssetAssociation(text)) return true;
+  if (isReviewedNationalUnsupportedForestAreaBreakdownQuestion(text)) return false;
   // Complete ecological descriptions and public institution/entity relations
   // have no residual clause in which a natural person can hide. Resolve these
   // bounded public forms before the any-case name grammar; all three helpers
@@ -2703,9 +3499,11 @@ export function containsPrivatePersonLookup(value) {
     || isCompletePublicEcologicalAgencyRoleQuestion(text)
     || isCompletePublicForestConceptQuestion(text)
     || isCompletePublicNationalForestAreaQuestion(text)
+    || isCompletePublicPossessiveForestAggregateQuestion(text)
     || isCompletePublicForestOwnershipAggregate(text)
     || isReviewedNationalDefaultForestryAreaComplement(text)
     || reviewedMunicipalityInstitutionalContactScope(text)
+    || isReviewedPublicOrganizationProtectedPlaceContactQuery(text)
     || isCompleteReviewedPublicEntityAssetAssociation(text)) return false;
   // National/regional aggregate recognition runs before the full identity
   // classifier. A bounded person + residence field, or an explicit asset-role
@@ -2730,7 +3528,7 @@ export function containsPrivatePersonLookup(value) {
   const forestryGeographyScope = classifyForestryGeographyScope(text);
   const reviewedUnsupportedNationalForestClaim = ["national-default", "national-estonia"]
     .includes(forestryGeographyScope.kind)
-    && ["forest-area", "forest-covered-area"].includes(resolvePublicForestryIntent(text)?.kind)
+    && ["forest-area", "forest-covered-area", "forest-area-method"].includes(resolvePublicForestryIntent(text)?.kind)
     && (requestsUnsupportedForestAreaBreakdown(text)
       || requestsUnsupportedForestAreaTimeSeries(text)
       || requestsUnsupportedForestAreaUnit(text))
@@ -3080,7 +3878,11 @@ export function containsPrivatePersonLookup(value) {
     /\p{Script=Latin}/u.test(word)
       && /[^\p{Script=Latin}\p{M}]/u.test(word)
   ));
-  const hasPrivateAssetContext = /(?<!\p{L})(?:katastri\w*|kinnist\w*|maa(?:u|ü)ksus\w*|maat(?:ü|u)kk\w*|metsamaa\w*|metsaeraldis\w*|metsakinnist\w*|metsat(?:ü|u)kk\w*|puistu\w*|puurkaev\w*|aadress\w*|property|parcel|plot|lot|estate|land|house|home|farm|well|borehole|building|dwelling|forest|woodland)(?!\p{L})/iu.test(text);
+  const hasEstonianRegulatoryBuildingContext = ESTONIAN_REGULATORY_BUILDING_TOKEN_PATTERN.test(normalize(text))
+    || ESTONIAN_COMPOUND_BUILDING_ASSET_PATTERN.test(text)
+    || ESTONIAN_PRIVATE_DWELLING_TOKEN_PATTERN.test(text);
+  const hasPrivateAssetContext = hasEstonianRegulatoryBuildingContext
+    || /(?<!\p{L})(?:katastri\w*|kinnist\w*|maa(?:u|ü)ksus\w*|maat(?:ü|u)kk\w*|metsamaa\w*|metsaeraldis\w*|metsakinnist\w*|metsat(?:ü|u)kk\w*|puistu\w*|puurkaev\w*|aadress\w*|property|parcel|plot|lot|estate|land|house|home|farm|well|borehole|building|dwelling|forest|woodland)(?!\p{L})/iu.test(text);
   // A private-asset query containing a Latin/non-Latin mixed token is
   // ambiguous by construction (for example Armenian/Cyrillic letters inside
   // "owns"). Fail closed instead of relying on an endless confusable list.
@@ -3117,8 +3919,9 @@ export function containsPrivatePersonLookup(value) {
   // also happens to be a place or ecological word ("Pärnu Mets telefon").
   // Token positions, rather than whitespace, keep punctuation variants inside
   // the same fail-closed rule.
-  const residualContactNameTokens = [...textWithoutKnownOrganizations.matchAll(/[\p{L}]+(?:[-'’][\p{L}]+)*/gu)]
-    .map((match) => match[0]);
+  const residualContactNameMatches = [...textWithoutKnownOrganizations
+    .matchAll(/[\p{L}]+(?:[-'’][\p{L}]+)*/gu)];
+  const residualContactNameTokens = residualContactNameMatches.map((match) => match[0]);
   const isTitleCasedIdentityToken = (token) => /^\p{Lu}[\p{Ll}'’-]{1,39}$/u.test(token)
     && !PERSON_CONTEXT_STOPWORD_PATTERN.test(token);
   const hasCapitalizedNameWithPrivateContact = residualContactNameTokens.some((token, index, tokens) => (
@@ -3947,6 +4750,183 @@ export function containsPrivatePersonLookup(value) {
     || strongNamedSubjectPairIndexes.length > 0
     || hasStrongGrammarNamedPrivateAssetAssociation
     || hasLowercaseNamedPrivateAssetAssociation;
+  const normalizedRegulatoryText = normalize(text);
+  const hasProtectedAreaConstructionLocation = ESTONIAN_PROTECTED_BUILDING_LOCATION_IN_TEXT_PATTERN
+    .test(normalizedRegulatoryText);
+  const hasProtectedAreaConstructionSignals = hasProtectedAreaConstructionLocation
+    && ESTONIAN_BUILDING_ACTIVITY_IN_TEXT_PATTERN.test(normalizedRegulatoryText);
+  // A broader stem check is fail-closed only: any unreviewed construction
+  // inflection in an official-contact query is blocked below unless the
+  // complete strict public helper accepts it.
+  const hasProtectedAreaOrganizationConstructionContactContext = hasKnownPublicOrganization
+    && hasInstitutionalContactChannel
+    && hasProtectedAreaConstructionLocation
+    && /(?:^|\s)(?:ehit|raja|planeeri|pustit|renoveeri|rekonstrueeri)[a-z-]{0,30}(?=\s|$)/u
+      .test(normalizedRegulatoryText);
+  const hasProtectedAreaRegulatoryConstructionContext = (
+    hasProtectedAreaConstructionSignals
+      && ESTONIAN_REGULATORY_CONSENT_IN_TEXT_PATTERN.test(normalizedRegulatoryText)
+  ) || hasProtectedAreaOrganizationConstructionContactContext;
+  const regulatoryTokenIsActivity = (token) => ESTONIAN_BUILDING_ACTIVITY_TOKEN_PATTERN
+    .test(normalize(token));
+  const regulatoryTokenIsReviewedPublicSyntax = (token) => {
+    const normalizedToken = normalize(token);
+    return ESTONIAN_PUBLIC_BUILDING_DESCRIPTOR_TOKEN_PATTERN.test(normalizedToken)
+      || ESTONIAN_REGULATORY_BUILDING_EXACT_TOKEN_PATTERN.test(normalizedToken)
+      || ESTONIAN_PROTECTED_BUILDING_LOCATION_TOKEN_PATTERN.test(normalizedToken)
+      || ESTONIAN_BUILDING_ACTIVITY_TOKEN_PATTERN.test(normalizedToken)
+      || /^(?:ja|ning|kas|kelle|luba|loa|nousolek|nousoleku|nousolekut|kooskolastus|kooskolastuse|kooskolastust|on|vaja|vajalik|noutav|voib|tohib|saab|palun|oelge|selgitage)$/u.test(normalizedToken);
+  };
+  const regulatoryDescriptorHasRawIdentitySignal = (token, index) => {
+    if (!ESTONIAN_PUBLIC_BUILDING_DESCRIPTOR_TOKEN_PATTERN.test(normalize(token))) return false;
+    const match = residualContactNameMatches[index];
+    if (!match || !Number.isSafeInteger(match.index)) return true;
+    const leading = textWithoutKnownOrganizations.slice(0, match.index);
+    const trailing = textWithoutKnownOrganizations.slice(match.index + match[0].length);
+    const explicitlyQuoted = /["“„«'‘]\s*$/u.test(leading)
+      && /^\s*["”»'’]/u.test(trailing);
+    const beginsSentence = !leading.trim() || /[.!?]\s*$/u.test(leading);
+    // Keep sentence-initial capitalization available for ordinary prose, but
+    // never let a quoted or mid-sentence title-cased surname collision become
+    // indistinguishable from a lower-case building descriptor.
+    return explicitlyQuoted || !beginsSentence;
+  };
+  // A period after a single capital initial belongs to the name, not to the
+  // sentence boundary ("J. Tamm küsib nõu. ..."). Acronym-final periods such
+  // as "RMK." still split because there is no word boundary before the K.
+  const regulatoryClauseBoundaryPattern = /(?<!\b\p{Lu})\.+|[!?;]+|\s[-—–]\s/gu;
+  const regulatoryClauseBoundaries = [...textWithoutKnownOrganizations
+    .matchAll(regulatoryClauseBoundaryPattern)];
+  const regulatoryClauseTokensAt = (index) => {
+    const focus = residualContactNameMatches[index];
+    if (!focus || !Number.isSafeInteger(focus.index)) return [];
+    const leadingBoundary = regulatoryClauseBoundaries
+      .findLast((boundary) => boundary.index < focus.index);
+    const trailingBoundary = regulatoryClauseBoundaries
+      .find((boundary) => boundary.index > focus.index);
+    const clauseStart = leadingBoundary
+      ? leadingBoundary.index + leadingBoundary[0].length
+      : 0;
+    const clauseEnd = trailingBoundary?.index ?? textWithoutKnownOrganizations.length;
+    return residualContactNameMatches.flatMap((match, originalIndex) => (
+      match.index >= clauseStart && match.index < clauseEnd
+        ? [{ originalIndex, token: match[0] }]
+        : []
+    ));
+  };
+  const regulatoryIdentitySharesConstructionClause = (index, identityWidth) => {
+    const clauseTokens = regulatoryClauseTokensAt(index);
+    const localIndex = clauseTokens.findIndex((item) => item.originalIndex === index);
+    if (localIndex < 0) return false;
+    const activityAfterObject = clauseTokens
+      .slice(localIndex + identityWidth + 1)
+      .some((item) => regulatoryTokenIsActivity(item.token));
+    const activityBeforeObject = clauseTokens
+      .slice(0, localIndex)
+      .some((item) => regulatoryTokenIsActivity(item.token))
+      && Boolean(clauseTokens[localIndex + identityWidth]);
+    return activityAfterObject || activityBeforeObject;
+  };
+  const hasAttachedCapitalizedRegulatoryName = residualContactNameTokens
+    .some((first, index, tokens) => {
+      const second = tokens[index + 1] || "";
+      return isTitleCasedIdentityToken(first)
+        && isTitleCasedIdentityToken(second)
+        && !regulatoryTokenIsReviewedPublicSyntax(first)
+        && !regulatoryTokenIsReviewedPublicSyntax(second)
+        && regulatoryIdentitySharesConstructionClause(index, 2);
+    });
+  const hasAttachedSingleCapitalizedPossessor = residualContactNameTokens
+    .some((token, index, tokens) => (
+      isTitleCasedIdentityToken(token)
+      && (
+        !regulatoryTokenIsReviewedPublicSyntax(token)
+        || regulatoryDescriptorHasRawIdentitySignal(token, index)
+      )
+      && !ESTONIAN_PROTECTED_BUILDING_LOCATION_TOKEN_PATTERN.test(normalize(tokens[index + 1] || ""))
+      && regulatoryIdentitySharesConstructionClause(index, 1)
+    ));
+  const hasAttachedLowercaseRegulatoryName = residualContactNameTokens
+    .some((first, index, tokens) => {
+      const second = tokens[index + 1] || "";
+      const normalizedFirst = normalize(first);
+      const normalizedSecond = normalize(second);
+      return isSuspiciousIdentityFragment(normalizedFirst)
+        && isSuspiciousIdentityFragment(normalizedSecond)
+        && !isEcologicalCommonNamePair(normalizedFirst, normalizedSecond)
+        && !regulatoryTokenIsReviewedPublicSyntax(first)
+        && !regulatoryTokenIsReviewedPublicSyntax(second)
+        && regulatoryIdentitySharesConstructionClause(index, 2);
+    });
+  const hasAttachedPrivateConstructionPossessor = ESTONIAN_PRIVATE_CONSTRUCTION_POSSESSOR_PATTERNS
+    .some((pattern) => pattern.test(normalizedRegulatoryText));
+  const regulatoryTokenIsPrivateConstructionPossessor = (token, index, tokens) => {
+    const normalizedToken = normalize(token);
+    if (/^(?:minu|meie|oma|tema|nende|naabri|sobra|sopra|perekonna|pereliikme|vanaema|vanaisa|vanavanema|vanatadi|tadi|onu|ema|isa|oe|venna|abikaasa|elukaaslase|lapse|tutre|poja|sugulase|kolleegi)$/u.test(normalizedToken)) {
+      return true;
+    }
+    return normalizedToken === "selle"
+      && tokens.slice(index + 1, index + 4).some((candidate) => normalize(candidate) === "inimese");
+  };
+  const hasBoundedPrivateConstructionPossessor = residualContactNameTokens
+    .some((token, index, tokens) => (
+      regulatoryTokenIsPrivateConstructionPossessor(token, index, tokens)
+      && regulatoryIdentitySharesConstructionClause(index, 1)
+    ));
+  const regulatoryClauseTexts = text
+    .split(regulatoryClauseBoundaryPattern)
+    .map((clause) => clause.trim())
+    .filter(Boolean);
+  const benignRegulatoryContextNameSource = BENIGN_REGULATORY_CONTEXT_NAME_SOURCE;
+  // These exact attribution verbs and publication nouns describe the named
+  // speaker or author, not a private building owner. The exception remains
+  // complete-query anchored below and the regulatory tail must independently
+  // pass the reviewed public grammar before the name can be released.
+  const benignRegulatoryAttributionSource = BENIGN_REGULATORY_ATTRIBUTION_SOURCE;
+  const benignNamedRegulatoryContextPatterns = BENIGN_NAMED_REGULATORY_CONTEXT_PATTERNS;
+  const isReviewedBenignRegulatoryAttribution = (clause) => {
+    if (benignNamedRegulatoryContextPatterns.some((pattern) => pattern.test(clause))) return true;
+    const withoutPublicOrganization = removeFirstPublicOrganizationName(clause).trim();
+    return normalize(withoutPublicOrganization) !== normalize(clause)
+      && new RegExp(String.raw`^${benignRegulatoryAttributionSource}$`, "u")
+        .test(withoutPublicOrganization);
+  };
+  const reviewedBenignNamedRegulatoryContext = regulatoryClauseTexts.length === 2
+    && regulatoryClauseTexts.some((clause) => isReviewedGenericProtectedAreaConsentQuery(clause))
+    && regulatoryClauseTexts.some(isReviewedBenignRegulatoryAttribution);
+  const benignAdviceText = text.trim();
+  const benignAdviceTailSource = String.raw`(?:\s*[:,]\s*|\s+)([\s\S]+?)[.!?]?$`;
+  const benignNamedAdviceMatch = benignAdviceText.match(new RegExp(
+    String.raw`^${benignRegulatoryContextNameSource}\s+${benignRegulatoryAttributionSource}(?:\s*[:,]\s*|\s+)([\s\S]+?)[.!?]?$`,
+    "u",
+  ));
+  const startsWithExactPublicOrganization = PUBLIC_ORGANIZATION_EXACT_NAME_PATTERNS.some((pattern) => {
+    pattern.lastIndex = 0;
+    const match = pattern.exec(benignAdviceText);
+    pattern.lastIndex = 0;
+    return match?.index === 0;
+  });
+  const withoutLeadingPublicOrganization = startsWithExactPublicOrganization
+    ? removeFirstPublicOrganizationName(benignAdviceText).trim()
+    : "";
+  const benignPublicOrganizationAdviceMatch = startsWithExactPublicOrganization
+    ? withoutLeadingPublicOrganization.match(new RegExp(
+      String.raw`^${benignRegulatoryAttributionSource}${benignAdviceTailSource}`,
+      "u",
+    ))
+    : null;
+  const benignAdviceMatch = benignNamedAdviceMatch || benignPublicOrganizationAdviceMatch;
+  const benignNamedAdviceTail = benignAdviceMatch?.[1] || "";
+  const reviewedBenignNamedProtectedAreaAdvice = Boolean(benignAdviceMatch)
+    && isReviewedBenignProtectedAreaAdviceTail(benignNamedAdviceTail);
+  const hasProtectedAreaPrivateConstructionAssociation = hasProtectedAreaRegulatoryConstructionContext
+    && (
+      hasAttachedCapitalizedRegulatoryName
+      || hasAttachedSingleCapitalizedPossessor
+      || hasAttachedLowercaseRegulatoryName
+      || hasAttachedPrivateConstructionPossessor
+      || hasBoundedPrivateConstructionPossessor
+    );
   const hasNamedPrivateResidualClause = hasPotentialNamedOwnPrivateAssetAssociation
     || (hasStructuredNamedPerson && [
     /\b(?:and|plus)\s+(?:where\s+(?:does|is)\s+(?:he|she|they|his|her|their)|who\s+(?:owns?|controls?|holds?|manages?)\s+(?:his|her|their))\b/iu,
@@ -3977,13 +4957,14 @@ export function containsPrivatePersonLookup(value) {
     && englishAssetRoleRelationship
     && new RegExp(String.raw`(?<!\p{L})${ENGLISH_PRIVATE_ASSET_SOURCE}(?!\p{L})`, "iu").test(text);
   const namedPersonSensitiveOrAssetLookup = hasStructuredNamedPerson && (
-    /\b(?:identity|identify|identification|personal\s+(?:id|data|information)|private\s+assets?|birth\s+(?:year|date)|financial(?:\s*\/\s*property)?\s+data|ownership|property\s+data|residence|residency|resident\s+status|domicile|home\s+location|coordinates?|contact|phone|telephone|email|address)\b/iu.test(textWithoutKnownOrganizations)
+    hasEstonianRegulatoryBuildingContext
+    || /\b(?:identity|identify|identification|personal\s+(?:id|data|information)|private\s+assets?|birth\s+(?:year|date)|financial(?:\s*\/\s*property)?\s+data|property\s+data|residence|residency|resident\s+status|domicile|home\s+location|coordinates?|contact|phone|telephone|email|address)\b/iu.test(textWithoutKnownOrganizations)
     || /\b(?:isiku\s+tuvast\w*|isiklik\w*\s+(?:andm\w*|vara\w*)|varalis\w*\s+andm\w*|sünni(?:aasta|aeg|kuupäev)\w*|synni(?:aasta|aeg|kuupaev)\w*|elukoh\w*|kodukoht\w*|residentsus\w*|kodune\s+paik|koordinaa\w*|omand\w*|valdusõigus\w*)\b/iu.test(textWithoutKnownOrganizations)
     || (/\b(?:permit|loa\w*|toimik\w*|register|registry|andmestik\w*)\b/iu.test(textWithoutKnownOrganizations)
       && /\b(?:identify|identity|behind|attached|tuvast\w*|isiku\w*)\b/iu.test(textWithoutKnownOrganizations))
     || (/\b(?:show|find|locate|identify|reveal|display|näita|naita|leia|otsi)\b/iu.test(textWithoutKnownOrganizations)
       && /\b(?:property|parcel|plot|lot|estate|land|house|home|farm|well|borehole|building|dwelling|cottage|(?:kõrval|naaber)?kinnist\w*|maa\w*|maat(?:ü|u)k\w*|maja\w*|kaev\w*)\b/iu.test(textWithoutKnownOrganizations))
-    || (/\b(?:omanik\w*|valdaja\w*|valdus\w*|haldaja\w*|haldur\w*|käitaja\w*|kasutaja\w*|ownership|tenant|operator|manager)\b/iu.test(textWithoutKnownOrganizations)
+    || (/\b(?:omanik\w*|valdaja\w*|valdus\w*|haldaja\w*|haldur\w*|käitaja\w*|kasutaja\w*|tenant|operator|manager)\b/iu.test(textWithoutKnownOrganizations)
       && /\b(?:kinnist\w*|maa\w*|maat(?:ü|u)k\w*|maja\w*|kaev\w*|property|parcel|plot|lot|estate|land|house|home|farm|well|borehole)\b/iu.test(textWithoutKnownOrganizations))
   );
   const englishRecordedNamedRoleAssetLookup = hasStructuredNamedPerson
@@ -4008,7 +4989,8 @@ export function containsPrivatePersonLookup(value) {
     && !/\baadress\w*\b/iu.test(text)
     && !/\b(?:katastri\w*|(?:naaber|naabri)?kinnist\w*|maa(?:u|ü)ksus\w*|maat(?:ü|u)kk\w*|puurkaev\w*|erakaev\w*|eramaa\w*)\b/iu.test(estonianPublicResidual)
     && !/\b(?:naaber|kõrval|teine|muu|era|isiklik)\w*\s+(?:üks|uks|objekt)\w*\b/iu.test(estonianPublicResidual);
-  const estonianConcreteAssetContext = /\b(?:katastri\w*|(?:(?:naaber|naabri|metsa|era|rendi)?kinnist)\w*|metsaeraldis\w*|metsamaa\w*|erapuistu\w*|eramaa\w*|eratalu\w*|(?:kõrval|naaber)maa\w*|(?:kõrval|naaber)?maja\w*|maa(?:u|ü)ksus\w*|maat(?:ü|u)k{1,2}\w*|puurkaev\w*|erakaev\w*|(?:(?:perekonna|era|isiklik)\s+kaev)\w*|talu(?:koht|koha)\w*|rendi(?:leping|lepingu)\w*|üüri(?:leping|lepingu)\w*|uuri(?:leping|lepingu)\w*|hoone\w*|aadress\w*)\b/iu.test(text)
+  const estonianConcreteAssetContext = hasEstonianRegulatoryBuildingContext
+    || /\b(?:katastri\w*|(?:(?:naaber|naabri|metsa|era|rendi)?kinnist)\w*|metsaeraldis\w*|metsamaa\w*|erapuistu\w*|eramaa\w*|eratalu\w*|(?:kõrval|naaber)maa\w*|(?:kõrval|naaber)?maja\w*|maa(?:u|ü)ksus\w*|maat(?:ü|u)k{1,2}\w*|puurkaev\w*|erakaev\w*|(?:(?:perekonna|era|isiklik)\s+kaev)\w*|talu(?:koht|koha)\w*|rendi(?:leping|lepingu)\w*|üüri(?:leping|lepingu)\w*|uuri(?:leping|lepingu)\w*|hoone\w*|aadress\w*)\b/iu.test(text)
     || rawIdentityFragments.some((word) => ESTONIAN_PRIVATE_FOREST_NOUN_PATTERN.test(word));
   const estonianIdentityRolePrompt = /(?<!\p{L})(?:kes|kelle|kellele|keda|nimeta|loetle|näita|naita|leia|otsi|tuvasta|anna|(?:millin\w*|millis\w*|mis)\s+(?:(?:füüsili\w*|fuusili\w*|konkreet\w*|era|õigusli\w*|oigusli\w*)\s+)*(?:isik\w*|inime\w*|eraisik\w*|amet))(?!\p{L})/iu.test(text);
   const estonianDirectRoleHolderPrompt = /(?<!\p{L})(?:millin\w*|millis\w*|mis)\s+(?:(?:era|naaber|naabri|perekonna|isiklik)\w*\s+)*(?:omanik\w*|valdaja\w*|haldaja\w*|haldur\w*|operaator\w*|käitaja\w*|kasutaja\w*|asukas\w*|üürnik\w*|rentnik\w*|hoidja\w*|eestkostja\w*|volinik\w*|esindaja\w*|käsundisaaja\w*|kasusaaja\w*|kontaktisik\w*|litsentsisaaja\w*)(?!\p{L})/iu.test(text);
@@ -4046,7 +5028,8 @@ export function containsPrivatePersonLookup(value) {
         && /(?<!\p{L})(?:kaev|kinnist|maa|maatü|maatu|hoone)\w*(?!\p{L})/iu.test(text)
         && estonianAssetRoleRelationship)
     );
-  const estonianOpenClassIdentityReference = /(?<!\p{L})(?:kes|kelle|kellele|keda|keegi|nimeta|tuvasta|anna\s+(?:selle\s+)?isiku\s+nimi)(?!\p{L})/iu.test(textWithoutKnownOrganizations);
+  const estonianOpenClassIdentityReferencePattern = /(?<!\p{L})(?:kes|kelle|kellele|keda|keegi|nimeta|tuvasta|anna\s+(?:selle\s+)?isiku\s+nimi)(?!\p{L})/iu;
+  const estonianOpenClassIdentityReference = estonianOpenClassIdentityReferencePattern.test(textWithoutKnownOrganizations);
   const estonianOpenClassRoleAssignmentRelationship = [
     /(?<!\p{L})(?:roll|ülesan|ulesan|mandaa[dt]|amet|positsioon|volitus|nimeli|volita)\w*(?!\p{L})/iu,
     /(?<!\p{L})(?:määrati|maarati|määras|maaras|nimetati|nimetas|volitati|volitas|pandi|valiti|anti|sai|osutus|jäi|jai|läks|laks)(?!\p{L})[\s\S]{0,55}(?<!\p{L})\p{L}[\p{L}'’-]{2,35}(?:ks|na)(?!\p{L})/iu,
@@ -4066,10 +5049,28 @@ export function containsPrivatePersonLookup(value) {
     && (estonianConcreteAssetContext || CADASTRE_PATTERN.test(text))
     && (estonianOpenClassRoleAssignmentRelationship
       || /(?<!\p{L})\p{Lu}[\p{Ll}'’-]{1,39}\s+\p{Lu}[\p{Ll}'’-]{1,39}\s*,\s*(?:erakaevu|eramaa|perekonna\s+kaevu|naaberkinnistu\w*)\s+\p{L}[\p{L}'’-]{2,40}\s*,/u.test(textWithoutKnownOrganizations));
+  // “Kelle nõusolekut/luba on vaja?” asks which public authority must
+  // approve a regulated activity, not who owns a building. Only reviewed,
+  // complete generic grammars are exempt; any unconsumed person, possessor,
+  // location or private-asset clause keeps the ordinary identity guard.
+  const estonianGenericRegulatoryConsentQuestion = isReviewedGenericProtectedAreaConsentQuery(text)
+    && !hasProtectedAreaPrivateConstructionAssociation
+    && !CADASTRE_PATTERN.test(text)
+    && !hasSensitiveContact
+    && !hasSensitivePersonalAttribute
+    && !hasPrivatePostalField
+    && !hasPersonOrOwnerPredicate;
+  const estonianResidualOpenClassIdentityReference = estonianOpenClassIdentityReferencePattern.test(
+    textWithoutKnownOrganizations.replace(
+      /(?<!\p{L})kelle\s+(?:(?:eelnev|kirjalik|ametlik)\w*\s+)?(?:nõusolek|kooskõlastus|heakskiit|luba)\w*(?!\p{L})/giu,
+      " ",
+    ),
+  );
   const estonianDirectPrivateIdentityLookup = !estonianPublicAggregate
     && !reviewedComplianceQuestion
     && (estonianConcreteAssetContext || CADASTRE_PATTERN.test(text))
-    && estonianOpenClassIdentityReference;
+    && estonianOpenClassIdentityReference
+    && (!estonianGenericRegulatoryConsentQuestion || estonianResidualOpenClassIdentityReference);
   const estonianOpenClassWhichRoleIdentityLookup = !estonianPublicAggregate
     && !reviewedComplianceQuestion
     && (estonianConcreteAssetContext || CADASTRE_PATTERN.test(text))
@@ -4265,6 +5266,19 @@ export function containsPrivatePersonLookup(value) {
   // contact field or private residual clause.
   if (reviewedConceptualPublicQuestion
     || isPlainEcologicalResidenceDescriptionQuestion(text)) return false;
+  if (reviewedBenignNamedRegulatoryContext
+    || reviewedBenignNamedProtectedAreaAdvice) return false;
+  // Construction-object nouns are open class. Resolve a directly attached
+  // person/possessor before honoring the exact whole-query public grammar;
+  // otherwise unrelated name heuristics can also misread “Natura alal”.
+  if (hasProtectedAreaPrivateConstructionAssociation) return true;
+  // Public-organization contact wording is an availability exception only
+  // after the positional private construction/name checks above have first
+  // refusal. Keeping it here prevents normalized contact grammar from hiding
+  // quoted, title-cased or punctuation-separated private building names.
+  if (isReviewedPublicOrganizationProtectedBuildingContactQuery(text)) return false;
+  if (hasProtectedAreaOrganizationConstructionContactContext) return true;
+  if (estonianGenericRegulatoryConsentQuestion) return false;
   if (hasNamedPrivateResidualClause) return true;
   if (hasRoleLinkedNamedPrivateAssetAssociation) return true;
   if (hasStrongGrammarNamedPrivateAssetAssociation) return true;
@@ -4291,6 +5305,61 @@ export function containsPrivatePersonLookup(value) {
   // owner-relation, cadastral or private-asset clauses.
   if (reviewedComplianceQuestion || estonianPublicAggregate) return false;
   return hasPrivateAssetReference && hasPersonOrOwnerPredicate;
+}
+
+// A named speaker can be part of a reviewed public regulatory question while
+// still being unnecessary for retrieval or model generation. Remove only the
+// complete, anchored attribution forms accepted above; the environmental tail
+// must independently remain public before it can cross an upstream boundary.
+export function minimizePublicProviderQuery(value, {
+  maximumLength = MAX_PUBLIC_SEARCH_QUERY_LENGTH,
+} = {}) {
+  const canonicalInput = canonicalizePublicSearchQuery(value, { maximumLength });
+  if (!canonicalInput.ok) return "";
+  const originalQuery = canonicalInput.query;
+  if (containsUnsafeInstruction(originalQuery)
+    || containsPrivatePersonLookup(originalQuery)
+    || hasLossyUnicodeForestryAreaResidual(originalQuery)) return "";
+
+  let candidate = "";
+  const clauses = splitPublicQueryClauses(originalQuery);
+  if (clauses.length === 2) {
+    const attributionIndex = clauses.findIndex(isBenignNaturalPersonAttributionClause);
+    const tailIndex = attributionIndex < 0 ? -1 : 1 - attributionIndex;
+    if (tailIndex >= 0 && isReviewedBenignProtectedAreaAdviceTail(clauses[tailIndex])) {
+      candidate = clauses[tailIndex];
+    }
+  }
+
+  if (!candidate) {
+    const inline = originalQuery.match(new RegExp(
+      String.raw`^(${BENIGN_REGULATORY_CONTEXT_NAME_SOURCE}\s+${BENIGN_REGULATORY_ATTRIBUTION_SOURCE})(?:\s*[:,]\s*|\s+)([\s\S]+?)[.!?]?$`,
+      "u",
+    ));
+    if (inline?.[2]
+      && isBenignNaturalPersonAttributionClause(inline[1])
+      && isReviewedBenignProtectedAreaAdviceTail(inline[2])) {
+      candidate = inline[2].trim();
+    }
+  }
+
+  if (!candidate) {
+    if (isReviewedPublicOrganizationProtectedBuildingContactQuery(originalQuery)) return originalQuery;
+    return hasUnsupportedPublicProviderResidual(originalQuery) ? "" : originalQuery;
+  }
+  const minimizedInput = canonicalizePublicSearchQuery(candidate, { maximumLength });
+  if (!minimizedInput.ok
+    || containsUnsafeInstruction(minimizedInput.query)
+    || containsPrivatePersonLookup(minimizedInput.query)
+    || hasUnsupportedPublicProviderResidual(minimizedInput.query)) return "";
+  return minimizedInput.query;
+}
+
+export function preparePublicProviderQuery(value, options = {}) {
+  const query = minimizePublicProviderQuery(value, options);
+  return query
+    ? { accepted: true, query, reason: null }
+    : { accepted: false, query: "", reason: "blocked-or-unconsumed" };
 }
 
 function isPublicOrganizationContactQuery(value) {
@@ -4451,6 +5520,7 @@ export function analyzePublicSearchQuery(query, options = {}) {
 }
 
 export function assessSearchQuery(query, options = {}) {
+  const rawForeignPrivateClause = hasForeignPrivatePersonClause(decodeSecurityEscapes(query));
   const analysis = analyzePublicSearchQuery(query, options);
   const {
     cleanQuery, inputReason, normalized, roots, domainRoots, domainFamilies, forestryIntent,
@@ -4472,12 +5542,28 @@ export function assessSearchQuery(query, options = {}) {
       clarification: "Saan aidata Eesti keskkonnaandmete küsimustega, kuid mitte süsteemijuhiste ega saladuste päringutega.",
     };
   }
-  if (containsPrivatePersonLookup(cleanQuery)) {
+  if (rawForeignPrivateClause || containsPrivatePersonLookup(cleanQuery)) {
     return {
       kind: "out-of-scope",
       topic: null,
       reason: "personal-data-lookup",
       clarification: "Ma ei aita tuvastada eraisiku elukohta, vara ega muid isikuga seostatavaid registriandmeid. Avalikke keskkonnaobjekte saab otsida objekti tunnuse järgi ametlikust registrist.",
+    };
+  }
+  if (isReviewedGenericProtectedAreaConsentQuery(cleanQuery)) {
+    return {
+      kind: "answerable",
+      topic: "looduskaitse",
+      reason: "protected-area-consent",
+      clarification: null,
+    };
+  }
+  if (isReviewedPublicOrganizationProtectedBuildingContactQuery(cleanQuery)) {
+    return {
+      kind: "answerable",
+      topic: "looduskaitse",
+      reason: "official-organization-contact",
+      clarification: null,
     };
   }
   const municipalityContactScope = reviewedMunicipalityInstitutionalContactScope(cleanQuery);
@@ -4583,10 +5669,12 @@ export function assessSearchQuery(query, options = {}) {
   const forestAreaGeographyScope = forestryIntent
     ? classifyForestryGeographyScope(cleanQuery)
     : null;
+  const reviewedNationalBreakdown = isReviewedNationalUnsupportedForestAreaBreakdownQuestion(cleanQuery);
   const nationalForestAreaScope = ["national-default", "national-estonia"]
-    .includes(forestAreaGeographyScope?.kind);
+    .includes(forestAreaGeographyScope?.kind) || reviewedNationalBreakdown;
   if (nationalForestAreaScope
-    && ["forest-area", "forest-covered-area"].includes(forestryIntent?.kind)
+    && (["forest-area", "forest-covered-area", "forest-area-method"].includes(forestryIntent?.kind)
+      || reviewedNationalBreakdown)
     && requestsUnsupportedForestAreaBreakdown(cleanQuery)) {
     return {
       kind: "needs-clarification",

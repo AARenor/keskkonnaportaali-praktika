@@ -10,6 +10,7 @@ import {
   normalizedProviderUsage,
 } from "./llm-budget.mjs";
 import { readBoundedResponseBytes } from "./upstream.mjs";
+import { requestApprovedPublicHttpsJsonPost } from "./public-https.mjs";
 
 const MAX_AGENT_REQUEST_BYTES = 256_000;
 const MAX_AGENT_RESPONSE_BYTES = 1_000_000;
@@ -198,7 +199,8 @@ function requestedOutputTokens(bytes) {
 
 export function createBoundedOpenAiFetch({
   baseUrl,
-  fetchImpl = globalThis.fetch,
+  fetchImpl,
+  requestJsonImpl = requestApprovedPublicHttpsJsonPost,
   maximumRequestBytes = MAX_AGENT_REQUEST_BYTES,
   maximumResponseBytes = MAX_AGENT_RESPONSE_BYTES,
   reserveProviderRequest,
@@ -208,13 +210,22 @@ export function createBoundedOpenAiFetch({
   const approvedBaseUrl = validateLlmProviderUrl(baseUrl);
   const requestLimit = boundedBytes(maximumRequestBytes, MAX_AGENT_REQUEST_BYTES, 1_000_000);
   const responseLimit = boundedBytes(maximumResponseBytes, MAX_AGENT_RESPONSE_BYTES, 2_000_000);
-  if (typeof fetchImpl !== "function") throw new TypeError("Agents SDK requires a fetch implementation");
+  if (fetchImpl !== undefined && typeof fetchImpl !== "function") {
+    throw new TypeError("Agents SDK fetch implementation must be a function");
+  }
+  if (typeof requestJsonImpl !== "function") {
+    throw new TypeError("Agents SDK public HTTPS transport must be a function");
+  }
   return async (input, init = {}) => {
     const target = providerRequestUrl(input, approvedBaseUrl);
     if (typeof Request !== "undefined" && input instanceof Request && input.body && init.body === undefined) {
       throw new Error("Agents SDK Request bodies must be supplied as bounded init bytes");
     }
     const bodyBytes = requestBytes(init.body, requestLimit);
+    const method = String(init.method || (typeof Request !== "undefined" && input instanceof Request
+      ? input.method
+      : "POST")).toLocaleUpperCase("en-US");
+    if (method !== "POST") throw new Error("Agents SDK provider transport permits only POST requests");
     const reservation = typeof reserveProviderRequest === "function"
       ? reserveProviderRequest({
         requests: 1,
@@ -232,8 +243,30 @@ export function createBoundedOpenAiFetch({
     let observedUsage;
     try {
       onDispatch?.();
-      const response = await fetchImpl(target.toString(), { ...init, redirect: "error" });
-      const bytes = await readBoundedResponseBytes(response, responseLimit, "Agents SDK response");
+      let response;
+      let bytes;
+      if (fetchImpl) {
+        response = await fetchImpl(target.toString(), { ...init, method: "POST", redirect: "error" });
+        bytes = await readBoundedResponseBytes(response, responseLimit, "Agents SDK response");
+      } else {
+        const upstream = await requestJsonImpl(target.toString(), {
+          approvedOrigins: new Set([target.origin]),
+          body: bodyBytes.toString("utf8"),
+          headers: init.headers,
+          signal: init.signal,
+          maximumRequestBytes: requestLimit,
+          maximumBytes: responseLimit,
+        });
+        const upstreamStatus = Number(upstream.status || 0);
+        if (!Number.isInteger(upstreamStatus) || upstreamStatus < 100 || upstreamStatus > 599) {
+          throw new Error("Agents SDK provider returned an invalid status");
+        }
+        bytes = Buffer.from(String(upstream.body || ""), "utf8");
+        response = new Response(null, {
+          status: upstreamStatus,
+          headers: upstream.headers || {},
+        });
+      }
       try {
         observedUsage = normalizedProviderUsage(JSON.parse(bytes.toString("utf8")), { defaultRequests: 1 });
       } catch {
@@ -259,6 +292,7 @@ export function createGroundedOpenAiClient({
   baseUrl,
   timeoutMs,
   fetchImpl,
+  requestJsonImpl,
   reserveProviderRequest,
   settleProviderRequest,
   onDispatch,
@@ -272,6 +306,7 @@ export function createGroundedOpenAiClient({
     fetch: createBoundedOpenAiFetch({
       baseUrl: approvedBaseUrl,
       fetchImpl,
+      requestJsonImpl,
       reserveProviderRequest,
       settleProviderRequest,
       onDispatch,
@@ -323,6 +358,7 @@ export async function runGroundedSearchOrchestration({
   reserveProviderRequest,
   settleProviderRequest,
   fetchImpl,
+  requestJsonImpl,
 } = {}) {
   if (!apiKey || !baseUrl || !model || !userInput) {
     throw new Error("Agent orchestration is missing its server-side model configuration");
@@ -332,6 +368,7 @@ export async function runGroundedSearchOrchestration({
     baseUrl,
     timeoutMs,
     fetchImpl,
+    requestJsonImpl,
     reserveProviderRequest,
     settleProviderRequest,
     onDispatch,

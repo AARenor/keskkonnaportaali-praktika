@@ -3,9 +3,11 @@ import test from "node:test";
 
 import {
   classifyForestryGeographyScope,
+  hasLossyUnicodeForestryAreaResidual,
   hasUnresolvedForestryAreaEntity,
   hasReviewedEstonianMunicipalityScope,
   hasUnresolvedForestryLocalityScope,
+  isReviewedNationalUnsupportedForestAreaBreakdownQuestion,
   removeFirstReviewedMunicipalityOrganizationName,
   requestsUnsupportedForestAreaBreakdown,
   requestsUnsupportedForestAreaTimeSeries,
@@ -202,6 +204,16 @@ test("forestry-only municipality scope resolves bare names without widening the 
     "Kui palju metsa on Gondoris?",
     "Gondor has how much forest?",
   ]) assert.equal(hasUnresolvedForestryAreaEntity(query), true, query);
+
+  for (const query of [
+    "Estonia's forest area and how is it measured?",
+    "What is Estonia’s forest area and how is it measured?",
+    "What is the country's forest area in Estonia and how is it measured?",
+    "What is the nation’s woodland cover in Estonia and how is it estimated?",
+  ]) {
+    assert.equal(classifyForestryGeographyScope(query).kind, "national-estonia", query);
+    assert.equal(hasUnresolvedForestryAreaEntity(query), false, query);
+  }
   for (const query of [
     "Praegune metsasus", "Metsamaa pindala kokku", "Current forest cover percentage",
     "Forest area in hectares", "Forest area in the current year", "Forest area in the latest year",
@@ -324,6 +336,68 @@ test("forestry-only municipality scope resolves bare names without widening the 
     "Forest area in square miles",
     "Forest area in sq. mi",
   ]) assert.equal(requestsUnsupportedForestAreaUnit(query), true, query);
+});
+
+test("a fully consumed national forest-area method question is not mistaken for a locality", () => {
+  for (const query of [
+    "Kui palju metsa Eestis on ja kuidas seda mõõdetakse?",
+    "Kui palju metsa on Eestis ja kuidas metsa hinnatakse?",
+    "How much forest is in Estonia and how is it measured?",
+    "How much forest is there in Estonia and how is it measured?",
+    "How much forest does Estonia have and how is it measured?",
+    "What is the forest area in Estonia and how is it measured?",
+  ]) {
+    assert.equal(hasUnresolvedForestryAreaEntity(query), false, query);
+    assert.equal(classifyForestryGeographyScope(query).kind, "national-estonia", query);
+  }
+
+  for (const query of [
+    "Kui palju metsa Eestis on ja kuidas seda mõõdetakse Tartu linnas?",
+    "Kui palju metsa Eestis on ja kuidas seda mõõdetakse Gondoris?",
+    "Kui palju metsa Eestis on ja kuidas seda mõõdetakse Jaan Tamme kinnistul?",
+    "How much forest is in Estonia and how is it measured in Gondor?",
+    "Kui palju metsa Eestis on ja kuidas seda mõõdetakse? 山田太郎の住所",
+    "Kui palju metsa Eestis on ja kuidas seda mõõdetakse? 김민수 주소",
+    "Kui palju metsa Eestis on ja kuidas seda mõõdetakse? عنوان محمد",
+  ]) {
+    assert.equal(hasUnresolvedForestryAreaEntity(query), true, query);
+    assert.notEqual(classifyForestryGeographyScope(query).kind, "national-estonia", query);
+  }
+  for (const query of [
+    "Kui palju metsa Eestis on ja kuidas seda mõõdetakse? 山田太郎の住所",
+    "Kui palju metsa Eestis on ja kuidas seda mõõdetakse? 김민수 주소",
+    "Kui palju metsa Eestis on ja kuidas seda mõõdetakse? عنوان محمد",
+  ]) assert.equal(hasLossyUnicodeForestryAreaResidual(query), true, query);
+});
+
+test("complete national ownership breakdowns stay aggregate while appended identities stay unresolved", () => {
+  for (const query of [
+    "How much forest is in Estonia and how is it measured by ownership?",
+    "How much forest is in Estonia and how is it measured according to ownership?",
+    "How much forest is in Estonia and how is it measured by ownership category?",
+    "How much forest is in Estonia and how is it measured across ownership types?",
+    "Forest area in Estonia and how is it measured by ownership?",
+    "Forest area in Estonia and how is it measured according to ownership?",
+    "Forest area in Estonia and how is it measured by tenure?",
+    "Forest area in Estonia and how is it measured by public ownership?",
+    "Forest area in Estonia by ownership and how is it measured?",
+    "Forest area in Estonia broken down by ownership",
+    "Metsamaa pindala Eestis omanike kaupa",
+    "Kui palju metsa Eestis on omandivormide kaupa ja kuidas seda mõõdetakse?",
+  ]) {
+    assert.equal(isReviewedNationalUnsupportedForestAreaBreakdownQuestion(query), true, query);
+    assert.equal(hasUnresolvedForestryAreaEntity(query), false, query);
+    assert.equal(classifyForestryGeographyScope(query).kind, "national-estonia", query);
+  }
+
+  for (const query of [
+    "How much forest is in Estonia and how is it measured by ownership for John Smith?",
+    "Forest area in Estonia broken down by ownership in Gondor",
+    "Metsamaa pindala Eestis omanike kaupa Jaan Tamm",
+    "How much forest is in Estonia and how is it measured by ownership? 山田太郎の住所",
+  ]) {
+    assert.equal(isReviewedNationalUnsupportedForestAreaBreakdownQuestion(query), false, query);
+  }
 });
 
 test("privacy cleanup removes only exact reviewed municipality organization spans", () => {

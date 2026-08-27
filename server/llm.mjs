@@ -11,6 +11,7 @@ import {
   containsPrivatePersonLookup,
   containsUnsafeInstruction,
   forestEvidenceIntent,
+  minimizePublicProviderQuery,
   normalize,
   queryTerms,
   splitTextPassages,
@@ -27,8 +28,9 @@ import {
   settleLlmReservation,
 } from "./llm-budget.mjs";
 import { sourceEvidenceEligibility } from "./source-registry.mjs";
-import { readBoundedResponseJson } from "./upstream.mjs";
 import { validateLlmProviderUrl } from "./provider-policy.mjs";
+import { requestApprovedPublicHttpsJsonPost } from "./public-https.mjs";
+import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs";
 
 const configuredBaseUrl = String(process.env.LLM_BASE_URL || "https://opencode.ai/zen/go/v1").replace(/\/+$/, "");
 const configuredModel = String(process.env.LLM_MODEL || "gpt-5.6-luna");
@@ -44,6 +46,7 @@ export function resolveLlmTarget(base, selectedModel) {
 }
 const resolvedLlmTarget = resolveLlmTarget(configuredBaseUrl, configuredModel);
 const baseUrl = validateLlmProviderUrl(resolvedLlmTarget.baseUrl);
+const LLM_PROVIDER_ORIGINS = new Set([new URL(baseUrl).origin]);
 const model = resolvedLlmTarget.model;
 // Read the credential only after the destination has passed the startup
 // invariant, so an invalid deployment can never attach it to a request.
@@ -307,6 +310,16 @@ function groundingWorkloadError() {
   const error = new Error("LLM grounding workload exceeds the validation limit");
   error.code = "LLM_GROUNDING_WORK_LIMIT";
   return error;
+}
+
+function groundingValidationContext() {
+  return {
+    evidenceCache: new Map(),
+    numericClaims: 0,
+    numericWork: 0,
+    semanticClaims: 0,
+    semanticWork: 0,
+  };
 }
 
 function numericWorkloadWithinLimit(claimCount, evidenceCount) {
@@ -1478,9 +1491,7 @@ function assertClaimGrounding(
   label,
   query = "",
   sensitiveReference = "",
-  validationContext = {
-    evidenceCache: new Map(), numericClaims: 0, numericWork: 0, semanticClaims: 0, semanticWork: 0,
-  },
+  validationContext = groundingValidationContext(),
 ) {
   if (!citations.length) throw new Error(`LLM ${label} has no citations`);
   if (!hasCompleteSentenceEnding(text)) throw new Error(`LLM ${label} ends with an incomplete sentence`);
@@ -1573,6 +1584,14 @@ function assertClaimGrounding(
     if (!grounded) throw new Error(`LLM ${label} contains an ungrounded numeric claim (${claim.number})`);
   }
 
+  for (const sentence of ordinaryClaimSentences) {
+    if (numberOccurrences(sentence).length) continue;
+    const relationshipWitness = relationshipClaimHasPassageWitness(sentence, evidenceSentences);
+    if (relationshipWitness === false) {
+      throw new Error(`LLM ${label} changes an entity relationship from its cited evidence`);
+    }
+  }
+
   const trustedTokens = new Set(claimTokens(trustedEvidence));
   const trustedTokenList = [...trustedTokens];
   for (const sentence of claimSentences) {
@@ -1618,6 +1637,61 @@ function assertClaimGrounding(
       else assertPolarityParity(sentence, nearestSentence.candidate, label);
     }
   }
+}
+
+function rebindGroundedCitations(text, citations, draft, label, query = "") {
+  let retained = [...new Set((citations || []).map(Number).filter((citation) => (
+    Number.isInteger(citation) && citation > 0
+  )))].slice(0, 10);
+  let probes = 0;
+  const supportCache = new Map();
+  const supports = (candidateCitations, candidateText = text) => {
+    if (!candidateCitations.length) return false;
+    const cacheKey = `${candidateCitations.join(",")}:${candidateText}`;
+    if (supportCache.has(cacheKey)) return supportCache.get(cacheKey);
+    if (probes >= 64) return false;
+    probes += 1;
+    try {
+      // A protected deterministic statement can validate the aggregate model
+      // proposal, but it must never make an unrelated individual citation
+      // appear to support that public claim.
+      assertClaimGrounding(
+        candidateText,
+        candidateCitations,
+        draft,
+        `${label} citation binding`,
+        query,
+        "",
+        groundingValidationContext(),
+      );
+      supportCache.set(cacheKey, true);
+      return true;
+    } catch (error) {
+      if (error?.code === "LLM_GROUNDING_WORK_LIMIT") throw error;
+      supportCache.set(cacheKey, false);
+      return false;
+    }
+  };
+
+  if (!supports(retained)) return [];
+  const propositionUnits = splitTextPassages(text)
+    .filter(hasCompleteSentenceEnding)
+    .slice(0, MAX_SEMANTIC_UNITS_PER_FIELD);
+  for (const citation of [...retained]) {
+    // Preserve real independent corroboration. Otherwise retain a source only
+    // when removing it makes the whole claim or one of its independently
+    // stated propositions lose grounding. A paragraph-level overlap score can
+    // otherwise let one source borrow words from a neighboring sentence and
+    // erase that sentence's actual witness.
+    if (supports([citation])) continue;
+    const without = retained.filter((candidate) => candidate !== citation);
+    if (!without.length || !supports(without)) continue;
+    const uniquelySupportsProposition = propositionUnits.some((unit) => (
+      supports([citation], unit) && !supports(without, unit)
+    ));
+    if (!uniquelySupportsProposition) retained = without;
+  }
+  return retained.length && supports(retained) ? retained : [];
 }
 
 export function assertAnswerAddressesQuery(text, query, label = "answer") {
@@ -1705,9 +1779,7 @@ function preserveReviewedDefinitions(intro, parts, draft) {
 }
 
 export function validateGroundedAnswer(payload, draft, query) {
-  const validationContext = {
-    evidenceCache: new Map(), numericClaims: 0, numericWork: 0, semanticClaims: 0, semanticWork: 0,
-  };
+  const validationContext = groundingValidationContext();
   const sourceCount = draft.sources.length;
   const suppliedIntroCitations = validCitations(payload?.intro_citations, sourceCount);
   const introCitations = suppliedIntroCitations.length
@@ -1766,22 +1838,40 @@ export function validateGroundedAnswer(payload, draft, query) {
   if (!parts.length && !introCitations.length) throw new Error("LLM answer has no grounded claims");
 
   let groundedIntro = false;
+  let groundedIntroCitations = [];
   let introError;
   try {
     assertClaimGrounding(evaluatedIntro, effectiveIntroCitations, draft, "introduction", query, "", validationContext);
+    groundedIntroCitations = rebindGroundedCitations(
+      evaluatedIntro,
+      effectiveIntroCitations,
+      draft,
+      "introduction",
+      query,
+    );
+    if (!groundedIntroCitations.length) {
+      throw new Error("LLM introduction has no individually attributable citations");
+    }
+    if (!protectedIntro
+      && proposedIntro !== String(draft.answer.intro || "").trim()
+      && directDraftCitations.length
+      && !directDraftCitations.some((citation) => groundedIntroCitations.includes(citation))) {
+      throw new Error("LLM introduction loses the directly matched current source after citation binding");
+    }
     assertAnswerAddressesQuery(evaluatedIntro, query, "introduction");
     groundedIntro = true;
   } catch (error) {
     if (error?.code === "LLM_GROUNDING_WORK_LIMIT") throw error;
     introError = error;
   }
-  const groundedParts = parts.filter((part) => {
+  const groundedParts = parts.flatMap((part) => {
     try {
       assertClaimGrounding(part.text, part.citations, draft, "part", query, "", validationContext);
-      return true;
+      const citations = rebindGroundedCitations(part.text, part.citations, draft, "part", query);
+      return citations.length ? [{ ...part, citations }] : [];
     } catch (error) {
       if (error?.code === "LLM_GROUNDING_WORK_LIMIT") throw error;
-      return false;
+      return [];
     }
   });
   // A citation proves provenance, not relevance. A side statistic from the
@@ -1804,7 +1894,7 @@ export function validateGroundedAnswer(payload, draft, query) {
   const proposedTitle = String(draft.answer.title || query).trim().slice(0, 180);
   const promotedPart = groundedIntro ? null : promotableParts[0];
   const finalIntro = groundedIntro ? evaluatedIntro : promotedPart.text;
-  const finalIntroCitations = groundedIntro ? effectiveIntroCitations : promotedPart.citations;
+  const finalIntroCitations = groundedIntro ? groundedIntroCitations : promotedPart.citations;
   const remainingGroundedParts = promotedPart
     ? queryRelevantParts.filter((part) => part !== promotedPart)
     : queryRelevantParts;
@@ -2075,19 +2165,26 @@ export function buildLlmRequest({
     error.code = "INVALID_LLM_QUERY";
     throw error;
   }
-  const safeQuery = queryInput.query;
-  if (containsPrivatePersonLookup(safeQuery)) {
+  const canonicalQuery = queryInput.query;
+  if (containsPrivatePersonLookup(query) || containsPrivatePersonLookup(canonicalQuery)) {
     const error = new Error("LLM query is blocked by the private-person policy");
     error.code = "PRIVATE_PERSON_LLM_QUERY";
     throw error;
   }
+  const safeQuery = minimizePublicProviderQuery(canonicalQuery);
+  if (!safeQuery) {
+    const error = new Error("LLM query is blocked by the public provider boundary");
+    error.code = "INVALID_LLM_QUERY";
+    throw error;
+  }
   const contextInput = canonicalizePublicSearchQuery(conversationContext, { maximumLength: 1_400 });
   const canonicalContext = contextInput.ok ? contextInput.query : "";
-  const contextAssessment = assessSearchQuery(canonicalContext, { maximumLength: 1_400 });
+  const contextAssessment = assessSearchQuery(conversationContext || canonicalContext, { maximumLength: 1_400 });
+  const minimizedContext = minimizePublicProviderQuery(canonicalContext, { maximumLength: 1_400 });
   const safeConversationContext = containsUnsafeInstruction(canonicalContext)
     || contextAssessment.kind === "out-of-scope"
     ? ""
-    : canonicalContext;
+    : minimizedContext;
   const answerIntent = forestEvidenceIntent(safeQuery);
   const intentDirective = answerIntent?.kind === "forest-area"
     ? "Küsimus küsib metsamaa hulka: nimeta tõendis olev aasta, pindala või osakaal ja ühik; ära vasta kataloogi või teenuse kirjeldusega."
@@ -2151,6 +2248,7 @@ export function buildLlmRequest({
   }
   const body = {
     model: selectedModel,
+    store: false,
     temperature: 0,
     max_tokens: selectedMaxTokens,
     response_format: { type: "json_object" },
@@ -2272,21 +2370,30 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
           return { answer, related, status: "ready", provider: `openai-agents/${selectedModel}` };
         }
         providerRequestDispatched = true;
-        const response = await fetch(`${baseUrl}${request.endpoint}`, {
-          method: "POST",
-          redirect: "error",
-          headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        const response = await requestApprovedPublicHttpsJsonPost(`${baseUrl}${request.endpoint}`, {
+          approvedOrigins: LLM_PROVIDER_ORIGINS,
+          headers: { Authorization: `Bearer ${apiKey}` },
           body: requestBody,
           signal,
+          maximumRequestBytes: 256_000,
+          maximumBytes: 1_000_000,
         });
-        if (!response.ok) {
-          const errorPayload = await readBoundedResponseJson(response, 1_000_000, "LLM response").catch(() => ({}));
+        let payload;
+        try {
+          payload = JSON.parse(response.body);
+        } catch {
+          payload = null;
+        }
+        if (response.status < 200 || response.status >= 300) {
+          const errorPayload = payload || {};
           observedUsage = extractLlmBudgetUsage(errorPayload, request.apiStyle);
           const responseError = new Error(`LLM returned ${response.status}`);
           responseError.status = response.status;
           throw responseError;
         }
-        const payload = await readBoundedResponseJson(response, 1_000_000, "LLM response");
+        if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+          throw new Error("LLM response returned invalid JSON");
+        }
         observedUsage = extractLlmBudgetUsage(payload, request.apiStyle);
         const parsed = parseLlmJson(extractLlmText(payload, request.apiStyle));
         const answer = validateGroundedAnswer(parsed, draft, query);

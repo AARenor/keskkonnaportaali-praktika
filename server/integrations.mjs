@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { request as httpsRequest } from "node:https";
 import { rootCertificates } from "node:tls";
 import { load } from "cheerio";
 import {
@@ -13,7 +12,11 @@ import {
   validateApprovedPublicHttpsUrl,
 } from "./public-https.mjs";
 import { createFairSearchAdmission } from "./request-budget.mjs";
-import { canonicalizePublicSearchQuery } from "./search.mjs";
+import {
+  assessSearchQuery,
+  canonicalizePublicSearchQuery,
+  minimizePublicProviderQuery,
+} from "./search.mjs";
 import { sourceEvidenceEligibility } from "./source-registry.mjs";
 
 const PORTAL_BASE = "https://keskkonnaportaal.ee";
@@ -51,6 +54,7 @@ const OFFICIAL_HOSTS = new Set([
   "www.foresteurope.org",
   "eea.europa.eu",
   "www.eea.europa.eu",
+  "search.service.eu-live.vportal.ee",
 ]);
 const OFFICIAL_ORIGINS = new Set([...OFFICIAL_HOSTS].map((hostname) => `https://${hostname}`));
 const VPORTAL_SITES = [
@@ -86,6 +90,12 @@ const APPROVED_PAGE_EVIDENCE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1_000;
 const MAX_CONCURRENT_OFFICIAL_DISCOVERIES = 2;
 const MAX_CONCURRENT_HYDRATIONS = 4;
 const MAX_CONCURRENT_SUGGESTIONS = 2;
+const MAX_SUGGESTION_RESPONSE_BYTES = 32_000;
+const MAX_SUGGESTION_UPSTREAM_ITEMS = 40;
+const MAX_SUGGESTION_VALUE_CHARS = 160;
+const MAX_SUGGESTION_VALUE_BYTES = 512;
+const MAX_SUGGESTION_LABEL_BYTES = 1_024;
+const MAX_SUGGESTION_PROJECTION_BYTES = 4_096;
 const MAX_DISCOVERY_DOCUMENT_TEXT = 7_500;
 const MAX_DISCOVERY_MARKUP = 48_000;
 const VPORTAL_PROJECTION_SCHEMA = 1;
@@ -260,6 +270,76 @@ function cleanText(value = "") {
     .trim();
 }
 
+function boundedSuggestionValue(value) {
+  if (typeof value !== "string"
+    || /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u.test(value)
+    || /[<>]/u.test(value)
+    || Buffer.byteLength(value, "utf8") > MAX_SUGGESTION_VALUE_BYTES) {
+    throw new Error("Official autocomplete returned an invalid suggestion value");
+  }
+  const canonical = canonicalizePublicSearchQuery(cleanText(value), {
+    maximumLength: MAX_SUGGESTION_VALUE_CHARS,
+  });
+  if (!canonical.ok
+    || Buffer.byteLength(canonical.query, "utf8") > MAX_SUGGESTION_VALUE_BYTES) {
+    throw new Error("Official autocomplete returned an invalid suggestion value");
+  }
+  return canonical.query;
+}
+
+function boundedSuggestionCount(label) {
+  if (label === undefined || label === null || label === "") return 0;
+  if (typeof label !== "string"
+    || /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u.test(label)
+    || Buffer.byteLength(label, "utf8") > MAX_SUGGESTION_LABEL_BYTES) {
+    throw new Error("Official autocomplete returned an invalid suggestion label");
+  }
+  const match = label.match(/results-count[^>]*>\s*(\d{1,10})/u);
+  if (!match) return 0;
+  const count = Number(match[1]);
+  if (!Number.isSafeInteger(count) || count < 0 || count > 1_000_000_000) {
+    throw new Error("Official autocomplete returned an invalid suggestion count");
+  }
+  return count;
+}
+
+export function projectKeskkonnaportaalSuggestionBody(body) {
+  if (typeof body !== "string"
+    || Buffer.byteLength(body, "utf8") > MAX_SUGGESTION_RESPONSE_BYTES) {
+    throw new Error("Official autocomplete response is too large");
+  }
+  let payload;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    throw new Error("Official autocomplete returned invalid JSON");
+  }
+  if (!Array.isArray(payload) || payload.length > MAX_SUGGESTION_UPSTREAM_ITEMS) {
+    throw new Error("Official autocomplete returned an invalid result set");
+  }
+  const suggestions = [];
+  let retainedBytes = 0;
+  for (const item of payload) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error("Official autocomplete returned an invalid result");
+    }
+    const value = boundedSuggestionValue(item.value);
+    const count = boundedSuggestionCount(item.label);
+    retainedBytes += Buffer.byteLength(value, "utf8") + 16;
+    if (retainedBytes > MAX_SUGGESTION_PROJECTION_BYTES) {
+      throw new Error("Official autocomplete projection is too large");
+    }
+    // An approved index is still untrusted input. Never retain or return a
+    // suggestion that crosses the same public-query privacy/safety boundary
+    // enforced by the eventual search request.
+    if (assessSearchQuery(value, { maximumLength: MAX_SUGGESTION_VALUE_CHARS }).kind === "out-of-scope") {
+      continue;
+    }
+    if (suggestions.length < 5) suggestions.push({ value, count });
+  }
+  return JSON.stringify(suggestions);
+}
+
 function sourceId(prefix, value) {
   return `${prefix}-${createHash("sha256").update(String(value)).digest("hex").slice(0, 16)}`;
 }
@@ -328,6 +408,7 @@ async function fetchCached(url, {
   maximumBytes = MAX_UPSTREAM_BYTES,
   maximumRedirects = 3,
   requireSameResource = false,
+  projectBody,
 } = {}) {
   throwIfRequestAborted(externalSignal);
   const canonicalUrl = validatedOfficialUrl(url).toString();
@@ -388,7 +469,8 @@ async function fetchCached(url, {
         throw new Error("Official API returned an unexpected content contract");
       }
     }
-    const body = String(upstream.body || "");
+    const upstreamBody = String(upstream.body || "");
+    const body = typeof projectBody === "function" ? projectBody(upstreamBody) : upstreamBody;
     const finalUrl = validatedOfficialUrl(upstream.url || canonicalUrl).toString();
     if (requireSameResource && !hydrationResourceMatches(canonicalUrl, finalUrl)) {
       throw new Error("Official hydration redirected to a different resource");
@@ -673,11 +755,12 @@ function officialDate(value) {
   }).format(date);
 }
 
-async function fetchVportalJson(url, origin, {
+export async function fetchVportalJson(url, origin, {
   ttlMs = 5 * 60_000,
   staleMs = 24 * 60 * 60_000,
   timeoutMs = 4_500,
   signal: externalSignal,
+  requestText = requestApprovedPublicHttpsText,
 } = {}) {
   throwIfRequestAborted(externalSignal);
   const cacheKey = `vportal:${url}`;
@@ -697,48 +780,24 @@ async function fetchVportalJson(url, origin, {
     ? AbortSignal.any([controller.signal, externalSignal])
     : controller.signal;
   try {
-    const body = await new Promise((resolve, reject) => {
-      const request = httpsRequest(url, {
-        ca: VPORTAL_CA,
-        // The official search host advertises IPv6, but Coolify's bridge
-        // network is IPv4-only. Node does not reliably fall back here, so an
-        // otherwise healthy upstream would consume the entire search budget.
-        family: 4,
-        headers: {
-          Accept: "application/json",
-          Origin: origin,
-          "User-Agent": "Keskkonnaportaali-praktika/4.0 (+https://praktika.arleserver.cfd)",
-        },
-        method: "GET",
-        signal,
-      }, (response) => {
-        if (response.statusCode !== 200) {
-          response.resume();
-          reject(new Error(`Official search returned ${response.statusCode}`));
-          return;
-        }
-        const declaredSize = Number(response.headers["content-length"] || 0);
-        if (declaredSize > MAX_UPSTREAM_BYTES) {
-          response.destroy(new Error("Official search response is too large"));
-          return;
-        }
-        let size = 0;
-        const chunks = [];
-        response.on("data", (chunk) => {
-          size += chunk.length;
-          if (size > MAX_UPSTREAM_BYTES) {
-            response.destroy(new Error("Official search response is too large"));
-            return;
-          }
-          chunks.push(chunk);
-        });
-        response.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-        response.on("error", reject);
-      });
-      request.on("error", reject);
-      request.end();
+    const upstream = await requestText(url, {
+      approvedOrigins: OFFICIAL_ORIGINS,
+      headers: {
+        Accept: "application/json",
+        Origin: origin,
+        "User-Agent": "Keskkonnaportaali-praktika/4.0 (+https://praktika.arleserver.cfd)",
+      },
+      signal,
+      maximumBytes: MAX_UPSTREAM_BYTES,
+      maximumRedirects: 0,
+      ca: VPORTAL_CA,
+      // The official search host advertises IPv6, but Coolify's bridge
+      // network is IPv4-only. Keep IPv4 selection inside the public-only DNS
+      // lookup rather than bypassing the peer-validation transport.
+      family: 4,
     });
-    const payload = projectVportalPayload(JSON.parse(body));
+    if (upstream.status !== 200) throw new Error(`Official search returned ${upstream.status}`);
+    const payload = projectVportalPayload(JSON.parse(upstream.body));
     cacheResponse(cacheKey, JSON.stringify(payload));
     return { payload, cache: "miss", stale: false };
   } catch (error) {
@@ -815,10 +874,14 @@ async function searchVportalSite(site, query, limit, options) {
 }
 
 export async function searchOfficialSites(query, limit = 5, options = {}) {
+  const providerQuery = minimizePublicProviderQuery(query);
+  if (!providerQuery) {
+    return { documents: [], total: 0, services: [] };
+  }
   return officialDiscoveryGate.run(async () => {
     const boundedLimit = Math.max(1, Math.min(Number(limit) || 5, 6));
     const results = await Promise.allSettled(
-      VPORTAL_SITES.map((site) => searchVportalSite(site, query, boundedLimit, options)),
+      VPORTAL_SITES.map((site) => searchVportalSite(site, providerQuery, boundedLimit, options)),
     );
     throwIfRequestAborted(options.signal);
     const available = results.filter((result) => result.status === "fulfilled").map((result) => result.value);
@@ -831,8 +894,10 @@ export async function searchOfficialSites(query, limit = 5, options = {}) {
 }
 
 export async function searchKeskkonnaportaal(query, limit = 10, options = {}) {
+  const providerQuery = minimizePublicProviderQuery(query);
+  if (!providerQuery) return { documents: [], total: 0, cache: "rejected", stale: false };
   const url = new URL("/et/search", PORTAL_BASE);
-  url.searchParams.set("search_api_fulltext", query);
+  url.searchParams.set("search_api_fulltext", providerQuery);
   const { body, cache, stale } = await fetchCached(url.toString(), {
     ttlMs: 5 * 60_000,
     timeoutMs: options.timeoutMs || 7_000,
@@ -966,8 +1031,10 @@ export async function getKeskkonnaportaalSuggestions(query, limit = 5, options =
   throwIfRequestAborted(options.signal);
   const canonicalInput = canonicalizePublicSearchQuery(query, { maximumLength: 80 });
   if (!canonicalInput.ok) return { suggestions: [], cache: "rejected" };
+  const providerQuery = minimizePublicProviderQuery(query, { maximumLength: 80 });
+  if (!providerQuery) return { suggestions: [], cache: "rejected" };
   const url = new URL("/et/search_api_autocomplete/kem_kkp_search", PORTAL_BASE);
-  url.searchParams.set("q", canonicalInput.query.toLocaleLowerCase("et"));
+  url.searchParams.set("q", providerQuery.toLocaleLowerCase("et"));
   const cacheKey = url.toString();
   let entry = suggestionInflight.get(cacheKey);
   if (!entry) {
@@ -979,13 +1046,18 @@ export async function getKeskkonnaportaalSuggestions(query, limit = 5, options =
         maximumWaitMs: 1_200,
       });
       try {
-        return await fetchCached(cacheKey, {
+        const fetched = await fetchCached(cacheKey, {
           accept: "application/json",
           ttlMs: 10 * 60_000,
           timeoutMs: 4_500,
           signal: controller.signal,
           requestText: options.requestText,
+          maximumBytes: MAX_SUGGESTION_RESPONSE_BYTES,
+          cacheDiscriminator: "autocomplete-projection-v1",
+          projectBody: projectKeskkonnaportaalSuggestionBody,
         });
+        const suggestions = JSON.parse(fetched.body);
+        return { suggestions, cache: fetched.cache };
       } finally {
         release();
       }
@@ -996,20 +1068,15 @@ export async function getKeskkonnaportaalSuggestions(query, limit = 5, options =
       if (suggestionInflight.get(cacheKey) === entry) suggestionInflight.delete(cacheKey);
     }).catch(() => undefined);
   }
-  const { body, cache } = await waitForSharedRequest(
+  const projected = await waitForSharedRequest(
     entry,
     options.signal,
     "All autocomplete clients disconnected",
   );
-  const payload = JSON.parse(body);
-  const suggestions = (Array.isArray(payload) ? payload : [])
-    .filter((item) => cleanText(item?.value))
-    .slice(0, Math.max(1, Math.min(Number(limit) || 5, 5)))
-    .map((item) => ({
-      value: cleanText(item.value),
-      count: Number(String(item.label || "").match(/results-count[^>]*>\s*(\d+)/)?.[1] || 0),
-    }));
-  return { suggestions, cache };
+  return {
+    suggestions: projected.suggestions.slice(0, Math.max(1, Math.min(Number(limit) || 5, 5))),
+    cache: projected.cache,
+  };
 }
 
 export const INTEGRATION_ENDPOINTS = {

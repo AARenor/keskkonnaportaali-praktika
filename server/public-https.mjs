@@ -119,6 +119,8 @@ function requestOnce(url, {
   requestImpl,
   method = "GET",
   body = "",
+  ca,
+  family,
 } = {}) {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -137,6 +139,8 @@ function requestOnce(url, {
         ...headers,
       },
       lookup: createPublicOnlyLookup(lookupImpl),
+      ...(ca ? { ca } : {}),
+      ...([4, 6].includes(Number(family)) ? { family: Number(family) } : {}),
       signal,
     }, (incoming) => {
       response = incoming;
@@ -208,6 +212,8 @@ export async function requestApprovedPublicHttpsText(value, {
   maximumRedirects = 3,
   lookupImpl = dnsLookup,
   requestImpl = httpsRequest,
+  ca,
+  family,
 } = {}) {
   const byteLimit = Math.max(1, Math.min(Number(maximumBytes) || 4_000_000, 8_000_000));
   const configuredRedirectLimit = Number(maximumRedirects);
@@ -223,6 +229,8 @@ export async function requestApprovedPublicHttpsText(value, {
       maximumBytes: byteLimit,
       lookupImpl,
       requestImpl,
+      ca,
+      family,
     });
     if (!REDIRECT_STATUSES.has(result.status)) return { ...result, url: current.toString() };
     if (!result.location || redirects === redirectLimit) {
@@ -236,15 +244,23 @@ export async function requestApprovedPublicHttpsText(value, {
 export async function requestApprovedPublicHttpsJsonPost(value, {
   approvedOrigins,
   body,
+  headers,
   signal,
   maximumBytes = 256_000,
+  maximumRequestBytes = 64_000,
   lookupImpl = dnsLookup,
   requestImpl = httpsRequest,
+  ca,
+  family,
 } = {}) {
   const current = validateApprovedPublicHttpsUrl(value, approvedOrigins);
   const requestBody = typeof body === "string" ? body : "";
   const requestBytes = Buffer.byteLength(requestBody, "utf8");
-  if (!requestBody || requestBytes > 64_000) {
+  const requestByteLimit = Math.max(1, Math.min(
+    Number(maximumRequestBytes) || 64_000,
+    1_000_000,
+  ));
+  if (!requestBody || requestBytes > requestByteLimit) {
     throw new Error("Outbound JSON request body is missing or too large");
   }
   let parsed;
@@ -257,10 +273,40 @@ export async function requestApprovedPublicHttpsJsonPost(value, {
     throw new Error("Outbound JSON request body must be an object");
   }
   const byteLimit = Math.max(1, Math.min(Number(maximumBytes) || 256_000, 1_000_000));
+  const allowedHeaderNames = new Set([
+    "authorization",
+    "idempotency-key",
+    "openai-beta",
+    "openai-organization",
+    "openai-project",
+    "origin",
+    "user-agent",
+  ]);
+  let headerEntries = [];
+  if (headers && typeof headers.entries === "function") headerEntries = [...headers.entries()];
+  else if (Array.isArray(headers)) headerEntries = headers;
+  else if (headers && typeof headers === "object") headerEntries = Object.entries(headers);
+  if (headerEntries.length > 32) throw new Error("Outbound JSON request has too many headers");
+  const forwardedHeaders = {};
+  let headerBytes = 0;
+  for (const [rawName, rawValue] of headerEntries) {
+    const name = String(rawName || "").trim().toLocaleLowerCase("en-US");
+    if (!allowedHeaderNames.has(name) && !name.startsWith("x-stainless-")) continue;
+    const value = String(rawValue ?? "");
+    if (!/^[!#$%&'*+.^_`|~0-9a-z-]+$/u.test(name)
+      || /[\u0000-\u001f\u007f]/u.test(value)
+      || Buffer.byteLength(value, "utf8") > 8_192) {
+      throw new Error("Outbound JSON request has an invalid header");
+    }
+    headerBytes += Buffer.byteLength(name, "utf8") + Buffer.byteLength(value, "utf8");
+    if (headerBytes > 16_384) throw new Error("Outbound JSON request headers are too large");
+    forwardedHeaders[name] = value;
+  }
   const result = await requestOnce(current, {
     method: "POST",
     body: requestBody,
     headers: {
+      ...forwardedHeaders,
       Accept: "application/json",
       "Accept-Encoding": "identity",
       "Content-Type": "application/json",
@@ -271,6 +317,8 @@ export async function requestApprovedPublicHttpsJsonPost(value, {
     maximumBytes: byteLimit,
     lookupImpl,
     requestImpl,
+    ca,
+    family,
   });
   if (REDIRECT_STATUSES.has(result.status)) {
     throw new Error("Outbound JSON POST redirects are not allowed");

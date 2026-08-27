@@ -11,7 +11,7 @@ import {
   validateApprovedPublicHttpsUrl,
 } from "./public-https.mjs";
 import { createFairSearchAdmission } from "./request-budget.mjs";
-import { canonicalizePublicSearchQuery } from "./search.mjs";
+import { canonicalizePublicSearchQuery, minimizePublicProviderQuery } from "./search.mjs";
 
 const PORTAL_BASE = "https://keskkonnaportaal.ee";
 const PORTAL_SEARCH = `${PORTAL_BASE}/et/search`;
@@ -353,13 +353,24 @@ export function summarizeUrlOccurrences(values = []) {
 }
 
 function canonicalUrl(value, base = PORTAL_BASE) {
+  const rawValue = typeof value === "string" ? value.trim() : "";
+  if (!rawValue || /^(?:null|undefined)$/iu.test(rawValue)) return null;
   try {
-    const url = new URL(value, base);
+    const url = new URL(rawValue, base);
     if (url.protocol === "http:" && ["keskkonnaportaal.ee", "www.keskkonnaportaal.ee"].includes(url.hostname)) {
       url.protocol = "https:";
     }
     if (url.protocol !== "https:") return null;
     if (url.hostname === "www.keskkonnaportaal.ee") url.hostname = "keskkonnaportaal.ee";
+    const terminalPathSegment = url.pathname.split("/").filter(Boolean).at(-1) || "";
+    let decodedTerminalPathSegment = terminalPathSegment;
+    try {
+      decodedTerminalPathSegment = decodeURIComponent(terminalPathSegment);
+    } catch {
+      // Keep the encoded segment; malformed encodings remain ordinary URLs
+      // and will be rejected by the downstream HTTPS fetch if unusable.
+    }
+    if (/^(?:null|undefined)$/iu.test(decodedTerminalPathSegment.normalize("NFKC"))) return null;
     url.hash = "";
     for (const key of [...url.searchParams.keys()]) {
       if (/^(?:utm_|fbclid|gclid)/iu.test(key)) url.searchParams.delete(key);
@@ -673,7 +684,10 @@ export function parsePortalSearchPage(html, baseUrl = PORTAL_BASE) {
   if (resultCards.length > PORTAL_PAGE_SIZE) throw new Error("Portal search returned too many result cards");
   const documents = resultCards.map((_, element) => {
     const card = $(element);
-    const link = card.find(".search-results__item > a[href]").first();
+    const link = card.find([
+      ".search-results__item > a[href]",
+      ".search-results__item .search-results__title a[href]",
+    ].join(", ")).first();
     const url = canonicalUrl(link.attr("href"), baseUrl);
     if (!url) return null;
     const category = boundedText(card.find(".search-results__category").first().text(), 200);
@@ -2396,7 +2410,9 @@ export async function livePortalSearchResults(query, { page = 1, pageSize = DEFA
   const safePage = Math.max(1, Math.min(Number(page) || 1, 200));
   const safePageSize = [10, 25, 50].includes(Number(pageSize)) ? Number(pageSize) : 10;
   try {
-    const parsed = await fetchPortalSearchPage(normalizeCorpusQuery(query), safePage - 1, safePageSize);
+    const providerQuery = minimizePublicProviderQuery(query);
+    if (!providerQuery) throw new Error("Portal fallback query was rejected");
+    const parsed = await fetchPortalSearchPage(normalizeCorpusQuery(providerQuery), safePage - 1, safePageSize);
     return {
       status: "degraded",
       mode: "portal-live-fallback",

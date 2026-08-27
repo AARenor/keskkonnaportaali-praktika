@@ -25,6 +25,7 @@ import {
   assessEvidence,
   assessSearchQuery,
   buildDiscoveryQueries,
+  FOREST_OVERVIEW_URL,
   forestEvidenceIntent,
   officialServiceCatalogueDocuments,
   queryTerms,
@@ -692,6 +693,40 @@ test("maintained task pages stay above incidental live articles with overlapping
   for (const [query, expected] of cases) {
     assert.equal(rankSearchCandidates(query, [...liveDistractors, ...services], { now: NOW })[0].id, expected, query);
   }
+});
+
+test("canonical forest-overview identity survives a volatile hydrated ID during reranking", () => {
+  const services = officialServiceCatalogueDocuments();
+  const overview = services.find((document) => document.id === "forest-overview");
+  const hydratedOverview = {
+    ...overview,
+    id: "corpus-999",
+    title: "Kui palju ja millist metsa Eestis on?",
+    summary: "Eesti metsa pindala ja koosseisu hinnatakse statistilise metsainventeerimise ehk SMI valimipõhiste mõõtmistega üle kogu riigi.",
+    content: "SMI proovitükkidel tehtud mõõtmised annavad valimi põhjal riikliku hinnangu Eesti metsamaa pindalale ja koosseisule.",
+  };
+  const [mergedOverview] = deduplicateResults([hydratedOverview, overview]);
+  assert.equal(mergedOverview.id, "corpus-999");
+  assert.equal(canonicalResultUrl(mergedOverview.url), canonicalResultUrl(FOREST_OVERVIEW_URL));
+
+  const liveMethodArticle = official({
+    id: "vp-forest-inventory-basis",
+    title: "Metsade inventeerimise alused",
+    url: "https://keskkonnaagentuur.ee/uudised/metsade-inventeerimise-alused",
+    _relevance: 8,
+    summary: "Kuidas Eesti metsa mõõdetakse: statistiline metsainventeerimine kasutab valimipõhiseid proovitükke.",
+    content: "Statistilise metsainventeerimise ehk SMI metoodika mõõdab valimisse valitud proovitükke üle Eesti.",
+  });
+  const query = "Kui palju metsa Eestis on ja kuidas seda mõõdetakse?";
+  const ranked = rankSearchCandidates(query, [liveMethodArticle, mergedOverview], { now: NOW });
+  assert.equal(canonicalResultUrl(ranked[0].url), canonicalResultUrl(FOREST_OVERVIEW_URL));
+  assert.ok(ranked.some((document) => document.id === "vp-forest-inventory-basis"));
+
+  const methodQuery = "Kuidas statistiline metsainventeerimine valimi põhjal töötab?";
+  assert.equal(
+    rankSearchCandidates(methodQuery, [liveMethodArticle, ...services], { now: NOW })[0].id,
+    "forest-inventory-publication",
+  );
 });
 
 test("forestry answer planning rejects access-control noise and prefers the newest direct area measurement", () => {
