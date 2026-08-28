@@ -6,6 +6,7 @@ import {
 } from "./forestry-public.mjs";
 import {
   REVIEWED_ESTONIAN_MUNICIPALITY_BASES,
+  REVIEWED_ESTONIAN_COUNTY_SECURITY_SURFACE_SOURCE,
   classifyForestryGeographyScope,
   hasLossyUnicodeForestryAreaResidual,
   isReviewedEstonianCountyIdentity,
@@ -2257,6 +2258,41 @@ const AMBIGUOUS_BARE_COUNTY_PRIVATE_ASSET_PATTERN = new RegExp(
   String.raw`(?<!\p{L})(?:ida|lääne|laane)\s+viru\s+(?:(?:era|perekonna|isiklik)[\s\p{Pd}./·:_]*${ESTONIAN_PRIVATE_COMPOUND_ASSET_SOURCE}|(?:private|family|household|personal)\s+${EXPLICIT_ENGLISH_PRIVATE_ASSET_NOUN_SOURCE})(?!\p{L})`,
   "iu",
 );
+// Treat every non-alphanumeric boundary consistently at the privacy edge.
+// Downstream tokenizers accept a much wider Unicode punctuation/symbol set
+// than the small separator allowlist that used to live here; enumerating it
+// let fraction slashes, plus signs and apostrophe lookalikes carry a private
+// name across provider boundaries.
+const COUNTY_ASSOCIATION_SEPARATOR_SOURCE = String.raw`(?:[^\p{L}\p{N}]|\uA78C)+`;
+const COUNTY_PERSON_TOKEN_SOURCE = String.raw`\p{L}[\p{L}'’]{0,39}`;
+const COUNTY_ASSOCIATION_IDENTITY_SOURCE = String.raw`(?:${REVIEWED_ESTONIAN_COUNTY_SECURITY_SURFACE_SOURCE}|(?:ida|lääne|laane)${COUNTY_ASSOCIATION_SEPARATOR_SOURCE}viru(?:maa)?)`;
+const COUNTY_PRIVATE_ASSET_TARGET_SOURCE = String.raw`(?:(?:era|perekonna|isiklik)[\s\p{Pd}./·:_]*${ESTONIAN_PRIVATE_COMPOUND_ASSET_SOURCE}|(?:private|family|household|personal)\s+${EXPLICIT_ENGLISH_PRIVATE_ASSET_NOUN_SOURCE}|metsamaa\p{L}*|metsaala\p{L}*|metsa(?:kinnist|pindala|omand|valdus|krunt|maatük|maatuk|maaüks|maauks)\p{L}*|${ESTONIAN_PRIVATE_COMPOUND_ASSET_SOURCE}|metsa(?:de)?\s+(?:pindala\w*|suurus\w*|katvus\w*)|(?:forest|woodland)\s+(?:area|cover(?:age)?|property|parcel|plot|land)|${EXPLICIT_ENGLISH_PRIVATE_ASSET_NOUN_SOURCE})`;
+const COUNTY_FOLLOWED_PERSON_ASSET_PATTERN = new RegExp(
+  String.raw`(?<!\p{L})${COUNTY_ASSOCIATION_IDENTITY_SOURCE}${COUNTY_ASSOCIATION_SEPARATOR_SOURCE}(${COUNTY_PERSON_TOKEN_SOURCE}(?:${COUNTY_ASSOCIATION_SEPARATOR_SOURCE}${COUNTY_PERSON_TOKEN_SOURCE}){0,7})${COUNTY_ASSOCIATION_SEPARATOR_SOURCE}${COUNTY_PRIVATE_ASSET_TARGET_SOURCE}(?!\p{L})`,
+  "iu",
+);
+const PERSON_FOLLOWED_COUNTY_ASSET_PATTERN = new RegExp(
+  String.raw`(?:^|[.!?;:]\s*)[\s\p{Pd}([{'"„“”«»]*(?:(?:palun|please)\s+)?(?:(?:leia|otsi|näita|naita|find|show|search|lookup|mõõda|mooda|selgita|compare|explain)\s+)?(${COUNTY_PERSON_TOKEN_SOURCE}(?:${COUNTY_ASSOCIATION_SEPARATOR_SOURCE}${COUNTY_PERSON_TOKEN_SOURCE}){0,5})${COUNTY_ASSOCIATION_SEPARATOR_SOURCE}${COUNTY_ASSOCIATION_IDENTITY_SOURCE}${COUNTY_ASSOCIATION_SEPARATOR_SOURCE}(?:${COUNTY_PERSON_TOKEN_SOURCE}${COUNTY_ASSOCIATION_SEPARATOR_SOURCE}){0,3}${COUNTY_PRIVATE_ASSET_TARGET_SOURCE}(?!\p{L})`,
+  "iu",
+);
+const REVIEWED_COUNTY_MARKER_SOURCE = String.raw`(?:maakond|maakonda|maakonna|maakonnas|maakonnast|maakonnale|maakonnal|maakonnaga|maakonnana|maakonnad|maakondade|maakondi|piirkond|piirkonda|piirkonna|piirkonnas|piirkonnast|piirkonnale|piirkonnal|piirkonnaga|piirkonnana|piirkonnad|piirkondade|piirkondi|county|region|regional)`;
+const REVIEWED_PUBLIC_FOREST_NOUN_SOURCE = String.raw`(?:mets|metsa|metsade|metsamaa|metsamaad|metsamaal|metsamaale|metsamaalt|metsamaast|metsamaaga|metsaala|metsaala(?:l|le|lt|st|ga))`;
+const REVIEWED_PUBLIC_FOREST_METRIC_SOURCE = String.raw`(?:pindala|pindalast|pindalale|pindalaga|suurus|suurusest|suurusele|suurusega|katvus|katvusest|katvusele|katvusega|vanus|vanusest|vanusele|vanusega)`;
+const REVIEWED_PUBLIC_FOREST_AGGREGATE_MODIFIER_SOURCE = String.raw`(?:keskmine|keskmise|keskmist|keskmiselt|kogu|riigi|riiklik|riikliku|avalik|avaliku|kaitstud|kaitstav|kaitstava)`;
+const REVIEWED_PUBLIC_ENGLISH_FOREST_METRIC_PHRASE_SOURCE = String.raw`(?:forest|woodland)\s+(?:area|cover(?:age)?|age)`;
+const COUNTY_ASSOCIATION_PERSON_RESIDUAL_SOURCE = String.raw`${COUNTY_PERSON_TOKEN_SOURCE}(?:${COUNTY_ASSOCIATION_SEPARATOR_SOURCE}${COUNTY_PERSON_TOKEN_SOURCE}){0,5}`;
+const COUNTY_REQUEST_TOKEN_PATTERN = /^(?:palun|please|leia|otsi|näita|naita|find|show|search|lookup|mõõda|mooda|selgita|compare|explain)$/iu;
+const COUNTY_PUBLIC_REQUEST_CONTENT_TOKEN_PATTERN = /^(?:avald\w*|kohustus\w*|nõu\w*|nou\w*|reegl\w*|piirang\w*|õigus\w*|oigus\w*|mõjuta\w*|mojuta\w*|publish\w*|regulat\w*|obligation\w*|requirement\w*|restriction\w*|rules?|guidance|laws?)$/iu;
+
+function normalizeCountyAssociationSecurityTokens(value) {
+  return String(value || "")
+    .normalize("NFC")
+    // U+02BC and U+A78B/U+A78C are letter-category apostrophe lookalikes.
+    // Explicitly include default ignorables as well as every non-alphanumeric
+    // run so this denial-only grammar has one self-contained token boundary.
+    .replace(/(?:\p{Default_Ignorable_Code_Point}|[^\p{L}\p{N}]|[\u02BC\uA78B\uA78C])+/gu, " ")
+    .trim();
+}
 const ASSET_RESIDENT_ROLE_PATTERN = /(?<!\p{L})(?:elanik\w*|residend\w*|rentnik\w*|residents?|occupants?|inhabitants?|tenants?)(?!\p{L})/iu;
 const RESIDENTIAL_ASSET_TARGET_PATTERN = new RegExp(
   String.raw`(?<!\p{L})(?:${ESTONIAN_PRIVATE_COMPOUND_ASSET_SOURCE}|${EXPLICIT_ENGLISH_PRIVATE_ASSET_NOUN_SOURCE})(?!\p{L})`,
@@ -2264,6 +2300,7 @@ const RESIDENTIAL_ASSET_TARGET_PATTERN = new RegExp(
 );
 const PRIVATE_ASSET_IDENTITY_FIELD_PATTERN = /(?<!\p{L})(?:nimi\w*|names?|identity\w*|identiteet\w*|kontakt\w*|contact\w*|telefon\w*|phone\w*|telephone\w*|e-?post\w*|email\w*|aadress\w*|address\w*|elukoh\w*|residence\w*|isikukood\w*|ssn)(?!\p{L})/iu;
 const ASSET_RESIDENT_IDENTITY_FIELD_PATTERN = /(?<!\p{L})(?:eesnimi\w*|perekonnanimi\w*|täisnimi\w*|taisnimi\w*|vanus\w*|surnames?|age|(?:first|last|full)\s+names?)(?!\p{L})/iu;
+const IMPERATIVE_PRIVATE_OWNER_ENUMERATION_PATTERN = /^(?:(?:give|show|list|find|provide)\s+(?:me\s+)?(?:the\s+)?(?:names?\s+of\s+(?:the\s+)?)?(?:all\s+)?(?:(?:registered|current|present|existing|private)\s+)?(?:owners?|landowners?|homeowners?|propertyowners?|forestowners?|proprietors?|landholders?|landlords?|land\s+owners?|home\s+owners?|property\s+owners?|forest\s+owners?|land\s+holders?)|(?:anna|näita|naita|leia|loetle)\s+(?:mulle\s+)?(?:kõigi\s+)?(?:(?:registreeritud|praegune|praegused?|praeguse|era)\s+)?(?:(?:metsa|kinnistu|maa|kodu)\s*)?omanik(?:ud|ke|e(?:\s+nimed)?))[.!?]*$/iu;
 
 function hasAssetResidentIdentityFieldRequest(value) {
   const text = String(value || "");
@@ -2273,6 +2310,152 @@ function hasAssetResidentIdentityFieldRequest(value) {
       || ASSET_RESIDENT_IDENTITY_FIELD_PATTERN.test(text)
       || PRIVATE_PERSON_ATTRIBUTE_PATTERN.test(text)
       || PRIVATE_POSTAL_FIELD_PATTERN.test(text));
+}
+
+const REVIEWED_COUNTY_PUBLIC_REQUEST_PREFIX_PATTERNS = Object.freeze([
+  /^(?:palun\s+)?(?:leia|otsi|näita|naita|mõõda|mooda|selgita|ütle|utle)(?:\s+mulle)?(?=[\s,;:\p{Pd}]|$)/iu,
+  /^(?:please\s+)?(?:find|show|search|lookup|compare|explain)(?:\s+me)?(?:\s+the)?(?=[\s,;:\p{Pd}]|$)/iu,
+  /^(?:tell|show|give)\s+me(?:\s+the)?(?=[\s,;:\p{Pd}]|$)/iu,
+  /^(?:can|could|would)\s+you(?:\s+please)?\s+(?:(?:find|show|search|compare|explain)(?:\s+me)?(?:\s+the)?|tell\s+me(?:\s+the)?)(?=[\s,;:\p{Pd}]|$)/iu,
+  /^(?:what\s+is|how\s+(?:much|large|big)\s+is)(?:\s+the)?(?=[\s,;:\p{Pd}]|$)/iu,
+  /^(?:kui\s+palju\s+(?:on|oli)|mis\s+on|milline\s+on)(?=[\s,;:\p{Pd}]|$)/iu,
+  /^kas\s+(?:(?:sa\s+)?saad|te\s+saate|saaksite)\s+(?:näidata|naidata|leida|selgitada|öelda|oelda)(?:\s+mulle)?(?=[\s,;:\p{Pd}]|$)/iu,
+]);
+const REVIEWED_COUNTY_FOREST_REQUEST_TARGET_PATTERN = new RegExp(
+  String.raw`(?:(?<!\p{L})${COUNTY_ASSOCIATION_IDENTITY_SOURCE}(?!\p{L})[\s\S]{0,192}(?<!\p{L})(?:forest|woodland|mets\p{L}*)(?!\p{L})|(?<!\p{L})(?:forest|woodland|mets\p{L}*)(?!\p{L})[\s\S]{0,192}(?<!\p{L})${COUNTY_ASSOCIATION_IDENTITY_SOURCE}(?!\p{L}))`,
+  "iu",
+);
+const REVIEWED_FOREST_METRIC_OF_COUNTY_PATTERN = new RegExp(
+  String.raw`^(?:the\s+)?((?:(?:current|present|latest(?:\s+available)?|today(?:'s)?)\s+)?(?:forest|woodland)\s+(?:area|cover(?:age)?|age))\s+(?:of|in|for)\s+(${COUNTY_ASSOCIATION_IDENTITY_SOURCE})(?!\p{L})([\s\S]*?)\s*[.!?]?$`,
+  "iu",
+);
+
+function reviewedForestMetricOfCountyCandidate(value) {
+  const match = String(value || "").normalize("NFC").trim()
+    .match(REVIEWED_FOREST_METRIC_OF_COUNTY_PATTERN);
+  if (!match) return null;
+  return `${match[2]} ${match[1]} ${match[3] || ""}`
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+function stripReviewedCountyPublicRequestPrefix(value) {
+  const text = String(value || "").replace(/\s+/gu, " ").trim();
+  for (const pattern of REVIEWED_COUNTY_PUBLIC_REQUEST_PREFIX_PATTERNS) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    return text.slice(match[0].length)
+      .replace(/^[\s,;:\p{Pd}]+/gu, "")
+      .replace(/^the(?:\s+|$)/iu, "")
+      .trim();
+  }
+  return null;
+}
+
+function isReviewedCountyPublicRequestPrefix(value) {
+  const text = String(value || "").replace(/\s+/gu, " ").trim();
+  if (stripReviewedCountyPublicRequestPrefix(text) === "") return true;
+  const prefixTokens = text.match(/\p{L}+/gu) || [];
+  return prefixTokens.length > 0
+    && prefixTokens.every((token) => (
+      COUNTY_REQUEST_TOKEN_PATTERN.test(token)
+        || PERSON_CONTEXT_STOPWORD_PATTERN.test(token)
+        || COUNTY_PUBLIC_REQUEST_CONTENT_TOKEN_PATTERN.test(token)
+    ))
+    && prefixTokens.some((token) => (
+      COUNTY_REQUEST_TOKEN_PATTERN.test(token)
+        || /^(?:kas|kes|kuidas|kus|millal|millin\w*|millis\w*|mis|mida|miks|how|what|when|where|which|why)$/iu.test(token)
+    ));
+}
+
+function reviewedCountyForestPrefixScope(value) {
+  const text = String(value || "")
+    .normalize("NFC")
+    .replace(/\s+/gu, " ")
+    .trim();
+  const countyPattern = new RegExp(
+    String.raw`(?<!\p{L})${COUNTY_ASSOCIATION_IDENTITY_SOURCE}(?!\p{L})`,
+    "giu",
+  );
+  for (const countyMatch of text.matchAll(countyPattern)) {
+    const countyIndex = countyMatch.index || 0;
+    if (countyIndex === 0) continue;
+    const countyQuestion = text.slice(countyIndex).trim();
+    if (!isCompleteReviewedCountyPublicForestQuestionOrContactComposition(countyQuestion)) continue;
+    const prefix = text.slice(0, countyIndex)
+      .replace(/^[\s\p{Pd}([{'"„“”«»]+/gu, "")
+      .replace(/[\s,;:\p{Pd}\])}'"„“”«»]+$/gu, "")
+      .trim();
+    if (isReviewedCountyPublicRequestPrefix(prefix)) return "public-request";
+    if (isReviewedPublicOrganizationContactClause(prefix)
+      || isCompleteReviewedPublicOrganizationContactQuestion(prefix)) return "public-contact";
+    const requestResidual = stripReviewedCountyPublicRequestPrefix(prefix);
+    const personCandidate = requestResidual === null ? prefix : requestResidual;
+    const prefixMatch = personCandidate.match(new RegExp(
+      String.raw`^(${COUNTY_PERSON_TOKEN_SOURCE}(?:${COUNTY_ASSOCIATION_SEPARATOR_SOURCE}${COUNTY_PERSON_TOKEN_SOURCE}){0,5})$`,
+      "iu",
+    ));
+    if (prefixMatch && !isReviewedCountyPublicRequestPrefix(prefixMatch[1])) return "person";
+    // The token cap limits parsing work; it must not become a fail-open
+    // boundary. Once the suffix is a complete reviewed county-forest query,
+    // any remaining nonempty prefix that is not a finite public request is an
+    // unconsumed identity/prose residual and cannot cross a provider boundary.
+    if (personCandidate) return "person";
+  }
+  return null;
+}
+
+function hasCountyShapedPersonAssetAssociation(value) {
+  const text = String(value || "");
+  // Public meaning is proved by a complete finite grammar, never by treating
+  // each token as independently harmless. Token unions allowed repeated or
+  // reordered descriptors, arbitrary residual names and marker-like prefixes
+  // to inherit a county exception.
+  const reviewedPublicText = stripNegatedPrivateContactFields(text)
+    .replace(/\s+/gu, " ")
+    .replace(/\s+([.?!,;:])/gu, "$1")
+    .trim();
+  if (isCompleteReviewedCountyPublicForestQuestionOrContactComposition(reviewedPublicText)) return false;
+  if (COUNTY_FOLLOWED_PERSON_ASSET_PATTERN.test(text)) return true;
+  const reverseMatch = text.match(PERSON_FOLLOWED_COUNTY_ASSET_PATTERN);
+  if (!reverseMatch) return false;
+  return !isReviewedCountyPublicRequestPrefix(reverseMatch[1]);
+}
+
+function hasReviewedCountyDescriptorCompoundPersonAsset(value) {
+  const reviewedPublicText = stripNegatedPrivateContactFields(String(value || ""))
+    .normalize("NFC")
+    .replace(/\s+/gu, " ")
+    .replace(/\s+([.?!,;:])/gu, "$1")
+    .trim();
+  if (isCompleteReviewedCountyPublicForestQuestionOrContactComposition(reviewedPublicText)) return false;
+  const securityTokenText = normalizeCountyAssociationSecurityTokens(reviewedPublicText);
+  // Match only a finite reviewed county surface. The previous two open
+  // `(.+?)` captures were both semantically wider and super-linear on long
+  // separator runs. Canonical whitespace is collapsed above so default-
+  // ignorable boundaries cannot amplify regex work.
+  const county = String.raw`(?:${REVIEWED_ESTONIAN_COUNTY_SECURITY_SURFACE_SOURCE})`;
+  const patterns = [
+    new RegExp(
+      String.raw`^${county}${COUNTY_ASSOCIATION_SEPARATOR_SOURCE}${COUNTY_ASSOCIATION_PERSON_RESIDUAL_SOURCE}${COUNTY_ASSOCIATION_SEPARATOR_SOURCE}(?:mets|metsa|metsade|metsamaa\p{L}*|metsaala\p{L}*)[\s\S]*$`,
+      "iu",
+    ),
+    new RegExp(
+      String.raw`^${county}${COUNTY_ASSOCIATION_SEPARATOR_SOURCE}${COUNTY_ASSOCIATION_PERSON_RESIDUAL_SOURCE}${COUNTY_ASSOCIATION_SEPARATOR_SOURCE}(?:forest|woodland)[\s\S]*$`,
+      "iu",
+    ),
+    new RegExp(
+      String.raw`^${county}\s+(?:${REVIEWED_PUBLIC_ENGLISH_FOREST_METRIC_PHRASE_SOURCE}|${REVIEWED_PUBLIC_FOREST_NOUN_SOURCE}\s+${REVIEWED_PUBLIC_FOREST_METRIC_SOURCE})${COUNTY_ASSOCIATION_SEPARATOR_SOURCE}${COUNTY_ASSOCIATION_PERSON_RESIDUAL_SOURCE}\??$`,
+      "iu",
+    ),
+    new RegExp(
+      String.raw`^${county}\s+(?:forest|woodland|${REVIEWED_PUBLIC_FOREST_NOUN_SOURCE})${COUNTY_ASSOCIATION_SEPARATOR_SOURCE}${COUNTY_ASSOCIATION_PERSON_RESIDUAL_SOURCE}${COUNTY_ASSOCIATION_SEPARATOR_SOURCE}(?:area|cover(?:age)?|age|${REVIEWED_PUBLIC_FOREST_METRIC_SOURCE})\??$`,
+      "iu",
+    ),
+  ];
+  return reviewedCountySensitiveForestResidualCandidates(securityTokenText).some((candidate) => (
+    patterns.some((pattern) => pattern.test(candidate))
+  ));
 }
 
 function hasPrivateAssetIdentityFieldRequest(value) {
@@ -2310,10 +2493,21 @@ function stripNegatedPrivateContactFields(value) {
   );
 }
 
-function isUnambiguousReviewedEstonianCountyIdentity(value) {
-  const text = String(value || "").normalize("NFKC").trim();
-  if (/^(?:ida|lääne|laane)\s+viru$/iu.test(text)) return false;
+function isStrictReviewedEstonianCountyIdentity(value) {
+  const text = String(value || "").normalize("NFKC").normalize("NFC").trim();
+  // Municipality normalization deliberately erases punctuation for search
+  // recall. A privacy exception must first prove that the original county
+  // surface uses words, whitespace, or one real dash—not `/`, `_`, `.`, `+`,
+  // apostrophes, repeated dashes, or other lossy aliases.
+  if (!/^[\p{L}\p{M}]+(?:(?:\s+|\s*\p{Pd}\s*)[\p{L}\p{M}]+)*$/u.test(text)) return false;
   return isReviewedEstonianCountyIdentity(text);
+}
+
+function isUnambiguousReviewedEstonianCountyIdentity(value) {
+  const text = String(value || "").normalize("NFKC").normalize("NFC").trim();
+  if (!isStrictReviewedEstonianCountyIdentity(text)) return false;
+  if (/^(?:ida|lääne|laane)\s+viru$/iu.test(text)) return false;
+  return true;
 }
 
 function isCompleteReviewedCountyPrivateAssetEcologyQuestion(value) {
@@ -2359,14 +2553,202 @@ function hasReviewedCountyPrivateAssetEcologySensitiveResidual(value) {
 
 function isCompleteReviewedCountyPrivateAssetAggregateQuestion(value) {
   const text = String(value || "").trim();
-  const patterns = [
+  const unambiguousCountyPatterns = [
     new RegExp(String.raw`^(.+?)\s+(?:private|family|household|personal)\s+(?:forest|woodland|land|property)\s+(?:area|cover(?:age)?)(?:\s+(?:aggregate|data|statistics))?\??$`, "iu"),
     new RegExp(String.raw`^how\s+to\s+publish\s+(.+?)\s+(?:private|family|household|personal)\s+(?:forest|woodland|land|property)\s+(?:area|cover(?:age)?)(?:\s+(?:aggregate|data|statistics))?\??$`, "iu"),
+    new RegExp(String.raw`^(.+?)\s+(?:forest|woodland)\s+(?:area|cover(?:age)?)\??$`, "iu"),
+    new RegExp(String.raw`^(.+?)\s+${REVIEWED_PUBLIC_FOREST_NOUN_SOURCE}\s+${REVIEWED_PUBLIC_FOREST_METRIC_SOURCE}\??$`, "iu"),
+    new RegExp(String.raw`^(.+?)\s+(?:average|total|overall|state|public|protected)\s+(?:forest|woodland)\s+(?:area|cover(?:age)?)\??$`, "iu"),
+    new RegExp(String.raw`^(.+?)\s+${REVIEWED_PUBLIC_FOREST_AGGREGATE_MODIFIER_SOURCE}\s+${REVIEWED_PUBLIC_FOREST_NOUN_SOURCE}\s+${REVIEWED_PUBLIC_FOREST_METRIC_SOURCE}\??$`, "iu"),
+  ];
+  if (unambiguousCountyPatterns.some((pattern) => {
+    const match = text.match(pattern);
+    return Boolean(match && isUnambiguousReviewedEstonianCountyIdentity(match[1]));
+  })) return true;
+  const explicitCountyPatterns = [
+    new RegExp(String.raw`^(.+?)\s+(?:county|region|regional)\s+(?:forest|woodland)\s+(?:area|cover(?:age)?)\??$`, "iu"),
+    new RegExp(String.raw`^(.+?)\s+${REVIEWED_COUNTY_MARKER_SOURCE}\s+${REVIEWED_PUBLIC_FOREST_NOUN_SOURCE}\s+${REVIEWED_PUBLIC_FOREST_METRIC_SOURCE}\??$`, "iu"),
+  ];
+  return explicitCountyPatterns.some((pattern) => {
+    const match = text.match(pattern);
+    return Boolean(match && isStrictReviewedEstonianCountyIdentity(match[1]));
+  });
+}
+
+function isCompleteReviewedCountyForestAgeQuestion(value) {
+  const text = String(value || "").trim();
+  const patterns = [
+    /^(.+?)\s+(?:(?:private|public|state|protected)\s+)?(?:forest|woodland)\s+(?:(?:average|mean)\s+)?age(?:\s+(?:distribution|trend))?\??$/iu,
+    /^(.+?)\s+(?:average|mean)\s+(?:(?:private|public|state|protected)\s+)?(?:forest|woodland)\s+age\??$/iu,
   ];
   return patterns.some((pattern) => {
     const match = text.match(pattern);
     return Boolean(match && isUnambiguousReviewedEstonianCountyIdentity(match[1]));
   });
+}
+
+function isCompleteReviewedCountyForestCategoryQuestion(value) {
+  const text = String(value || "").trim();
+  // Keep category phrases finite and grammatical. Prefix-wide descriptor
+  // matching would also accept person-name collisions such as Young Old or
+  // Estonian compounds such as vanamehe/noormehe and release them upstream.
+  const descriptor = String.raw`(?:vana|vanad|vanade|noor|noore|noored|noorte|looduslik|loodusliku|põlis|polis|kliimamuutuse|natura|majandatav|majandamata|segamets|segapuistu|okasmets|lehtmets|väärtuslik|vaartuslik|taastuv|kuivendatud|kahjustatud|tulekahjustatud|(?:ökoloogiliselt|okoloogiliselt)\s+(?:väärtuslik|vaartuslik)|(?:männi|manni|kuuse|kase|lehtpuu|okaspuu)\s+enamusega)`;
+  const forest = REVIEWED_PUBLIC_FOREST_NOUN_SOURCE;
+  const metric = String.raw`(?:\s+${REVIEWED_PUBLIC_FOREST_METRIC_SOURCE})?`;
+  const unambiguousMatch = text.match(new RegExp(
+    String.raw`^(.+?)\s+${descriptor}\s+${forest}${metric}\??$`,
+    "iu",
+  ));
+  if (unambiguousMatch
+    && isUnambiguousReviewedEstonianCountyIdentity(unambiguousMatch[1])) return true;
+  const explicitMatch = text.match(new RegExp(
+    String.raw`^(.+?)\s+${REVIEWED_COUNTY_MARKER_SOURCE}\s+${descriptor}\s+${forest}${metric}\??$`,
+    "iu",
+  ));
+  if (explicitMatch && isStrictReviewedEstonianCountyIdentity(explicitMatch[1])) return true;
+  const englishDescriptor = String.raw`(?:ecological|natural|valuable|restored|damaged|drained|mixed|coniferous|deciduous|old|young|climate[-\s]+resilient)`;
+  const englishMatch = text.match(new RegExp(
+    String.raw`^(.+?)\s+${englishDescriptor}\s+(?:forest|woodland)(?:\s+(?:area|cover(?:age)?|age))?\??$`,
+    "iu",
+  ));
+  return Boolean(englishMatch
+    && isUnambiguousReviewedEstonianCountyIdentity(englishMatch[1]));
+}
+
+const REVIEWED_COUNTY_PUBLIC_COMPLEMENT_CATEGORY_SOURCES = Object.freeze([
+  String.raw`(?<![\p{L}\p{N}])(?:(?:in|for|during|as\s+of)\s+)?(?:19|20)\d{2}\.?(?:\s+(?:aasta|aastal))?(?![\p{L}\p{N}])`,
+  String.raw`(?<![\p{L}\p{N}])(?:current|present|latest(?:\s+available)?|available|today(?:'s)?|this\s+year|now|currently|praegune|praeguse|uusim|uusima|viimane|viimase|tänane|tanane|tänapäeval|tanapaeval|praegu|uusima\s+seisuga)(?![\p{L}\p{N}])`,
+  String.raw`(?<![\p{L}\p{N}])(?:(?:in\s+)?(?:hectares?|ha|acres?|percent|percentage|square\s+kilomet(?:er|re)s?|km(?:2|²)|square\s+miles?)|hektarites|hektarit|hektareid|protsentides|protsenti|ruutkilomeetrites)(?![\p{L}\p{N}])`,
+]);
+
+function reviewedCountyPublicForestParts(value) {
+  const text = String(value || "").normalize("NFC").trim();
+  const boundaries = [text.length, ...[...text.matchAll(/\s+/gu)].map((match) => match.index)]
+    .sort((left, right) => right - left);
+  for (const boundary of boundaries) {
+    const county = text.slice(0, boundary).trim();
+    if (!isStrictReviewedEstonianCountyIdentity(county)) continue;
+    if (county.length >= text.length) return null;
+    return { county, remainder: text.slice(county.length).trim() };
+  }
+  return null;
+}
+
+function reviewedCountyComplementSpans(remainder) {
+  return REVIEWED_COUNTY_PUBLIC_COMPLEMENT_CATEGORY_SOURCES.map((source) => (
+    [...remainder.matchAll(new RegExp(source, "giu"))].map((match) => ({
+      start: match.index,
+      end: match.index + match[0].length,
+    }))
+  ));
+}
+
+function removeReviewedCountyComplementSpans(value, spans) {
+  let result = String(value || "");
+  for (const span of [...spans].sort((left, right) => right.start - left.start)) {
+    result = `${result.slice(0, span.start)} ${result.slice(span.end)}`;
+  }
+  return result
+    .replace(/\s+/gu, " ")
+    .replace(/\s+([.!?])/gu, "$1")
+    .replace(/[.!?]+$/u, "")
+    .trim();
+}
+
+function reviewedCountyPublicForestComplementCandidates(value) {
+  const text = String(value || "").normalize("NFC").trim();
+  const parts = reviewedCountyPublicForestParts(text);
+  if (!parts) return [text];
+  const { county, remainder } = parts;
+  const categorySpans = reviewedCountyComplementSpans(remainder)
+    .map((spans, category) => spans.map((span) => ({ ...span, category })));
+  const remainders = new Set([remainder]);
+  // Complements are grammatical slots, not a bag of harmless words. A
+  // freshness/year modifier may precede the forest phrase; a unit or time/year
+  // modifier may follow it. A trailing numeric year and unit may appear in
+  // either order. Multiple same-category spans are never erased, and a
+  // freshness+unit pair is never erased on the same side of the forest phrase:
+  // “Current Acres” is person-shaped, while “current forest area hectares” is
+  // an ordinary public query whose two complements occupy opposite slots.
+  if (categorySpans.some((spans) => spans.length > 1)) return [text];
+  const availableSpans = categorySpans.flat();
+  const hasOnlyWhitespace = (start, end) => /^\s*$/u.test(remainder.slice(start, end));
+  const hasOnlyTerminalPunctuation = (start) => /^[\s.!?]*$/u.test(remainder.slice(start));
+  const isValidSlotComposition = (selected) => {
+    const spans = [...selected].sort((left, right) => left.start - right.start);
+    for (const prefixCount of [0, 1]) {
+      const prefix = spans.slice(0, prefixCount);
+      const suffix = spans.slice(prefixCount);
+      if (prefix.length === 1
+        && (prefix[0].category === 2 || prefix[0].start !== 0)) continue;
+      if (suffix.length > 2) continue;
+      if (suffix.length > 0) {
+        if (!hasOnlyTerminalPunctuation(suffix.at(-1).end)) continue;
+        if (suffix.slice(0, -1).some((span, index) => (
+          !hasOnlyWhitespace(span.end, suffix[index + 1].start)
+        ))) continue;
+        if (suffix.length === 2) {
+          const categories = suffix.map((span) => span.category).sort();
+          if (categories[0] !== 0 || categories[1] !== 2) continue;
+        }
+      }
+      const coreStart = prefix.length === 1 ? prefix[0].end : 0;
+      const coreEnd = suffix.length > 0 ? suffix[0].start : remainder.length;
+      if (coreStart >= coreEnd || !remainder.slice(coreStart, coreEnd).trim()) continue;
+      return true;
+    }
+    return false;
+  };
+  for (let mask = 1; mask < (1 << availableSpans.length); mask += 1) {
+    const selected = availableSpans.filter((_span, index) => mask & (1 << index));
+    if (!isValidSlotComposition(selected)) continue;
+    const candidate = removeReviewedCountyComplementSpans(remainder, selected);
+    if (candidate) remainders.add(candidate);
+  }
+  return [...remainders].map((candidate) => `${county} ${candidate}`.trim());
+}
+
+function reviewedCountySensitiveForestResidualCandidates(value) {
+  const text = String(value || "").normalize("NFC").trim();
+  const parts = reviewedCountyPublicForestParts(text);
+  if (!parts) return [text];
+  const { county, remainder } = parts;
+  const categorySpans = reviewedCountyComplementSpans(remainder);
+  const allSpans = categorySpans.flat();
+  const remainders = new Set(
+    reviewedCountyPublicForestComplementCandidates(text)
+      .map((candidate) => candidate.slice(county.length).trim()),
+  );
+  for (const spans of categorySpans) {
+    if (spans.length > 0) remainders.add(removeReviewedCountyComplementSpans(remainder, spans));
+    for (const span of spans) remainders.add(removeReviewedCountyComplementSpans(remainder, [span]));
+  }
+  if (allSpans.length > 0) remainders.add(removeReviewedCountyComplementSpans(remainder, allSpans));
+  return [...remainders]
+    .filter(Boolean)
+    .slice(0, 32)
+    .map((candidate) => `${county} ${candidate}`.trim());
+}
+
+function isCompleteReviewedCountyPublicForestQuestion(value) {
+  return reviewedCountyPublicForestComplementCandidates(value).some((text) => (
+    isCompleteReviewedCountyPrivateAssetEcologyQuestion(text)
+      || isCompleteReviewedCountyForestAgeQuestion(text)
+      || isCompleteReviewedCountyForestCategoryQuestion(text)
+      || isCompleteReviewedCountyPrivateAssetAggregateQuestion(text)
+  ));
+}
+
+function isCompleteReviewedCountyPublicForestQuestionOrContactComposition(value) {
+  const text = String(value || "").trim();
+  if (isCompleteReviewedCountyPublicForestQuestion(text)) return true;
+  const clauses = splitPublicQueryClauses(text);
+  if (clauses.length !== 2) return false;
+  return clauses.filter(isCompleteReviewedCountyPublicForestQuestion).length === 1
+    && clauses.filter((clause) => (
+      isReviewedPublicOrganizationContactClause(clause)
+        || isCompleteReviewedPublicOrganizationContactQuestion(clause)
+    )).length === 1;
 }
 
 function stripSingleReviewedOrganizationContactField(value) {
@@ -2992,6 +3374,29 @@ const ESTONIAN_PRIVATE_FOREST_NOUN_PATTERN = /^(?:eramets(?:a(?:s|st|le|lt|ga|d(
 const ESTONIAN_WELL_NOUN_PATTERN = /^kaev(?:u(?:s|st|le|lt|ga|d(?:e(?:s|st|le|lt|ga)?)?)?|e)?$/iu;
 const PRIVATE_FOREST_ASSET_PATTERN = /(?<!\p{L})(?:metsamaa\w*|metsaeraldis\w*|metsakinnist\w*|metsat(?:ü|u)kk\w*|puistu\w*|mets(?:a(?:s|st|le|lt|ga|d(?:e(?:s|st|le|lt|ga)?)?)?|i)?|forests?|woodlands?)(?!\p{L})/iu;
 const PRIVATE_ASSET_LOOKUP_ACTION_PATTERN = /\b(?:anna|andke|leia|otsi|näita|naita|kuva|tagasta|tagastage|too|show|find|locate|display|reveal|provide|give|get|return|tell)\b/iu;
+const FOLLOWING_FOREST_PERSON_LOOKUP_ACTION_PATTERN = /(?<!\p{L})(?:anna|andke|leia|otsi|näita|naita|kuva|tagasta|tagastage|too|show|find|locate|display|reveal|provide|give|get|return|tell|search|look(?:[\s-]+)?up|list|name)(?!\p{L})/iu;
+const PRIVATE_OWNER_ROLE_SOURCE = String.raw`(?:owners?|landowners?|homeowners?|propertyowners?|forestowners?|proprietors?|landholders?|landlords?|land\s+owners?|home\s+owners?|property\s+owners?|forest\s+owners?|land\s+holders?)`;
+const IMPERATIVE_NAMED_OWNER_LOOKUP_PATTERN = new RegExp(
+  String.raw`^(?:find|show|search|locate|identify|lookup|look\s+up|list|name|tell\s+me|give\s+me)\s+(?:the\s+)?(?:(?:${COUNTY_PERSON_TOKEN_SOURCE}${COUNTY_ASSOCIATION_SEPARATOR_SOURCE}){1,5}${COUNTY_PERSON_TOKEN_SOURCE}${COUNTY_ASSOCIATION_SEPARATOR_SOURCE}${PRIVATE_OWNER_ROLE_SOURCE}|${PRIVATE_OWNER_ROLE_SOURCE}${COUNTY_ASSOCIATION_SEPARATOR_SOURCE}(?:${COUNTY_PERSON_TOKEN_SOURCE}${COUNTY_ASSOCIATION_SEPARATOR_SOURCE}){1,5}${COUNTY_PERSON_TOKEN_SOURCE})[.!?]*$`,
+  "iu",
+);
+const REVIEWED_FOREST_LOOKUP_TOPIC_SOURCE = String.raw`(?:fire\s+(?:danger|risk|index|forecast)|carbon\s+(?:storage|stock|sink|sequestration)|age\s+(?:distribution|structure|classes|profile)|cover\s+statistics|coverage\s+(?:percentage|statistics|map|trend)|area\s+(?:statistics|by\s+county)|health\s+(?:status|indicators|condition|assessment)|management\s+(?:guidance|practices|policy|plans|methods|authority|rules)|habitat\s+map|restoration\s+methods|ownership\s+statistics|species\s+diversity|water\s+quality|coverage|health)`;
+const REVIEWED_FOREST_TOPIC_PERSON_RESIDUAL_PATTERN = new RegExp(
+  String.raw`^(?:(?:find|show|search|lookup|look[\s-]+up|list|locate|name|tell\s+me)(?:\s+me)?(?:\s+the)?\s+)?(?:(?:public|county|state|national|municipal)\s+)?(?:forest|woodland)\s+${REVIEWED_FOREST_LOOKUP_TOPIC_SOURCE}(?<residual>[\s\p{Pd},;:]+[\s\S]+?)[.!?]*$`,
+  "iu",
+);
+const REVIEWED_FOREST_TOPIC_PUBLIC_COMPLEMENT_PATTERN = /^(?:(?:in|for)\s+estonia|eestis|today|now|currently|this\s+year|(?:in|for)\s+(?:19|20)\d{2}|over\s+time|by\s+year|year[-\s]+by[-\s]+year)$/iu;
+
+function hasReviewedForestTopicPersonResidual(value) {
+  const match = String(value || "").trim().match(REVIEWED_FOREST_TOPIC_PERSON_RESIDUAL_PATTERN);
+  if (!match) return false;
+  const residual = String(match.groups?.residual || "")
+    .replace(/^[\s\p{Pd},;:]+/gu, "")
+    .replace(/[.!?]+$/gu, "")
+    .trim();
+  if (!residual || REVIEWED_FOREST_TOPIC_PUBLIC_COMPLEMENT_PATTERN.test(residual)) return false;
+  return (residual.match(/\p{L}[\p{L}'’]{0,39}/gu) || []).length >= 2;
+}
 const EXPLICIT_PRIVATE_FOREST_ASSET_PATTERN = /^(?:metsamaa\w*|metsaeraldis\w*|metsakinnist\w*|metsat(?:ü|u)kk\w*|puistu\w*)$/iu;
 const ENGLISH_PRIVATE_FOREST_QUALIFIER_PATTERN = /^(?:property|parcel|plot|lot|estate|land|holding)$/iu;
 const PUBLIC_FOREST_RELATION_TOKEN_PATTERN = /^(?:rahvusparg\w*|loodusparg\w*|maastikukaitseal\w*|looduskaitseal\w*|hoiual\w*|kaitseal\w*|riigi\w*|avalik\w*|munitsipaal\w*|mountains?|national|park|public|reserve|state|municipal|government|valley)$/iu;
@@ -3361,7 +3766,10 @@ function canonicalSecurityText(value) {
     // them would fuse otherwise separate tokens ("ownership\nJohn") before
     // the named-private-asset detector has a chance to fail closed.
     .replace(/[\t\n\v\f\r\u0085\u2028\u2029]+/gu, " ; ")
-    .replace(/[\p{Default_Ignorable_Code_Point}\p{Cc}]/gu, "")
+    // Other invisible/default-ignorable controls can also occupy a token
+    // boundary. Preserve that boundary instead of deleting the character and
+    // fusing a surname to a reviewed geography (for example Kase<ZWSP>Ida).
+    .replace(/[\p{Default_Ignorable_Code_Point}\p{Cc}]+/gu, " ")
     .replace(/[аɑα]/giu, "a")
     .replace(/[еε]/giu, "e")
     .replace(/[оο]/giu, "o")
@@ -3640,6 +4048,7 @@ function isReviewedPublicClauseComposition(value) {
 
 export function containsPrivatePersonLookup(value, {
   allowReviewedPublicClauseComposition = true,
+  allowReviewedCountyRequestPrefix = true,
 } = {}) {
   if (hasForeignPrivatePersonClause(decodeSecurityEscapes(value))) return true;
   const canonicalText = canonicalSecurityText(value);
@@ -3653,6 +4062,26 @@ export function containsPrivatePersonLookup(value, {
   // letter or number from another script; the intact query would otherwise
   // cross suggestion, discovery and model-provider boundaries.
   if (hasLossyUnicodeProtectedConstructionResidual(canonicalText)) return true;
+  if (IMPERATIVE_PRIVATE_OWNER_ENUMERATION_PATTERN.test(canonicalText)) return true;
+  if (IMPERATIVE_NAMED_OWNER_LOOKUP_PATTERN.test(canonicalText)) return true;
+  if (hasReviewedForestTopicPersonResidual(canonicalText)) return true;
+  // A request phrase is presentation, not query substance. Strip at most one
+  // complete finite request prefix and run the entire privacy classifier again
+  // on what remains. This admits “Tell me the Harju county forest area” while
+  // names before, inside or after the county question still receive every
+  // private-person check. Disabling a second strip keeps repeated prefix-shaped
+  // tokens from forming an exemption chain.
+  if (allowReviewedCountyRequestPrefix) {
+    const requestResidual = stripReviewedCountyPublicRequestPrefix(canonicalText);
+    if (requestResidual !== null
+      && REVIEWED_COUNTY_FOREST_REQUEST_TARGET_PATTERN.test(requestResidual)) {
+      if (!requestResidual) return false;
+      return containsPrivatePersonLookup(requestResidual, {
+        allowReviewedPublicClauseComposition,
+        allowReviewedCountyRequestPrefix: false,
+      });
+    }
+  }
   // A reviewed geography can be followed by an open-class asset role (for
   // example a tenant, operator or responsible party). Treat an explicit
   // private asset plus a requested identity/contact field structurally instead
@@ -3662,6 +4091,32 @@ export function containsPrivatePersonLookup(value, {
   // later county disambiguation step may remove a hyphenated geography token,
   // but it must never erase the resident/name, national-ID or birth-data risk.
   if (hasAssetResidentIdentityFieldRequest(canonicalText)) return true;
+  const forestMetricOfCountyCandidate = reviewedForestMetricOfCountyCandidate(canonicalText);
+  if (forestMetricOfCountyCandidate) {
+    if (isCompleteReviewedCountyPublicForestQuestion(forestMetricOfCountyCandidate)) return false;
+    // Reordering proves only the finite county/forest core. If the reordered
+    // candidate is not fully consumed by the reviewed time, year and unit
+    // slots, its suffix is unreviewed identity/prose material. Fail closed
+    // regardless of token count so parser bounds can never become a bypass.
+    return true;
+  }
+  // A complete reviewed county query can have either a bounded public request
+  // prefix or a natural-person prefix. Resolve that exact tri-state before
+  // generic title/name heuristics: otherwise “Find Harjumaa ...” is later
+  // mistaken for a two-token name, while “Jaan Kask Harjumaa ...” must still
+  // fail before every provider boundary.
+  const countyForestPrefixScope = reviewedCountyForestPrefixScope(canonicalText);
+  if (countyForestPrefixScope === "person") return true;
+  if (countyForestPrefixScope === "public-contact") return false;
+  if (countyForestPrefixScope === "public-request") {
+    return !allowReviewedCountyRequestPrefix;
+  }
+  if (hasReviewedCountyDescriptorCompoundPersonAsset(canonicalText)) return true;
+  // A reviewed county-shaped token sequence beside one or more person-shaped
+  // tokens and an asset is ambiguous with a multi-part natural-person name.
+  // Deny the intact punctuation/casing variants before county cleanup; only a
+  // fully consumed reviewed public modifier may disambiguate the extra token.
+  if (hasCountyShapedPersonAssetAssociation(canonicalText)) return true;
   // Bare Ida/Lääne Viru spellings are also plausible two-token person names.
   // Deny their private-asset form explicitly and case-insensitively instead of
   // relying on later person-shape heuristics; only an unambiguous hyphenated,
@@ -3680,6 +4135,12 @@ export function containsPrivatePersonLookup(value, {
   // residual, an explicitly negated contact field, or one complete reviewed
   // agency-contact clause is admissible; every other suffix fails closed.
   if (hasReviewedCountyPrivateAssetEcologySensitiveResidual(canonicalText)) return true;
+  // Both clauses are independently complete, finite public grammars: one
+  // reviewed county forest aggregate and one reviewed agency contact. Resolve
+  // this composition before generic name-shape recursion can reinterpret the
+  // county genitive as a person; any appended identity makes the full helper
+  // fail and remains private below.
+  if (isCompleteReviewedCountyPublicForestQuestionOrContactComposition(text)) return false;
   // Complete organization-contact questions carry no natural-person
   // residual. Resolve this bounded form before public-clause composition so
   // an environmental clause can safely be paired with a reviewed agency
@@ -3690,6 +4151,13 @@ export function containsPrivatePersonLookup(value, {
   // optional second clause is accepted only when it is itself one complete,
   // reviewed public-organization contact question.
   if (isCompleteReviewedCountyPrivateAssetEcologyQuestion(text)) return false;
+  // A fully consumed reviewed-county forest-age question is an environmental
+  // aggregate, not a request about a resident. Keep this exception anchored so
+  // an appended name, contact, ownership or cadastral field cannot inherit it.
+  if (isCompleteReviewedCountyForestAgeQuestion(text)) return false;
+  // Likewise, exact age-class, ecological-condition and composition phrases
+  // are public only when the reviewed county and category consume the query.
+  if (isCompleteReviewedCountyForestCategoryQuestion(text)) return false;
   // Aggregate publication wording has the same reviewed-county identity
   // shape as a person name after punctuation tokenization. Admit only the
   // fully consumed, field-free English forms after negated contacts have been
@@ -3701,6 +4169,24 @@ export function containsPrivatePersonLookup(value, {
   // privacy classifier in isolation before the composition may return public.
   // Disable only this shortcut in the recursive calls so a private clause can
   // never borrow a public organization's contact grammar.
+  const reviewedCountyContactCompositionClauses = splitPublicQueryClauses(text);
+  const reviewedCountyContactComposition = reviewedCountyContactCompositionClauses.length === 2
+    && reviewedCountyContactCompositionClauses
+      .filter((clause) => (
+        isReviewedPublicOrganizationContactClause(clause)
+          || isCompleteReviewedPublicOrganizationContactQuestion(clause)
+      )).length === 1
+    && reviewedCountyContactCompositionClauses.filter((clause) => (
+      classifyForestryGeographyScope(clause).kind === "estonian-region"
+        && resolvePublicForestryIntent(clause)?.kind === "regional-forest-area"
+    )).length === 1;
+  if (allowReviewedPublicClauseComposition && reviewedCountyContactComposition) {
+    return reviewedCountyContactCompositionClauses.some((clause) => (
+      containsPrivatePersonLookup(clause, {
+        allowReviewedPublicClauseComposition: false,
+      })
+    ));
+  }
   if (allowReviewedPublicClauseComposition && isReviewedPublicClauseComposition(text)) {
     return splitPublicQueryClauses(text).some((clause) => (
       containsPrivatePersonLookup(clause, {
@@ -3865,7 +4351,34 @@ export function containsPrivatePersonLookup(value, {
   // as "person", "owner", "contact" and "coordinates", but request no
   // natural-person record. Complete anchoring prevents the exception from
   // absorbing an appended name, address, private asset or identity clause.
+  const reviewedPublicForestManagerSubjectSource = String.raw`(?:who|(?:which|what)\s+(?:public\s+)?(?:agency|authority|body|institution|organi[sz]ation))`;
+  const reviewedPublicForestManagerActionSource = String.raw`(?:manages?|maintains?|administers?|stewards?)`;
+  const reviewedPublicForestManagerAssetSource = String.raw`(?:the\s+)?(?:public|state|national|municipal|county(?:[-\s]+owned)?)\s+(?:county\s+)?(?:forest|woodland)`;
+  const reviewedPublicForestManagerCoreSource = String.raw`${reviewedPublicForestManagerSubjectSource}\s+${reviewedPublicForestManagerActionSource}\s+${reviewedPublicForestManagerAssetSource}`;
+  const reviewedPublicForestManagerQuestion = new RegExp(
+    String.raw`^${reviewedPublicForestManagerCoreSource}(?:\s+(?:land|property))?\??$`,
+    "iu",
+  ).test(text.trim());
+  const reviewedPublicForestManagerHasResidual = !reviewedPublicForestManagerQuestion
+    && [
+      new RegExp(
+        String.raw`^${reviewedPublicForestManagerCoreSource}\s+(?:land|property)(?:\s*[,;:]\s*|\s+)(?<residual>[\s\S]+)$`,
+        "iu",
+      ),
+      new RegExp(
+        String.raw`^${reviewedPublicForestManagerCoreSource}(?:\s*[,;:]\s*|\s+)(?<residual>[\s\S]+)$`,
+        "iu",
+      ),
+    ].some((pattern) => {
+      const match = text.trim().match(pattern);
+      return Boolean(match?.groups?.residual?.replace(/[.?!]+$/gu, "").trim());
+    });
+  // This public-role exception is deliberately closed rather than prefix
+  // based. Any remaining text can carry an unreviewed person association, so
+  // it must fail before provider minimization, retrieval, context or the LLM.
+  if (reviewedPublicForestManagerHasResidual) return true;
   const reviewedConceptualPublicQuestion = [
+    /^(?:(?:find|show|search|look(?:[\s-]+)?up)(?:\s+me)?(?:\s+the)?\s+)?(?:(?:public|county|state|national|municipal)\s+)?(?:forest|woodland)\s+management\s+(?:guidance|practices|policy|plans|methods|authority|rules)\??$/iu,
     /^general\s+(?:dut(?:y|ies)|responsibilit(?:y|ies)|obligations?|requirements?)\s+of\s+(?:fiduciar\w*|keepers?|conservators?|wardens?|delegates?|agents?|representatives?|proxies?|licensees?|concessionaires?|superintendents?)\s+(?:managing|maintaining|administering|operating|stewarding)\s+(?:forest|woodland|land)\s+(?:property|parcels?|plots?|holdings?)\.?$/iu,
     /^kuidas\s+peab\s+kinnistu\s+kontaktisik\w*\s+järgima\s+jäätmereegl\w*\??$/iu,
     /^kuidas\s+leida\s+(?:kohaliku\s+)?omavalitsuse\s+jäätmeinfo\s+üldtelefoni?\w*\??$/iu,
@@ -4009,6 +4522,7 @@ export function containsPrivatePersonLookup(value, {
     /^kuidas\s+avaldada\s+perekonna\s+kaevu\s+seire\s+üldandm\w*\s+ilma\s+kontakt\w*\??$/iu,
     /^how\s+does\s+(?:[\p{L}'’-]{2,40}[\s\p{Pd}./·:_]+){1,2}[\p{L}'’-]{2,40}\s+(?:manage\w*|maintain\w*|administer\w*|operate\w*|steward\w*)\s+(?:(?:an?|the)\s+)?(?:state(?:[-\s]+owned)?|public(?:ly[-\s]+owned|[-\s]+owned)?|national|municipal(?:ly[-\s]+owned)?|government(?:[-\s]+owned)?|city[-\s]+owned|county[-\s]+owned|federal)\s+(?:forest|woodland|land|property|estate|parcel|plot|lot|farm|well|borehole|building|dwelling)s?\??$/iu,
   ].some((pattern) => pattern.test(text.trim()))
+    || reviewedPublicForestManagerQuestion
     || reviewedMunicipalityManagementQuestion;
   const reviewedOpenRolePolicyHasPrivateResidual = [
     /(?:,|;)\s*(?:and\s+)?(?:who|whom|whose|where)\b/iu,
@@ -4514,6 +5028,58 @@ export function containsPrivatePersonLookup(value, {
     && !isEcologicalCommonNamePair(precedingForestIdentityFirst, precedingForestIdentitySecond);
   const forestAssetWord = privateScopeWords[forestAssetIndex] || "";
   const followingForestWord = privateScopeWords[forestAssetIndex + 1] || "";
+  const followingForestIdentityIndex = forestAssetIndex + (
+    /^(?:forests?|woodlands?)$/iu.test(forestAssetWord)
+      && ENGLISH_PRIVATE_FOREST_QUALIFIER_PATTERN.test(followingForestWord)
+      ? 2
+      : 1
+  );
+  const reviewedFollowingForestTopicPairs = [
+    [/^(?:fire|wildfire)$/iu, /^(?:danger|risk|index|forecast)$/iu],
+    [/^carbon$/iu, /^(?:storage|stock|sink|sequestration)$/iu],
+    [/^age$/iu, /^(?:distribution|structure|classes|profile)$/iu],
+    [/^coverage$/iu, /^(?:percentage|statistics|map|trend)$/iu],
+    [/^health$/iu, /^(?:status|indicators|condition|assessment)$/iu],
+    [/^management$/iu, /^(?:guidance|practices|policy|plans|methods|authority|rules)$/iu],
+  ];
+  const isReviewedFollowingForestTopicPair = (first, second) => (
+    reviewedFollowingForestTopicPairs.some(([firstPattern, secondPattern]) => (
+      firstPattern.test(first) && secondPattern.test(second)
+    ))
+  );
+  const followingForestIdentityTokens = privateScopeWords.slice(followingForestIdentityIndex);
+  const hasFollowingNamedForestRelation = forestAssetIndex >= 0
+    && followingForestIdentityTokens.some((first, index) => {
+      const second = followingForestIdentityTokens[index + 1] || "";
+      const firstLooksLikeIdentity = isSuspiciousIdentityFragment(first)
+        || ECOLOGICAL_SUBJECT_PATTERN.test(first)
+        || ECOLOGICAL_MODIFIER_PATTERN.test(first);
+      const secondLooksLikeIdentity = isSuspiciousIdentityFragment(second)
+        || ECOLOGICAL_SUBJECT_PATTERN.test(second)
+        || ECOLOGICAL_MODIFIER_PATTERN.test(second);
+      return Boolean(second)
+        && firstLooksLikeIdentity
+        && secondLooksLikeIdentity
+        && !isEcologicalCommonNamePair(first, second)
+        && !isReviewedFollowingForestTopicPair(first, second);
+    });
+  const followingForestHasReviewedTopicPrefix = Boolean(followingForestIdentityTokens[0])
+    && (/^(?:area|cover|coverage|age|carbon|fire|wildfire|health|management|habitat|water|species|restoration|ownership)$/iu
+      .test(followingForestIdentityTokens[0])
+      || followingForestIdentityTokens.some((first, index) => (
+        isReviewedFollowingForestTopicPair(first, followingForestIdentityTokens[index + 1] || "")
+      )));
+  const hasFollowingStructuredCapitalizedName = new RegExp(
+    String.raw`(?<!\p{L})(?:forest|woodland)(?!\p{L})[\s\S]{0,160}(?<!\p{L})${ENGLISH_CAPITALIZED_PERSON_NAME_SOURCE}[.!?]*$`,
+    "u",
+  ).test(text);
+  // This association is already a bounded forest target plus a structurally
+  // person-shaped residual. Resolve it before aggregate/environmental
+  // allowlists so a safe topic prefix cannot override the private suffix.
+  const hasFollowingForestLookupAction = FOLLOWING_FOREST_PERSON_LOOKUP_ACTION_PATTERN.test(text);
+  if ((hasFollowingNamedForestRelation && hasFollowingForestLookupAction)
+    || (hasFollowingStructuredCapitalizedName
+      && (hasFollowingForestLookupAction || followingForestHasReviewedTopicPrefix))) return true;
   const hasExplicitPrivateForestAsset = EXPLICIT_PRIVATE_FOREST_ASSET_PATTERN.test(forestAssetWord)
     || (/^(?:forests?|woodlands?)$/iu.test(forestAssetWord)
       && ENGLISH_PRIVATE_FOREST_QUALIFIER_PATTERN.test(followingForestWord));

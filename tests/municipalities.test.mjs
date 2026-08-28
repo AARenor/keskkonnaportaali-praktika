@@ -7,6 +7,7 @@ import {
   hasUnresolvedForestryAreaEntity,
   hasReviewedEstonianMunicipalityScope,
   hasUnresolvedForestryLocalityScope,
+  isReviewedEstonianCountyIdentity,
   isReviewedNationalUnsupportedForestAreaBreakdownQuestion,
   removeFirstReviewedMunicipalityOrganizationName,
   requestsUnsupportedForestAreaBreakdown,
@@ -336,6 +337,45 @@ test("forestry-only municipality scope resolves bare names without widening the 
     "Forest area in square miles",
     "Forest area in sq. mi",
   ]) assert.equal(requestsUnsupportedForestAreaUnit(query), true, query);
+});
+
+test("reviewed counties require an exact non-lossy security surface", () => {
+  for (const alias of [
+    "Ida/Viru", "Ida_Viru", "Ida.Viru", "Ida|Viru", "Ida+Viru", "Ida⁄Viru", "Ida’Viru", "IdaꞌViru",
+    "Lääne/Viru", "Lääne_Viru", "Lääne.Viru", "Lääne|Viru", "Lääne+Viru", "Lääne⁄Viru", "Lääne’Viru", "LääneꞌViru",
+  ]) {
+    assert.equal(isReviewedEstonianCountyIdentity(alias), false, alias);
+    assert.notEqual(
+      classifyForestryGeographyScope(`${alias} metsamaa pindala`).kind,
+      "estonian-region",
+      alias,
+    );
+  }
+  for (const alias of [
+    "Ida-Viru", "Ida–Viru", "Ida Viru", "Ida-Virumaa",
+    "Lääne-Viru", "Lääne–Viru", "Lääne Viru", "Lääne-Virumaa",
+  ]) {
+    assert.equal(isReviewedEstonianCountyIdentity(alias), true, alias);
+    assert.equal(
+      classifyForestryGeographyScope(`${alias} metsamaa pindala`).kind,
+      "estonian-region",
+      alias,
+    );
+  }
+  for (const alias of [
+    "Hárjumaa",
+    "Ḣarjumaa",
+    "Ha\u0301rjumaa",
+    "Päŕnumaa",
+    "Ta\u0301rtumaa",
+  ]) {
+    assert.equal(isReviewedEstonianCountyIdentity(alias), false, alias);
+    assert.notEqual(
+      classifyForestryGeographyScope(`${alias} Young forest area`).kind,
+      "estonian-region",
+      alias,
+    );
+  }
 });
 
 test("a fully consumed national forest-area method question is not mistaken for a locality", () => {

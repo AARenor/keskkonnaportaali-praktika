@@ -314,11 +314,40 @@ const REVIEWED_ESTONIAN_COUNTY_ALIASES = Object.freeze([
   ["voru maakond", ["vorumaa", "voru maakond", "voru county"]],
 ]);
 
+const REVIEWED_COUNTY_SURFACE_MARKER_SOURCE = String.raw`(?:maakond|maakonda|maakonna|maakonnas|maakonnast|maakonnale|maakonnal|maakonnaga|maakonnana|maakonnad|maakondade|maakondi|county)`;
+const REVIEWED_ESTONIAN_COUNTY_SURFACE_CATALOG = Object.freeze([
+  ["ida viru maakond", String.raw`ida(?:\s*\p{Pd}\s*|\s+)viru(?:maa)?(?:\s+${REVIEWED_COUNTY_SURFACE_MARKER_SOURCE})?`],
+  ["laane viru maakond", String.raw`(?:lääne|laane)(?:\s*\p{Pd}\s*|\s+)viru(?:maa)?(?:\s+${REVIEWED_COUNTY_SURFACE_MARKER_SOURCE})?`],
+  ["harju maakond", String.raw`harju(?:maa|\s+${REVIEWED_COUNTY_SURFACE_MARKER_SOURCE})`],
+  ["hiiu maakond", String.raw`hiiu(?:maa|\s+${REVIEWED_COUNTY_SURFACE_MARKER_SOURCE})`],
+  ["jogeva maakond", String.raw`(?:jõgeva|jogeva)(?:maa|\s+${REVIEWED_COUNTY_SURFACE_MARKER_SOURCE})`],
+  ["jarva maakond", String.raw`(?:järva|jarva)(?:maa|\s+${REVIEWED_COUNTY_SURFACE_MARKER_SOURCE})`],
+  ["laane maakond", String.raw`(?:lääne|laane)(?:maa|\s+${REVIEWED_COUNTY_SURFACE_MARKER_SOURCE})`],
+  ["polva maakond", String.raw`(?:põlva|polva)(?:maa|\s+${REVIEWED_COUNTY_SURFACE_MARKER_SOURCE})`],
+  ["parnu maakond", String.raw`(?:pärnu|parnu)(?:maa|\s+${REVIEWED_COUNTY_SURFACE_MARKER_SOURCE})`],
+  ["rapla maakond", String.raw`rapla(?:maa|\s+${REVIEWED_COUNTY_SURFACE_MARKER_SOURCE})`],
+  ["saare maakond", String.raw`saare(?:maa|\s+${REVIEWED_COUNTY_SURFACE_MARKER_SOURCE})`],
+  ["tartu maakond", String.raw`tartu(?:maa|\s+${REVIEWED_COUNTY_SURFACE_MARKER_SOURCE})`],
+  ["valga maakond", String.raw`valga(?:maa|\s+${REVIEWED_COUNTY_SURFACE_MARKER_SOURCE})`],
+  ["viljandi maakond", String.raw`viljandi(?:maa|\s+${REVIEWED_COUNTY_SURFACE_MARKER_SOURCE})`],
+  ["voru maakond", String.raw`(?:võru|voru)(?:maa|\s+${REVIEWED_COUNTY_SURFACE_MARKER_SOURCE})`],
+]);
+
+export const REVIEWED_ESTONIAN_COUNTY_SECURITY_SURFACE_SOURCE = REVIEWED_ESTONIAN_COUNTY_SURFACE_CATALOG
+  .map(([, source]) => `(?:${source})`)
+  .join("|");
+const REVIEWED_ESTONIAN_COUNTY_EXACT_SURFACE_PATTERN = new RegExp(
+  String.raw`^(?:${REVIEWED_ESTONIAN_COUNTY_SECURITY_SURFACE_SOURCE})$`,
+  "iu",
+);
+const REVIEWED_COUNTY_MARKER_SURFACE_PATTERN = new RegExp(
+  String.raw`(?:^|\s)${REVIEWED_COUNTY_SURFACE_MARKER_SOURCE}(?:$|\s)`,
+  "iu",
+);
+
 export function isReviewedEstonianCountyIdentity(value) {
-  const identity = normalizeMunicipalityText(value);
-  return REVIEWED_ESTONIAN_COUNTY_ALIASES.some(([canonical, aliases]) => (
-    identity === canonical || aliases.includes(identity)
-  ));
+  const raw = String(value || "").normalize("NFKC").normalize("NFC").trim();
+  return REVIEWED_ESTONIAN_COUNTY_EXACT_SURFACE_PATTERN.test(raw);
 }
 
 const FORESTRY_FOREIGN_OR_OTHER_REGION_PATTERN = new RegExp(
@@ -685,20 +714,14 @@ export function hasUnresolvedForestryLocalityScope(value) {
     && FORESTRY_UNKNOWN_PLACE_NAME_ENDING_PATTERN.test(token));
 }
 
-function reviewedCountyScope(text, { explicitOnly = false } = {}) {
-  for (const [identity, aliases] of REVIEWED_ESTONIAN_COUNTY_ALIASES) {
-    const matched = aliases.find((alias) => {
-      const explicit = /\b(?:maakond|county)\b/u.test(alias);
-      if (explicitOnly && !explicit) return false;
-      if (!explicit) return normalizedPhraseIsPresent(text, alias);
-      const [base, marker] = alias.split(/\s+(?=[^\s]+$)/u);
-      const phrasePattern = new RegExp(
-        `(?:^|\\s)${base.replace(/\s+/gu, "\\s+")}\\s+${marker === "maakond" ? "maakonn\\w*" : "county\\w*"}(?:$|\\s)`,
-        "u",
-      );
-      return phrasePattern.test(text);
-    });
-    if (matched) return { identity, matched };
+function reviewedCountyScope(value, { explicitOnly = false } = {}) {
+  const raw = String(value || "").normalize("NFKC").normalize("NFC");
+  for (const [identity, source] of REVIEWED_ESTONIAN_COUNTY_SURFACE_CATALOG) {
+    const pattern = new RegExp(String.raw`(?<!\p{L})(${source})(?!\p{L})`, "iu");
+    const match = raw.match(pattern);
+    if (!match) continue;
+    if (explicitOnly && !REVIEWED_COUNTY_MARKER_SURFACE_PATTERN.test(match[1])) continue;
+    return { identity, matched: match[1] };
   }
   return null;
 }
@@ -710,7 +733,7 @@ function reviewedCountyScope(text, { explicitOnly = false } = {}) {
 // unresolved locality-shaped names can never inherit a national SMI value.
 export function classifyForestryGeographyScope(value) {
   const text = normalizeMunicipalityText(value);
-  const explicitCounty = reviewedCountyScope(text, { explicitOnly: true });
+  const explicitCounty = reviewedCountyScope(value, { explicitOnly: true });
   if (explicitCounty) return { kind: "estonian-region", ...explicitCounty };
 
   const foreignMatch = text.match(FORESTRY_FOREIGN_OR_OTHER_REGION_PATTERN)?.[0] || null;
@@ -721,7 +744,7 @@ export function classifyForestryGeographyScope(value) {
   const municipality = reviewedEstonianForestryMunicipalityScope(value);
   if (municipality) return { kind: "reviewed-municipality", municipality };
 
-  const county = reviewedCountyScope(text);
+  const county = reviewedCountyScope(value);
   if (county) return { kind: "estonian-region", ...county };
 
   if (FORESTRY_EXPLICIT_MUNICIPALITY_SCOPE_PATTERN.test(text)) {
