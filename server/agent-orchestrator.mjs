@@ -36,7 +36,7 @@ function boundedReasoningEffort(value = "low") {
 }
 
 export function createGroundedSearchAgents({
-  model = "gpt-5.6-luna",
+  model = "muse-spark-1.3-contributor-free",
   reasoningEffort = "low",
   maxTokens = 3_200,
   systemInstructions = "",

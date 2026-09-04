@@ -32,8 +32,8 @@ import { validateLlmProviderUrl } from "./provider-policy.mjs";
 import { requestApprovedPublicHttpsJsonPost } from "./public-https.mjs";
 import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs";
 
-const configuredBaseUrl = String(process.env.LLM_BASE_URL || "https://opencode.ai/zen/go/v1").replace(/\/+$/, "");
-const configuredModel = String(process.env.LLM_MODEL || "gpt-5.6-luna");
+const configuredBaseUrl = String(process.env.LLM_BASE_URL || "https://opencode.ai/zen/v1").replace(/\/+$/, "");
+const configuredModel = String(process.env.LLM_MODEL || "muse-spark-1.3-contributor-free");
 // Existing Coolify installs used the exhausted free endpoint. Migrate that exact
 // legacy pair in-process so a code deploy cannot silently keep serving degraded
 // snippet fallbacks; all other explicit operator choices remain authoritative.
@@ -55,7 +55,7 @@ export function resolveLlmFallback(base, primaryModel, value) {
   const configured = String(value ?? "").trim().toLocaleLowerCase("en");
   if (["false", "none", "off"].includes(configured)) return "";
   if (configured && /^[a-z0-9._-]{1,80}$/u.test(configured)) return configured;
-  if (primaryModel === "gpt-5.6-luna") return "";
+  if (primaryModel === "gpt-5.6-luna" || String(primaryModel || "").startsWith("muse-spark")) return "";
   return base === "https://opencode.ai/zen/go/v1" && primaryModel === "deepseek-v4-flash"
     ? "mimo-v2.5"
     : "";
@@ -65,22 +65,25 @@ export function resolveLlmAttempts(primaryModel, secondaryModel, budgetMs) {
   if (secondaryModel && secondaryModel !== primaryModel) {
     return budgetMs < 13_000 ? [secondaryModel] : [primaryModel, secondaryModel];
   }
-  // Give a single Luna generation the whole remaining request budget. Two
+  // Give a single primary-model generation the whole remaining request budget. Two
   // identical attempts used to split a ~12 s production window into two
   // ~6 s calls, so both could time out even though one uninterrupted call
   // consistently completes inside the overall 15 s search deadline.
   return [primaryModel];
 }
 export function resolveLlmTimeout(selectedModel, value) {
-  const slowModel = selectedModel === "deepseek-v4-flash" || selectedModel === "gpt-5.6-luna";
+  const slowModel = selectedModel === "deepseek-v4-flash" || selectedModel === "gpt-5.6-luna"
+    || String(selectedModel || "").startsWith("muse-spark");
   const minimum = slowModel ? 12_000 : 3_000;
   const fallback = slowModel ? 14_500 : 9_500;
   return Math.max(minimum, Math.min(Number(value) || fallback, 15_000));
 }
 const timeoutMs = resolveLlmTimeout(model, process.env.LLM_TIMEOUT_MS);
 export function resolveMaxTokens(selectedModel, value) {
-  const minimum = ["deepseek-v4-flash", "gpt-5.6-luna"].includes(selectedModel) ? 1_000 : 256;
-  const fallback = selectedModel === "gpt-5.6-luna" ? 3_200 : 1_000;
+  const minimum = ["deepseek-v4-flash", "gpt-5.6-luna"].includes(selectedModel)
+    || String(selectedModel || "").startsWith("muse-spark") ? 1_000 : 256;
+  const fallback = selectedModel === "gpt-5.6-luna"
+    || String(selectedModel || "").startsWith("muse-spark") ? 3_200 : 1_000;
   return Math.max(minimum, Math.min(Number(value) || fallback, 3_200));
 }
 const maxTokens = resolveMaxTokens(model, process.env.LLM_MAX_TOKENS);
@@ -115,7 +118,12 @@ let activeRequests = 0;
 export function resolveLlmApiStyle(selectedModel, value = process.env.LLM_API_STYLE) {
   const configured = String(value || "").trim().toLocaleLowerCase("en");
   if (["responses", "chat-completions"].includes(configured)) return configured;
-  return String(selectedModel).startsWith("gpt-") ? "responses" : "chat-completions";
+  // OpenCode Zen serves GPT and Muse Spark families via the Responses API;
+  // all other Zen/Go models default to OpenAI-compatible chat-completions.
+  const name = String(selectedModel || "");
+  return name.startsWith("gpt-") || name.startsWith("muse-spark") || name.startsWith("muse-")
+    ? "responses"
+    : "chat-completions";
 }
 
 const GROUNDED_RESPONSE_SCHEMA = {
@@ -2257,7 +2265,7 @@ export function buildLlmRequest({
       { role: "user", content: user },
     ],
   };
-  if (selectedModel.startsWith("deepseek-")) body.reasoning_effort = reasoningEffort;
+  if (selectedModel.startsWith("deepseek-") || selectedModel.startsWith("muse-spark")) body.reasoning_effort = reasoningEffort;
   return { apiStyle, endpoint: "/chat/completions", body };
 }
 
@@ -2399,7 +2407,7 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
         const answer = validateGroundedAnswer(parsed, draft, query);
         const related = validateRelatedQuestions(parsed, draft, query);
         consecutiveTimeouts = 0;
-        return { answer, related, status: "ready", provider: `opencode-go/${selectedModel}` };
+        return { answer, related, status: "ready", provider: `opencode-zen/${selectedModel}` };
       } catch (error) {
         error.locallyTimedOut = error.name === "AbortError"
           && controller.signal.aborted
@@ -2452,9 +2460,9 @@ export function llmConfiguration() {
   return {
     enabled: Boolean(apiKey),
     provider: apiKey
-      ? `${agentOrchestrationEnabled() ? "openai-agents" : "opencode-go"}/${model}`
+      ? `${agentOrchestrationEnabled() ? "openai-agents" : "opencode-zen"}/${model}`
       : "deterministic-current-evidence",
-    fallback: apiKey && fallbackModel ? `opencode-go/${fallbackModel}` : null,
+    fallback: apiKey && fallbackModel ? `opencode-zen/${fallbackModel}` : null,
     circuitOpen: Date.now() < circuitOpenUntil,
     rollingBudget: llmRollingBudget.snapshot(),
   };
