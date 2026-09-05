@@ -1672,6 +1672,18 @@ function topicRoot(word) {
   if (word.startsWith("voru")) return "voru";
   if (word.startsWith("saare")) return "saaremaa";
   if (word.startsWith("kohtla")) return "kohtla";
+  // English and colloquial keyword variety: these map onto existing domain
+  // roots so their queryRootVariants need no changes.
+  if (word.startsWith("pesticid")) return "pestitsiid";
+  if (word === "soil" || word === "soils" || word.startsWith("pinnas")) return "muld";
+  if (word.startsWith("polismets")) return "mets";
+  if (word === "bog" || word === "bogs") return "margala";
+  if (word.startsWith("uputus")) return "uleujutusrisk";
+  if (word.startsWith("loodusvaatlus") || word.startsWith("liigivaatlus")) return "loodusvaatlus";
+  if (word.startsWith("contamin")) return "saaste";
+  if (word.startsWith("protect")) return "kaitse";
+  if (word === "level" || word === "levels") return "maar";
+  if (word.startsWith("tuulik")) return "tuulepark";
   if (word.endsWith("maal") && word.length >= 7) return word.slice(0, -1);
   return word;
 }
@@ -1692,6 +1704,10 @@ export function queryTerms(query) {
         && (/^bioloog(?:i|l)\w*$/u.test(word) || /^mitmekesis\w*$/u.test(word))) return [];
       if (word.startsWith("sorteer")
         && /\b(?:jaat\w*|prugi\w*|pakend\w*|biojaat\w*)\b/u.test(normalizedQuery)) return ["jaat"];
+      if ((word === "sorting" || word === "sort")
+        && /\b(?:jaat\w*|prugi\w*|pakend\w*|biojaat\w*|waste|garbage|trash|rubbish)\b/u.test(normalizedQuery)) return ["jaat"];
+      if ((word === "home" || word === "household" || word.startsWith("kodus") || word.startsWith("kodune"))
+        && /\b(?:jaat\w*|prugi\w*|pakend\w*|biojaat\w*|waste|garbage|trash|rubbish|sorteer\w*|sorting)\b/u.test(normalizedQuery)) return ["jaat"];
       if (word.startsWith("ilmaprognoos")) return ["ilm", "prognoos"];
       if (word.startsWith("uleujutusrisk") || word.startsWith("uleujutusala") || word.startsWith("uleujutuskaart")) {
         return ["vesi", "uleujutusrisk"];
@@ -1798,16 +1814,26 @@ export function queryTerms(query) {
     phraseRoots.push("kataster");
   }
   if (/\bwind\s+farm\b/u.test(normalizedQuery)) phraseRoots.push("tuulepark");
+  if (/\b(?:river|water)\s+levels?\b/u.test(normalizedQuery)) phraseRoots.push("veetase");
   if (/\bprotected\s+areas?\b/u.test(normalizedQuery)) phraseRoots.push("kaitseala");
   if (/\bmarine\s+litter\b/u.test(normalizedQuery)) phraseRoots.push("mereprugi");
   if (/\bclimate\s+change\b/u.test(normalizedQuery)) phraseRoots.push("kliima");
   if (/\bforest\s+data\s+(?:map|maps|mapping)\b/u.test(normalizedQuery)) phraseRoots.push("ruumikiht");
   if (/\bmetsa\w*\s+andm\w*\s+kaart\w*\b/u.test(normalizedQuery)) phraseRoots.push("ruumikiht");
   if (/\bbiodiversity\s+(?:observation\w*\s+)?database\b/u.test(normalizedQuery)) phraseRoots.push("loodusvaatlus");
+  if (/\bspecies\s+observations?\b/u.test(normalizedQuery)
+    || /\bnature\s+observations?\b/u.test(normalizedQuery)) phraseRoots.push("loodusvaatlus");
   if (/\bemaj(?:og|oe)\w*\b/u.test(normalizedQuery)
     && /\bavalik\w*\s+kasutus\w*\b/u.test(normalizedQuery)) phraseRoots.push("vesi");
   if (roots.includes("stsenaarium") && roots.includes("sademed")) phraseRoots.push("kliima");
-  const expandedRoots = [...new Set([...roots, ...phraseRoots])];
+  let expandedRoots = [...new Set([...roots, ...phraseRoots])];
+  // An explicit waste-sorting intent already carries the "jaat" root; the
+  // incidental "prugi" root would otherwise let marine-litter pages outrank
+  // the waste guide on coverage. Single-word "prügi" queries are unaffected.
+  if (expandedRoots.includes("jaat") && expandedRoots.includes("prugi")
+    && /\bsorteer\w*/u.test(normalizedQuery)) {
+    expandedRoots = expandedRoots.filter((root) => root !== "prugi");
+  }
   if (!isForestDepletionQuestion(normalizedQuery)) return expandedRoots;
   // "Otsa" is an idiomatic depletion predicate here, not a useful literal
   // retrieval token. Mapping it to the concept prevents climbing/trail pages

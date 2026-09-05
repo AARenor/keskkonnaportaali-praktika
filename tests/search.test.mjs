@@ -10,6 +10,7 @@ import {
   canonicalizePublicSearchQuery,
   composeScopeResponse,
   normalize,
+  officialServiceCatalogueDocuments,
   queryTerms,
   searchEnvironment,
 } from "../server/search.mjs";
@@ -17,6 +18,7 @@ import {
   isCurrentWeatherObservationQuery,
   isLatestPublishedHydrologyQuery,
 } from "../server/indicators.mjs";
+import { rankSearchCandidates } from "../server/retrieval.mjs";
 
 test("normalize handles Estonian diacritics", () => {
   assert.equal(normalize("ÕHUKVALITEET ja jäätmed"), "ohukvaliteet ja jaatmed");
@@ -706,4 +708,50 @@ test("overlong search input is rejected without silent truncation", () => {
   assert.equal(result.query, "");
   assert.equal(result.evidence.kind, "safe-abstention");
   assert.equal(result.sources.length, 0);
+});
+
+test("keyword variety: English and colloquial variants reach the right domain", () => {
+  const rootCases = [
+    ["pesticides", "pestitsiid"],
+    ["soil", "muld"],
+    ["reostunud pinnas", "muld"],
+    ["bog", "margala"],
+    ["tuulikud", "tuulepark"],
+    ["loodusvaatlused", "loodusvaatlus"],
+    ["level", "maar"],
+    ["uputuse oht", "uleujutusrisk"],
+    ["soil contamination", "saaste"],
+  ];
+  for (const [query, expected] of rootCases) {
+    assert.ok(queryTerms(query).includes(expected), `${query} -> ${expected}`);
+  }
+  assert.ok(queryTerms("species observations database").includes("loodusvaatlus"));
+  assert.ok(queryTerms("river level").includes("veetase"));
+  assert.ok(queryTerms("waste sorting at home").includes("jaat"));
+});
+
+test("keyword variety: varied phrasings rank the intended source first", () => {
+  // Same relevance layer as the live /api/search pipeline and the holdout
+  // evals: rankSearchCandidates over the official service catalogue.
+  const documents = officialServiceCatalogueDocuments();
+  const now = Date.parse("2026-08-18T00:00:00Z");
+  const rankingCases = [
+    ["tuulikud", "wind-farm-assessment-guide"],
+    ["loodusvaatlused", "nature-observations"],
+    ["soil contamination", "soil-monitoring-results"],
+    ["reostunud pinnas", "soil-monitoring-results"],
+    ["pesticides water", "groundwater-pesticide-monitoring"],
+    ["species observations database", "nature-observations"],
+    ["river level", "historical-hydrology-data"],
+    ["water level", "current-hydrology-observations"],
+    ["kuidas prügi sorteerida", "waste"],
+    ["waste sorting at home", "waste"],
+    ["põlismets", "forest-overview"],
+    ["uputuse oht", "flood-risk-management"],
+  ];
+  for (const [query, expected] of rankingCases) {
+    const ranked = rankSearchCandidates(query, documents, { now });
+    assert.ok(ranked.length > 0, `${query} returns sources`);
+    assert.equal(ranked[0].id, expected, query);
+  }
 });
