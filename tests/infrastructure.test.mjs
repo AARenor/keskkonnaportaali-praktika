@@ -6207,3 +6207,11 @@ test("home links and the 320px quick bar keep accessible names, contrast and ref
   assert.match(styles, /body\s*\{[^}]*min-width:\s*0;/su);
   assert.match(styles, /@media \(max-width: 720px\)[\s\S]*?\.quick-links\s*\{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/u);
 });
+
+test("reviewed autocomplete suggests paraphrased synonym queries the same reviewed questions", () => {
+  for (const query of ["mürgised jäätmed", "hazardous waste"]) {
+    assert.deepEqual(getReviewedSearchSuggestions(query, 5), [
+      "Kui palju tekkis Eestis 2024. aastal ohtlikke jäätmeid?",
+    ]);
+  }
+});

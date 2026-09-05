@@ -76,12 +76,18 @@ function generalSuggestions(query, limit) {
       const literalMatches = queryTokens.filter((token) => (
         candidateTokens.some((candidateToken) => rootsMatch(token, candidateToken))
       )).length;
+      // Exact tier (100+): every root and every literal token overlaps -
+      // the paraphrase tier (50+) below fires only when every query root is
+      // still covered, so synonym queries suggest the same reviewed
+      // questions without loosening to partial-topic matches.
       return {
         value,
         index,
         score: matches === roots.length && literalMatches === queryTokens.length
           ? 100 + matches + literalMatches
-          : 0,
+          : matches === roots.length && matches > 0
+            ? 50 + matches
+            : 0,
       };
     })
     .filter(({ score }) => score > 0)

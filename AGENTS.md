@@ -1,5 +1,11 @@
 # Prototype Instructions
 
+## Standing operating instructions (user-set, permanent)
+
+- The agent does everything itself end to end; the user does nothing. Never hand the user manual steps (server starts, deploys, checks) when the agent can run them.
+- Always push to production and verify there repeatedly: merge to `main`, push to origin, then test the live site at https://praktika.arleserver.cfd multiple times (relevance probes, live eval battery, browser pass) until production provably serves the change.
+- Never stop after analysis, a plan, or a single test. Keep auditing, fixing, and re-verifying until the work is proven in production.
+
 Run the local server yourself and open the preview in the browser available to this environment. Do not give the user server-start instructions when you can run it.
 
 Before making substantial visual changes, use the Product Design plugin's `get-context` skill when the visual source is unclear or no longer matches the current goal. When the user gives durable prototype-specific design feedback, preferences, or decisions, record them in `AGENTS.md`.

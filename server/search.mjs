@@ -1287,6 +1287,39 @@ const STOP_WORDS = new Set([
   "from",
   "into",
   "about",
+  "to",
+  "of",
+  "in",
+  "on",
+  "at",
+  "is",
+  "are",
+  "was",
+  "were",
+  "do",
+  "does",
+  "did",
+  "can",
+  "could",
+  "should",
+  "would",
+  "has",
+  "have",
+  "had",
+  "will",
+  "its",
+  "this",
+  "that",
+  "there",
+  "their",
+  "they",
+  "them",
+  "you",
+  "your",
+  "by",
+  "than",
+  "also",
+  "such",
 ]);
 
 const DISCOVERY_STOP_WORDS = new Set([
@@ -1672,8 +1705,89 @@ function topicRoot(word) {
   if (word.startsWith("voru")) return "voru";
   if (word.startsWith("saare")) return "saaremaa";
   if (word.startsWith("kohtla")) return "kohtla";
+  // English and colloquial keyword variety: these map onto existing domain
+  // roots so their queryRootVariants need no changes.
+  if (word.startsWith("pesticid")) return "pestitsiid";
+  if (word === "soil" || word === "soils" || word.startsWith("pinnas")) return "muld";
+  if (word.startsWith("polismets")) return "mets";
+  if (word === "bog" || word === "bogs") return "margala";
+  if (word.startsWith("uputus")) return "uleujutusrisk";
+  if (word.startsWith("loodusvaatlus") || word.startsWith("liigivaatlus")) return "loodusvaatlus";
+  if (word.startsWith("contamin")) return "saaste";
+  if (word.startsWith("protect")) return "kaitse";
+  if (word === "level" || word === "levels") return "maar";
+  if (word.startsWith("tuulik")) return "tuulepark";
+  if (word === "fish" || word === "fishes" || word === "fishing") return "kala";
+  if (word.startsWith("hazard")) return "ohtlik";
+  if (word.startsWith("emission") || word === "ghg") return "kasvuhoonegaas";
+  if (word.startsWith("murg")) return "ohtlik";
+  if (word === "bathing" || word.startsWith("suplemis")) return "suplusvesi";
+  if (word.startsWith("landfill")) return "jaatmekaitluskoht";
+  if (word.startsWith("maapou")) return "kaevandus";
+  if (word.startsWith("vanarehv")) return "rehv";
+  if (word === "apply" || word === "applies" || word === "applied" || word === "applying") return "taotlemine";
   if (word.endsWith("maal") && word.length >= 7) return word.slice(0, -1);
   return word;
+}
+
+// Russian environment keywords mapped onto existing Estonian domain roots.
+// The second element may be null to silently drop a token (e.g. Эстония).
+const RUSSIAN_KEYWORD_ROOTS = Object.freeze([
+  ["лес", "mets"],
+  ["леса", "mets"],
+  ["вода", "vesi"],
+  ["воды", "vesi"],
+  ["воздух", "ohk"],
+  ["мусор", "jaat"],
+  ["отходы", "jaat"],
+  ["отходов", "jaat"],
+  ["загрязнение", "saaste"],
+  ["загрязнения", "saaste"],
+  ["климат", "kliima"],
+  ["природа", "elurikkus"],
+  ["озеро", "jarv"],
+  ["озера", "jarv"],
+  ["река", "jogi"],
+  ["реки", "jogi"],
+  ["море", "meri"],
+  ["рыба", "kala"],
+  ["шум", "mura"],
+  ["почва", "muld"],
+  ["площадь", "pindala"],
+  ["эстония", null],
+  ["эстонии", null],
+]);
+
+// Russian keyword bridge. Cyrillic tokens are stripped by normalize() and
+// homoglyph-folded by canonicalSecurityText(), so Russian queries would
+// otherwise always come back empty. These map onto existing domain roots;
+// queries without a listed keyword are unaffected. Privacy gates run on the
+// raw/cleaned text independently of roots, so this cannot unblock
+// personal-data or instruction attacks (they contain no listed keyword).
+const CYRILLIC_FOLD = Object.freeze({
+  "\u0430": "a", "\u0435": "e", "\u043e": "o", "\u0440": "p", "\u0441": "c", "\u0445": "x", "\u0456": "i",
+});
+const RUSSIAN_KEYWORD_PATTERNS = Object.freeze(RUSSIAN_KEYWORD_ROOTS.map(([keyword, root]) => {
+  const folded = keyword.replace(/[\u0430\u0435\u043e\u0440\u0441\u0445\u0456]/giu, (letter) => CYRILLIC_FOLD[letter.toLocaleLowerCase("ru")] ?? letter);
+  const edge = "(?<![\\p{L}\\p{N}_])";
+  const trailing = "(?![\\p{L}\\p{N}_])";
+  return {
+    root,
+    raw: new RegExp(`${edge}${keyword}${trailing}`, "u"),
+    folded: folded === keyword ? null : new RegExp(`${edge}${folded}${trailing}`, "u"),
+  };
+}));
+
+export function russianKeywordRoots(text) {
+  const lowered = String(text ?? "").toLocaleLowerCase("ru");
+  const found = [];
+  for (const { root, raw, folded } of RUSSIAN_KEYWORD_PATTERNS) {
+    // NB: \b is ASCII-only and never matches around Cyrillic, so Unicode
+    // letter boundaries are used instead.
+    if (root !== null && !found.includes(root)
+      && (raw.test(lowered) || (folded !== null && folded.test(lowered)))) found.push(root);
+  }
+  return found;
 }
 
 export function queryTerms(query) {
@@ -1692,6 +1806,10 @@ export function queryTerms(query) {
         && (/^bioloog(?:i|l)\w*$/u.test(word) || /^mitmekesis\w*$/u.test(word))) return [];
       if (word.startsWith("sorteer")
         && /\b(?:jaat\w*|prugi\w*|pakend\w*|biojaat\w*)\b/u.test(normalizedQuery)) return ["jaat"];
+      if ((word === "sorting" || word === "sort")
+        && /\b(?:jaat\w*|prugi\w*|pakend\w*|biojaat\w*|waste|garbage|trash|rubbish)\b/u.test(normalizedQuery)) return ["jaat"];
+      if ((word === "home" || word === "household" || word.startsWith("kodus") || word.startsWith("kodune"))
+        && /\b(?:jaat\w*|prugi\w*|pakend\w*|biojaat\w*|waste|garbage|trash|rubbish|sorteer\w*|sorting)\b/u.test(normalizedQuery)) return ["jaat"];
       if (word.startsWith("ilmaprognoos")) return ["ilm", "prognoos"];
       if (word.startsWith("uleujutusrisk") || word.startsWith("uleujutusala") || word.startsWith("uleujutuskaart")) {
         return ["vesi", "uleujutusrisk"];
@@ -1798,16 +1916,31 @@ export function queryTerms(query) {
     phraseRoots.push("kataster");
   }
   if (/\bwind\s+farm\b/u.test(normalizedQuery)) phraseRoots.push("tuulepark");
+  if (/\boil\s+shale\b/u.test(normalizedQuery)
+    || /\bshale\s+oil\b/u.test(normalizedQuery)) phraseRoots.push("polevkivi", "kaevandus");
+  if (/\b(?:river|water)\s+levels?\b/u.test(normalizedQuery)) phraseRoots.push("veetase");
   if (/\bprotected\s+areas?\b/u.test(normalizedQuery)) phraseRoots.push("kaitseala");
   if (/\bmarine\s+litter\b/u.test(normalizedQuery)) phraseRoots.push("mereprugi");
   if (/\bclimate\s+change\b/u.test(normalizedQuery)) phraseRoots.push("kliima");
   if (/\bforest\s+data\s+(?:map|maps|mapping)\b/u.test(normalizedQuery)) phraseRoots.push("ruumikiht");
   if (/\bmetsa\w*\s+andm\w*\s+kaart\w*\b/u.test(normalizedQuery)) phraseRoots.push("ruumikiht");
   if (/\bbiodiversity\s+(?:observation\w*\s+)?database\b/u.test(normalizedQuery)) phraseRoots.push("loodusvaatlus");
+  if (/\bspecies\s+observations?\b/u.test(normalizedQuery)
+    || /\bnature\s+observations?\b/u.test(normalizedQuery)) phraseRoots.push("loodusvaatlus");
   if (/\bemaj(?:og|oe)\w*\b/u.test(normalizedQuery)
     && /\bavalik\w*\s+kasutus\w*\b/u.test(normalizedQuery)) phraseRoots.push("vesi");
   if (roots.includes("stsenaarium") && roots.includes("sademed")) phraseRoots.push("kliima");
-  const expandedRoots = [...new Set([...roots, ...phraseRoots])];
+  let expandedRoots = [...new Set([...roots, ...phraseRoots])];
+  // An explicit waste-sorting intent already carries the "jaat" root; the
+  // incidental "prugi" root would otherwise let marine-litter pages outrank
+  // the waste guide on coverage. Single-word "prügi" queries are unaffected.
+  if (expandedRoots.includes("jaat") && expandedRoots.includes("prugi")
+    && /\bsorteer\w*/u.test(normalizedQuery)) {
+    expandedRoots = expandedRoots.filter((root) => root !== "prugi");
+  }
+  for (const root of russianKeywordRoots(query)) {
+    if (!expandedRoots.includes(root)) expandedRoots.push(root);
+  }
   if (!isForestDepletionQuestion(normalizedQuery)) return expandedRoots;
   // "Otsa" is an idiomatic depletion predicate here, not a useful literal
   // retrieval token. Mapping it to the concept prevents climbing/trail pages
@@ -6227,7 +6360,10 @@ export function analyzePublicSearchQuery(query, options = {}) {
   const canonicalInput = canonicalizePublicSearchQuery(query, options);
   const cleanQuery = canonicalInput.ok ? canonicalInput.query : "";
   const normalized = normalize(cleanQuery);
-  const roots = queryTerms(cleanQuery);
+  // queryTerms only sees the canonicalized query, where Cyrillic is folded
+  // or stripped. Merge Russian roots from the raw input so Russian queries
+  // reach scope gating and retrieval instead of always reading as empty.
+  const roots = [...new Set([...queryTerms(cleanQuery), ...russianKeywordRoots(query)])];
   const domainRoots = roots.filter(rootIsDomain);
   const domainFamilies = new Set(domainRoots.map((root) => DOMAIN_FAMILY_BY_ROOT.get(root)).filter(Boolean));
   const forestryIntent = forestEvidenceIntent(cleanQuery);
