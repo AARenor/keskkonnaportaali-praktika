@@ -12,6 +12,7 @@ import {
   normalize,
   officialServiceCatalogueDocuments,
   queryTerms,
+  russianKeywordRoots,
   searchEnvironment,
 } from "../server/search.mjs";
 import {
@@ -728,6 +729,27 @@ test("keyword variety: English and colloquial variants reach the right domain", 
   assert.ok(queryTerms("species observations database").includes("loodusvaatlus"));
   assert.ok(queryTerms("river level").includes("veetase"));
   assert.ok(queryTerms("waste sorting at home").includes("jaat"));
+  assert.ok(queryTerms("fish migration").includes("kala"));
+  assert.ok(queryTerms("oil shale mining").includes("polevkivi"));
+  assert.ok(queryTerms("oil shale mining").includes("kaevandus"));
+  assert.ok(queryTerms("landfill aftercare").includes("jaatmekaitluskoht"));
+  assert.ok(queryTerms("maap\u00f5ueseadus").includes("kaevandus"));
+  assert.ok(queryTerms("vanarehvide kogumine").includes("rehv"));
+  assert.ok(queryTerms("bathing water").includes("suplusvesi"));
+  assert.ok(queryTerms("ghg emissions").includes("kasvuhoonegaas"));
+  assert.ok(queryTerms("hazardous waste").includes("ohtlik"));
+  assert.ok(queryTerms("how to apply for environmental permit").includes("taotlemine"));
+  assert.deepEqual(russianKeywordRoots("\u043b\u0435\u0441 \u042d\u0441\u0442\u043e\u043d\u0438\u044f \u043f\u043b\u043e\u0449\u0430\u0434\u044c"), ["mets", "pindala"]);
+  assert.deepEqual(russianKeywordRoots("\u0413\u0434\u0435 \u0436\u0438\u0432\u0451\u0442 \u0418\u0432\u0430\u043d \u041f\u0435\u0442\u0440\u043e\u0432"), []);
+});
+
+test("keyword variety: English filler words never become roots", () => {
+  for (const query of ["how to apply for environmental permit", "waste sorting at home", "where is the forest"]) {
+    const terms = queryTerms(query);
+    for (const filler of ["how", "to", "for", "the", "is", "where"]) {
+      assert.ok(!terms.includes(filler), `${query} must not root ${filler}`);
+    }
+  }
 });
 
 test("keyword variety: varied phrasings rank the intended source first", () => {
@@ -748,10 +770,29 @@ test("keyword variety: varied phrasings rank the intended source first", () => {
     ["waste sorting at home", "waste"],
     ["põlismets", "forest-overview"],
     ["uputuse oht", "flood-risk-management"],
+    ["fish migration", "river-dams-fish"],
+    ["bathing water", "bathing-water-quality"],
+    ["suplemisvee kvaliteet", "bathing-water-quality"],
+    ["ghg emissions", "greenhouse-gas-inventory"],
+    ["hazardous waste", "hazardous-waste-asbestos"],
+    ["mürgised jäätmed", "hazardous-waste-asbestos"],
+    ["maapõueseadus", "mined-land-restoration"],
+    ["landfill aftercare", "waste-facilities-map"],
+    ["oil shale mining", "ida-viru-groundwater"],
   ];
   for (const [query, expected] of rankingCases) {
     const ranked = rankSearchCandidates(query, documents, { now });
     assert.ok(ranked.length > 0, `${query} returns sources`);
     assert.equal(ranked[0].id, expected, query);
   }
+});
+
+test("keyword variety: Russian queries reach retrieval end to end", () => {
+  const forest = searchEnvironment("лес вода");
+  assert.ok(forest.sources.length > 0, "forest+water returns sources");
+  assert.ok(forest.sources.some((source) => source.id === "forest-overview"), "forest overview present");
+  const pollution = searchEnvironment("загрязнение воды");
+  assert.ok(pollution.sources.length > 0, "pollution query returns sources");
+  const attack = searchEnvironment("Где живёт Иван Петров");
+  assert.equal(attack.sources.length, 0, "personal-data attack stays blocked");
 });
