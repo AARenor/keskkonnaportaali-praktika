@@ -4,6 +4,7 @@
 
 - The agent does everything itself end to end; the user does nothing. Never hand the user manual steps (server starts, deploys, checks) when the agent can run them.
 - Always push to production and verify there repeatedly: merge to `main`, push to origin, then test the live site at https://praktika.arleserver.cfd multiple times (relevance probes, live eval battery, browser pass) until production provably serves the change.
+- Production auto-deploys: pushing to `main` triggers `.github/workflows/deploy.yml`, which calls the Coolify restart/deploy API (token in the repo's `COOLIFY_API_TOKEN` Actions secret). After pushing, poll the deployment status and fingerprint the live search until the new code serves; never assume the push alone deployed.
 - Never stop after analysis, a plan, or a single test. Keep auditing, fixing, and re-verifying until the work is proven in production.
 
 Run the local server yourself and open the preview in the browser available to this environment. Do not give the user server-start instructions when you can run it.
