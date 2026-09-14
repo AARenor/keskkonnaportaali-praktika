@@ -1,6 +1,6 @@
 # Vastuvõtutõendite register
 
-See fail seob projekti tootmisvalmiduse väited korduvkäivitatavate testide, runtime'i konfiguratsiooni ja koodiga. Avalikud testpäringud on fikseeritud näited ega sisalda kasutajaandmeid. Iga ajalooline jaotis nimetab mõõdetud commit'i; kõige uuem tööpuu tõend on kohe järgmises 26.08.2026 jaotises ning ei väida juurutamist.
+See fail seob projekti tootmisvalmiduse väited korduvkäivitatavate testide, runtime'i konfiguratsiooni ja koodiga. Avalikud testpäringud on fikseeritud näited ega sisalda kasutajaandmeid. Iga ajalooline jaotis nimetab mõõdetud commit'i; uuemad juurutatud parandused on kirjas 14.09.2026 jaotises faili lõpus. Masinloetavad toorlogid (`output/goal-mu0vgmly/`, gitignore'itud, reprodutseeritavad samade käskudega) täiendavad siinseid tabeleid, mitte ei asenda neid.
 
 ## Agents SDK, uued ametlikud allikad ja ressursipiirid 26.08.2026
 
@@ -255,3 +255,19 @@ Turvapäised on HSTS, CSP, `frame-ancestors`, Referrer-Policy, nosniff, Permissi
 UI ei pane toorpäringut aadressiribale, lehe pealkirja, `history.state` objekti, cookie'sse, `localStorage`'isse ega `sessionStorage`'isse. Brauseri back/forward kasutab ainult protsessimälus olevat läbipaistmatut ID-d ja kuni 50 kirjega piiratud mälukaarti. Sama päritolu API saab päringu JSON POST-kehas, sest see on funktsiooni jaoks vajalik. Server saadab päringu vajalikus ulatuses ametlikule otsinguteenusele ja Lunale, kuid ei lisa brauseri IP-d, cookie'sid, tervet korpust ega andmebaasilogi.
 
 POST-keha võib olla nähtav kasutaja enda brauseri DevToolsis ja vajalikul välisel teenusepakkujal. See piirang on teadlikult dokumenteeritud; rakenduse, proxy ja PostgreSQL-i logidesse toorpäringut ei kirjutata.
+
+## Juurutatud parandused 14.09.2026 (23e1766)
+
+Commit'id `52ebd35` (RU jäätmesorteerimise bridge), `8948e95` (bridge-juurte ranking), `d2aba67` (toor-päringu ranking torus), `e982174` (EE discovery-tõlge), `98a925e` (segatud RU privaatsusmöödavoolu sulgemine) ja `23e1766` (tühja mudelivastuse ühekordne retry) juurutati Coolify deployment'ina `umf5om5kirn1r3sw9w8k7pil` (`finished`, 2026-09-14 12:32:32). Konteiner `asdyidu5wvjx54d0b09t9rhw-123136206724` teenindas sama commit'i image'it (`org.opencontainers.image.revision=23e1766…`, `SOURCE_COMMIT`/`APP_REVISION` ühtivad), oli `healthy`, restartide arv 0; avalik `/api/health` tagastas täpselt sama 40-kohalise revisjoni. Kõik allolevad arvud on mõõdetud sellel revisjonil; masinloetavad toorlogid asuvad `output/goal-mu0vgmly/` (gitignore'itud, reprodutseeritavad: `npm test`, `npm run build`).
+
+| Kontroll | Mõõdetud lõpptulemus |
+|---|---|
+| Unit/integratsioon | `npm test`: 522/522, 0 viga, 0 tühistatud (exit 0) |
+| Production build | Vite: 1582 moodulit; Sites-pakett loodud (`npm run test:sites` 4/4 varem samal puul) |
+| Külmutatud holdout/blind (staatika) | 40/40 ja 10/10: P@1, MRR, nDCG@5, Recall@5 kõik 1,0 |
+| Grounding/filterid/jätkuküsimused | 10/10 + 10/10, 210/210, 36/36 (samal puul, muutumatu kooditee) |
+| Live tervis + serveritee regressioon | `/api/health` 200 (`23e1766…`); headerless `mets` 200, 1365 tulemust, `Allikapõhine kokkuvõte` |
+| RU `сортировка мусора` live | loend `total: 7–18` (live-discovery kõikumine), `waste` nähtavas hulgas; vastus aus `Vajan täpsustust` seni, kuni kataloogis puudub reviewed sorteerimisjuhis |
+| Ründe-päritolu negatiivtest | `Origin: https://attacker.example` + `cross-site` → 403 (tagasi lükatud nii enne kui pärast) |
+
+Teadaolev avatud punkt (mitte selles releasis): brauseri-päistega (`Origin` + `Sec-Fetch-Site: same-origin`) otsingud annavad 403 `Ristdomeeni otsingupäring ei ole lubatud`, sest live-keskkonna `TRUSTED_PROXY_CIDRS=172.19.0.9/32` (Coolify enda konteiner) ei kata tegelikku proxy-peeri `coolify-proxy` (`172.19.0.11`). Parandus on ühe keskkonnamuutuja muudatus (`172.19.0.11/32`) Coolify keskkonnas, mis vajab operaatori kinnitust; koodi ega usaldusmudelit see ei muuda (võõrad päritolud jäävad tagasi lükatuks, vt rida ülal).
