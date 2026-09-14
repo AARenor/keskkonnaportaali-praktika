@@ -1401,6 +1401,21 @@ export function buildDiscoveryQueries(query, limit = 3) {
   const canonicalInput = canonicalizePublicSearchQuery(query);
   if (!canonicalInput.ok) return [];
   const acceptedQuery = canonicalInput.query;
+  // Foreign-script queries fail the provider residual gate, so translate
+  // intent into Estonian discovery terms via the keyword bridge instead.
+  // Privacy gates already ran on the raw text before retrieval. Only
+  // bridge-carrying queries may translate: this preserves the established
+  // foreign-script selector path (e.g. 'Emajõe veeandmed 中文'), and a bare
+  // sorting verb with no waste word still fails closed via empty bridge.
+  const bridgeRoots = russianKeywordRoots(query);
+  if (bridgeRoots.length && !buildDiscoveryQuery(acceptedQuery)) {
+    // The bridge must carry a domain root, not just a bare sorting verb:
+    // 'сортировка' alone stays out-of-scope and must not reach providers.
+    if (!bridgeRoots.some(rootIsDomain)) return [];
+    const translated = bridgeTermsToDiscoveryQuery(bridgeRoots);
+    if (translated) return [translated];
+    return [];
+  }
   const base = buildDiscoveryQuery(acceptedQuery);
   if (!base) return [];
   const words = base.match(/[\p{L}\p{N}:-]+/gu) || [];
@@ -1800,6 +1815,31 @@ export function russianKeywordRoots(text) {
       && (raw.test(lowered) || (folded !== null && folded.test(lowered)))) found.push(root);
   }
   return found;
+}
+
+// Translate Russian-bridge roots into Estonian discovery terms so
+// foreign-script queries can use the Estonian-only discovery providers.
+// Only domain roots translate; an empty result means no safe translation.
+export function bridgeTermsToDiscoveryQuery(roots = []) {
+  const terms = [];
+  for (const root of roots) {
+    if (root === 'jaat') terms.push('jäätmed');
+    else if (root === 'sorteerimine') terms.push('sorteerimine');
+    else if (root === 'mets') terms.push('mets');
+    else if (root === 'vesi') terms.push('vesi');
+    else if (root === 'ohk') terms.push('õhukvaliteet');
+    else if (root === 'saaste') terms.push('saaste');
+    else if (root === 'kliima') terms.push('kliima');
+    else if (root === 'elurikkus') terms.push('elurikkus');
+    else if (root === 'jarv') terms.push('järv');
+    else if (root === 'jogi') terms.push('jõgi');
+    else if (root === 'meri') terms.push('meri');
+    else if (root === 'kala') terms.push('kala');
+    else if (root === 'mura') terms.push('müra');
+    else if (root === 'muld') terms.push('muld');
+    else if (root === 'pindala') terms.push('pindala');
+  }
+  return [...new Set(terms)].slice(0, 4).join(' ');
 }
 
 export function queryTerms(query) {

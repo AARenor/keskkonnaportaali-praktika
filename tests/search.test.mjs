@@ -806,3 +806,23 @@ test("keyword variety: Russian queries reach retrieval end to end", () => {
   // like the JS-sort out-of-scope guard.
   assert.equal(searchEnvironment("сортировка").sources.length, 0, "bare sorting verb stays out of scope");
 });
+
+test("keyword variety: Russian bridge translates to Estonian discovery terms", async () => {
+  const { buildDiscoveryQueries } = await import('../server/search.mjs');
+  // Foreign-script queries fail the provider residual gate, so discovery
+  // must translate bridge roots instead of passing Cyrillic through.
+  assert.deepEqual(buildDiscoveryQueries('сортировка мусора'), ['jäätmed sorteerimine']);
+  assert.deepEqual(buildDiscoveryQueries('лес вода'), ['mets vesi']);
+  // Attacks and bare verbs translate to nothing: no provider call possible.
+  assert.deepEqual(buildDiscoveryQueries('Где живёт Иван Петров'), []);
+  assert.deepEqual(buildDiscoveryQueries('сортировка'), []);
+  // Full pipeline ranks the translated discovery alongside the directory:
+  // the waste guide leads for the sorting query in every retrieval mode.
+  const { prepareRankedSearchResults } = await import('../server/retrieval.mjs');
+  const listing = await prepareRankedSearchResults('сортировка мусора', {
+    page: 1,
+    pageSize: 12,
+    deadlineAt: Date.now() + 14_000,
+  });
+  assert.equal(listing.items[0]?.id, 'waste', 'waste guide leads RU sorting query');
+});

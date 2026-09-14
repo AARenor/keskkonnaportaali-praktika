@@ -1803,7 +1803,10 @@ export async function prepareRankedSearchResults(query, {
   }
   throwIfRetrievalClosed(signal, deadlineAt);
   const prefixLocalLimit = 50;
-  const discoveryQueries = buildDiscoveryQueries(acceptedQuery, 3);
+  // Discovery providers reject foreign-script queries outright, so build
+  // discovery terms from the raw query: the Russian bridge and dictionary
+  // roots translate Cyrillic intent into searchable Estonian/English terms.
+  const discoveryQueries = buildDiscoveryQueries(query, 3);
   const discoveryTimeout = Math.max(250, Math.min(2_200, remaining(deadlineAt, 12_000)));
   // Structured official datasets are compact and high-value evidence. The
   // hydrology PostgREST endpoint currently responds in roughly four seconds,
