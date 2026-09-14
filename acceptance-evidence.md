@@ -271,3 +271,15 @@ Commit'id `52ebd35` (RU jäätmesorteerimise bridge), `8948e95` (bridge-juurte r
 | Ründe-päritolu negatiivtest | `Origin: https://attacker.example` + `cross-site` → 403 (tagasi lükatud nii enne kui pärast) |
 
 Teadaolev avatud punkt (mitte selles releasis): brauseri-päistega (`Origin` + `Sec-Fetch-Site: same-origin`) otsingud annavad 403 `Ristdomeeni otsingupäring ei ole lubatud`, sest live-keskkonna `TRUSTED_PROXY_CIDRS=172.19.0.9/32` (Coolify enda konteiner) ei kata tegelikku proxy-peeri `coolify-proxy` (`172.19.0.11`). Parandus on ühe keskkonnamuutuja muudatus (`172.19.0.11/32`) Coolify keskkonnas, mis vajab operaatori kinnitust; koodi ega usaldusmudelit see ei muuda (võõrad päritolud jäävad tagasi lükatuks, vt rida ülal).
+
+## Brauseritee parandus 14.09.2026 (5effcb8)
+
+Põhjus: brauseri-päistega (`Origin` + `Sec-Fetch-Site`) otsingud andsid 403 `Ristdomeeni otsingupäring ei ole lubatud`, sest live-keskkonna `TRUSTED_PROXY_CIDRS=172.19.0.9/32` (Coolify enda konteiner) ei katnud tegelikku proxy-peeri `coolify-proxy` (`172.19.0.11`). Päisteta serveritee läbis, mistõttu viga paistis ainult päris brauserikasutusest.
+
+Parandus: Coolify keskkonnamuutujate `TRUSTED_PROXY_CIDRS` read (id 498+499, rakendus 12, runtime-only) seati väärtusele `172.19.0.11/32` Coolify enda Eloquent-mudeli kaudu (Laravel-krüpteering säilib; otse-DB kirjet ei puututud). Tühi restart-commit `5effcb8` juurutati Coolify deployment'ina `151` (`finished`, 2026-09-14 13:02:51). Konteiner `asdyidu5wvjx54d0b09t9rhw-130137468046` kinnitab `TRUSTED_PROXY_CIDRS=172.19.0.11/32`; `/api/health` tagastab `5effcb8…`.
+
+| Kontroll (`5effcb8` live) | Mõõdetud lõpptulemus |
+|---|---|
+| Brauseri-päistega `mets` | HTTP 200, 1365 tulemust, `Allikapõhine kokkuvõte`, tippallikas `forest-condition-review` |
+| Ründe-päritolu (`attacker.example`, `cross-site`) | 403 tagasi lükatud (usaldusmudel säilib) |
+| RU `сортировка мусора` brauseriteel | loend `total: 7`, `waste` rank 4, aus `Vajan täpsustust` (kataloogis reviewed sorteerimisjuhis puudub) |
