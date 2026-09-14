@@ -1865,6 +1865,9 @@ export async function prepareRankedSearchResults(query, {
   if (missing > 0) {
     throwIfRetrievalClosed(signal, deadlineAt);
     const tailOffset = Math.max(0, offset - rankedPrefix.length);
+    // The initial corpus call above is settled; this fallback runs on a
+    // degraded path, so a corpus failure must degrade to the ranked prefix
+    // instead of throwing the whole retrieval away.
     const tail = await searchCorpus(acceptedQuery, {
       page: 1,
       pageSize: missing,
@@ -1875,9 +1878,9 @@ export async function prepareRankedSearchResults(query, {
       excludeUrls: rankedPrefix.map((document) => canonicalResultUrl(document.url)),
       signal,
       deadlineAt,
-    });
+    }).catch(() => null);
     throwIfRetrievalClosed(signal, deadlineAt);
-    selected = deduplicateResults([...selected, ...(tail.items || [])]).slice(0, safePageSize);
+    selected = deduplicateResults([...selected, ...((tail && tail.items) || [])]).slice(0, safePageSize);
   }
   const total = Math.max(Number(local.total || 0), rankedPrefix.length);
   return {

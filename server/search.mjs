@@ -1407,6 +1407,11 @@ export function buildDiscoveryQueries(query, limit = 3) {
   // bridge-carrying queries may translate: this preserves the established
   // foreign-script selector path (e.g. 'Emajõe veeandmed 中文'), and a bare
   // sorting verb with no waste word still fails closed via empty bridge.
+  // A private-person clause anywhere in the raw query poisons the whole
+  // translation: 'лес; Где живёт Иван Петров' must yield zero discovery
+  // terms, not ['mets']. The retrieval pipeline re-checks before dispatch,
+  // but discovery terms must never be derived from an attack query at all.
+  if (containsPrivatePersonLookup(query)) return [];
   const bridgeRoots = russianKeywordRoots(query);
   if (bridgeRoots.length && !buildDiscoveryQuery(acceptedQuery)) {
     // The bridge must carry a domain root, not just a bare sorting verb:
@@ -6537,6 +6542,19 @@ export function analyzePublicSearchQuery(query, options = {}) {
 }
 
 export function assessSearchQuery(query, options = {}) {
+  // Length is the cheapest reject: check the canonicalization result BEFORE
+  // running decode/pattern passes so overlong input cannot spend classifier
+  // time. decodeSecurityEscapes is length-reducing, so a raw query that fits
+  // rawMaximum can never decode to something that exceeds it.
+  const earlyLength = canonicalizePublicSearchQuery(query, options);
+  if (earlyLength.reason === "too-long" || earlyLength.reason === "input-too-long") {
+    return {
+      kind: "out-of-scope",
+      topic: null,
+      reason: "invalid-query-length",
+      clarification: "Otsing ületab turvalise pikkuspiiri. Lühenda päringut ja proovi uuesti.",
+    };
+  }
   const rawForeignPrivateClause = hasForeignPrivatePersonClause(decodeSecurityEscapes(query));
   const analysis = analyzePublicSearchQuery(query, options);
   const {
@@ -7554,6 +7572,15 @@ export function composeScopeResponse(query, assessment) {
 }
 
 export function searchEnvironment(query, limit = 6) {
+  // Privacy gates must see the RAW query first: canonicalization folds
+  // Cyrillic homoglyphs, which can erase a private-person clause while the
+  // Russian bridge still routes on the environmental prefix. A mixed query
+  // ('лес; Где живёт Иван Петров') must fail closed via the raw assessment,
+  // not rank the catalogue on its environmental half.
+  const rawAssessment = assessSearchQuery(query);
+  if (rawAssessment.kind !== "answerable") {
+    return composeScopeResponse(rawAssessment.kind === "out-of-scope" ? "" : (canonicalizePublicSearchQuery(query).ok ? canonicalizePublicSearchQuery(query).query : ""), rawAssessment);
+  }
   const canonicalInput = canonicalizePublicSearchQuery(query);
   if (canonicalInput.reason === "empty") {
     return {

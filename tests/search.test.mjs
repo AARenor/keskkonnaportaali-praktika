@@ -6,6 +6,7 @@ import {
   analyzePublicSearchQuery,
   assessEvidence,
   assessSearchQuery,
+  buildDiscoveryQueries,
   buildDiscoveryQuery,
   canonicalizePublicSearchQuery,
   composeScopeResponse,
@@ -801,6 +802,13 @@ test("keyword variety: Russian queries reach retrieval end to end", () => {
   assert.ok(sorting.sources.some((source) => source.id === "waste"), "waste guide present");
   const attack = searchEnvironment("Где живёт Иван Петров");
   assert.equal(attack.sources.length, 0, "personal-data attack stays blocked");
+  // A mixed query smuggles an environmental prefix past folding: the raw
+  // assessment must fail the whole query closed, not rank the catalogue on
+  // the environmental half. Discovery must likewise yield zero terms.
+  for (const mixed of ["лес; Где живёт Иван Петров", "лес Где живёт Иван Петров", "сортировка мусора Иван Петров адрес"]) {
+    assert.equal(searchEnvironment(mixed).sources.length, 0, `mixed attack stays blocked: ${mixed}`);
+    assert.deepEqual(buildDiscoveryQueries(mixed), [], `mixed attack yields no discovery: ${mixed}`);
+  }
   // A bare sorting verb with no waste word must not enter the domain:
   // 'сортировка' alone (and its folded Latin lookalike) fail closed, just
   // like the JS-sort out-of-scope guard.
