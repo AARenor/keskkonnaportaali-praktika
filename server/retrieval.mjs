@@ -31,6 +31,7 @@ import {
   officialServiceCatalogueDocuments,
   queryRootVariants,
   queryTerms,
+  russianKeywordRoots,
   scoreDocument,
   splitTextPassages,
   textHasQueryRoot,
@@ -1367,8 +1368,14 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
     ...document,
     tags: document.tags || document.topics || [],
   };
+  // analysis.roots already merges the Russian keyword bridge over the raw
+  // query; reuse it so Cyrillic queries score on domain roots instead of
+  // homoglyph-folded fragments. Fall back to plain queryTerms for direct
+  // callers that pass no analysis.
   const semantic = scoreDocument(prepared, query);
-  const roots = queryTerms(query);
+  const roots = Array.isArray(analysis?.roots) && analysis.roots.length
+    ? [...analysis.roots]
+    : queryTerms(query);
   const titleText = normalize(document.title);
   const summaryText = normalize(document.summary);
   const bodyText = normalize(document.content);
