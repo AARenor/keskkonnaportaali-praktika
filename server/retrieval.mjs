@@ -1270,6 +1270,12 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
     && roots.includes("avaandmed")
     && /\baastaaru(?:and|ann)\w*/u.test(normalizedQuery)
     && document.id === "waste-reporting-data") return 4;
+  // Sorting-intent queries name the household-waste theme catalogue, not a
+  // data table: the waste guide is the only reviewed catalogue card whose
+  // tags name the sorting procedure ('jäätmete liigiti kogumine'). The
+  // priority is deliberately modest (below the 4-point reviewed overrides)
+  // so it only breaks ties among same-bucket waste candidates.
+  if (roots.includes("sorteerimine") && document.id === "waste") return 2;
   if (roots.includes("api") && roots.includes("andmed")) {
     if (document.id === "official-data-services" && !roots.includes("pxweb")) return 3;
     if (["open-data", "open-data-downloader"].includes(document.id)) return 2;
@@ -1841,7 +1847,10 @@ export async function prepareRankedSearchResults(query, {
     ? officialServiceCatalogueDocuments().filter((document) => resultMatchesFilters(document, appliedFilters))
     : [];
   enqueueOfficialDiscoveryDocuments(filteredLive, { signal, clientKey });
-  const rankedPrefix = rankPublicSearchCandidates(acceptedQuery, [...(local.items || []), ...filteredStructured, ...filteredLive, ...directory], {
+  // acceptedQuery is homoglyph-folded: Cyrillic queries lose their script
+  // here ('сортировка мусора' -> 'coptиpoвka муcopa'), so ranking must use
+  // the raw query whose analysis merges the Russian keyword bridge.
+  const rankedPrefix = rankPublicSearchCandidates(query, [...(local.items || []), ...filteredStructured, ...filteredLive, ...directory], {
     sort: appliedFilters.sort,
     intentDocuments: directory,
   });
