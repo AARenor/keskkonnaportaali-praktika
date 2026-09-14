@@ -583,3 +583,88 @@ test("structured-output validation failure preserves all completed provider usag
     totalTokens: 1_240,
   });
 });
+
+test("an empty model response is retried once and a repeated empty response surfaces the generation error", async () => {
+  // Full review-evidence flow, but the final manager turn returns no usable
+  // output on the first run, then the grounded answer on retry.
+  const expected = {
+    intro: "Otsene vastus.",
+    intro_citations: [1],
+    parts: [],
+    related_questions: [],
+  };
+  // NOTE: attempts 1 and 2 share one ScriptedModel, so tool call IDs must
+  // stay unique across attempts or the SDK rejects the repeated
+  // review_evidence call as unknown. Keep a per-test counter.
+  let reviewCallId = 0;
+  const reviewCall = () => [functionCall(
+    "review_evidence",
+    {},
+    { callId: `review-call-${(reviewCallId += 1)}` },
+  )];
+  const specialist = (text) => [assistantMessage(text)];
+  const recovering = new ScriptedModel([
+    reviewCall(),
+    specialist("Allikas [1] on otsene tõend."),
+    specialist("Allikas [1] on kooskõlaline."),
+    [assistantMessage("{}")],
+    reviewCall(),
+    specialist("Allikas [1] on otsene tõend."),
+    specialist("Allikas [1] on kooskõlaline."),
+    [assistantMessage(JSON.stringify(expected))],
+  ]);
+  const runner = new Runner({
+    modelProvider: { getModel: () => recovering },
+    tracingDisabled: true,
+    traceIncludeSensitiveData: false,
+  });
+  const reviewInput = "KÜSIMUS: test\nEVIDENCE [1]: ametlik tõend";
+  const { manager } = createGroundedSearchAgents({ runner, reviewInput });
+  let observed;
+  const recovered = await runAgentWithUsage({
+    runner,
+    manager,
+    userInput: reviewInput,
+    onUsage: (usage) => {
+      observed = usage;
+    },
+  });
+  assert.deepEqual(recovered.output, expected);
+  assert.ok(observed.requests >= 2);
+  recovering.assertComplete();
+
+  // The manager turn returns no usable output on both attempts. The exact
+  // "failed to generate" error must surface — generateGroundedAnswer
+  // catches it, records the message in the persisted run row
+  // (practice_search_runs.provenance.answerStatus), and serves the
+  // deterministic evidence draft instead of stopping or hanging.
+  // One scripted block per attempt: a fresh RunContext retries the full
+  // review-evidence flow, so each attempt consumes review + 2 specialists
+  // + 1 empty manager turn = 4 scripted steps. The second attempt's script
+  // needs its own review call ID via the shared reviewCall() counter.
+  const failing = new ScriptedModel([
+    reviewCall(),
+    specialist("Allikas [1] on otsene tõend."),
+    specialist("Allikas [1] on kooskõlaline."),
+    [assistantMessage("{}")],
+    reviewCall(),
+    specialist("Allikas [1] on otsene tõend."),
+    specialist("Allikas [1] on kooskõlaline."),
+    [assistantMessage("{}")],
+  ]);
+  const failingRunner = new Runner({
+    modelProvider: { getModel: () => failing },
+    tracingDisabled: true,
+    traceIncludeSensitiveData: false,
+  });
+  const { manager: failingManager } = createGroundedSearchAgents({
+    runner: failingRunner,
+    reviewInput,
+  });
+  await assert.rejects(runAgentWithUsage({
+    runner: failingRunner,
+    manager: failingManager,
+    userInput: reviewInput,
+  }), /failed to generate a response/u);
+  failing.assertComplete();
+});

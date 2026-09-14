@@ -320,27 +320,105 @@ export async function runAgentWithUsage({
   userInput,
   signal,
   onUsage,
+  maxAttempts = 2,
+  createRunContext = () => new RunContext(),
 } = {}) {
-  const runContext = new RunContext();
+  const attempts = Math.max(1, Math.min(Number(maxAttempts) || 2, 3));
+  let lastError;
+  // Every attempt gets a FRESH RunContext: the review_evidence tool is
+  // single-use per context and tool call IDs must stay unique, so reusing
+  // one context across attempts would reject the repeated review call.
+  // Usage still accumulates across attempts via onUsage snapshots below.
+  let runContext = createRunContext();
+  const aggregateUsage = {
+    requests: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0,
+  };
+  const observeAttempt = () => {
+    const snapshot = snapshotAgentUsage(runContext);
+    aggregateUsage.requests += snapshot.requests;
+    aggregateUsage.inputTokens += snapshot.inputTokens;
+    aggregateUsage.outputTokens += snapshot.outputTokens;
+    aggregateUsage.totalTokens += snapshot.totalTokens;
+    onUsage?.({ ...aggregateUsage });
+  };
   try {
-    const result = await runner.run(manager, userInput, {
-      context: runContext,
-      maxTurns: AGENT_MANAGER_MAX_TURNS,
-      signal,
-    });
-    const reviewCompleted = requiredReviewByManager.get(manager);
-    if (reviewCompleted && !reviewCompleted(runContext)) {
-      throw new Error("Manager returned without the mandatory evidence review");
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        const result = await runner.run(manager, userInput, {
+          context: runContext,
+          maxTurns: AGENT_MANAGER_MAX_TURNS,
+          signal,
+        });
+        const reviewCompleted = requiredReviewByManager.get(manager);
+        if (reviewCompleted && !reviewCompleted(runContext)) {
+          throw new Error("Manager returned without the mandatory evidence review");
+        }
+        if (result.finalOutput === undefined || result.finalOutput === null
+          || (typeof result.finalOutput === "string" && !result.finalOutput.trim())) {
+          // Provider returned without a usable model response. Retry within
+          // the attempt budget instead of surfacing an empty generation.
+          throw new EmptyGenerationError();
+        }
+        observeAttempt();
+        return {
+          output: result.finalOutput,
+          usage: { ...aggregateUsage },
+        };
+      } catch (error) {
+        lastError = error;
+        observeAttempt();
+        if (signal?.aborted) break;
+        if (!isRetriableGenerationError(error, { attempt, attempts })) break;
+        // Schema-shaped failures (ModelBehaviorError) are transient
+        // provider behavior too: re-run the whole manager flow rather
+        // than surfacing one malformed turn. Only the empty-generation
+        // sentinel and transport/tool errors reach this branch; aborts,
+        // budget denials and the mandatory-review guard break above.
+        runContext = createRunContext();
+      }
     }
-    return {
-      output: result.finalOutput,
-      usage: snapshotAgentUsage(runContext),
-    };
+    // Whatever survives the attempt budget must persist as the same
+    // generation failure: downstream (generateGroundedAnswer) records it in
+    // the run row and serves the deterministic evidence draft instead of
+    // stopping or leaking a schema-shaped provider error to the user.
+    if (lastError?.name === "ModelBehaviorError") {
+      throw new EmptyGenerationError();
+    }
+    throw lastError;
   } finally {
-    // RunContext is updated after every completed model response, including
-    // nested agent tools. Observe it even when a later turn or validation aborts.
-    onUsage?.(snapshotAgentUsage(runContext));
+    // Usage was already reported per attempt via observeAttempt (aggregated
+    // across fresh contexts). Nothing left to flush here.
   }
+}
+
+export class EmptyGenerationError extends Error {
+  constructor() {
+    super("The model failed to generate a response");
+    this.name = "EmptyGenerationError";
+  }
+}
+
+function isRetriableGenerationError(error, { attempt = 1, attempts = 2 } = {}) {
+  // The empty-generation sentinel is always retriable up to maxAttempts:
+  // it is raised by our own boundary, never by the provider.
+  if (error instanceof EmptyGenerationError) return attempt < attempts;
+  if (!error || typeof error !== "object") return false;
+  // Deterministic failures must surface immediately: retrying them cannot
+  // produce a new model response. Everything transport- or tool-shaped is
+  // treated as transient: the provider may answer on the next attempt.
+  // Note: the Agents SDK wraps provider aborts as ToolCallError, so match
+  // on AbortError by name OR by message instead of only by name.
+  if (error.name === "AbortError" || /abort/i.test(String(error.message || ""))) return false;
+  if (error.code === "LLM_BUDGET_EXHAUSTED") return false;
+  if (String(error.message || "").includes("without the mandatory evidence review")) return false;
+  // A malformed final turn is transient provider behavior: the next
+  // attempt re-runs the whole manager flow and may answer cleanly.
+  // (SDK name: ModelBehaviorError; redacted message: "Invalid output
+  // type: final assistant output did not match the expected schema.")
+  // Retried once like everything else; when attempts run out the caller
+  // converts the survivor below into the persisted generation error.
+  if (error.name === "ModelBehaviorError") return attempt < attempts;
+  return attempt < attempts;
 }
 
 export async function runGroundedSearchOrchestration({
