@@ -1738,9 +1738,18 @@ const RUSSIAN_KEYWORD_ROOTS = Object.freeze([
   ["вода", "vesi"],
   ["воды", "vesi"],
   ["воздух", "ohk"],
+  // Homoglyph note: canonicalSecurityText folds Cyrillic т→t but leaves
+  // и/у/с intact, so patterns match the RAW query. 'сортировка' must pair
+  // with an explicit waste word — bare sorting verbs (incl. folded Latin
+  // lookalikes) stay out-of-scope so JS-sort attacks keep failing closed.
   ["мусор", "jaat"],
+  ["мусора", "jaat"],
+  ["мусором", "jaat"],
+  ["мусоре", "jaat"],
   ["отходы", "jaat"],
   ["отходов", "jaat"],
+  ["отходами", "jaat"],
+  ["отходах", "jaat"],
   ["загрязнение", "saaste"],
   ["загрязнения", "saaste"],
   ["климат", "kliima"],
@@ -1756,6 +1765,9 @@ const RUSSIAN_KEYWORD_ROOTS = Object.freeze([
   ["площадь", "pindala"],
   ["эстония", null],
   ["эстонии", null],
+  ["сортировка", "sorteerimine"],
+  ["сортировать", "sorteerimine"],
+  ["сортировки", "sorteerimine"],
 ]);
 
 // Russian keyword bridge. Cyrillic tokens are stripped by normalize() and
@@ -2030,6 +2042,11 @@ export function queryRootVariants(root) {
   if (root === "polevkivi") return ["polevkivi", "polevkivibassein"];
   if (root === "ohukvaliteet") return ["ohukvaliteet", "ohu kvaliteet", "valisoh"];
   if (root === "jaat") return ["jaat", "prugi", "waste"];
+  // NOTE: 'liigiti' is deliberately NOT a variant: it is a free Estonian
+  // adverb ('liigiti võib ... erineda') that collides with unrelated pages
+  // (e.g. invasive-species guidance). Sorting intent matches the verb stem
+  // and the household-waste compounds below.
+  if (root === "sorteerimine") return ["sorteer", "sortimine", "sorting", "jaatmete liigiti kogumine"];
   if (root === "asbest") return ["asbest", "eterniit"];
   if (root === "biojaatmed") return ["biojaat", "kompost"];
   if (root === "rohevorgustik") return ["rohevorg", "roheline vorgustik", "rohekoridor"];
@@ -6798,9 +6815,9 @@ export function assessSearchQuery(query, options = {}) {
   return { kind: "answerable", topic, reason: "environment-domain", clarification: null };
 }
 
-export function scoreDocument(document, query) {
+export function scoreDocument(document, query, { bridgeRoots = null } = {}) {
   const normalizedQuery = normalize(query);
-  const words = queryTerms(query);
+  const words = bridgeRoots instanceof Set ? [...bridgeRoots] : queryTerms(query);
   if (!words.length) return 0;
 
   const fields = {
@@ -7179,13 +7196,19 @@ export function directDirectoryDocumentIds(query) {
   return [...new Set(preferred)];
 }
 
-export function rankDocuments(query, documents = SEARCH_DOCUMENTS) {
+export function rankDocuments(query, documents = SEARCH_DOCUMENTS, { russianRoots = [] } = {}) {
   const primaryTopic = assessSearchQuery(query).topic;
   const preferred = new Map(directDirectoryDocumentIds(query).map((id, index) => [id, index]));
+  // Cyrillic tokens are folded/stripped by canonicalSecurityText, so the
+  // canonical queryTerms may contain only folded fragments ('coptipovka').
+  // The bridge must REPLACE, not merge, those fragments — otherwise the
+  // primary-topic gate and scoring see junk roots the documents never match.
+  const canonicalRoots = new Set(queryTerms(query));
+  const bridgeRoots = new Set(russianRoots?.length ? [...russianRoots] : [...canonicalRoots]);
   return documents
-    .map((document) => ({ ...document, score: scoreDocument(document, query) }))
+    .map((document) => ({ ...document, score: scoreDocument(document, query, { bridgeRoots }) }))
     .filter((document) => document.score > 0
-      && (!primaryTopic || documentRoots(document).has(primaryTopic)))
+      && (!primaryTopic || documentRoots(document).has(primaryTopic) || [...bridgeRoots].some((root) => documentRoots(document).has(root))))
     .sort((a, b) => {
       const aPreference = preferred.get(a.id) ?? Number.POSITIVE_INFINITY;
       const bPreference = preferred.get(b.id) ?? Number.POSITIVE_INFINITY;
@@ -7509,7 +7532,11 @@ export function searchEnvironment(query, limit = 6) {
 
   const assessment = assessSearchQuery(cleanQuery);
   if (assessment.kind !== "answerable") return composeScopeResponse(cleanQuery, assessment);
-  const ranked = rankDocuments(cleanQuery, SEARCH_DOCUMENTS);
+  // The legacy synchronous path ranks the raw catalogue: merge the Russian
+  // keyword bridge so Cyrillic queries score against the same domain roots
+  // as the live retrieval pipeline (which merges russianKeywordRoots in
+  // analyzePublicSearchQuery). Privacy gates already ran on the raw text.
+  const ranked = rankDocuments(cleanQuery, SEARCH_DOCUMENTS, { russianRoots: russianKeywordRoots(query) });
   const quality = assessEvidence(cleanQuery, ranked);
   return composeSearchResponse(cleanQuery, ranked, {
     answerable: quality.strong,

@@ -793,6 +793,16 @@ test("keyword variety: Russian queries reach retrieval end to end", () => {
   assert.ok(forest.sources.some((source) => source.id === "forest-overview"), "forest overview present");
   const pollution = searchEnvironment("загрязнение воды");
   assert.ok(pollution.sources.length > 0, "pollution query returns sources");
+  // Declined waste noun + sorting verb: the homoglyph-folded canonical form
+  // ('coptipovka musopa') carries no usable Estonian roots, so the Russian
+  // bridge must supply domain roots for both scope gating and ranking.
+  const sorting = searchEnvironment("сортировка мусора");
+  assert.ok(sorting.sources.length > 0, "waste-sorting query returns sources");
+  assert.ok(sorting.sources.some((source) => source.id === "waste"), "waste guide present");
   const attack = searchEnvironment("Где живёт Иван Петров");
   assert.equal(attack.sources.length, 0, "personal-data attack stays blocked");
+  // A bare sorting verb with no waste word must not enter the domain:
+  // 'сортировка' alone (and its folded Latin lookalike) fail closed, just
+  // like the JS-sort out-of-scope guard.
+  assert.equal(searchEnvironment("сортировка").sources.length, 0, "bare sorting verb stays out of scope");
 });
