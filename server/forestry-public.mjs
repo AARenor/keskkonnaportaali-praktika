@@ -657,7 +657,13 @@ export function resolvePublicForestryIntent(query) {
   const municipalityScope = ["reviewed-municipality", "unknown-locality"].includes(geographyScope.kind);
   const regionalScope = ["estonian-region", "foreign-or-other-region"].includes(geographyScope.kind);
   const municipalityAreaMetric = /\b(?:kui\s+palju|kui\s+suur\w*|mitu\s+hektar\w*|metsasus\w*|metsamaa\w*|metsa\s+pindala|metsaga\s+kaetud|pindala|osakaal|protsent\w*|forest\s+area|forest\s+cover(?:age)?|woodland\s+area|woodland\s+cover(?:age)?|forest\s+hectares?|hectares?\s+(?:of\s+)?(?:forest|woodland)|hectares?\s+are\s+forested|percentage|how\s+many\s+(?:forest\s+)?hectares|how\s+much\s+(?:forest|woodland))\b/u.test(text);
-  if (hasForest && (/\b(?:koduvall\w*|valla\s+mets\w*|mets\w*(?:\s+\w+){0,3}\s+vallas|vallas(?:\s+\w+){0,3}\s+mets\w*|metsasus\w*(?:\s+\w+){0,4}\somavalitsus\w*)\b/u.test(text)
+  // Municipal AREA routing must never claim a harvest, clearcut, increment or
+  // stock question (nt "Kui palju metsa raiuti Tartu vallas?"): local
+  // quantities in those metrics have no query-bound evidence path, so an
+  // area intent would substitute the wrong metric. Such questions fall
+  // through and fail closed instead.
+  const municipalMetricQuestion = !hasHarvest && !hasClearcut && !hasIncrement && !hasStock;
+  if (hasForest && municipalMetricQuestion && (/\b(?:koduvall\w*|valla\s+mets\w*|mets\w*(?:\s+\w+){0,3}\s+vallas|vallas(?:\s+\w+){0,3}\s+mets\w*|metsasus\w*(?:\s+\w+){0,4}\somavalitsus\w*)\b/u.test(text)
     || (municipalityScope && municipalityAreaMetric))) {
     return resolved("municipality-forest-area");
   }
@@ -741,7 +747,13 @@ export function resolvePublicForestryIntent(query) {
   }
   if (hasClearcut && (/\b(?:aastakumn\w*|2014\s*2024)\b/u.test(text)
     || /\btrend\w*\b[\s\S]{0,40}\b(?:19|20)\d{2}\b/u.test(text))) {
-    return resolved("clearcut-over-time");
+    // The supporting evidence table holds exactly the 2014-2024 annual
+    // rows. A request naming any other year (nt trend 2010-2020) must fail
+    // closed rather than answer with the wrong period.
+    const requestedYears = [...text.matchAll(/\b((?:19|20)\d{2})\b/gu)].map((match) => Number(match[1]));
+    if (requestedYears.every((year) => year === 2014 || year === 2024)) {
+      return resolved("clearcut-over-time");
+    }
   }
   if (hasClearcut && /\b(?:koik|alati|keskkonnavast\w*|keskkonn\w*|halb\w*|moju\w*|kahju\w*|elurikk\w*|loodus\w*|keskkond\w*)\b/u.test(text)) {
     return resolved("clearcut-value-judgement");
@@ -752,9 +764,13 @@ export function resolvePublicForestryIntent(query) {
     && /\b(?:kaitse\w*|kaitst\w*|kaitsestaatus\w*|tohib\w*|rai\w*)\b/u.test(text)) return resolved("old-forest-protection");
   if (/\bpuistu\w*\b[\s\S]{0,65}\b(?:100|saja)\s+aasta\w*\b/u.test(text)
     && /\bkaitsestaatus\w*|kaitse\w*\b/u.test(text)) return resolved("old-forest-protection");
-  if (hasForest && /\b(?:mittemajandatav\w*|majanduspiirang\w*|piiranguga\s+metsamaa)\b/u.test(text)
+  // Both share intents below are Estonia-wide SMI snapshots. A named
+  // county, municipality or other region (nt Harjumaa) must never receive
+  // national figures: such questions stay on the regional route and fail
+  // closed on query-bound geography instead.
+  if (hasForest && !regionalScope && !municipalityScope && /\b(?:mittemajandatav\w*|majanduspiirang\w*|piiranguga\s+metsamaa)\b/u.test(text)
     && /\b(?:kui\s+suur|kui\s+palju|mitu|osa|osakaal|protsent\w*)\b/u.test(text)) return resolved("forest-management-category-share");
-  if (hasForest && /\b(?:kaitse\s+all|kaitstud|kaitsealuse|rangelt\s+kaitstav)\b/u.test(text)
+  if (hasForest && !regionalScope && !municipalityScope && /\b(?:kaitse\s+all|kaitstud|kaitsealuse|rangelt\s+kaitstav)\b/u.test(text)
     && /\b(?:kui\s+suur|kui\s+palju|mitu|osa|osakaal|protsent\w*)\b/u.test(text)) return resolved("protected-forest-share");
   if (hasProtection && (hasHarvest || hasNotice)) return resolved("logging-in-protected-areas");
   if (hasNotice || (/\braiekavatsus\w*\b/u.test(text) && /\blubav\w*\s+mar(?:k|g)\w*\b/u.test(text))) return resolved("forest-notice");
@@ -797,7 +813,9 @@ export function resolvePublicForestryIntent(query) {
   // Never let a recognized local-government scope fall through to the
   // Estonia-wide forest-area snapshot. More specific forestry intents above
   // retain priority, while local area requests stay on the municipal route.
-  if (hasForest && municipalityScope) return resolved("municipality-forest-area");
+  // Non-area metrics (harvest, clearcut, increment, stock) have no municipal
+  // evidence path and must fail closed rather than borrow the area route.
+  if (hasForest && municipalityScope && municipalMetricQuestion) return resolved("municipality-forest-area");
   // Counties, foreign countries and broader named regions need a measurement
   // bound to that geography. They must never fall through to Estonia's
   // national SMI figures simply because the metric wording is familiar.
@@ -822,7 +840,12 @@ export function resolvePublicForestryIntent(query) {
       minimumSupportingDocuments: 1,
     };
   }
-  if (hasForest && /\b(?:kui\s+palju|mitu|kui\s+suur\w*|metsamaa|metsasus\w*|pindala|osakaal|protsent|hektar\w*)\b/u.test(text)) {
+  // The national AREA snapshot must never answer a harvest, clearcut,
+  // increment or stock question (nt "Kui palju metsa raiuti Tartu
+  // vallas?"): those metrics have their own intents or no evidence path,
+  // and a pindala figure would substitute the wrong metric. Such questions
+  // fall through and fail closed instead.
+  if (hasForest && municipalMetricQuestion && /\b(?:kui\s+palju|mitu|kui\s+suur\w*|metsamaa|metsasus\w*|pindala|osakaal|protsent|hektar\w*)\b/u.test(text)) {
     return {
       kind: "forest-area",
       discoveryQueries: ["metsamaa pindala SMI Eesti", "metsasuse pindala Eesti"],

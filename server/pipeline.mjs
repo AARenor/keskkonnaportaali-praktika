@@ -1647,7 +1647,15 @@ export async function settleWithinDeadline(
     // Return the bounded response immediately. HTTP owners pass this cleanup
     // promise to a lease which retains their admission slot until the losing
     // database/upstream operation has actually released its resources.
-    if (typeof onBackgroundCleanup === "function") onBackgroundCleanup(cleanup);
+    // Optional telemetry must never break the bounded timeout response: a
+    // synchronously throwing callback would otherwise bypass the fallback.
+    if (typeof onBackgroundCleanup === "function") {
+      try {
+        onBackgroundCleanup(cleanup);
+      } catch {
+        // Fall through to the fallback response below.
+      }
+    }
     return typeof fallback === "function" ? fallback() : fallback;
   } finally {
     clearTimeout(timer);
