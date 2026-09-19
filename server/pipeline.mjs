@@ -491,6 +491,93 @@ function composeOfficialForestryEvidenceFallback(query, plannedEvidence, sources
   };
 }
 
+// Bare generic forest overview (nt "mets"): mitme ametliku allika süntees
+// loobumise asemel. Koostatud ainult nähtavast ametlikust tulemusehulgast
+// täpsete väljavõtetega, et väited säilitaksid nähtava tunnistaja.
+function composeGenericForestOverviewFallback(query, plannedEvidence, sources = [], previousAnswer = {}) {
+  if (plannedEvidence?.kind !== "forest-overview" || !plannedEvidence?.strong) return null;
+  const visibleOfficial = sources.filter((source) => source?.sourceTier === "official" && sourceCitation(source));
+  const byId = new Map(visibleOfficial.map((source) => [source.id, source]));
+  const area = byId.get("forest-area");
+  const conditionDoc = byId.get("forest-condition-review");
+  const registryView = byId.get("metsainfo-hetkeseis");
+  if (!area) return null;
+  const areaPassage = forestAreaMeasurementPassage(area) || safeSourcePassages(area)[0] || "";
+  const findMethodHit = () => {
+    for (const source of visibleOfficial) {
+      const hit = safeSourcePassages(source).find((passage) => {
+        const text = normalize(passage);
+        return /valikuuring/u.test(text) && (/proovitukk|statistil|uleriigil/u.test(text));
+      });
+      if (hit) return { source, passage: hit };
+    }
+    return null;
+  };
+  const methodHit = findMethodHit();
+  const methodPassage = methodHit?.passage || "";
+  const methodSource = methodHit?.source;
+  const findConditionHit = () => {
+    for (const source of visibleOfficial) {
+      const hit = safeSourcePassages(source).find((passage) => {
+        const text = normalize(passage);
+        return /elurikk/u.test(text) && /kaits/u.test(text);
+      });
+      if (hit) return { source, passage: hit };
+    }
+    return null;
+  };
+  const conditionHit = findConditionHit();
+  const conditionPassage = (conditionDoc && (forestConditionPassage(conditionDoc) || safeSourcePassages(conditionDoc)[0]))
+    || conditionHit?.passage
+    || "";
+  const conditionSource = conditionDoc || conditionHit?.source;
+  const registryPassage = registryView
+    ? safeSourcePassages(registryView).find((passage) => /eraldi|mitmel viisil|erinev/u.test(normalize(passage)))
+      || safeSourcePassages(registryView)[0]
+    : "";
+  const hasCondition = Boolean(conditionPassage);
+  const hasRegistry = Boolean(registryPassage);
+  if (!areaPassage || !methodPassage || (!hasCondition && !hasRegistry)) return null;
+  const areaCitations = uniqueCitations([area]);
+  const methodCitations = uniqueCitations([methodSource].filter(Boolean));
+  const conditionCitations = uniqueCitations([conditionSource].filter(Boolean));
+  const registryCitations = uniqueCitations([registryView].filter(Boolean));
+  const parts = [
+    {
+      title: "Metsa pindala",
+      text: areaPassage,
+      citations: areaCitations,
+    },
+    {
+      title: "Kuidas mõõdetakse",
+      text: methodPassage,
+      citations: methodCitations.length ? methodCitations : areaCitations,
+    },
+  ];
+  if (hasCondition) {
+    parts.push({
+      title: "Seisundi tervikpilt",
+      text: conditionPassage,
+      citations: conditionCitations.length ? conditionCitations : areaCitations,
+    });
+  }
+  if (registryPassage && registryCitations.length) {
+    parts.push({
+      title: "Andmete erinevus",
+      text: registryPassage,
+      citations: registryCitations,
+    });
+  }
+  return {
+    eyebrow: "Allikapõhine kokkuvõte",
+    title: "Eesti metsa ei kirjelda üksainus number",
+    intro: areaPassage,
+    introCitations: areaCitations,
+    parts,
+    note: String(previousAnswer.note || "").trim().slice(0, 700),
+  };
+}
+
 function answerEvidenceDocuments(documents = [], plannedEvidence, forestBalance) {
   if (forestBalance || !plannedEvidence?.strong) return documents;
   if (plannedEvidence.kind === "forest-data-sources") {
@@ -1090,7 +1177,10 @@ export async function createPortalDraft(query, {
   const forestDepletionFallback = !forestBalance && !forestDataSourcesFallback
     ? composeForestDepletionFallback(query, plannedEvidence, draft.sources, draft.answer)
     : null;
-  const officialForestryFallback = !forestBalance && !forestDataSourcesFallback && !forestDepletionFallback
+  const genericForestOverviewFallback = !forestBalance && !forestDataSourcesFallback && !forestDepletionFallback
+    ? composeGenericForestOverviewFallback(query, plannedEvidence, draft.sources, draft.answer)
+    : null;
+  const officialForestryFallback = !forestBalance && !forestDataSourcesFallback && !forestDepletionFallback && !genericForestOverviewFallback
     ? composeOfficialForestryEvidenceFallback(query, plannedEvidence, draft.sources, draft.answer)
     : null;
   const directExtract = !forestBalance && direct
@@ -1105,6 +1195,9 @@ export async function createPortalDraft(query, {
   } else if (forestDepletionFallback) {
     draft.answer = forestDepletionFallback;
     draft.evidence.syntheticFallback = "forest-depletion";
+  } else if (genericForestOverviewFallback) {
+    draft.answer = genericForestOverviewFallback;
+    draft.evidence.syntheticFallback = "forest-overview";
   } else if (officialForestryFallback) {
     draft.answer = officialForestryFallback;
     draft.evidence.syntheticFallback = "official-forestry-evidence";

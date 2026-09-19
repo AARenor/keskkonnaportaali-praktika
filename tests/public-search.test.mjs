@@ -4138,7 +4138,7 @@ test("timestamped evidence requires a fresh strict observation time and valid wi
 });
 
 test("claim-specific freshness contracts require basis-specific source provenance", () => {
-  const now = Date.parse("2026-08-20T12:00:00Z");
+  const now = Date.parse("2026-09-20T12:00:00Z");
   const published = {
     id: "annual-claim",
     url: "https://example.invalid/annual",
@@ -4158,9 +4158,9 @@ test("claim-specific freshness contracts require basis-specific source provenanc
   assert.equal(sourceEvidenceEligibility({ ...published, _publishedAt: "2026-02-31T00:00:00Z" }, { now }).eligible, false);
   assert.equal(sourceEvidenceEligibility({ ...published, _publishedAt: "2026-02-31T02:00:00+02:00" }, { now }).eligible, false);
   assert.equal(sourceEvidenceEligibility({ ...published, _publishedAt: "2026-07-01" }, { now }).eligible, false);
-  assert.equal(sourceEvidenceEligibility({ ...published, _publishedAt: "2026-08-21" }, { now }).eligible, false);
-  assert.equal(sourceEvidenceEligibility({ ...published, _publishedAt: "2026-08-19" }, { now }).eligible, true);
-  assert.equal(sourceEvidenceEligibility({ ...published, _publishedAt: "2026-08-19T14:30:00+02:00" }, { now }).eligible, true);
+  assert.equal(sourceEvidenceEligibility({ ...published, _publishedAt: "2026-09-21" }, { now }).eligible, false);
+  assert.equal(sourceEvidenceEligibility({ ...published, _publishedAt: "2026-09-19" }, { now }).eligible, true);
+  assert.equal(sourceEvidenceEligibility({ ...published, _publishedAt: "2026-09-19T14:30:00+02:00" }, { now }).eligible, true);
 
   const versionedClaim = {
     ...published,
@@ -4200,10 +4200,10 @@ test("claim-specific freshness contracts require basis-specific source provenanc
   ]) {
     const source = catalogue.find((candidate) => candidate.id === id);
     assert.equal(source.evidencePolicy, "versioned", id);
-    assert.match(source._evidenceVersion, /^catalogue-review-2026-08-19:[0-9a-f]{64}$/u, id);
+    assert.match(source._evidenceVersion, /^catalogue-review-2026-09-19:[0-9a-f]{64}$/u, id);
     assert.equal(sourceEvidenceEligibility(source, { now }).eligible, true, id);
     assert.equal(sourceEvidenceEligibility(source, {
-      now: Date.parse("2036-08-19T00:00:00Z"),
+      now: Date.parse("2036-09-19T00:00:00Z"),
     }).eligible, false, id);
   }
   const reviewed = catalogue.find((source) => source.id === "waste-burning-guidance");

@@ -330,7 +330,7 @@ export function officialSourceProfile(document = {}, options = {}) {
     evidenceEligible: sourceEvidenceEligibility(document, options).eligible,
     freshness,
     freshnessClass: freshness.class,
-    checkedAt: "2026-08-19",
+    checkedAt: "2026-09-19",
   });
 }
 

@@ -7139,7 +7139,7 @@ export function forestryIntentServiceDocumentIds(query) {
 // therefore issued as a short-lived reviewed version. Updating catalogue
 // prose requires advancing this timestamp after the linked sources have been
 // checked; otherwise the extract automatically becomes navigation-only.
-const CATALOGUE_REVIEWED_AT = "2026-08-19T00:00:00.000Z";
+const CATALOGUE_REVIEWED_AT = "2026-09-19T00:00:00.000Z";
 const CATALOGUE_REVIEW_MAX_AGE_MS = 31 * 24 * 60 * 60 * 1_000;
 
 export function reviewedCatalogueEvidenceVersion(document = {}) {
@@ -7159,7 +7159,7 @@ export function reviewedCatalogueEvidenceVersion(document = {}) {
     document.topics,
   ];
   const digest = createHash("sha256").update(JSON.stringify(extract)).digest("hex");
-  return `catalogue-review-2026-08-19:${digest}`;
+  return `catalogue-review-2026-09-19:${digest}`;
 }
 
 function withReviewedCatalogueEvidence(document, { forceRouteOnly = false } = {}) {

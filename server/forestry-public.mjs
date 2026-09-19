@@ -312,6 +312,17 @@ const INTENTS = {
     ],
     minimumSupportingDocuments: 2,
   },
+  "forest-overview": {
+    serviceDocumentIds: ["forest-area", "smi", "forest-condition-review", "metsainfo-hetkeseis"],
+    discoveryQueries: ["Eesti metsamaa pindala SMI", "Eesti metsade seisund SMI ülevaade", "metsaandmed SMI Metsaregister"],
+    evidenceGroups: [
+      ["51,84%", "2 350,6"],
+      ["valikuuring", "proovitükk"],
+      ["elurikkus", "kaitse"],
+      ["eri näitajad", "eraldi", "mitmel viisil"],
+    ],
+    minimumSupportingDocuments: 3,
+  },
   "sample-size-and-precision": {
     serviceDocumentIds: ["forest-smi-2025-presentation", "forest-smi-methodology-20-years", "smi", "forest-area"],
     discoveryQueries: ["SMI valimi täpsus suhteline viga", "statistiline metsainventuur valikukava"],
@@ -828,6 +839,14 @@ export function resolvePublicForestryIntent(query) {
       evidenceGroups: [],
       minimumSupportingDocuments: 1,
     };
+  }
+  // Bare generic forest overview (nt "mets"): ukski spetsiifiline naitaja,
+  // meetod, kaitse, raie ega muu kavatsus eespool ei sobinud. Tagasta
+  // mitme allika süntees loobumise asemel. Piiratud ainult palja
+  // üldpäringuga, et sega- ("kala mets õhk") ja täpsustatud päringud
+  // ("Mis on metsaregister?") säilitaksid oma marsruudi.
+  if (hasForest && /^(?:eesti\s+)?mets(?:ad)?(?:\s+eestis)?$/u.test(text)) {
+    return resolved("forest-overview");
   }
   return null;
 }
