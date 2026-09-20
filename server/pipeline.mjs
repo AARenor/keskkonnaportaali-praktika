@@ -1419,9 +1419,17 @@ async function searchWithinBudget(cleanQuery, {
   // input and any streamed consumer. A ready model answer must rebind its
   // visible citation witnesses before it can replace this snapshot.
   const deterministicDraft = structuredClone(draft);
-  const llmResult = canGenerate && llmBudget >= 500
+  // Never hand the model the full remaining budget: its attempt timers
+  // would then run into the shared deadline, and the resulting abort
+  // converts a ready cited draft into a timeout message. Keep a tail margin
+  // for rebinding, serialization and transport so the deterministic draft
+  // is always still deliverable; skip the attempt when even that margin
+  // does not fit.
+  const LLM_TAIL_MARGIN_MS = 1_500;
+  const llmAttemptCeilingMs = llmBudget - LLM_TAIL_MARGIN_MS;
+  const llmResult = canGenerate && llmAttemptCeilingMs >= 500
     ? await generateAnswer(cleanQuery, structuredClone(draft), {
-      timeoutMs: llmBudget,
+      timeoutMs: llmAttemptCeilingMs,
       signal,
       conversationContext,
       clientKey: llmClientKey,
