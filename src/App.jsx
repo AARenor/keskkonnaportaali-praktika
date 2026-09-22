@@ -1010,6 +1010,9 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
     if (followUpBusy || !followUps.length) return;
     const latestHeading = document.getElementById(`followup-${followUps.length}-title`);
     latestHeading?.focus({ preventScroll: true });
+    // The follow-up answer renders above the "Küsi veel" section: bring it
+    // into view so a related-question click visibly leads to its answer.
+    latestHeading?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   }, [followUpBusy, followUps.length]);
   const appliedFilters = clientSearchFilters(listing?.appliedFilters || result?.searchResults?.appliedFilters);
   const loadListingPage = async (page) => {
@@ -1059,6 +1062,11 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
     setPendingFollowUpQuestion(cleanQuestion);
     setFollowUpError("");
     setFollowUpValue("");
+    // Related questions live below the answer: scroll up at once so the
+    // pending state and the arriving answer are visible without hunting.
+    window.requestAnimationFrame(() => {
+      headingRef.current?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    });
     try {
       const response = await fetch("/api/search/follow-up", {
         method: "POST",
