@@ -1783,6 +1783,25 @@ const RUSSIAN_KEYWORD_ROOTS = Object.freeze([
   ["шум", "mura"],
   ["почва", "muld"],
   ["площадь", "pindala"],
+  ["подземные", "pohjavesi"],
+  ["подземных", "pohjavesi"],
+  ["грунтовые", "pohjavesi"],
+  ["грунтовых", "pohjavesi"],
+  ["заповедник", "kaitseala"],
+  ["заповедника", "kaitseala"],
+  ["заповеднике", "kaitseala"],
+  ["охраняемая", "kaitseala"],
+  ["охраняемой", "kaitseala"],
+  ["заказник", "looduskaitse"],
+  ["заказника", "looduskaitse"],
+  ["выбросы", "heide"],
+  ["выбросов", "heide"],
+  ["парниковые", "kasvuhoonegaas"],
+  ["парниковых", "kasvuhoonegaas"],
+  ["переработка", "ringmajandus"],
+  ["переработки", "ringmajandus"],
+  ["упаковка", "jaat"],
+  ["упаковки", "jaat"],
   ["эстония", null],
   ["эстонии", null],
   ["сортировка", "sorteerimine"],
@@ -1798,9 +1817,10 @@ const RUSSIAN_KEYWORD_ROOTS = Object.freeze([
 // personal-data or instruction attacks (they contain no listed keyword).
 const CYRILLIC_FOLD = Object.freeze({
   "\u0430": "a", "\u0435": "e", "\u043e": "o", "\u0440": "p", "\u0441": "c", "\u0445": "x", "\u0456": "i",
+  "\u0458": "j", "\u043a": "k", "\u0442": "t", "\u0501": "d", "\u0585": "o",
 });
 const RUSSIAN_KEYWORD_PATTERNS = Object.freeze(RUSSIAN_KEYWORD_ROOTS.map(([keyword, root]) => {
-  const folded = keyword.replace(/[\u0430\u0435\u043e\u0440\u0441\u0445\u0456]/giu, (letter) => CYRILLIC_FOLD[letter.toLocaleLowerCase("ru")] ?? letter);
+  const folded = keyword.replace(/[аеорсхіјктԁօ]/giu, (letter) => CYRILLIC_FOLD[letter.toLocaleLowerCase("ru")] ?? letter);
   const edge = "(?<![\\p{L}\\p{N}_])";
   const trailing = "(?![\\p{L}\\p{N}_])";
   return {
@@ -1843,6 +1863,12 @@ export function bridgeTermsToDiscoveryQuery(roots = []) {
     else if (root === 'mura') terms.push('müra');
     else if (root === 'muld') terms.push('muld');
     else if (root === 'pindala') terms.push('pindala');
+    else if (root === 'pohjavesi') terms.push('põhjavesi');
+    else if (root === 'kaitseala') terms.push('kaitseala');
+    else if (root === 'looduskaitse') terms.push('looduskaitse');
+    else if (root === 'heide') terms.push('heide');
+    else if (root === 'kasvuhoonegaas') terms.push('kasvuhoonegaasid');
+    else if (root === 'ringmajandus') terms.push('ringmajandus');
   }
   return [...new Set(terms)].slice(0, 4).join(' ');
 }

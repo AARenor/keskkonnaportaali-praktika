@@ -742,6 +742,10 @@ test("keyword variety: English and colloquial variants reach the right domain", 
   assert.ok(queryTerms("how to apply for environmental permit").includes("taotlemine"));
   assert.deepEqual(russianKeywordRoots("\u043b\u0435\u0441 \u042d\u0441\u0442\u043e\u043d\u0438\u044f \u043f\u043b\u043e\u0449\u0430\u0434\u044c"), ["mets", "pindala"]);
   assert.deepEqual(russianKeywordRoots("\u0413\u0434\u0435 \u0436\u0438\u0432\u0451\u0442 \u0418\u0432\u0430\u043d \u041f\u0435\u0442\u0440\u043e\u0432"), []);
+  assert.deepEqual(russianKeywordRoots("\u043f\u043e\u0434\u0437\u0435\u043c\u043d\u044b\u0435 \u0432\u043e\u0434\u044b"), ["vesi", "pohjavesi"]);
+  assert.deepEqual(russianKeywordRoots("\u0437\u0430\u043f\u043e\u0432\u0435\u0434\u043d\u0438\u043a"), ["kaitseala"]);
+  assert.deepEqual(russianKeywordRoots("\u0432\u044b\u0431\u0440\u043e\u0441\u044b"), ["heide"]);
+  assert.deepEqual(russianKeywordRoots("\u043f\u0435\u0440\u0435\u0440\u0430\u0431\u043e\u0442\u043a\u0430 \u0443\u043f\u0430\u043a\u043e\u0432\u043a\u0430"), ["ringmajandus", "jaat"]);
 });
 
 test("keyword variety: English filler words never become roots", () => {
@@ -800,6 +804,12 @@ test("keyword variety: Russian queries reach retrieval end to end", () => {
   const sorting = searchEnvironment("сортировка мусора");
   assert.ok(sorting.sources.length > 0, "waste-sorting query returns sources");
   assert.ok(sorting.sources.some((source) => source.id === "waste"), "waste guide present");
+  const groundwater = searchEnvironment("подземные воды");
+  assert.ok(groundwater.sources.length > 0, "groundwater query returns sources");
+  const reserve = searchEnvironment("заповедник строительство");
+  assert.ok(reserve.sources.length > 0, "nature-reserve query returns sources");
+  const recycling = searchEnvironment("переработка отходов");
+  assert.ok(recycling.sources.length > 0, "recycling query returns sources");
   const attack = searchEnvironment("Где живёт Иван Петров");
   assert.equal(attack.sources.length, 0, "personal-data attack stays blocked");
   // A mixed query smuggles an environmental prefix past folding: the raw

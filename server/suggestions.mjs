@@ -34,6 +34,8 @@ const REVIEWED_SOURCE_CODE_ALIASES = new Map([
   ["elurikkus", ["Milline on Eesti elurikkuse seisund?"]],
   ["voru temperatuur", ["Mis oli Võru ööpäeva keskmine õhutemperatuur 21. augustil 2025?"]],
   ["ohtlikud jaatmed", ["Kui palju tekkis Eestis 2024. aastal ohtlikke jäätmeid?"]],
+  ["ohk", ["Milline on õhutemperatuur praegu Tartus?", "Milline on homne ilmaprognoos Eestis?"]],
+  ["ohukvaliteet", ["Milline on õhutemperatuur praegu Tartus?", "Milline on homne ilmaprognoos Eestis?"]],
 ]);
 
 const REVIEWED_ALIAS_SURFACE_PATTERN = /^[a-z0-9õäöüšž]+(?:[ _-][a-z0-9õäöüšž]+)*$/iu;

@@ -557,6 +557,7 @@ test("reviewed autocomplete fallback surfaces structured environmental sources w
     ["ringmajandus", "Kuidas aitab ringmajandus jäätmeid taaskasutada?"],
     ["elurikkus", "Milline on Eesti elurikkuse seisund?"],
     ["Võru temperatuur", "Mis oli Võru ööpäeva keskmine õhutemperatuur 21. augustil 2025?"],
+    ["õhk", "Milline on õhutemperatuur praegu Tartus?"],
   ];
   for (const [input, expected] of aliases) {
     assert.equal(getReviewedSearchSuggestions(input, 5)[0], expected, input);

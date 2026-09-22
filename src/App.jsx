@@ -927,7 +927,13 @@ function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRe
           ))}
         </div>
       ) : null}
-      {!busy && !error && total === 0 ? <p className="broad-results__empty">Laiast indeksist vasteid ei leitud.</p> : null}
+      {!busy && !error && total === 0 ? <p className="broad-results__empty">{hasActiveFilters
+        ? `Laiast indeksist nende filtritega vasteid ei leitud (${[
+          filters.source !== "all" ? `allikas: ${filters.source}` : null,
+          filters.category ? `tüüp: ${filters.category}` : null,
+          filters.year ? `aasta: ${filters.year}` : null,
+        ].filter(Boolean).join(", ") || "filtrid"}). Proovi filtreid muuta või lähtestada.`
+        : "Laiast indeksist vasteid ei leitud."}</p> : null}
       {pageCount > 1 ? (
         <nav className="results-pagination" aria-label="Otsingutulemuste lehed">
           <button disabled={!interactive || busy || current <= 1} onClick={() => onPage(current - 1)} type="button"><ArrowLeft size={15} /> Eelmine</button>
