@@ -19,7 +19,7 @@
     "audit:followups": "node scripts/audit-live-followups.mjs",
     "audit:load": "node scripts/load-search.mjs",
     "audit:load-results": "node scripts/load-search.mjs --endpoint=results --server-concurrency=8",
-    "test": "node --test --test-concurrency=4 tests/*.test.mjs",
+    "test": "MULTILINGUAL_SEARCH_ENABLED=true node --test --test-concurrency=4 tests/*.test.mjs",
     "preview": "vite preview",
     "test:sites": "node --test tests/sites-worker.test.mjs"
   },

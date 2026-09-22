@@ -1561,12 +1561,14 @@ async function crawlPortalSearch(query, onDocuments, { concurrency = 2, delayMs 
     throw new Error("Portal search exceeds the configured page limit");
   }
   const boundedConcurrency = Math.max(1, Math.min(Number(concurrency) || 2, 4));
+  let repeatedPages = 0;
   for (let offset = 1; offset < pages; offset += boundedConcurrency) {
     const pageNumbers = [];
     for (let page = offset; page < Math.min(pages, offset + boundedConcurrency); page += 1) {
       pageNumbers.push(page);
     }
     const results = await Promise.all(pageNumbers.map((page) => fetchPortalSearchPage(query, page)));
+    let stopPaging = false;
     for (const [index, result] of results.entries()) {
       if (pageNumbers[index] * PORTAL_PAGE_SIZE < first.total && result.documents.length === 0) {
         throw new Error("Portal search returned an incomplete result page");
@@ -1576,12 +1578,19 @@ async function crawlPortalSearch(query, onDocuments, { concurrency = 2, delayMs 
       }
       const pageUrls = result.documents.map((document) => document.url);
       if (pageUrls.length && pageUrls.every((url) => seenUrls.has(url))) {
-        throw new Error("Portal search repeated a result page");
+        // The portal repeats result pages once it runs out of fresh content
+        // (observed on the empty-query catalogue crawl). Treat the first
+        // fully repeated page as end-of-results instead of failing the whole
+        // sync and discarding the refresh; further pages would only repeat.
+        repeatedPages += 1;
+        stopPaging = true;
+        break;
       }
       await onDocuments(result.documents, pageNumbers[index]);
       orderedUrls.push(...pageUrls);
       for (const url of pageUrls) seenUrls.add(url);
     }
+    if (stopPaging) break;
     if (offset + boundedConcurrency < pages && delayMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
@@ -1590,6 +1599,7 @@ async function crawlPortalSearch(query, onDocuments, { concurrency = 2, delayMs 
   return {
     total: first.total,
     pages,
+    repeatedPages,
     orderedUrls: summary.occurrences,
     distinctUrls: summary.distinctUrls,
   };
@@ -1917,6 +1927,7 @@ export async function syncPortalCorpus({
           onProgress?.({ stage: "catalog", page: page + 1, discovered: totals.discovered, indexed: totals.indexed });
         });
         details.catalogTotal = catalog.total;
+        details.catalogRepeatedPages = catalog.repeatedPages || 0;
         catalogUrls = catalog.orderedUrls;
       }
 
@@ -1934,6 +1945,7 @@ export async function syncPortalCorpus({
         details.seedQueries[query] = {
           total: snapshot.total,
           pages: snapshot.pages,
+          repeatedPages: snapshot.repeatedPages || 0,
           storedOccurrences: snapshot.orderedUrls.length,
           distinctUrls: snapshot.distinctUrls.length,
         };

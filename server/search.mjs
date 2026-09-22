@@ -1397,8 +1397,15 @@ export function forestEvidenceIntent(query) {
   return resolvePublicForestryIntent(query);
 }
 
-export function buildDiscoveryQueries(query, limit = 3) {
-  const canonicalInput = canonicalizePublicSearchQuery(query);
+// Language scope: the practice portal is Estonian-only for now. Foreign
+// bridges (Russian keyword roots, English topic/phrase mappings) stay in
+// the codebase but are inert unless explicitly re-enabled at runtime.
+// Set MULTILINGUAL_SEARCH_ENABLED=true to restore multilingual retrieval.
+export function isMultilingualSearchEnabled() {
+  return String(process.env.MULTILINGUAL_SEARCH_ENABLED ?? "").trim().toLowerCase() === "true";
+}
+
+export function buildDiscoveryQueries(query, limit = 3) {  const canonicalInput = canonicalizePublicSearchQuery(query);
   if (!canonicalInput.ok) return [];
   const acceptedQuery = canonicalInput.query;
   // Foreign-script queries fail the provider residual gate, so translate
@@ -1467,19 +1474,22 @@ function textHasTallinnLocation(value) {
 function topicRoot(word) {
   // Two high-frequency one-character portal/topic misspellings are kept
   // deliberately narrow; broader fuzzy matching would admit unrelated words.
+  // English mappings below are inert in Estonian-only mode (see
+  // isMultilingualSearchEnabled); Estonian branches are unaffected.
+  const multilingual = isMultilingualSearchEnabled();
   if (word.startsWith("keskonnaportaal") || word.startsWith("keskkonnaportaal")) return "keskkonnaportaal";
   if (word.startsWith("keskkonnportal")) return "keskkonnaportaal";
   if (word.startsWith("keskonnaandm")) return "andmed";
-  if (word.startsWith("environmental")) return "keskkond";
-  if (word.startsWith("conservation")) return "looduskaitse";
-  if (word.startsWith("wetland")) return "margala";
-  if (word.startsWith("meadow")) return "elupaik";
-  if (word.startsWith("flood")) return "uleujutusrisk";
-  if (word.startsWith("hydrolog")) return "vesi";
-  if (word.startsWith("renewal")) return "taastamine";
-  if (word.startsWith("warning")) return "hoiatus";
-  if (word.startsWith("mapping")) return "kaart";
-  if (word.startsWith("landowner") || word.startsWith("landholder")) return "piirang";
+  if (multilingual && word.startsWith("environmental")) return "keskkond";
+  if (multilingual && word.startsWith("conservation")) return "looduskaitse";
+  if (multilingual && word.startsWith("wetland")) return "margala";
+  if (multilingual && word.startsWith("meadow")) return "elupaik";
+  if (multilingual && word.startsWith("flood")) return "uleujutusrisk";
+  if (multilingual && word.startsWith("hydrolog")) return "vesi";
+  if (multilingual && word.startsWith("renewal")) return "taastamine";
+  if (multilingual && word.startsWith("warning")) return "hoiatus";
+  if (multilingual && word.startsWith("mapping")) return "kaart";
+  if (multilingual && (word.startsWith("landowner") || word.startsWith("landholder"))) return "piirang";
   if (word.startsWith("keskkonnareg") || word.startsWith("keskonnareg")) return "register";
   if (word.startsWith("keskkonnateab") || word.startsWith("keskonnateab")) return "keskkond";
   if (word.startsWith("keskkonnateenus") || word.startsWith("keskonnateenus")) return "keskkond";
@@ -1489,56 +1499,56 @@ function topicRoot(word) {
   if (word.startsWith("keskkonnaoig") || word.startsWith("keskonnaoig")) return "piirang";
   if (word.startsWith("keskkonnaobj") || word.startsWith("keskonnaobj")) return "register";
   if (word.startsWith("biodiverst")) return "elurikkus";
-  if (word.startsWith("groundwater")) return "pohjavesi";
-  if (word.startsWith("borehole")) return "puurkaev";
+  if (multilingual && word.startsWith("groundwater")) return "pohjavesi";
+  if (multilingual && word.startsWith("borehole")) return "puurkaev";
   if (word.startsWith("erakaev")) return "puurkaev";
-  if (word.startsWith("weather")) return "ilm";
-  if (word.startsWith("forecast")) return "prognoos";
-  if (word === "air") return "ohk";
-  if (word.startsWith("temperature")) return "temperatuur";
-  if (word.startsWith("precipitation") || word.startsWith("rainfall")) return "sademed";
+  if (multilingual && word.startsWith("weather")) return "ilm";
+  if (multilingual && word.startsWith("forecast")) return "prognoos";
+  if (multilingual && word === "air") return "ohk";
+  if (multilingual && word.startsWith("temperature")) return "temperatuur";
+  if (multilingual && (word.startsWith("precipitation") || word.startsWith("rainfall"))) return "sademed";
   if (word.startsWith("eramets")) return "mets";
   if (word.startsWith("eramaa")) return "kinnistu";
   if (word.startsWith("haldam") || word.startsWith("haldaja")) return "piirang";
   if (word.startsWith("munitsipaaluksus")) return "keskkond";
-  if (word.startsWith("forest") || word.startsWith("woodland")) return "mets";
+  if (multilingual && (word.startsWith("forest") || word.startsWith("woodland"))) return "mets";
   if (word.startsWith("kaitsemets")) return "mets";
-  if (word.startsWith("wildlife") || word.startsWith("animal") || word.startsWith("bear") || word.startsWith("wolf")) return "uluk";
-  if (/^(?:beaver|bird|deer|eagle|fox|frog|lynx|mink|otter|salmon|seal|snake|squirrel|stork|toad|trout)\w*$/u.test(word)
-    || /^boars?$/u.test(word)) return "uluk";
-  if (word.startsWith("biodiversity") || word.startsWith("biodiversite") || word === "nature") return "elurikkus";
-  if (word.startsWith("species")) return "liik";
-  if (word.startsWith("habitat")) return "elupaik";
-  if (word === "water") return "vesi";
-  if (word.startsWith("river")) return "jogi";
-  if (word.startsWith("stream") || word.startsWith("creek")) return "jogi";
-  if (word.startsWith("lake")) return "jarv";
-  if (word === "sea" || word.startsWith("ocean") || word.startsWith("marine")) return "meri";
-  if (word.startsWith("baltic")) return "laanemeri";
-  if (word.startsWith("pollution")) return "saaste";
-  if (word.startsWith("waste")) return "jaat";
-  if (word.startsWith("recycl")) return "ringlussevott";
-  if (word === "rate") return "maar";
-  if (word.startsWith("noise")) return "mura";
-  if (word.startsWith("radiation")) return "kiirgus";
-  if (word.startsWith("monitor")) return "seire";
-  if (word.startsWith("observation")) return "seire";
-  if (word.startsWith("eutroph") || word.startsWith("algal") || word === "algae" || word.startsWith("bloom")) return "eutrofeerumine";
-  if (word === "map" || word === "maps") return "kaart";
-  if (word === "data") return "andmed";
-  if (word.startsWith("database")) return "register";
-  if (word.startsWith("status")) return "seisund";
-  if (word.startsWith("permit")) return "keskkonnaluba";
-  if (word.startsWith("application")) return "taotlemine";
-  if (word.startsWith("assessment")) return "hindamine";
-  if (word.startsWith("renovat") || word.startsWith("reconstruct")
-    || word.startsWith("construct") || word === "building") return "ehitamine";
-  if (word.startsWith("scenario")) return "stsenaarium";
-  if (word.startsWith("climate")) return "kliima";
-  if (word.startsWith("historical")) return "ajalooline";
-  if (word.startsWith("regeneration")) return "taastamine";
-  if (word.startsWith("tyre") || word.startsWith("tire")) return "rehv";
-  if (word.startsWith("dispose") || word.startsWith("disposal")) return "jaat";
+  if (multilingual && (word.startsWith("wildlife") || word.startsWith("animal") || word.startsWith("bear") || word.startsWith("wolf"))) return "uluk";
+  if (multilingual && (/^(?:beaver|bird|deer|eagle|fox|frog|lynx|mink|otter|salmon|seal|snake|squirrel|stork|toad|trout)\w*$/u.test(word)
+    || /^boars?$/u.test(word))) return "uluk";
+  if (multilingual && (word.startsWith("biodiversity") || word.startsWith("biodiversite") || word === "nature")) return "elurikkus";
+  if (multilingual && word.startsWith("species")) return "liik";
+  if (multilingual && word.startsWith("habitat")) return "elupaik";
+  if (multilingual && word === "water") return "vesi";
+  if (multilingual && word.startsWith("river")) return "jogi";
+  if (multilingual && (word.startsWith("stream") || word.startsWith("creek"))) return "jogi";
+  if (multilingual && word.startsWith("lake")) return "jarv";
+  if (multilingual && (word === "sea" || word.startsWith("ocean") || word.startsWith("marine"))) return "meri";
+  if (multilingual && word.startsWith("baltic")) return "laanemeri";
+  if (multilingual && word.startsWith("pollution")) return "saaste";
+  if (multilingual && word.startsWith("waste")) return "jaat";
+  if (multilingual && word.startsWith("recycl")) return "ringlussevott";
+  if (multilingual && word === "rate") return "maar";
+  if (multilingual && word.startsWith("noise")) return "mura";
+  if (multilingual && word.startsWith("radiation")) return "kiirgus";
+  if (multilingual && word.startsWith("monitor")) return "seire";
+  if (multilingual && word.startsWith("observation")) return "seire";
+  if (multilingual && (word.startsWith("eutroph") || word.startsWith("algal") || word === "algae" || word.startsWith("bloom"))) return "eutrofeerumine";
+  if (multilingual && (word === "map" || word === "maps")) return "kaart";
+  if (multilingual && word === "data") return "andmed";
+  if (multilingual && word.startsWith("database")) return "register";
+  if (multilingual && word.startsWith("status")) return "seisund";
+  if (multilingual && word.startsWith("permit")) return "keskkonnaluba";
+  if (multilingual && word.startsWith("application")) return "taotlemine";
+  if (multilingual && word.startsWith("assessment")) return "hindamine";
+  if (multilingual && (word.startsWith("renovat") || word.startsWith("reconstruct")
+    || word.startsWith("construct") || word === "building")) return "ehitamine";
+  if (multilingual && word.startsWith("scenario")) return "stsenaarium";
+  if (multilingual && word.startsWith("climate")) return "kliima";
+  if (multilingual && word.startsWith("historical")) return "ajalooline";
+  if (multilingual && word.startsWith("regeneration")) return "taastamine";
+  if (multilingual && (word.startsWith("tyre") || word.startsWith("tire"))) return "rehv";
+  if (multilingual && (word.startsWith("dispose") || word.startsWith("disposal"))) return "jaat";
   if (word.startsWith("avaandm")) return "avaandmed";
   if (word.startsWith("keskkonnaandm")) return "andmed";
   if (word.startsWith("metaandm")) return "metaandmed";
@@ -1728,24 +1738,26 @@ function topicRoot(word) {
   // English and colloquial keyword variety: these map onto existing domain
   // roots so their queryRootVariants need no changes.
   if (word.startsWith("pesticid")) return "pestitsiid";
-  if (word === "soil" || word === "soils" || word.startsWith("pinnas")) return "muld";
+  if (word.startsWith("pinnas")) return "muld";
+  if (multilingual && (word === "soil" || word === "soils")) return "muld";
   if (word.startsWith("polismets")) return "mets";
-  if (word === "bog" || word === "bogs") return "margala";
+  if (multilingual && (word === "bog" || word === "bogs")) return "margala";
   if (word.startsWith("uputus")) return "uleujutusrisk";
   if (word.startsWith("loodusvaatlus") || word.startsWith("liigivaatlus")) return "loodusvaatlus";
-  if (word.startsWith("contamin")) return "saaste";
-  if (word.startsWith("protect")) return "kaitse";
-  if (word === "level" || word === "levels") return "maar";
+  if (multilingual && word.startsWith("contamin")) return "saaste";
+  if (multilingual && word.startsWith("protect")) return "kaitse";
+  if (multilingual && (word === "level" || word === "levels")) return "maar";
   if (word.startsWith("tuulik")) return "tuulepark";
-  if (word === "fish" || word === "fishes" || word === "fishing") return "kala";
-  if (word.startsWith("hazard")) return "ohtlik";
-  if (word.startsWith("emission") || word === "ghg") return "kasvuhoonegaas";
+  if (multilingual && (word === "fish" || word === "fishes" || word === "fishing")) return "kala";
+  if (multilingual && word.startsWith("hazard")) return "ohtlik";
+  if (multilingual && (word.startsWith("emission") || word === "ghg")) return "kasvuhoonegaas";
   if (word.startsWith("murg")) return "ohtlik";
-  if (word === "bathing" || word.startsWith("suplemis")) return "suplusvesi";
-  if (word.startsWith("landfill")) return "jaatmekaitluskoht";
+  if (word.startsWith("suplemis")) return "suplusvesi";
+  if (multilingual && word === "bathing") return "suplusvesi";
+  if (multilingual && word.startsWith("landfill")) return "jaatmekaitluskoht";
   if (word.startsWith("maapou")) return "kaevandus";
   if (word.startsWith("vanarehv")) return "rehv";
-  if (word === "apply" || word === "applies" || word === "applied" || word === "applying") return "taotlemine";
+  if (multilingual && (word === "apply" || word === "applies" || word === "applied" || word === "applying")) return "taotlemine";
   if (word.endsWith("maal") && word.length >= 7) return word.slice(0, -1);
   return word;
 }
@@ -1831,6 +1843,7 @@ const RUSSIAN_KEYWORD_PATTERNS = Object.freeze(RUSSIAN_KEYWORD_ROOTS.map(([keywo
 }));
 
 export function russianKeywordRoots(text) {
+  if (!isMultilingualSearchEnabled()) return [];
   const lowered = String(text ?? "").toLocaleLowerCase("ru");
   const found = [];
   for (const { root, raw, folded } of RUSSIAN_KEYWORD_PATTERNS) {
@@ -1875,12 +1888,13 @@ export function bridgeTermsToDiscoveryQuery(roots = []) {
 
 export function queryTerms(query) {
   const normalizedQuery = normalize(query);
+  const multilingualPhrases = isMultilingualSearchEnabled();
   const roots = [...new Set(normalizedQuery
     .split(/\s+/u)
     .filter((word) => word.length >= 3 && !STOP_WORDS.has(word) && !/^\d+$/u.test(word))
     .flatMap((word) => {
       if (word.startsWith("keskkonnainfo")) return ["keskkond"];
-      if (word.startsWith("nesting")) return ["elupaik"];
+      if (multilingualPhrases && word.startsWith("nesting")) return ["elupaik"];
       if ((word.startsWith("press") || word.startsWith("contact"))
         && /\bofficial\s+press\s+contact\b[\s\S]{0,60}\bprivate\s+contact\b/u.test(normalizedQuery)) {
         return ["keskkond"];
@@ -1889,9 +1903,9 @@ export function queryTerms(query) {
         && (/^bioloog(?:i|l)\w*$/u.test(word) || /^mitmekesis\w*$/u.test(word))) return [];
       if (word.startsWith("sorteer")
         && /\b(?:jaat\w*|prugi\w*|pakend\w*|biojaat\w*)\b/u.test(normalizedQuery)) return ["jaat"];
-      if ((word === "sorting" || word === "sort")
+      if ((multilingualPhrases && (word === "sorting" || word === "sort"))
         && /\b(?:jaat\w*|prugi\w*|pakend\w*|biojaat\w*|waste|garbage|trash|rubbish)\b/u.test(normalizedQuery)) return ["jaat"];
-      if ((word === "home" || word === "household" || word.startsWith("kodus") || word.startsWith("kodune"))
+      if (((multilingualPhrases && (word === "home" || word === "household")) || word.startsWith("kodus") || word.startsWith("kodune"))
         && /\b(?:jaat\w*|prugi\w*|pakend\w*|biojaat\w*|waste|garbage|trash|rubbish|sorteer\w*|sorting)\b/u.test(normalizedQuery)) return ["jaat"];
       if (word.startsWith("ilmaprognoos")) return ["ilm", "prognoos"];
       if (word.startsWith("uleujutusrisk") || word.startsWith("uleujutusala") || word.startsWith("uleujutuskaart")) {
@@ -1904,10 +1918,10 @@ export function queryTerms(query) {
         || word.startsWith("uleujutushoiatus")) return ["ilm", "hoiatus"];
       if (word.startsWith("fire-danger")
         || word.startsWith("fire-risk")
-        || (word === "fire" && /\bfire(?:[-\s]+)(?:danger|risk)\b/u.test(normalizedQuery))) {
+        || (multilingualPhrases && word === "fire" && /\bfire(?:[-\s]+)(?:danger|risk)\b/u.test(normalizedQuery))) {
         return ["ilm", "hoiatus"];
       }
-      if (word.startsWith("sajab") || word.startsWith("vihm") || word === "rain" || word.startsWith("rainfall")) {
+      if (word.startsWith("sajab") || word.startsWith("vihm") || (multilingualPhrases && (word === "rain" || word.startsWith("rainfall")))) {
         return ["ilm", "sademed"];
       }
       if (word.startsWith("vooluhulk") || word.startsWith("veetas") || word.startsWith("veetemperatuur")) {
@@ -1939,17 +1953,17 @@ export function queryTerms(query) {
       return [topicRoot(word)];
     }))];
   const phraseRoots = [];
-  if (/\bair\s+quality\b/u.test(normalizedQuery)) phraseRoots.push("ohukvaliteet");
-  if (/\bwater\s+quality\b/u.test(normalizedQuery)) phraseRoots.push("vesi", "seisund");
-  if (/\benvironmental\s+data\b/u.test(normalizedQuery)) phraseRoots.push("keskkond", "andmed", "api");
+  if (multilingualPhrases && /\bair\s+quality\b/u.test(normalizedQuery)) phraseRoots.push("ohukvaliteet");
+  if (multilingualPhrases && /\bwater\s+quality\b/u.test(normalizedQuery)) phraseRoots.push("vesi", "seisund");
+  if (multilingualPhrases && /\benvironmental\s+data\b/u.test(normalizedQuery)) phraseRoots.push("keskkond", "andmed", "api");
   if (/\bbioloog(?:i|l)\w*\s+mitmekesis\w*\b/u.test(normalizedQuery)) phraseRoots.push("elurikkus");
   if (/\bpunane\s+raamat\b/u.test(normalizedQuery)) phraseRoots.push("liik");
   if (/\bpm\s+2\s+5\b/u.test(normalizedQuery)) phraseRoots.push("pm25", "ohukvaliteet");
-  if (/\bforest\s+area\b/u.test(normalizedQuery)) phraseRoots.push("mets", "pindala");
-  if (/\benvironmental\s+permits?\b/u.test(normalizedQuery)) phraseRoots.push("keskkonnaluba");
-  if (/\benvironmental\s+(?:impact|impacts|effect|effects)\b/u.test(normalizedQuery)) phraseRoots.push("keskkonnamoju");
-  if (/\bcircular[-\s]+economy\b/u.test(normalizedQuery)) phraseRoots.push("ringmajandus");
-  if (/\bgreen[-\s]+infrastructure\b/u.test(normalizedQuery)) phraseRoots.push("rohevorgustik");
+  if (multilingualPhrases && /\bforest\s+area\b/u.test(normalizedQuery)) phraseRoots.push("mets", "pindala");
+  if (multilingualPhrases && /\benvironmental\s+permits?\b/u.test(normalizedQuery)) phraseRoots.push("keskkonnaluba");
+  if (multilingualPhrases && /\benvironmental\s+(?:impact|impacts|effect|effects)\b/u.test(normalizedQuery)) phraseRoots.push("keskkonnamoju");
+  if (multilingualPhrases && /\bcircular[-\s]+economy\b/u.test(normalizedQuery)) phraseRoots.push("ringmajandus");
+  if (multilingualPhrases && /\bgreen[-\s]+infrastructure\b/u.test(normalizedQuery)) phraseRoots.push("rohevorgustik");
   if (/\b(?:(?:official|public)\s+)?press\s+contact\b[\s\S]{0,50}\bpublic\s+(?:service\s+)?catalogue\b/u.test(normalizedQuery)) {
     phraseRoots.push("keskkond");
   }
@@ -2165,6 +2179,14 @@ const DOMAIN_ROOTS = new Set([
   "mura", "kiirgus", "climate", "forest", "water", "weather", "pollution", "waste",
   "biodiversity", "nature", "air", "animal", "species", "habitat", "wildlife", "woodland",
   "sea", "ocean", "river", "lake", "data", "andmed", "metaandmed", "api", "statistika", "ruumikiht", "allalaadimine", "kaart", "register", "metsateatis",
+]);
+// English-only domain roots: inert in Estonian-only mode so English
+// passthrough words cannot satisfy scope gating on their own. "data" and
+// "api" stay language-neutral (used in Estonian technical text).
+const ENGLISH_ONLY_DOMAIN_ROOTS = new Set([
+  "climate", "forest", "water", "weather", "pollution", "waste",
+  "biodiversity", "nature", "air", "animal", "species", "habitat", "wildlife", "woodland",
+  "sea", "ocean", "river", "lake",
 ]);
 const ADMIN_CONTEXT_ROOTS = new Set([
   "tallinn", "tartu", "parnu", "parnumaa", "narva", "viljandi", "rakvere", "voru",
@@ -6418,6 +6440,7 @@ function isPublicOrganizationContactQuery(value) {
 }
 
 function rootIsDomain(root) {
+  if (!isMultilingualSearchEnabled() && ENGLISH_ONLY_DOMAIN_ROOTS.has(root)) return false;
   if (DOMAIN_ROOTS.has(root)) return true;
   return [...DOMAIN_ROOTS].some((candidate) => root.startsWith(candidate) && candidate.length >= 4);
 }

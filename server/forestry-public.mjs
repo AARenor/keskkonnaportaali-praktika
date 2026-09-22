@@ -610,6 +610,12 @@ function hasStem(tokens, stems, fuzzy = false) {
   return tokens.some((token) => stems.some((stem) => tokenHasStem(token, stem, fuzzy)));
 }
 
+// Estonian-only mode (default): English forestry phrasing stays inert.
+// Set MULTILINGUAL_SEARCH_ENABLED=true to restore multilingual routing.
+function isForestryMultilingual() {
+  return String(process.env.MULTILINGUAL_SEARCH_ENABLED ?? "").trim().toLowerCase() === "true";
+}
+
 function forestDataSourcesIntent() {
   return {
     kind: "forest-data-sources",
@@ -648,15 +654,17 @@ export function resolvePublicForestryIntent(query) {
     || /\bkasvunaitaj\w*|kasvuhinnang\w*\b/u.test(text);
   const hasProtection = /\b(?:kaitse\s+all|kaitstud|(?:loodus)?kaitseal\w*|kaitstava\w*|kaitsereziim\w*|kaitsevoond\w*|sihtkaitsevoond\w*|piiranguvoond\w*|natura)\b/u.test(text);
   const mentionsSample = hasStem(tokens, ["valim", "proovitukk", "vaatlus"], true);
+  const multilingualForestry = isForestryMultilingual();
   const hasForest = hasStem(tokens, [
     "mets", "puist", "tagavara", "metsavaru", "puiduvaru", "juurdekasv", "netojuurdekasv",
-    "lagerai", "metsateat", "raieteat", "metsaregis", "takseer", "mand", "kuusk", "forest", "woodland",
-  ], true) || /\bforested\b/u.test(text) || hasSmi || hasStem(tokens, ["rmk"]);
+    "lagerai", "metsateat", "raieteat", "metsaregis", "takseer", "mand", "kuusk",
+    ...(multilingualForestry ? ["forest", "woodland"] : []),
+  ], true) || (multilingualForestry && /\bforested\b/u.test(text)) || hasSmi || hasStem(tokens, ["rmk"]);
 
   const geographyScope = classifyForestryGeographyScope(query);
   const municipalityScope = ["reviewed-municipality", "unknown-locality"].includes(geographyScope.kind);
   const regionalScope = ["estonian-region", "foreign-or-other-region"].includes(geographyScope.kind);
-  const municipalityAreaMetric = /\b(?:kui\s+palju|kui\s+suur\w*|mitu\s+hektar\w*|metsasus\w*|metsamaa\w*|metsa\s+pindala|metsaga\s+kaetud|pindala|osakaal|protsent\w*|forest\s+area|forest\s+cover(?:age)?|woodland\s+area|woodland\s+cover(?:age)?|forest\s+hectares?|hectares?\s+(?:of\s+)?(?:forest|woodland)|hectares?\s+are\s+forested|percentage|how\s+many\s+(?:forest\s+)?hectares|how\s+much\s+(?:forest|woodland))\b/u.test(text);
+  const municipalityAreaMetric = new RegExp(`\\b(?:kui\\s+palju|kui\\s+suur\\w*|mitu\\s+hektar\\w*|metsasus\\w*|metsamaa\\w*|metsa\\s+pindala|metsaga\\s+kaetud|pindala|osakaal|protsent\\w*${multilingualForestry ? "|forest\\s+area|forest\\s+cover(?:age)?|woodland\\s+area|woodland\\s+cover(?:age)?|forest\\s+hectares?|hectares?\\s+(?:of\\s+)?(?:forest|woodland)|hectares?\\s+are\\s+forested|percentage|how\\s+many\\s+(?:forest\\s+)?hectares|how\\s+much\\s+(?:forest|woodland)" : ""})\\b`, "u").test(text);
   // Municipal AREA routing must never claim a harvest, clearcut, increment or
   // stock question (nt "Kui palju metsa raiuti Tartu vallas?"): local
   // quantities in those metrics have no query-bound evidence path, so an
@@ -669,8 +677,9 @@ export function resolvePublicForestryIntent(query) {
   }
   const asksForestMeasurementMethod = (
     /\b(?:kuidas|mil\s+viisil)\b[\s\S]{0,70}\b(?:moodet\w*|hinnat\w*|arvutat\w*|inventeerit\w*|metoodik\w*)\b/u.test(text)
-    || /\bhow\b[\s\S]{0,70}\b(?:measur\w*|estimat\w*|calculat\w*|survey\w*|inventor\w*|method\w*)\b/u.test(text)
-    || (mentionsSample && /\b(?:metoodik\w*|moodet\w*|hinnat\w*|kuidas|how)\b/u.test(text))
+    || (multilingualForestry && /\bhow\b[\s\S]{0,70}\b(?:measur\w*|estimat\w*|calculat\w*|survey\w*|inventor\w*|method\w*)\b/u.test(text))
+    || (mentionsSample && /\b(?:metoodik\w*|moodet\w*|hinnat\w*|kuidas)\b/u.test(text))
+    || (multilingualForestry && mentionsSample && /\bhow\b/u.test(text))
   );
   const hasParcelScope = /\b(?:kinnistu|katastriuksus|katastritunnus|maatuk|maauksus)\w*\b/u.test(text);
   // Concrete parcel and named source-comparison requests are narrower than
@@ -825,7 +834,7 @@ export function resolvePublicForestryIntent(query) {
     || /\b(?:mitu|kui\s+suur)\s+(?:protsenti|osa)\s+eesti\w*\b[\s\S]{0,30}\bmets\w*\b/u.test(text))) {
     return resolved("forest-covered-area");
   }
-  if (hasForest && (/\b(?:forest|woodland)\s+cover(?:age)?(?:\s+(?:percentage|percent|share))?\b/u.test(text)
+  if (multilingualForestry && hasForest && (/\b(?:forest|woodland)\s+cover(?:age)?(?:\s+(?:percentage|percent|share))?\b/u.test(text)
     || /\b(?:what|which)\s+(?:percentage|percent|share)\b[\s\S]{0,45}\b(?:forest|woodland)\b/u.test(text))) {
     return resolved("forest-covered-area");
   }
@@ -854,7 +863,7 @@ export function resolvePublicForestryIntent(query) {
       minimumSupportingDocuments: 1,
     };
   }
-  if (hasForest && /\b(?:forest\s+area|woodland\s+area|how\s+much\s+(?:forest|woodland)|how\s+many\s+(?:forest\s+hectares?|hectares?\s+of\s+(?:forest|woodland)|hectares?\s+(?:are\s+)?forested))\b/u.test(text)) {
+  if (multilingualForestry && hasForest && /\b(?:forest\s+area|woodland\s+area|how\s+much\s+(?:forest|woodland)|how\s+many\s+(?:forest\s+hectares?|hectares?\s+of\s+(?:forest|woodland)|hectares?\s+(?:are\s+)?forested))\b/u.test(text)) {
     return {
       kind: "forest-area",
       discoveryQueries: ["metsamaa pindala SMI Eesti", "metsasuse pindala Eesti"],
