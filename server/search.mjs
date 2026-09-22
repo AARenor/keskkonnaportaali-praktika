@@ -238,8 +238,8 @@ const SEARCH_DOCUMENTS = [
       requiresSourceTimestamp: true,
     },
     _answerEvidenceEligible: true,
-    _evidenceVersion: "mining-permit-procedure-reviewed-2026-08-22",
-    _evidenceStatusAt: "2026-08-22T01:32:00.000Z",
+    _evidenceVersion: "mining-permit-procedure-reviewed-2026-09-19",
+    _evidenceStatusAt: "2026-09-19T00:00:00.000Z",
   },
   {
     id: "kese-monitoring",
@@ -452,7 +452,7 @@ const SEARCH_DOCUMENTS = [
     },
     _answerEvidenceEligible: true,
     _evidenceVersion: "kka-korrastamiskohustus-2026-01-06",
-    _evidenceStatusAt: "2026-08-22T16:24:00.000Z",
+    _evidenceStatusAt: "2026-09-19T00:00:00.000Z",
   },
   {
     id: "waste-reporting-data",
@@ -571,7 +571,7 @@ const SEARCH_DOCUMENTS = [
     },
     _answerEvidenceEligible: true,
     _evidenceVersion: "soil-monitoring-page-updated-2026-08-05",
-    _evidenceStatusAt: "2026-08-22T01:25:00.000Z",
+    _evidenceStatusAt: "2026-09-19T00:00:00.000Z",
   },
   {
     id: "historical-weather-data",
@@ -697,8 +697,8 @@ const SEARCH_DOCUMENTS = [
       requiresSourceTimestamp: true,
     },
     _answerEvidenceEligible: true,
-    _evidenceVersion: "well-permit-guidance-reviewed-2026-08-22",
-    _evidenceStatusAt: "2026-08-22T00:00:00.000Z",
+    _evidenceVersion: "well-permit-guidance-reviewed-2026-09-19",
+    _evidenceStatusAt: "2026-09-19T00:00:00.000Z",
   },
   {
     id: "pond-permit-guidance",
@@ -725,8 +725,8 @@ const SEARCH_DOCUMENTS = [
       requiresSourceTimestamp: true,
     },
     _answerEvidenceEligible: true,
-    _evidenceVersion: "pond-permit-guidance-reviewed-2026-08-22",
-    _evidenceStatusAt: "2026-08-22T00:00:00.000Z",
+    _evidenceVersion: "pond-permit-guidance-reviewed-2026-09-19",
+    _evidenceStatusAt: "2026-09-19T00:00:00.000Z",
   },
   {
     id: "well-register",
