@@ -4580,8 +4580,24 @@ test("the reviewed campfire guide answers the bonfire and tent questions", async
   assert.match(source.url, /rmk\.ee\/looduses-liikumine\/juhised/u);
 });
 
-test("the reviewed fishing-permit guide answers the permit question", async () => {
-  const query = "Kuidas saada kalapüügiluba?";
+test("the reviewed renewable-energy guide answers the green-energy question", async () => {
+  const query = "Mis on roheline energia?";
+  const source = officialServiceCatalogueDocuments()
+    .find((document) => document.id === "renewable-energy-guidance");
+  assert.ok(source);
+  assert.equal(source._answerEvidenceEligible, true);
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    signal: new AbortController().signal,
+    searchResults: { total: 1, items: [source] },
+  });
+  assert.equal(draft.evidence.kind, "ranked-search-results");
+  assert.deepEqual(draft.answer.introCitations, [1]);
+  assert.match(draft.answer.intro, /roheline/u);
+  assert.match(draft.sources[0].url, /taastuvenergia-kkk/u);
+});
+
+test("the reviewed fishing-permit guide answers the permit question", async () => {  const query = "Kuidas saada kalapüügiluba?";
   const source = officialServiceCatalogueDocuments()
     .find((document) => document.id === "fishing-permit-guidance");
   assert.ok(source);

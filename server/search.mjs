@@ -841,6 +841,34 @@ const SEARCH_DOCUMENTS = [
     _evidenceStatusAt: "2026-09-23T00:00:00.000Z",
   },
   {
+    id: "renewable-energy-guidance",
+    title: "Mis on roheline energia",
+    organization: "Keskkonnaportaal",
+    type: "Teemaülevaade",
+    published: "jooksev",
+    url: "https://keskkonnaportaal.ee/et/teemad/taastuvenergia/taastuvenergia-kkk",
+    locator: "Taastuvenergia KKK",
+    tags: ["roheline energia", "taastuvenergia", "tuuleenergia", "päikeseenergia"],
+    summary:
+      "Keskkonnaportaali taastuvenergia KKK järgi on roheline energia keskkonnasõbralik energia: tuuliku toodetud elekter on roheline, sest selle tootmisel ei teki saastet ega kasutata fossiilkütuseid.",
+    content:
+      "Keskkonnaportaali taastuvenergia KKK selgitab, et tuuliku toodetud elekter on roheline ehk keskkonnasõbralik energia, sest selle tootmisel ei teki saastet ega kasutata fossiilkütuseid. Tuulik töötab aastakümneid ja toodab selle ajaga palju puhast energiat; rajamisel tehakse põhjalikud uuringud, et mõju loodusele ja elurikkusele oleks võimalikult väike. Energeetikasektor on üks suuremaid keskkonna saastajaid, mistõttu on vaja tegeleda taastuvenergiaga. Ülevaade ei asenda konkreetse tuulepargi keskkonnamõju hindamist.",
+    answer:
+      "Roheline energia on keskkonnasõbralik energia, näiteks tuule- ja päikeseenergia, mille tootmisel ei teki saastet ega kasutata fossiilkütuseid.",
+    evidencePolicy: "versioned",
+    delivery: "catalog-only",
+    routeClasses: ["official_guidance"],
+    freshness: {
+      class: "reviewed-guidance-extract",
+      basis: "reviewed-at",
+      maxAgeMs: 31 * 24 * 60 * 60 * 1_000,
+      requiresSourceTimestamp: true,
+    },
+    _answerEvidenceEligible: true,
+    _evidenceVersion: "renewable-energy-guidance-reviewed-2026-09-23",
+    _evidenceStatusAt: "2026-09-23T00:00:00.000Z",
+  },
+  {
     id: "well-register",
     title: "Puurkaevude ja puuraukude andmed registris",
     organization: "Keskkonnaagentuur / Keskkonnaportaal",
