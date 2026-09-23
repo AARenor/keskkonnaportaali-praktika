@@ -1689,8 +1689,8 @@ function topicRoot(word) {
   if (word.startsWith("lagerai")) return "raie";
   if (word.startsWith("metsateatis") || word.startsWith("raieteatis")) return "mets";
   if (word.startsWith("kuusk") || word.startsWith("kuuse") || word.startsWith("kuusik")) return "mets";
-  if (word.startsWith("mand") || word.startsWith("manni") || word.startsWith("mannik")) return "mets";
-  if (word.startsWith("rai")) return "raie";
+  if (word.startsWith("manni") || word.startsWith("mannik")) return "mets";
+  if (word.startsWith("rai") && !word.startsWith("rain")) return "raie";
   if (word.startsWith("netojuurdekasv") || word.startsWith("juurdekasv")) return "juurdekasv";
   if (word.startsWith("ulet")) return "uletamine";
   if (word.startsWith("noor")) return "noor";
@@ -1777,11 +1777,11 @@ function topicRoot(word) {
   if (word.startsWith("jogeva")) return "jogeva";
   if (word.startsWith("veevot")) return "vesi";
   if (word.startsWith("jarv") || word.startsWith("tiig")) return "jarv";
-  if (word.startsWith("jog") || word.startsWith("joe")) return "jogi";
+  if (word.startsWith("jogi") || word.startsWith("joe") || word.startsWith("joge") || word.startsWith("jokke")) return "jogi";
   if (["vee", "vees", "veest", "veega", "vett"].includes(word) || word.startsWith("veek")) return "vesi";
   if (word.startsWith("veetas") || word.startsWith("vooluhulk") || word.startsWith("kraavive")) return "vesi";
-  if (word.startsWith("laht") || word.startsWith("lahes")) return "meri";
-  if (word.startsWith("mer")) return "meri";
+  if (word === "laht" || word.startsWith("lahe") || word.startsWith("lahte") || word.startsWith("lahes")) return "meri";
+  if (word.startsWith("mere") || word.startsWith("merd") || word.startsWith("merre") || word === "meri") return "meri";
   if (word.startsWith("jaaolu") || word === "jaakaart" || word === "jaad" || word === "jaa") return "jaaolud";
   if (word.startsWith("vaatlusandm")) return "seire";
   if (word.startsWith("ohutemperatuur") || word.startsWith("temperatuur")) return "temperatuur";
@@ -2138,18 +2138,18 @@ export function queryTerms(query) {
   if (/\b(?:state(?:\s+owned)?|public(?:ly\s+owned|\s+owned)?|national|municipal(?:ly\s+owned)?|government(?:\s+owned)?|city\s+owned|county\s+owned|federal)\s+(?:forest|woodland|land|property|estate|parcel|plot|lot|farm|well|borehole|building|dwelling)s?\b/u.test(normalizedQuery)) {
     phraseRoots.push("kataster");
   }
-  if (/\bwind\s+farm\b/u.test(normalizedQuery)) phraseRoots.push("tuulepark");
-  if (/\boil\s+shale\b/u.test(normalizedQuery)
-    || /\bshale\s+oil\b/u.test(normalizedQuery)) phraseRoots.push("polevkivi", "kaevandus");
-  if (/\b(?:river|water)\s+levels?\b/u.test(normalizedQuery)) phraseRoots.push("veetase");
-  if (/\bprotected\s+areas?\b/u.test(normalizedQuery)) phraseRoots.push("kaitseala");
-  if (/\bmarine\s+litter\b/u.test(normalizedQuery)) phraseRoots.push("mereprugi");
-  if (/\bclimate\s+change\b/u.test(normalizedQuery)) phraseRoots.push("kliima");
-  if (/\bforest\s+data\s+(?:map|maps|mapping)\b/u.test(normalizedQuery)) phraseRoots.push("ruumikiht");
+  if (multilingualPhrases && /\bwind\s+farm\b/u.test(normalizedQuery)) phraseRoots.push("tuulepark");
+  if (multilingualPhrases && (/\boil\s+shale\b/u.test(normalizedQuery)
+    || /\bshale\s+oil\b/u.test(normalizedQuery))) phraseRoots.push("polevkivi", "kaevandus");
+  if (multilingualPhrases && /\b(?:river|water)\s+levels?\b/u.test(normalizedQuery)) phraseRoots.push("veetase");
+  if (multilingualPhrases && /\bprotected\s+areas?\b/u.test(normalizedQuery)) phraseRoots.push("kaitseala");
+  if (multilingualPhrases && /\bmarine\s+litter\b/u.test(normalizedQuery)) phraseRoots.push("mereprugi");
+  if (multilingualPhrases && /\bclimate\s+change\b/u.test(normalizedQuery)) phraseRoots.push("kliima");
+  if (multilingualPhrases && /\bforest\s+data\s+(?:map|maps|mapping)\b/u.test(normalizedQuery)) phraseRoots.push("ruumikiht");
   if (/\bmetsa\w*\s+andm\w*\s+kaart\w*\b/u.test(normalizedQuery)) phraseRoots.push("ruumikiht");
-  if (/\bbiodiversity\s+(?:observation\w*\s+)?database\b/u.test(normalizedQuery)) phraseRoots.push("loodusvaatlus");
-  if (/\bspecies\s+observations?\b/u.test(normalizedQuery)
-    || /\bnature\s+observations?\b/u.test(normalizedQuery)) phraseRoots.push("loodusvaatlus");
+  if (multilingualPhrases && /\bbiodiversity\s+(?:observation\w*\s+)?database\b/u.test(normalizedQuery)) phraseRoots.push("loodusvaatlus");
+  if (multilingualPhrases && (/\bspecies\s+observations?\b/u.test(normalizedQuery)
+    || /\bnature\s+observations?\b/u.test(normalizedQuery))) phraseRoots.push("loodusvaatlus");
   if (/\bemaj(?:og|oe)\w*\b/u.test(normalizedQuery)
     && /\bavalik\w*\s+kasutus\w*\b/u.test(normalizedQuery)) phraseRoots.push("vesi");
   if (roots.includes("stsenaarium") && roots.includes("sademed")) phraseRoots.push("kliima");
@@ -6571,7 +6571,10 @@ function isPublicOrganizationContactQuery(value) {
 function rootIsDomain(root) {
   if (!isMultilingualSearchEnabled() && ENGLISH_ONLY_DOMAIN_ROOTS.has(root)) return false;
   if (DOMAIN_ROOTS.has(root)) return true;
-  return [...DOMAIN_ROOTS].some((candidate) => root.startsWith(candidate) && candidate.length >= 4);
+  return [...DOMAIN_ROOTS].some((candidate) => {
+    if (!isMultilingualSearchEnabled() && ENGLISH_ONLY_DOMAIN_ROOTS.has(candidate)) return false;
+    return root.startsWith(candidate) && candidate.length >= 4;
+  });
 }
 
 function clarificationFor(root) {
@@ -6613,7 +6616,7 @@ export function analyzePublicSearchQuery(query, options = {}) {
   const current = /\b(?:tana\w*|homn\w*|homm\w*|homs\w*|ulehomme|praegu|hetkel|hetke\w*|nadalavahet\w*|reaalajas|prognoos\w*|\w*hoiatus\w*|today|tomorrow|current|currently|now|weekend|forecast\w*|warning\w*)\b/u.test(normalized);
   const weatherMeasurementIntent = roots.some((root) => [
     "temperatuur", "ohutemperatuur", "tuul", "niiskus", "ohuniiskus", "ohurohk", "sooja", "kulm", "baromeetrirohk",
-    "wind", "humidity", "pressure",
+    ...(isMultilingualSearchEnabled() ? ["wind", "humidity", "pressure"] : []),
   ].includes(root))
     && !roots.some((root) => [
       "vesi", "meri", "laanemeri", "jarv", "jogi", "emajogi", "pohjavesi", "suplusvesi", "joogivesi", "reovesi", "mootmine",
