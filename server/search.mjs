@@ -768,7 +768,7 @@ const SEARCH_DOCUMENTS = [
     summary:
       "Kliimaministeeriumi riikliku juhendi järgi on kodus tehtav jäätmete sorteerimine liigiti kogumine: pakendid, klaas, biojäätmed, paber ja kartong kogutakse eraldi.",
     content:
-      "Kliimaministeeriumi olmejäätmete liigiti kogumise juhend on riiklik juhis, mis muudab prügi sorteerimise kõigi jaoks lihtsamaks ja selgemaks; sellest lähtuvad edaspidi ka jäätmevedajad ja taaskasutusorganisatsioonid. Kodus kogutakse liigiti muu hulgas pakendeid, klaaspakendeid, plast- ja metallpakendeid, biojäätmeid ning paberi- ja kartongijäätmeid; eraldi kogutakse ka ohtlikud jäätmed, patareid, elektroonikajäätmed ja tekstiil. Tühjad klaaspudelid pannakse klaasikonteinerisse. Vana külmikuga tuleb teha nii: viia see jäätmekäitluskohta, sest jäätmekäitluskoht võtab elektroonikajäätmeid vastu. Täpset kogumiskohta ja veograafikut küsi omavalitsusest või vedajalt. Üldjuhend ei asenda kohaliku omavalitsuse jäätmehoolduseeskirja.",
+      "Kliimaministeeriumi olmejäätmete liigiti kogumise juhend on riiklik juhis, mis muudab prügi sorteerimise kõigi jaoks lihtsamaks ja selgemaks; sellest lähtuvad edaspidi ka jäätmevedajad ja taaskasutusorganisatsioonid. Kodus kogutakse liigiti muu hulgas pakendeid, klaaspakendeid, plast- ja metallpakendeid, biojäätmeid ning paberi- ja kartongijäätmeid; eraldi kogutakse ka ohtlikud jäätmed, patareid, elektroonikajäätmed ja tekstiil. Tühjad klaaspudelid pannakse klaasikonteinerisse. Vana külmikuga tuleb teha nii: viia see jäätmekäitluskohta, sest jäätmekäitluskoht võtab elektroonikajäätmeid vastu. Täpset kogumiskohta ja veograafikut küsi omavalitsusest või vedajalt. Tühjade patareidega tuleb teha nii: vii need poodi või jäätmejaama patareikasti. Vana diivan on suurjäätmed: vii see jäätmejaama või telli äravedu omavalitsuse kaudu. Üldjuhend ei asenda kohaliku omavalitsuse jäätmehoolduseeskirja.",
     answer:
       "Sorteeri kodus jäätmed liikide kaupa riikliku juhendi järgi: eraldi pakendid, klaas, biojäätmed, paber ja kartong ning ohtlikud jäätmed. Täpse veograafiku ja kogumiskoha küsi elukohajärgselt vedajalt või omavalitsuselt.",
     evidencePolicy: "versioned",
@@ -796,7 +796,7 @@ const SEARCH_DOCUMENTS = [
     summary:
       "RMK juhiste järgi võib metsas telkida igaüheõiguse piires ja lõket tohib teha ainult selleks ettevalmistatud ja tähistatud kohas tuletegemist lubaval ajal, kaitsealadel kehtivad eraldi piirangud.",
     content:
-      "RMK looduses liikumise juhiste järgi peetakse kinni igaüheõiguse põhimõtetest ja piirangutest: kaitsealadel on igaüheõigus piiratud ja reeglid on kirjas vastava ala kaitse-eeskirjas. Telkimiseks, lõkke tegemiseks ja peatumiseks eelistatakse olemasolevaid matkaradu, telkimisalasid ja lõkkekohti, et mitte tekitada lisakoormust keskkonnale. Lõket tehakse ainult selleks ettevalmistatud ja tähistatud kohas tuletegemist lubaval ajal; eelistatakse kattega lõkkekohta, järgitakse tuleohutusnõudeid, põlevat lõket ei jäeta kunagi valveta ja lahkudes see kustutatakse. Tule tegemisel kasutatakse valmis puid või maha langenud oksi ning arvestatakse metsas valitseva tuleohuga.",
+      "RMK looduses liikumise juhiste järgi peetakse kinni igaüheõiguse põhimõtetest ja piirangutest: kaitsealadel on igaüheõigus piiratud ja reeglid on kirjas vastava ala kaitse-eeskirjas. Telkimiseks, lõkke tegemiseks ja peatumiseks eelistatakse olemasolevaid matkaradu, telkimisalasid ja lõkkekohti, et mitte tekitada lisakoormust keskkonnale. Lõket tehakse ainult selleks ettevalmistatud ja tähistatud kohas tuletegemist lubaval ajal; eelistatakse kattega lõkkekohta, järgitakse tuleohutusnõudeid, põlevat lõket ei jäeta kunagi valveta ja lahkudes see kustutatakse. Tule tegemisel kasutatakse valmis puid või maha langenud oksi ning arvestatakse metsas valitseva tuleohuga. Igaüheõiguse järgi võib metsas seeni ja marju korjata, kuid kaitsealadel tuleb järgida kaitse-eeskirja.",
     answer:
       "Metsas tohib telkida igaüheõiguse piires, kaitsealal kehtivad eraldi piirangud; lõket tohib teha ainult ettevalmistatud tähistatud kohas ja lubaval ajal, valveta jätta ei tohi.",
     evidencePolicy: "versioned",
@@ -1313,6 +1313,9 @@ const STOP_WORDS = new Set([
   "kohta",
   "praegu",
   "panna",
+  "osta",
+  "ostma",
+  "ostmine",
   "praegune",
   "praegused",
   "hetke",
@@ -1710,6 +1713,7 @@ function topicRoot(word) {
   if (word.startsWith("biojaat") || word.startsWith("kompost")) return "biojaatmed";
   if (word.startsWith("pakend")) return "jaat";
   if (word.startsWith("pudel") || word.startsWith("klaas")) return "klaas";
+  if (word.startsWith("diivan") || word.startsWith("divan") || word.startsWith("moobel")) return "suurjaatmed";
   if (word.startsWith("taaskasut")) return "ringlussevott";
   if (word.startsWith("kulmkapp") || word.startsWith("kulmik") || word.startsWith("kodumasin") || word.startsWith("elektroonik")) return "jaatmekaitluskoht";
   if (word.startsWith("patarei") || word.startsWith("ravim") || word.startsWith("varvipurk")) return "jaat";
@@ -2201,7 +2205,7 @@ export function queryRootVariants(root) {
   if (root === "heide") return ["heide", "heit"];
   if (root === "ringlussevott") return ["ringlussevot", "taaskasut"];
   if (root === "ringmajandus") return ["ringmajandus", "circular economy", "circularity"];
-  if (root === "lubatavus") return ["ei tohi", "tohib", "lubat", "keelat"];
+  if (root === "lubatavus") return ["ei tohi", "tohib", "võib", "lubat", "keelat"];
   if (root === "elutsukkel") return ["elutsuk"];
   if (root === "aku") return ["aku", "battery"];
   if (root === "uleujutusrisk") return ["uleujutusrisk", "uleujutusala", "uleujutuskaart", "riskistsenaarium"];
@@ -2298,7 +2302,7 @@ const DOMAIN_ROOTS = new Set([
   "suplusvesi", "joogivesi", "reovesi", "kohtkaitlus", "pestitsiid", "nitraat", "mereprugi", "asbest", "biojaatmed",
   "rohevorgustik", "voorliik", "uluk", "margala", "pais", "kala", "osoon", "paikesepaneel", "jalajalg", "susinik",
   "tuulepark", "aku", "uleujutusrisk",
-  "kodus", "kalapuuk", "ranne", "klaas",
+  "kodus", "kalapuuk", "ranne", "klaas", "suurjaatmed",
   "keskkonnamoju", "kotkas", "kmh", "ksh", "kataster", "kinnistu", "metsaregister",
   "elektriauto", "energia", "transport", "kütus", "kytus", "maavara", "kaevandus", "muld",
   "mura", "kiirgus", "climate", "forest", "water", "weather", "pollution", "waste",

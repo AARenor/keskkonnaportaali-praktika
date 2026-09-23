@@ -4547,6 +4547,8 @@ test("the reviewed waste-sorting guide answers the home-sorting question", async
     "Kuidas kodus jäätmeid sorteerida?",
     "Kuhu panna klaaspudelid?",
     "Mida teha vana külmikuga?",
+    "Mida teha tühjade patareidega?",
+    "Kuhu saab vana diivani viia?",
     "Kuidas prügi sorteerida?",
     "jäätmete sorteerimine",
   ]) {
@@ -4566,7 +4568,7 @@ test("the reviewed campfire guide answers the bonfire and tent questions", async
     .find((document) => document.id === "campfire-guidance");
   assert.ok(source);
   assert.equal(source._answerEvidenceEligible, true);
-  for (const query of ["Kas lõket võib metsas teha?", "Kas metsa võib telkida?"]) {
+  for (const query of ["Kas lõket võib metsas teha?", "Kas metsa võib telkida?", "Kas seeni võib metsas korjata?"]) {
     const draft = await createPortalDraft(query, {
       deadlineAt: Date.now(),
       signal: new AbortController().signal,
