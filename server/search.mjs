@@ -768,7 +768,7 @@ const SEARCH_DOCUMENTS = [
     summary:
       "Kliimaministeeriumi riikliku juhendi järgi on kodus tehtav jäätmete sorteerimine liigiti kogumine: pakendid, klaas, biojäätmed, paber ja kartong kogutakse eraldi.",
     content:
-      "Kliimaministeeriumi olmejäätmete liigiti kogumise juhend on riiklik juhis, mis muudab prügi sorteerimise kõigi jaoks lihtsamaks ja selgemaks; sellest lähtuvad edaspidi ka jäätmevedajad ja taaskasutusorganisatsioonid. Kodus kogutakse liigiti muu hulgas pakendeid, klaaspakendeid, plast- ja metallpakendeid, biojäätmeid ning paberi- ja kartongijäätmeid; eraldi kogutakse ka ohtlikud jäätmed, patareid, elektroonikajäätmed ja tekstiil. Tühjad klaaspudelid pannakse klaasikonteinerisse. Vana külmikuga tuleb teha nii: viia see jäätmekäitluskohta, sest jäätmekäitluskoht võtab elektroonikajäätmeid vastu. Täpset kogumiskohta ja veograafikut küsi omavalitsusest või vedajalt. Tühjade patareidega tuleb teha nii: vii need poodi või jäätmejaama patareikasti. Vana diivan on suurjäätmed: vii see jäätmejaama või telli äravedu omavalitsuse kaudu. Üldjuhend ei asenda kohaliku omavalitsuse jäätmehoolduseeskirja.",
+      "Kliimaministeeriumi olmejäätmete liigiti kogumise juhend on riiklik juhis, mis muudab prügi sorteerimise kõigi jaoks lihtsamaks ja selgemaks; sellest lähtuvad edaspidi ka jäätmevedajad ja taaskasutusorganisatsioonid. Kodus kogutakse liigiti muu hulgas pakendeid, klaaspakendeid, plast- ja metallpakendeid, biojäätmeid ning paberi- ja kartongijäätmeid; eraldi kogutakse ka ohtlikud jäätmed, patareid, elektroonikajäätmed ja tekstiil. Tühjad klaaspudelid pannakse klaasikonteinerisse. Vana külmikuga tuleb teha nii: viia see jäätmekäitluskohta, sest jäätmekäitluskoht võtab elektroonikajäätmeid vastu. Täpset kogumiskohta ja veograafikut küsi omavalitsusest või vedajalt. Tühjade patareidega tuleb teha nii: vii need poodi või jäätmejaama patareikasti. Vanadest ravimitest saab vabaneda apteegi kaudu: vii kasutuskõlbmatud ravimid apteeki tagasi, ravimid kogutakse eraldi (apteek, jäätmejaam). Vana diivan on suurjäätmed: vii see jäätmejaama või telli äravedu omavalitsuse kaudu. Üldjuhend ei asenda kohaliku omavalitsuse jäätmehoolduseeskirja.",
     answer:
       "Sorteeri kodus jäätmed liikide kaupa riikliku juhendi järgi: eraldi pakendid, klaas, biojäätmed, paber ja kartong ning ohtlikud jäätmed. Täpse veograafiku ja kogumiskoha küsi elukohajärgselt vedajalt või omavalitsuselt.",
     evidencePolicy: "versioned",
@@ -866,6 +866,34 @@ const SEARCH_DOCUMENTS = [
     },
     _answerEvidenceEligible: true,
     _evidenceVersion: "renewable-energy-guidance-reviewed-2026-09-23",
+    _evidenceStatusAt: "2026-09-23T00:00:00.000Z",
+  },
+  {
+    id: "pollution-reporting-guidance",
+    title: "Keskkonnareostusest teatamine",
+    organization: "Keskkonnaportaal",
+    type: "Ametlik juhend",
+    published: "jooksev",
+    url: "https://keskkonnaportaal.ee/et/reostusega-seotud-mured-ja-soovitused",
+    locator: "Reostusega seotud mured ja soovitused",
+    tags: ["reostus", "saaste", "teatamine", "1247", "Keskkonnaamet"],
+    summary:
+      "Saaste avastamisel tuleb sellest riigiinfo telefonile 1247 teatada ja kirjeldada ohtu võimalikult täpselt; merereostusest teavita numbril 112.",
+    content:
+      "Keskkonnaportaali juhendi järgi tuleb keskkonnarikkumisest või -reostusest teatada riigiinfo telefonile 1247. Kui avastad keskkonnareostuse, hinda olukorda: väikese prahi, näiteks metsa jäetud tühja pudeli, võib ise kaasa võtta, ulatuslikuma reostuse puhul helista 1247 ja anna võimalikult täpne keskkonnaohu kirjeldus, vajadusel jää kohale inspektorit ootama. Merereostuse avastamisel võib teavitada otse Politsei- ja Piirivalveametit telefonil 112. Kohaliku omavalitsuse maal esinevast heakorra-alasest probleemist võib teavitada vastavat omavalitsust, samuti saab kasutada Anna teada äppi. Riigi omandis oleval maal korraldab reostuse likvideerimist Keskkonnaamet.",
+    answer:
+      "Teata keskkonnareostusest riigiinfo telefonile 1247 (kirjelda ohtu täpselt); merereostusest numbril 112; heakorraprobleemist oma omavalitsusele.",
+    evidencePolicy: "versioned",
+    delivery: "catalog-only",
+    routeClasses: ["official_guidance"],
+    freshness: {
+      class: "reviewed-guidance-extract",
+      basis: "reviewed-at",
+      maxAgeMs: 31 * 24 * 60 * 60 * 1_000,
+      requiresSourceTimestamp: true,
+    },
+    _answerEvidenceEligible: true,
+    _evidenceVersion: "pollution-reporting-guidance-reviewed-2026-09-23",
     _evidenceStatusAt: "2026-09-23T00:00:00.000Z",
   },
   {

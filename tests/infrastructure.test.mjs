@@ -4587,6 +4587,38 @@ test("the reviewed campfire guide answers the bonfire and tent questions", async
   assert.match(source.url, /rmk\.ee\/looduses-liikumine\/juhised/u);
 });
 
+test("the reviewed waste-sorting guide covers medicines take-back", async () => {
+  const query = "Kuidas vabaneda vanadest ravimitest?";
+  const source = officialServiceCatalogueDocuments()
+    .find((document) => document.id === "waste-sorting-guidance");
+  assert.ok(source);
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    signal: new AbortController().signal,
+    searchResults: { total: 1, items: [source] },
+  });
+  assert.equal(draft.evidence.kind, "ranked-search-results");
+  assert.deepEqual(draft.answer.introCitations, [1]);
+  assert.match(draft.answer.intro, /apteeki/u);
+});
+
+test("the reviewed pollution-reporting guide answers the reporting question", async () => {
+  const query = "Kuidas teatada reostusest?";
+  const source = officialServiceCatalogueDocuments()
+    .find((document) => document.id === "pollution-reporting-guidance");
+  assert.ok(source);
+  assert.equal(source._answerEvidenceEligible, true);
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    signal: new AbortController().signal,
+    searchResults: { total: 1, items: [source] },
+  });
+  assert.equal(draft.evidence.kind, "ranked-search-results");
+  assert.deepEqual(draft.answer.introCitations, [1]);
+  assert.match(draft.answer.intro, /1247/u);
+  assert.match(draft.sources[0].url, /reostusega-seotud-mured-ja-soovitused/u);
+});
+
 test("the reviewed renewable-energy guide answers the green-energy question", async () => {
   const query = "Mis on roheline energia?";
   const source = officialServiceCatalogueDocuments()
