@@ -852,7 +852,7 @@ const SEARCH_DOCUMENTS = [
     summary:
       "Keskkonnaportaali taastuvenergia KKK järgi on roheline energia keskkonnasõbralik energia: tuuliku toodetud elekter on roheline, sest selle tootmisel ei teki saastet ega kasutata fossiilkütuseid.",
     content:
-      "Keskkonnaportaali taastuvenergia KKK selgitab, et tuuliku toodetud elekter on roheline ehk keskkonnasõbralik energia, sest selle tootmisel ei teki saastet ega kasutata fossiilkütuseid. Tuulik töötab aastakümneid ja toodab selle ajaga palju puhast energiat; rajamisel tehakse põhjalikud uuringud, et mõju loodusele ja elurikkusele oleks võimalikult väike. Energeetikasektor on üks suuremaid keskkonna saastajaid, mistõttu on vaja tegeleda taastuvenergiaga. Ülevaade ei asenda konkreetse tuulepargi keskkonnamõju hindamist.",
+      "Keskkonnaportaali taastuvenergia KKK selgitab, et tuuliku toodetud elekter on roheline ehk keskkonnasõbralik energia, sest selle tootmisel ei teki saastet ega kasutata fossiilkütuseid. Tuulik töötab aastakümneid ja toodab selle ajaga palju puhast energiat; rajamisel tehakse põhjalikud uuringud, et mõju loodusele ja elurikkusele oleks võimalikult väike. Energeetikasektor on üks suurimaid keskkonna saastajaid, mistõttu on vaja tegeleda taastuvenergiaga. Ülevaade ei asenda konkreetse tuulepargi keskkonnamõju hindamist.",
     answer:
       "Roheline energia on keskkonnasõbralik energia, näiteks tuule- ja päikeseenergia, mille tootmisel ei teki saastet ega kasutata fossiilkütuseid.",
     evidencePolicy: "versioned",

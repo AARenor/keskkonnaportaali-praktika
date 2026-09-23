@@ -4595,9 +4595,21 @@ test("the reviewed renewable-energy guide answers the green-energy question", as
   assert.deepEqual(draft.answer.introCitations, [1]);
   assert.match(draft.answer.intro, /roheline/u);
   assert.match(draft.sources[0].url, /taastuvenergia-kkk/u);
+  assert.equal(draft.sources[0].id, "renewable-energy-guidance");
 });
 
-test("the reviewed fishing-permit guide answers the permit question", async () => {  const query = "Kuidas saada kalapüügiluba?";
+test("the renewable-energy guide is retrievable without injected results", () => {
+  const query = "Mis on roheline energia?";
+  const ranked = rankSearchCandidates(query, officialServiceCatalogueDocuments(), { now: Date.now() });
+  const ids = ranked.slice(0, 6).map((document) => document.id);
+  assert.ok(ids.includes("renewable-energy-guidance"), `top-6: ${ids.join(",")}`);
+  const quality = assessEvidence(query, ranked.slice(0, 8).map((document) => ({ ...document, score: document._ranking?.score ?? document.score })));
+  assert.equal(quality.strong, true);
+  assert.equal(quality.directDocumentId, "renewable-energy-guidance");
+});
+
+test("the reviewed fishing-permit guide answers the permit question", async () => {
+  const query = "Kuidas saada kalapüügiluba?";
   const source = officialServiceCatalogueDocuments()
     .find((document) => document.id === "fishing-permit-guidance");
   assert.ok(source);
