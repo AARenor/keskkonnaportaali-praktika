@@ -374,7 +374,7 @@ h3 {
 .hero__shade {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(9, 35, 51, 0.43), rgba(11, 39, 49, 0.48));
+  background: linear-gradient(180deg, rgba(9, 35, 51, 0.58), rgba(11, 39, 49, 0.62));
 }
 
 .hero__content {
@@ -410,7 +410,7 @@ h3 {
   font-size: clamp(2.9rem, 4.2vw, 4.05rem);
   font-weight: 700;
   line-height: 1.06;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.38);
 }
 
 .hero__subtitle {
@@ -431,7 +431,7 @@ h3 {
   display: flex;
   min-height: 58px;
   align-items: center;
-  border: 2px solid var(--brand-700);
+  border: 1px solid #c9d9e4;
   border-radius: 4px;
   background: #fff;
   box-shadow: 0 12px 30px rgba(0, 25, 54, 0.17);
