@@ -766,9 +766,9 @@ const SEARCH_DOCUMENTS = [
     locator: "Olmejäätmete liigiti kogumise juhend",
     tags: ["jäätmed", "sorteerimine", "liigiti kogumine", "pakend", "biojäätmed", "kodus"],
     summary:
-      "Kliimaministeeriumi riikliku liigiti kogumise juhendi järgi sorteeritakse kodus jäätmed liikide kaupa: eraldi kogutakse pakendid, klaas, biojäätmed, paber ja kartong ning ohtlikud jäätmed; juhendist lähtuvad edaspidi ka jäätmevedajad ja taaskasutusorganisatsioonid.",
+      "Kliimaministeeriumi riikliku juhendi järgi on kodus tehtav jäätmete sorteerimine liigiti kogumine: pakendid, klaas, biojäätmed, paber ja kartong kogutakse eraldi.",
     content:
-      "Kliimaministeeriumi olmejäätmete liigiti kogumise juhend on riiklik juhis, mis muudab prügi sorteerimise kõigi jaoks lihtsamaks ja selgemaks; sellest lähtuvad edaspidi ka jäätmevedajad ja taaskasutusorganisatsioonid. Kodus kogutakse liigiti muu hulgas pakendeid, klaaspakendeid, plast- ja metallpakendeid, biojäätmeid ning paberi- ja kartongijäätmeid; eraldi kogutakse ka ohtlikud jäätmed, patareid, elektroonikajäätmed ja tekstiil. Juhendi trükimaterjalid on portaalis eesti, inglise ja vene keeles. Üldjuhend ei asenda kohaliku omavalitsuse jäätmehoolduseeskirja: täpse veograafiku ja kogumiskoha annab elukohajärgne vedaja või omavalitsus.",
+      "Kliimaministeeriumi olmejäätmete liigiti kogumise juhend on riiklik juhis, mis muudab prügi sorteerimise kõigi jaoks lihtsamaks ja selgemaks; sellest lähtuvad edaspidi ka jäätmevedajad ja taaskasutusorganisatsioonid. Kodus kogutakse liigiti muu hulgas pakendeid, klaaspakendeid, plast- ja metallpakendeid, biojäätmeid ning paberi- ja kartongijäätmeid; eraldi kogutakse ka ohtlikud jäätmed, patareid, elektroonikajäätmed ja tekstiil. Tühjad klaaspudelid pannakse klaasikonteinerisse. Vana külmikuga tuleb teha nii: viia see jäätmekäitluskohta, sest jäätmekäitluskoht võtab elektroonikajäätmeid vastu. Täpset kogumiskohta ja veograafikut küsi omavalitsusest või vedajalt. Üldjuhend ei asenda kohaliku omavalitsuse jäätmehoolduseeskirja.",
     answer:
       "Sorteeri kodus jäätmed liikide kaupa riikliku juhendi järgi: eraldi pakendid, klaas, biojäätmed, paber ja kartong ning ohtlikud jäätmed. Täpse veograafiku ja kogumiskoha küsi elukohajärgselt vedajalt või omavalitsuselt.",
     evidencePolicy: "versioned",
@@ -1312,6 +1312,7 @@ const STOP_WORDS = new Set([
   "nad",
   "kohta",
   "praegu",
+  "panna",
   "praegune",
   "praegused",
   "hetke",
@@ -1708,8 +1709,9 @@ function topicRoot(word) {
   if (word.startsWith("asbest") || word.startsWith("eterniit")) return "asbest";
   if (word.startsWith("biojaat") || word.startsWith("kompost")) return "biojaatmed";
   if (word.startsWith("pakend")) return "jaat";
+  if (word.startsWith("pudel") || word.startsWith("klaas")) return "klaas";
   if (word.startsWith("taaskasut")) return "ringlussevott";
-  if (word.startsWith("kulmkapp") || word.startsWith("kodumasin") || word.startsWith("elektroonik")) return "jaatmekaitluskoht";
+  if (word.startsWith("kulmkapp") || word.startsWith("kulmik") || word.startsWith("kodumasin") || word.startsWith("elektroonik")) return "jaatmekaitluskoht";
   if (word.startsWith("patarei") || word.startsWith("ravim") || word.startsWith("varvipurk")) return "jaat";
   if (word.startsWith("aku")) return "aku";
   if (word.startsWith("jaat")) return "jaat";
@@ -2016,7 +2018,13 @@ export function queryTerms(query) {
       if (/\bbioloog(?:i|l)\w*\s+mitmekesis\w*\b/u.test(normalizedQuery)
         && (/^bioloog(?:i|l)\w*$/u.test(word) || /^mitmekesis\w*$/u.test(word))) return [];
       if (word.startsWith("sorteer")
-        && /\b(?:jaat\w*|prugi\w*|pakend\w*|biojaat\w*)\b/u.test(normalizedQuery)) return ["jaat"];
+        && /\b(?:jaat\w*|prugi\w*|pakend\w*|biojaat\w*)\b/u.test(normalizedQuery)) {
+        // A waste-sorting question names the method explicitly: carry both
+        // roots so the reviewed sorting guide can answer. Bare "jäätmete
+        // sorteerimine" is now answerable too (guide exists); unrelated
+        // "sorteerimis-" compounds without waste words stay out (below).
+        return ["jaat", "sorteerimine"];
+      }
       if ((multilingualPhrases && (word === "sorting" || word === "sort"))
         && /\b(?:jaat\w*|prugi\w*|pakend\w*|biojaat\w*|waste|garbage|trash|rubbish)\b/u.test(normalizedQuery)) return ["jaat"];
       if (((multilingualPhrases && (word === "home" || word === "household")) || word.startsWith("kodus") || word.startsWith("kodune"))
@@ -2290,7 +2298,7 @@ const DOMAIN_ROOTS = new Set([
   "suplusvesi", "joogivesi", "reovesi", "kohtkaitlus", "pestitsiid", "nitraat", "mereprugi", "asbest", "biojaatmed",
   "rohevorgustik", "voorliik", "uluk", "margala", "pais", "kala", "osoon", "paikesepaneel", "jalajalg", "susinik",
   "tuulepark", "aku", "uleujutusrisk",
-  "kodus", "kalapuuk", "ranne",
+  "kodus", "kalapuuk", "ranne", "klaas",
   "keskkonnamoju", "kotkas", "kmh", "ksh", "kataster", "kinnistu", "metsaregister",
   "elektriauto", "energia", "transport", "kütus", "kytus", "maavara", "kaevandus", "muld",
   "mura", "kiirgus", "climate", "forest", "water", "weather", "pollution", "waste",

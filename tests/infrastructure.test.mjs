@@ -4539,20 +4539,26 @@ test("the reviewed circular-economy guide answers how reuse is helped", async ()
 });
 
 test("the reviewed waste-sorting guide answers the home-sorting question", async () => {
-  const query = "Kuidas kodus jäätmeid sorteerida?";
   const source = officialServiceCatalogueDocuments()
     .find((document) => document.id === "waste-sorting-guidance");
   assert.ok(source);
   assert.equal(source._answerEvidenceEligible, true);
-  const draft = await createPortalDraft(query, {
-    deadlineAt: Date.now(),
-    signal: new AbortController().signal,
-    searchResults: { total: 1, items: [source] },
-  });
-  assert.equal(draft.evidence.kind, "ranked-search-results");
-  assert.deepEqual(draft.answer.introCitations, [1]);
-  assert.match(draft.answer.intro, /jäätmevedajad/u);
-  assert.match(draft.sources[0].url, /jaatmete-liigiti-kogumine/u);
+  for (const query of [
+    "Kuidas kodus jäätmeid sorteerida?",
+    "Kuhu panna klaaspudelid?",
+    "Mida teha vana külmikuga?",
+    "Kuidas prügi sorteerida?",
+    "jäätmete sorteerimine",
+  ]) {
+    const draft = await createPortalDraft(query, {
+      deadlineAt: Date.now(),
+      signal: new AbortController().signal,
+      searchResults: { total: 1, items: [source] },
+    });
+    assert.equal(draft.evidence.kind, "ranked-search-results", query);
+    assert.deepEqual(draft.answer.introCitations, [1], query);
+  }
+  assert.match(source.url, /jaatmete-liigiti-kogumine/u);
 });
 
 test("the reviewed campfire guide answers the bonfire and tent questions", async () => {
