@@ -4538,6 +4538,57 @@ test("the reviewed circular-economy guide answers how reuse is helped", async ()
   assert.match(draft.sources[0].url, /ringmajandus\/toetavad-tegevused/u);
 });
 
+test("the reviewed waste-sorting guide answers the home-sorting question", async () => {
+  const query = "Kuidas kodus jäätmeid sorteerida?";
+  const source = officialServiceCatalogueDocuments()
+    .find((document) => document.id === "waste-sorting-guidance");
+  assert.ok(source);
+  assert.equal(source._answerEvidenceEligible, true);
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    signal: new AbortController().signal,
+    searchResults: { total: 1, items: [source] },
+  });
+  assert.equal(draft.evidence.kind, "ranked-search-results");
+  assert.deepEqual(draft.answer.introCitations, [1]);
+  assert.match(draft.answer.intro, /jäätmevedajad/u);
+  assert.match(draft.sources[0].url, /jaatmete-liigiti-kogumine/u);
+});
+
+test("the reviewed campfire guide answers the bonfire and tent questions", async () => {
+  const source = officialServiceCatalogueDocuments()
+    .find((document) => document.id === "campfire-guidance");
+  assert.ok(source);
+  assert.equal(source._answerEvidenceEligible, true);
+  for (const query of ["Kas lõket võib metsas teha?", "Kas metsa võib telkida?"]) {
+    const draft = await createPortalDraft(query, {
+      deadlineAt: Date.now(),
+      signal: new AbortController().signal,
+      searchResults: { total: 1, items: [source] },
+    });
+    assert.equal(draft.evidence.kind, "ranked-search-results", query);
+    assert.deepEqual(draft.answer.introCitations, [1], query);
+  }
+  assert.match(source.url, /rmk\.ee\/looduses-liikumine\/juhised/u);
+});
+
+test("the reviewed fishing-permit guide answers the permit question", async () => {
+  const query = "Kuidas saada kalapüügiluba?";
+  const source = officialServiceCatalogueDocuments()
+    .find((document) => document.id === "fishing-permit-guidance");
+  assert.ok(source);
+  assert.equal(source._answerEvidenceEligible, true);
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    signal: new AbortController().signal,
+    searchResults: { total: 1, items: [source] },
+  });
+  assert.equal(draft.evidence.kind, "ranked-search-results");
+  assert.deepEqual(draft.answer.introCitations, [1]);
+  assert.match(draft.answer.intro, /harrastuspüügiõiguse/u);
+  assert.equal(draft.sources[0].id, "fishing-permit-guidance");
+});
+
 test("the waste-facilities route stays navigation-only while the full pipeline cites its safe map procedure", async () => {
   const query = "jäätmekäitluskohad Pärnumaal";
   const catalogue = officialServiceCatalogueDocuments();

@@ -757,6 +757,90 @@ const SEARCH_DOCUMENTS = [
     _evidenceStatusAt: "2026-09-23T00:00:00.000Z",
   },
   {
+    id: "waste-sorting-guidance",
+    title: "Jäätmete sorteerimine kodus",
+    organization: "Kliimaministeerium",
+    type: "Ametlik juhend",
+    published: "jooksev",
+    url: "https://kliimaministeerium.ee/jaatmete-liigiti-kogumine",
+    locator: "Olmejäätmete liigiti kogumise juhend",
+    tags: ["jäätmed", "sorteerimine", "liigiti kogumine", "pakend", "biojäätmed", "kodus"],
+    summary:
+      "Kliimaministeeriumi riikliku liigiti kogumise juhendi järgi sorteeritakse kodus jäätmed liikide kaupa: eraldi kogutakse pakendid, klaas, biojäätmed, paber ja kartong ning ohtlikud jäätmed; juhendist lähtuvad edaspidi ka jäätmevedajad ja taaskasutusorganisatsioonid.",
+    content:
+      "Kliimaministeeriumi olmejäätmete liigiti kogumise juhend on riiklik juhis, mis muudab prügi sorteerimise kõigi jaoks lihtsamaks ja selgemaks; sellest lähtuvad edaspidi ka jäätmevedajad ja taaskasutusorganisatsioonid. Kodus kogutakse liigiti muu hulgas pakendeid, klaaspakendeid, plast- ja metallpakendeid, biojäätmeid ning paberi- ja kartongijäätmeid; eraldi kogutakse ka ohtlikud jäätmed, patareid, elektroonikajäätmed ja tekstiil. Juhendi trükimaterjalid on portaalis eesti, inglise ja vene keeles. Üldjuhend ei asenda kohaliku omavalitsuse jäätmehoolduseeskirja: täpse veograafiku ja kogumiskoha annab elukohajärgne vedaja või omavalitsus.",
+    answer:
+      "Sorteeri kodus jäätmed liikide kaupa riikliku juhendi järgi: eraldi pakendid, klaas, biojäätmed, paber ja kartong ning ohtlikud jäätmed. Täpse veograafiku ja kogumiskoha küsi elukohajärgselt vedajalt või omavalitsuselt.",
+    evidencePolicy: "versioned",
+    delivery: "catalog-only",
+    routeClasses: ["official_guidance"],
+    freshness: {
+      class: "reviewed-guidance-extract",
+      basis: "reviewed-at",
+      maxAgeMs: 31 * 24 * 60 * 60 * 1_000,
+      requiresSourceTimestamp: true,
+    },
+    _answerEvidenceEligible: true,
+    _evidenceVersion: "waste-sorting-guidance-reviewed-2026-09-23",
+    _evidenceStatusAt: "2026-09-23T00:00:00.000Z",
+  },
+  {
+    id: "campfire-guidance",
+    title: "Telkimine ja lõkke tegemine looduses",
+    organization: "RMK",
+    type: "Ametlik juhend",
+    published: "jooksev",
+    url: "https://rmk.ee/looduses-liikumine/juhised/",
+    locator: "Juhised looduses liikujale",
+    tags: ["telkimine", "lõke", "mets", "igaüheõigus", "looduses liikumine"],
+    summary:
+      "RMK juhiste järgi võib metsas telkida igaüheõiguse piires ja lõket tohib teha ainult selleks ettevalmistatud ja tähistatud kohas tuletegemist lubaval ajal, kaitsealadel kehtivad eraldi piirangud.",
+    content:
+      "RMK looduses liikumise juhiste järgi peetakse kinni igaüheõiguse põhimõtetest ja piirangutest: kaitsealadel on igaüheõigus piiratud ja reeglid on kirjas vastava ala kaitse-eeskirjas. Telkimiseks, lõkke tegemiseks ja peatumiseks eelistatakse olemasolevaid matkaradu, telkimisalasid ja lõkkekohti, et mitte tekitada lisakoormust keskkonnale. Lõket tehakse ainult selleks ettevalmistatud ja tähistatud kohas tuletegemist lubaval ajal; eelistatakse kattega lõkkekohta, järgitakse tuleohutusnõudeid, põlevat lõket ei jäeta kunagi valveta ja lahkudes see kustutatakse. Tule tegemisel kasutatakse valmis puid või maha langenud oksi ning arvestatakse metsas valitseva tuleohuga.",
+    answer:
+      "Metsas tohib telkida igaüheõiguse piires, kaitsealal kehtivad eraldi piirangud; lõket tohib teha ainult ettevalmistatud tähistatud kohas ja lubaval ajal, valveta jätta ei tohi.",
+    evidencePolicy: "versioned",
+    delivery: "catalog-only",
+    routeClasses: ["official_guidance"],
+    freshness: {
+      class: "reviewed-guidance-extract",
+      basis: "reviewed-at",
+      maxAgeMs: 31 * 24 * 60 * 60 * 1_000,
+      requiresSourceTimestamp: true,
+    },
+    _answerEvidenceEligible: true,
+    _evidenceVersion: "campfire-guidance-reviewed-2026-09-23",
+    _evidenceStatusAt: "2026-09-23T00:00:00.000Z",
+  },
+  {
+    id: "fishing-permit-guidance",
+    title: "Kalapüügiloa taotlemine",
+    organization: "Keskkonnaamet",
+    type: "Ametlik juhend",
+    published: "jooksev",
+    url: "https://keskkonnaamet.ee/taotlused-aruanded/elusloodus-looduskaitse/kalanduse-taotlused",
+    locator: "Kalapüük ja kalade asustamine",
+    tags: ["kalapüük", "kalapüügiluba", "kalastuskaart", "harrastuskalapüük", "nakkevõrk"],
+    summary:
+      "Keskkonnaameti kalanduse taotluste lehe järgi tuleb erivahenditega kalapüügiks taotleda kalastuskaart, mis annab eraldi püügiõiguse; tavaline harrastuskalapüük eeldab harrastuspüügiõiguse tasu maksmist.",
+    content:
+      "Keskkonnaameti kalapüügi info järgi tuleb erivahenditega või eripaigus kala- ja vähipüügiks taotleda kalastuskaart: see on dokument, mis annab eraldi püügiõiguse ning selle ostmiseks ei pea olema tasutud harrastuspüügiõiguse tasu. Kalastuskaart tuleb taotleda, kui püügivahendiks on näiteks nakkevõrk või õngejada. Kalade asustamiseks on vajalik Keskkonnaameti luba. Tavaline harrastuspüügiõigus (õnge ja lihtsamate vahenditega püük) eeldab kehtivat harrastuspüügiõiguse tasu; täpsed vahendite loetelud, piirkonnad ja keelualad on kirjas kalapüügieeskirjas ja Keskkonnaameti taotluste lehel.",
+    answer:
+      "Erivahenditega püügiks (näiteks nakkevõrk, õngejada) taotlege kalastuskaart; tavaline harrastuspüük eeldab harrastuspüügiõiguse tasu. Täpsed vahendid ja keelualad vaata kalapüügieeskirjast.",
+    evidencePolicy: "versioned",
+    delivery: "catalog-only",
+    routeClasses: ["official_guidance"],
+    freshness: {
+      class: "reviewed-guidance-extract",
+      basis: "reviewed-at",
+      maxAgeMs: 31 * 24 * 60 * 60 * 1_000,
+      requiresSourceTimestamp: true,
+    },
+    _answerEvidenceEligible: true,
+    _evidenceVersion: "fishing-permit-guidance-reviewed-2026-09-23",
+    _evidenceStatusAt: "2026-09-23T00:00:00.000Z",
+  },
+  {
     id: "well-register",
     title: "Puurkaevude ja puuraukude andmed registris",
     organization: "Keskkonnaagentuur / Keskkonnaportaal",
@@ -1743,7 +1827,9 @@ function topicRoot(word) {
   if (word.startsWith("margal") || word.startsWith("turba") || word.startsWith("rab") || /^soo(?:d|s|st|de|del|des)?$/u.test(word)) return "margala";
   if (word.startsWith("taasta")) return "taastamine";
   if (word.startsWith("pais")) return "pais";
+  if (word.startsWith("kalapuugi") || word.startsWith("kalapuuk") || word.startsWith("kalastus")) return "kalapuuk";
   if (/^kal(?:a|ad|ade|ast|astik|aliik)/u.test(word)) return "kala";
+  if (word.startsWith("ranne") || word.startsWith("ränne") || word.startsWith("migration")) return "ranne";
   if (word.startsWith("osoon")) return "osoon";
   if (word.startsWith("paikesepaneel") || word.startsWith("fotogalvaan")) return "paikesepaneel";
   if (word.startsWith("jalajalg") || word.startsWith("jalajalj") || word.startsWith("keskkonnajalaj") || word.startsWith("susinikujalaj") || word.startsWith("khgjalaj")) return "jalajalg";
@@ -1934,7 +2020,7 @@ export function queryTerms(query) {
       if ((multilingualPhrases && (word === "sorting" || word === "sort"))
         && /\b(?:jaat\w*|prugi\w*|pakend\w*|biojaat\w*|waste|garbage|trash|rubbish)\b/u.test(normalizedQuery)) return ["jaat"];
       if (((multilingualPhrases && (word === "home" || word === "household")) || word.startsWith("kodus") || word.startsWith("kodune"))
-        && /\b(?:jaat\w*|prugi\w*|pakend\w*|biojaat\w*|waste|garbage|trash|rubbish|sorteer\w*|sorting)\b/u.test(normalizedQuery)) return ["jaat"];
+        && /\b(?:jaat\w*|prugi\w*|pakend\w*|biojaat\w*|waste|garbage|trash|rubbish|sorteer\w*|sorting)\b/u.test(normalizedQuery)) return ["jaat", "kodus"];
       if (word.startsWith("ilmaprognoos")) return ["ilm", "prognoos"];
       if (word.startsWith("uleujutusrisk") || word.startsWith("uleujutusala") || word.startsWith("uleujutuskaart")) {
         return ["vesi", "uleujutusrisk"];
@@ -2075,6 +2161,8 @@ export function queryTerms(query) {
 
 export function queryRootVariants(root) {
   if (root === "mets") return ["mets", "forest", "woodland"];
+  if (root === "kala") return ["kala", "kalast", "fish"];
+  if (root === "ranne") return ["ranne", "rände", "migration"];
   if (root === "ilm") return ["ilm", "weather"];
   if (root === "prognoos") return ["prognoos", "forecast"];
   if (root === "ohk") return ["ohk", "air"];
@@ -2202,6 +2290,7 @@ const DOMAIN_ROOTS = new Set([
   "suplusvesi", "joogivesi", "reovesi", "kohtkaitlus", "pestitsiid", "nitraat", "mereprugi", "asbest", "biojaatmed",
   "rohevorgustik", "voorliik", "uluk", "margala", "pais", "kala", "osoon", "paikesepaneel", "jalajalg", "susinik",
   "tuulepark", "aku", "uleujutusrisk",
+  "kodus", "kalapuuk", "ranne",
   "keskkonnamoju", "kotkas", "kmh", "ksh", "kataster", "kinnistu", "metsaregister",
   "elektriauto", "energia", "transport", "kütus", "kytus", "maavara", "kaevandus", "muld",
   "mura", "kiirgus", "climate", "forest", "water", "weather", "pollution", "waste",
@@ -3097,7 +3186,7 @@ const ANY_CASE_FOREST_ASSET_GIVEN_TO_NAMED_PERSON_PATTERN = new RegExp(
   "giu",
 );
 const NAMED_PERSON_ASSOCIATION_ORGANIZATION_DESIGNATOR_PATTERN = /^(?:agenc(?:y|ies)|association\w*|authority|board|business|city|commission|committee|company|corporation|council|department|foundation|government|institute|institution|llc|ltd|ministry|municipalit\w*|nonprofit|office|organization|organisation|service|team|trust|university|amet\w*|asutus\w*|büroo\w*|buroo\w*|linnavalitsus\w*|ministeerium\w*|omavalitsus\w*|osakond\w*|selts\w*|teenistus\w*|vallavalitsus\w*|ühing\w*|uhing\w*)$/iu;
-const OWNERSHIP_ASSOCIATION_NON_PERSON_TOKEN_PATTERN = /^(?:against|all|alongside|and|annual\w*|area|available|administrator\w*|beneficiar\w*|bind|binding|binds|calculat\w*|caretaker\w*|category|class|compare|comparison|compliance|conservation|contractor\w*|corporate|county|current|custodian\w*|data|each|ecological|environmental|estonia\w*|estimat\w*|every|fiduciar\w*|figure|forest|forests|government|group|historical|holder\w*|individual|inventor\w*|it|land|landowner\w*|latest|leased|legal|management|manag\w*|measur\w*|measurement\w*|middle|earth|municipal|municipality|national|natural|official|operator\w*|or|overall|owned|owner|owners|ownership|people|period|possessor\w*|post|privat\w*|proprietor\w*|protected|protection|public|published|recent|relative|reported|rented|rule|rules|sector|source|state|status|steward\w*|survey\w*|tenant\w*|tenure|title|total|trustee\w*|type|value|versus|volunteer\w*|vs|was|were|whoever|woodland|woodlands|years?|ajalool\w*|andm\w*|aasta\w*|avalik\w*|eesti\w*|eramets\w*|hallatav\w*|haldaj\w*|hinnang\w*|kaitst\w*|kategoori\w*|kasutaj\w*|kehti\w*|klass\w*|kohustus\w*|kogu|loodus\w*|maaomanik\w*|maakon\w*|majandat\w*|mets\w*|metsamaa\w*|millis\w*|munitsipaal\w*|omanik\w*|omandivorm\w*|peab|periood\w*|pindala\w*|praegune|reegl\w*|registreeritud|renditud|riigi\w*|riiklik\w*|staatus\w*|tüüp\w*|tuup\w*|uusim|valdaj\w*|viimane|v[õo]rdle|üld\w*|uld\w*)$/iu;
+const OWNERSHIP_ASSOCIATION_NON_PERSON_TOKEN_PATTERN = /^(?:against|all|alongside|and|annual\w*|area|available|administrator\w*|beneficiar\w*|bind|binding|binds|calculat\w*|caretaker\w*|category|class|compare|comparison|compliance|conservation|contractor\w*|corporate|county|current|custodian\w*|data|each|ecological|environmental|estonia\w*|estimat\w*|every|fiduciar\w*|figure|forest|forests|government|group|historical|holder\w*|individual|inventor\w*|it|land|landowner\w*|latest|leased|legal|management|manag\w*|measur\w*|measurement\w*|middle|earth|municipal|municipality|national|natural|official|operator\w*|or|overall|owned|owner|owners|ownership|people|period|possessor\w*|post|privat\w*|proprietor\w*|protected|protection|public|published|recent|relative|reported|rented|rule|rules|sector|source|state|status|steward\w*|survey\w*|tenant\w*|tenure|title|total|trustee\w*|type|value|versus|volunteer\w*|vs|was|were|whoever|woodland|woodlands|years?|ajalool\w*|andm\w*|aasta\w*|avalik\w*|eesti\w*|eramets\w*|hallatav\w*|haldaj\w*|hinnang\w*|kaitst\w*|kategoori\w*|kasutaj\w*|kehti\w*|klass\w*|kohustus\w*|kogu|loodus\w*|maaomanik\w*|maakon\w*|majandat\w*|mets\w*|metsamaa\w*|millis\w*|munitsipaal\w*|omanik\w*|omandivorm\w*|peab|tohib|v[õo]ib|v[õo]iks|periood\w*|pindala\w*|praegune|reegl\w*|registreeritud|renditud|riigi\w*|riiklik\w*|staatus\w*|tüüp\w*|tuup\w*|uusim|valdaj\w*|viimane|v[õo]rdle|üld\w*|uld\w*)$/iu;
 
 function isReviewedPublicEntityName(value) {
   const name = String(value || "").replace(/[.?!,;:]+$/gu, "").trim();
