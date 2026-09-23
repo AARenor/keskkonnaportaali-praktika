@@ -1098,6 +1098,13 @@ test("external result links allow only HTTPS and seeded markup remains inert", a
   assert.match(app, /safeExternalHref\(href\)/u);
 });
 
+test("error states offer retry that re-runs the failed request", async () => {
+  const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+  assert.match(app, /\{error \? <div className="broad-results__error"[\s\S]{0,200}disabled=\{!interactive \|\| busy\}[\s\S]{0,120}onClick=\{\(\) => onPage\(current\)\}[\s\S]{0,80}Proovi uuesti/u);
+  assert.match(app, /disabled=\{!interactive \|\| busy\}[\s\S]{0,200}onClick=\{\(\) => onPage\(current\)\}/u);
+  assert.match(app, /\{error \? <div className="search-error"[\s\S]{0,400}disabled=\{busy\}[\s\S]{0,120}onClick=\{\(\) => onSearch\(query, \{ filters: appliedFilters \}\)\}[\s\S]{0,80}Proovi uuesti/u);
+});
+
 test("autocomplete never renders a late response under a newer query", () => {
   const lateFirstResponse = {
     query: "mets",

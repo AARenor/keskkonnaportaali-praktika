@@ -2078,6 +2078,23 @@ h3 {
   white-space: nowrap;
 }
 
+.error-retry {
+  margin-top: 8px;
+  border: 1px solid var(--brand-700);
+  border-radius: 6px;
+  padding: 6px 12px;
+  background: #fff;
+  color: var(--brand-700);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.error-retry:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .search-filters select:disabled,
 .filters-reset:disabled,
 .related-section button:disabled {
@@ -2189,6 +2206,37 @@ h3 {
   gap: 9px;
   border-block: 1px solid #dbe4e8;
   color: #526872;
+}
+
+.broad-results__suggest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: #526872;
+}
+
+.broad-results__suggest button {
+  display: inline-flex;
+  min-height: 43px;
+  align-items: center;
+  border: 1px solid #9bcfe1;
+  border-radius: 999px;
+  padding: 0 16px;
+  background: #fff;
+  color: var(--brand-800);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.broad-results__suggest button:hover:not(:disabled) {
+  background: #eef7fb;
+}
+
+.broad-results__suggest button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .broad-results__error {

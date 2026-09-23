@@ -845,7 +845,7 @@ function sourceTierLabel(value) {
   return "Veebiallikas";
 }
 
-function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRef, interactive = true }) {
+function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRef, interactive = true, onSearch = null }) {
   if (!listing && !busy) return null;
   const total = Number(listing?.total || 0);
   const distinctTotal = Number(listing?.distinctTotal || total);
@@ -908,7 +908,7 @@ function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRe
         </label>
         {hasActiveFilters ? <button className="filters-reset" disabled={!interactive || busy} onClick={() => onFilters(DEFAULT_SEARCH_FILTERS)} type="button">Lähtesta</button> : null}
       </div>
-      {error ? <div className="broad-results__error" role="alert">{error}</div> : null}
+      {error ? <div className="broad-results__error" role="alert"><span>{error}</span><button className="error-retry" disabled={!interactive || busy} onClick={() => onPage(current)} type="button">Proovi uuesti</button></div> : null}
       {busy ? <div className="broad-results__loading" role="status"><LoaderCircle className="spin" size={20} /> Laadin tulemusi …</div> : null}
       {!busy && !error && listing?.items?.length ? (
         <div className="broad-results__list">
@@ -927,13 +927,13 @@ function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRe
           ))}
         </div>
       ) : null}
-      {!busy && !error && total === 0 ? <p className="broad-results__empty">{hasActiveFilters
+      {!busy && !error && total === 0 ? <><p className="broad-results__empty">{hasActiveFilters
         ? `Laiast indeksist nende filtritega vasteid ei leitud (${[
           filters.source !== "all" ? `allikas: ${filters.source}` : null,
           filters.category ? `tüüp: ${filters.category}` : null,
           filters.year ? `aasta: ${filters.year}` : null,
         ].filter(Boolean).join(", ") || "filtrid"}). Proovi filtreid muuta või lähtestada.`
-        : "Laiast indeksist vasteid ei leitud."}</p> : null}
+        : "Laiast indeksist vasteid ei leitud."}</p>{!hasActiveFilters && typeof onSearch === "function" ? <p className="broad-results__suggest">Proovi näiteks: {["Kuhu viia vanad patareid?", "Mis on roheline energia?", "Kas tohib looduses telkida?"].map((example) => <button disabled={!interactive || busy} key={example} onClick={() => onSearch(example)} type="button">{example}</button>)}</p> : null}</> : null}
       {pageCount > 1 ? (
         <nav className="results-pagination" aria-label="Otsingutulemuste lehed">
           <button disabled={!interactive || busy || current <= 1} onClick={() => onPage(current - 1)} type="button"><ArrowLeft size={15} /> Eelmine</button>
@@ -1109,7 +1109,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
       </div>
       <div className="shell search-results-shell search-page__content">
         {busy && !hasResult ? <SearchLoadingSkeleton resultsReady={Boolean(previewListing)} /> : null}
-        {error ? <div className="search-error" role="alert"><CircleHelp size={22} /><div><strong>Otsingut ei saanud lõpetada</strong><p>{error}</p></div></div> : null}
+        {error ? <div className="search-error" role="alert"><CircleHelp size={22} /><div><strong>Otsingut ei saanud lõpetada</strong><p>{error}</p><button className="error-retry" disabled={busy} onClick={() => onSearch(query, { filters: appliedFilters })} type="button">Proovi uuesti</button></div></div> : null}
         {hasResult ? (
           <>
             <article className="answer-card">
@@ -1198,6 +1198,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
               listing={listing || result?.searchResults || previewListing}
               onFilters={applyFilters}
               onPage={loadListingPage}
+              onSearch={onSearch}
             />
 
             {result.related?.length ? (
@@ -1218,6 +1219,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
             listing={listing || previewListing}
             onFilters={applyFilters}
             onPage={loadListingPage}
+            onSearch={onSearch}
           />
         ) : null}
       </div>
