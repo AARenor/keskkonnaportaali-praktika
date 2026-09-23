@@ -729,6 +729,34 @@ const SEARCH_DOCUMENTS = [
     _evidenceStatusAt: "2026-09-19T00:00:00.000Z",
   },
   {
+    id: "circular-economy-guidance",
+    title: "Ringmajanduse roll jäätmete taaskasutamisel",
+    organization: "Keskkonnaportaal",
+    type: "Teemaülevaade",
+    published: "jooksev",
+    url: "https://keskkonnaportaal.ee/et/teemad/jaatmed-ja-ringmajandus/ringmajandus/toetavad-tegevused",
+    locator: "Ringmajandus: toetavad tegevused",
+    tags: ["ringmajandus", "jäätmed", "taaskasutus", "ringlussevõtt", "korduskasutus", "jäätmehierarhia"],
+    summary:
+      "Ringmajandus aitab jäätmeid taaskasutada, hoides tooteid ja materjale võimalikult kaua ringluses korduskasutuse, parandamise ja ringlussevõtu kaudu; nii tekib vähem jäätmeid ja kulub vähem uut toorainet.",
+    content:
+      "Keskkonnaportaali teemavaate „Jäätmed ja ringmajandus” järgi hoiab ringmajandus tooteid ja materjale võimalikult kaua kasutuses: esikohal on jäätmetekke ennetamine, seejärel korduskasutus ning seejärel ringlussevõtt, kus jäätmed töödeldakse uueks tooraineks. Nii tekib vähem jäätmeid, väheneb uue tooraine kaevandamise vajadus ja paraneb jäätmete liigiti kogumine. Portaali andmetel tekkis Eestis 2024. aastal umbes 15 miljonit tonni jäätmeid ning ringleva materjali määr oli 20,5%; jäätmearuandluse infosüsteem PISTRIK stardib 2027. aastal. Üldine teemaülevaade ei asenda konkreetse jäätmeliigi käitlusjuhist: olmejäätmete ringlussevõtu sihttasemed ja mõõdetud määrad on eraldi näitajad.",
+    answer:
+      "Ringmajandus aitab jäätmeid taaskasutada korduskasutuse, parandamise ja ringlussevõtu kaudu, hoides materjalid ringluses ning vähendades nii jäätmeteket kui uue tooraine vajadust. Täpse jäätmeliigi koguse või määra küsimuses vaata eraldi näitajat ja aastat.",
+    evidencePolicy: "versioned",
+    delivery: "catalog-only",
+    routeClasses: ["official_guidance"],
+    freshness: {
+      class: "reviewed-guidance-extract",
+      basis: "reviewed-at",
+      maxAgeMs: 31 * 24 * 60 * 60 * 1_000,
+      requiresSourceTimestamp: true,
+    },
+    _answerEvidenceEligible: true,
+    _evidenceVersion: "circular-economy-guidance-reviewed-2026-09-23",
+    _evidenceStatusAt: "2026-09-23T00:00:00.000Z",
+  },
+  {
     id: "well-register",
     title: "Puurkaevude ja puuraukude andmed registris",
     organization: "Keskkonnaagentuur / Keskkonnaportaal",

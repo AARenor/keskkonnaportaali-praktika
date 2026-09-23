@@ -4520,6 +4520,24 @@ test("the reviewed pond guide keeps its sub-hectare answer conditional on locati
   assert.match(source.content, /Pelgalt sõna „väike” ei tõenda/u);
 });
 
+test("the reviewed circular-economy guide answers how reuse is helped", async () => {
+  const query = "Kuidas aitab ringmajandus jäätmeid taaskasutada?";
+  const source = officialServiceCatalogueDocuments()
+    .find((document) => document.id === "circular-economy-guidance");
+  assert.ok(source);
+  assert.equal(source._answerEvidenceEligible, true);
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    signal: new AbortController().signal,
+    searchResults: { total: 1, items: [source] },
+  });
+  assert.equal(draft.evidence.kind, "ranked-search-results");
+  assert.deepEqual(draft.answer.introCitations, [1]);
+  assert.match(draft.answer.intro, /kasutuses/u);
+  assert.match(draft.answer.intro, /ringlussevõtt/u);
+  assert.match(draft.sources[0].url, /ringmajandus\/toetavad-tegevused/u);
+});
+
 test("the waste-facilities route stays navigation-only while the full pipeline cites its safe map procedure", async () => {
   const query = "jäätmekäitluskohad Pärnumaal";
   const catalogue = officialServiceCatalogueDocuments();
