@@ -2201,9 +2201,9 @@ Expected: build leaves `dist/client/index.html`, `dist/server/index.js`, `dist/.
 Start the server (`PORT=4174 PROXY_MODE=direct PUBLIC_ORIGIN=http://127.0.0.1:4174 LLM_ENABLED=false SEARCH_CACHE_ENABLED=false npm start`) and run:
 
 ```bash
-curl -sS -X POST http://127.0.0.1:4174/api/search -H "Content-Type: application/json" -d '{"query":"lageraie pindala 2015–2024"}' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const r=JSON.parse(s);console.log(r.answer.title);console.log(JSON.stringify(r.chart).slice(0,300));})'
+curl -sS -X POST http://127.0.0.1:4174/api/search -H "Content-Type: application/json" -d '{"q":"lageraie pindala 2015–2024"}' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const r=JSON.parse(s);console.log(r.answer.title);console.log(JSON.stringify(r.chart).slice(0,300));})'
 ```
-Expected: title starts with `Lageraie: raiepindala 2015–2024: 31,6 → 34,0 tuhat ha` and `chart.kind === "line"` with 10 points. Repeat with `{"query":"Metsamaa pindala 2024"}` and confirm no `chart` key.
+Expected: title starts with `Lageraie: raiepindala 2015–2024: 31,6 → 34,0 tuhat ha` and `chart.kind === "line"` with 10 points. Repeat with `{"q":"Metsamaa pindala 2024"}` and confirm no `chart` key.
 
 - [ ] **Step 3: Commit anything the verification changed**
 
@@ -2240,7 +2240,7 @@ Follow the existing procedure in `AGENTS.md`/`PROJEKT.md` (Coolify API with the 
 ```bash
 for q in "lageraie pindala 2015–2024" "Metsamaa pindala viimase kümne aasta jooksul" "raiemaht 20 aastat tagasi võrreldes praegusega" "Mida see viimase 5 aasta jooksul tähendab? Kas raiemaht ületab juurdekasvu?" "Metsamaa pindala 2024" "mets"; do
   printf '%s => ' "$q"
-  curl -sS -X POST https://praktika.arleserver.cfd/api/search -H "Content-Type: application/json" -d "{\"query\":\"$q\"}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const r=JSON.parse(s);console.log(r.answer.eyebrow,"|",r.chart?`${r.chart.kind}:${r.chart.series.length}x${r.chart.series[0].points.length}`:"no-chart");})'
+  curl -sS -X POST https://praktika.arleserver.cfd/api/search -H "Content-Type: application/json" -d "{\"q\":\"$q\"}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const r=JSON.parse(s);console.log(r.answer.eyebrow,"|",r.chart?`${r.chart.kind}:${r.chart.series.length}x${r.chart.series[0].points.length}`:"no-chart");})'
 done
 ```
 Expected: first three → `Statistikaameti tabel …` with `line:1x10`, `line:1x10`, `line:1x21`; the Eurostat follow-up → `bar:2x…`; `Metsamaa pindala 2024` and `mets` → `no-chart`. Run twice (cold and cached) and confirm the cached run still has the chart.
