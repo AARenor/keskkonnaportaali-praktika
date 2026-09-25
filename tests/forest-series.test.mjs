@@ -14,6 +14,10 @@ import {
   validatedForestSeriesProjection,
 } from "../server/forest-series.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
+import { loadStructuredIndicatorDocuments, requiresExtendedStructuredListingBudget } from "../server/indicators.mjs";
+import { searchEnvironmentLive, searchTimeoutFallback } from "../server/pipeline.mjs";
+import { rankPublicSearchCandidates } from "../server/retrieval.mjs";
+import { assessSearchQuery } from "../server/search.mjs";
 
 const NOW = Date.parse("2026-09-25T12:00:00Z");
 const FETCHED_AT = Date.parse("2026-09-25T11:59:30Z");
@@ -305,4 +309,92 @@ test("forest series response refuses a document that does not re-validate for th
   assert.equal(response.chart.series[0].id, "kk51-1");
   assert.deepEqual(response.chart.series[0].points[0], { x: 2015, y: 2310.6 });
   assert.equal(response.chart.caption, "Statistikaamet, tabel KK51: Metsavaru riikliku metsainventeerimise (SMI) hinnangul. SMI valikuuringu aastahinnangud.");
+});
+
+test("structured loader posts one bounded forest series request only for a series intent", async () => {
+  const query = "Metsamaa pindala 2015–2025";
+  let calls = 0;
+  const documents = await loadStructuredIndicatorDocuments(query, {
+    now: NOW,
+    fetchPxwebDataset: async (url, payload) => {
+      calls += 1;
+      assert.equal(url, FOREST_SERIES_KK51_API_URL);
+      assert.deepEqual(payload, forestSeriesRequest(forestSeriesIntent(query)));
+      return { body: await fixture("pxweb-kk51-metsamaa-pindala-2015-2025.json"), fetchedAt: FETCHED_AT, stale: false };
+    },
+  });
+  assert.equal(calls, 1);
+  assert.deepEqual(documents.map((document) => document.id), ["forest-series-kk51-1-2015-2025"]);
+  assert.equal(requiresExtendedStructuredListingBudget(query), true);
+
+  const single = await loadStructuredIndicatorDocuments("Metsamaa pindala 2024", {
+    now: NOW,
+    fetchPxwebDataset: async () => { throw new Error("must not fetch"); },
+  });
+  assert.equal(single.some((document) => String(document.id).startsWith("forest-series-")), false);
+
+  const failed = await loadStructuredIndicatorDocuments(query, {
+    now: NOW,
+    fetchPxwebDataset: async () => { throw new Error("upstream down"); },
+  });
+  assert.deepEqual(failed, []);
+});
+
+test("the pipeline answers a forest series question from its visible source and abstains without it", async () => {
+  const query = "Metsamaa pindala 2015–2025";
+  const [document] = forestSeriesFromJson(query, await fixture("pxweb-kk51-metsamaa-pindala-2015-2025.json"), {
+    now: NOW,
+    fetchedAt: NOW,
+  });
+  const fallback = searchTimeoutFallback(query, {
+    searchResults: { items: [document], total: 1 },
+    filters: {},
+    startedAt: NOW,
+  });
+  assert.equal(fallback.answer.eyebrow, "Statistikaameti tabel KK51");
+  assert.equal(fallback.chart.citation, 1);
+  assert.deepEqual(fallback.sources.map((source) => source.id), [document.id]);
+
+  const filtered = searchTimeoutFallback(query, {
+    searchResults: { items: [document], total: 1 },
+    filters: { category: "Muu sisutüüp" },
+    startedAt: NOW,
+  });
+  assert.equal(filtered.chart, undefined);
+
+  const live = await searchEnvironmentLive(query, {
+    startedAt: NOW,
+    deadlineAt: NOW + 1_000,
+    useCache: false,
+    searchResults: { items: [document], total: 1 },
+  });
+  assert.equal(live.answer.eyebrow, "Statistikaameti tabel KK51");
+  assert.equal(live.chart.series[0].points.length, 11);
+  assert.equal(live.sources[0].url, FOREST_SERIES_KK51_TABLE_URL);
+
+  const without = searchTimeoutFallback(query, { searchResults: { items: [], total: 0 }, filters: {}, startedAt: NOW });
+  assert.equal(without.chart, undefined);
+  assert.equal(assessSearchQuery(query).reason, "requested-time-series-required");
+});
+
+test("a forest series document survives public ranking for its own query", async () => {
+  const query = "lageraie pindala 2015–2024";
+  const [document] = forestSeriesFromJson(query, await fixture("pxweb-mm03-lageraie-pindala-2015-2024.json"), {
+    now: NOW,
+    fetchedAt: NOW,
+  });
+  const page = {
+    id: "portal-lageraie",
+    title: "Lageraie",
+    url: "https://keskkonnaportaal.ee/et/lageraie",
+    summary: "Lageraie on uuendusraie liik.",
+    content: "Lageraie on uuendusraie liik, mille korral raiutakse puistu ühe võttega.",
+    organization: "Keskkonnaportaal",
+    sourceTier: "official",
+    tags: ["mets", "lageraie"],
+    topics: ["mets", "lageraie"],
+  };
+  const ranked = rankPublicSearchCandidates(query, [page, document], { now: NOW });
+  assert.ok(ranked.find((candidate) => candidate.id === document.id));
+  assert.equal(composeForestSeriesResponse(query, ranked, { now: NOW })?.evidence.kind, "structured-forest-series");
 });

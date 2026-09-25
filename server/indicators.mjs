@@ -40,6 +40,17 @@ import {
   statisticsWaterAbstractionFromJson,
   statisticsWaterAbstractionRequest,
 } from "./statistics.mjs";
+import {
+  composeForestSeriesResponse,
+  FOREST_SERIES_KK51_API_URL,
+  FOREST_SERIES_MM03_API_URL,
+  forestSeriesFromJson,
+  forestSeriesIntent,
+  forestSeriesRequest,
+  isForestSeriesQuery,
+} from "./forest-series.mjs";
+
+export { composeForestSeriesResponse };
 
 export const MUNICIPAL_WASTE_RECYCLING_CSV_URL = "https://tableau.envir.ee/views/jtmed-OlmejtmeteringlussevttEestijaEuroopaLiit/OlmejtmeteringlussevttEestijaEuroopaLiit.csv?:showVizHome=no";
 export const MUNICIPAL_WASTE_RECYCLING_PAGE_URL = "https://keskkonnaportaal.ee/et/olmejaatmete-ringlussevott";
@@ -677,7 +688,8 @@ export function requiresExtendedStructuredListingBudget(query) {
     || isStatisticsTotalWasteRecoveryQuery(query)
     || isStatisticsWaterAbstractionQuery(query)
     || isStatisticsWastewaterBht7Query(query)
-    || isClimateDailyMeanQuery(query);
+    || isClimateDailyMeanQuery(query)
+    || isForestSeriesQuery(query);
 }
 
 function hydrologyQuerySince(now) {
@@ -1882,6 +1894,25 @@ export async function loadStructuredIndicatorDocuments(query, options = {}) {
     } catch (error) {
       if (options.signal?.aborted || error?.name === "AbortError") throw error;
       // The climate-data catalogue remains visible without a numeric claim.
+    }
+  }
+  if (isForestSeriesQuery(query)) {
+    try {
+      const fetchPxwebDataset = options.fetchPxwebDataset || fetchOfficialPxwebDataset;
+      const intent = forestSeriesIntent(query);
+      const result = await fetchPxwebDataset(
+        intent.table === "KK51" ? FOREST_SERIES_KK51_API_URL : FOREST_SERIES_MM03_API_URL,
+        forestSeriesRequest(intent),
+        { timeoutMs, signal: options.signal, maximumBytes: 64_000 },
+      );
+      documents.push(...forestSeriesFromJson(query, result.body, {
+        fetchedAt: result.fetchedAt,
+        stale: result.stale,
+        now: options.now,
+      }));
+    } catch (error) {
+      if (options.signal?.aborted || error?.name === "AbortError") throw error;
+      // The reviewed SMI catalogue pages remain visible without a series.
     }
   }
   if (isStatisticsWaterAbstractionQuery(query)) {

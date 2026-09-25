@@ -18,6 +18,7 @@ import {
 import {
   composeCurrentWeatherObservationResponse,
   composeForestHarvestBalanceAnswer,
+  composeForestSeriesResponse,
   composeLatestPublishedHydrologyResponse,
   composeMunicipalWasteRecyclingResponse,
   composeNationalWeatherForecastResponse,
@@ -1350,6 +1351,9 @@ async function searchWithinBudget(cleanQuery, {
   }) || composeEelisNaturaSiteResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
     now: startedAt,
+  }) || composeForestSeriesResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+    now: startedAt,
   }) || composeStatisticsWaterAbstractionResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
   }) || composeStatisticsHazardousWasteResponse(cleanQuery, searchResults?.items, {
@@ -1523,6 +1527,9 @@ export function searchTimeoutFallback(cleanQuery, {
   }) || composeEelisEmajogiPublicWatercourseResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
   }) || composeEelisNaturaSiteResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+    now: startedAt,
+  }) || composeForestSeriesResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
     now: startedAt,
   }) || composeStatisticsWaterAbstractionResponse(cleanQuery, searchResults?.items, {
