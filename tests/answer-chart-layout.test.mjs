@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { chartDescription, formatChartValue, niceDomain, splitRuns, xTickStep } from "../src/answer-chart-layout.js";
+import { chartDescription, formatChartValue, niceDomain, seriesPrecision, splitRuns, xTickStep } from "../src/answer-chart-layout.js";
 
 test("niceDomain pads a line domain and starts a bar domain at zero", () => {
   const line = niceDomain(2310.6, 2360.2, { fromZero: false });
@@ -33,6 +33,14 @@ test("formatChartValue uses Estonian decimal comma and thin grouping", () => {
   assert.equal(formatChartValue(2310.6), "2 311");
   assert.equal(formatChartValue(12247), "12 247");
   assert.equal(formatChartValue(52.1), "52,1");
+  assert.equal(formatChartValue(2310.6, 1), "2 310,6");
+});
+
+test("seriesPrecision reports the data's own fractional digits, capped at one", () => {
+  assert.equal(seriesPrecision([{ y: 31.6 }, { y: 34 }]), 1);
+  assert.equal(seriesPrecision([{ y: 12247 }, { y: 8081 }]), 0);
+  assert.equal(seriesPrecision([{ y: 2310.6 }, { y: 2360.234 }]), 1);
+  assert.equal(seriesPrecision([]), 0);
 });
 
 test("chartDescription names series, range and endpoints", () => {

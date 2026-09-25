@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { chartDescription, formatChartValue, niceDomain, splitRuns, xTickStep } from "./answer-chart-layout.js";
+import { chartDescription, formatChartValue, niceDomain, seriesPrecision, splitRuns, xTickStep } from "./answer-chart-layout.js";
 
 const HEIGHT = 260;
 const MARGIN = { top: 16, right: 20, bottom: 36, left: 56 };
@@ -22,8 +22,8 @@ function useContainerWidth(fallback = 640) {
   return [ref, width];
 }
 
-function valueWithError(point, unit) {
-  const base = `${formatChartValue(point.y)} ${unit}`;
+function valueWithError(point, unit, digits) {
+  const base = `${formatChartValue(point.y, digits)} ${unit}`;
   return point.error === undefined ? base : `${base} (±${formatChartValue(point.error, 1)}%)`;
 }
 
@@ -32,6 +32,10 @@ export default function AnswerChart({ chart, citation = null }) {
   const [activeYear, setActiveYear] = useState(null);
   const titleId = useId();
   const descId = useId();
+  const digits = useMemo(
+    () => Math.max(...chart.series.map((series) => seriesPrecision(series.points))),
+    [chart],
+  );
   const layout = useMemo(() => {
     const series = chart.series;
     const years = [...new Set(series.flatMap((item) => item.points.map((point) => point.x)))].sort((a, b) => a - b);
@@ -62,7 +66,8 @@ export default function AnswerChart({ chart, citation = null }) {
     ? []
     : chart.series.map((series, index) => ({ series, index, point: series.points.find((point) => point.x === activeYear) }));
   const tooltipX = activeYear === null ? 0 : xFor(activeYear);
-  const tooltipLeft = tooltipX + 12 + TOOLTIP_WIDTH > width ? tooltipX - 12 - TOOLTIP_WIDTH : tooltipX + 12;
+  const tooltipLeftRaw = tooltipX + 12 + TOOLTIP_WIDTH > width ? tooltipX - 12 - TOOLTIP_WIDTH : tooltipX + 12;
+  const tooltipLeft = Math.max(0, Math.min(width - TOOLTIP_WIDTH, tooltipLeftRaw));
   const tooltipHeight = 22 + 18 * chart.series.length;
   const endLabelYs = [];
   const visibleTickIndexes = useMemo(() => {
@@ -94,15 +99,15 @@ export default function AnswerChart({ chart, citation = null }) {
       <div className="answer-chart__frame" ref={frameRef}>
         <svg
           aria-describedby={descId}
-          aria-labelledby={titleId}
+          aria-label={chart.title}
           height={HEIGHT}
           onPointerLeave={() => setActiveYear(null)}
           onPointerMove={(event) => setActiveYear(nearestYear(event.clientX, event.currentTarget))}
-          role="img"
+          role="group"
           viewBox={`0 0 ${width} ${HEIGHT}`}
           width={width}
         >
-          <desc id={descId}>{chartDescription(chart)}</desc>
+          <desc id={descId}>{chartDescription(chart, digits)}</desc>
           {domain.ticks.map((tick) => (
             <g key={tick}>
               <line className="answer-chart__grid" x1={MARGIN.left} x2={width - MARGIN.right} y1={yFor(tick)} y2={yFor(tick)} />
@@ -136,7 +141,7 @@ export default function AnswerChart({ chart, citation = null }) {
                       <rect fill={color} height={height} opacity={dimmed} width={barWidth} x={x} y={top} />
                     )}
                     <rect
-                      aria-label={`${series.label}, ${point.x}: ${valueWithError(point, chart.unit)}`}
+                      aria-label={`${series.label}, ${point.x}: ${valueWithError(point, chart.unit, digits)}`}
                       className="answer-chart__hit"
                       height={baseline - MARGIN.top}
                       onBlur={() => setActiveYear(null)}
@@ -171,7 +176,7 @@ export default function AnswerChart({ chart, citation = null }) {
                   <g key={point.x}>
                     <circle cx={xFor(point.x)} cy={yFor(point.y)} fill={color} r={activeYear === point.x ? 5 : 4} stroke="#fff" strokeWidth={2} />
                     <circle
-                      aria-label={`${series.label}, ${point.x}: ${valueWithError(point, chart.unit)}`}
+                      aria-label={`${series.label}, ${point.x}: ${valueWithError(point, chart.unit, digits)}`}
                       className="answer-chart__hit"
                       cx={xFor(point.x)}
                       cy={yFor(point.y)}
@@ -183,7 +188,7 @@ export default function AnswerChart({ chart, citation = null }) {
                   </g>
                 ))}
                 {labelY !== null ? (
-                  <text className="answer-chart__value" x={xFor(last.x) + 9} y={labelY}>{formatChartValue(last.y)}</text>
+                  <text className="answer-chart__value" x={xFor(last.x) + 9} y={labelY}>{formatChartValue(last.y, digits)}</text>
                 ) : null}
               </g>
             );
@@ -195,7 +200,7 @@ export default function AnswerChart({ chart, citation = null }) {
               {activePoints.map(({ series, index, point }, row) => (
                 <g key={series.id} transform={`translate(10, ${30 + row * 18})`}>
                   <line stroke={SERIES_COLORS[index]} strokeWidth={2} x1={0} x2={12} y1={0} y2={0} />
-                  <text className="answer-chart__value" x={18} y={4}>{point ? valueWithError(point, chart.unit) : "avaldamata"}</text>
+                  <text className="answer-chart__value" x={18} y={4}>{point ? valueWithError(point, chart.unit, digits) : "avaldamata"}</text>
                 </g>
               ))}
             </g>
@@ -214,7 +219,7 @@ export default function AnswerChart({ chart, citation = null }) {
                 <th scope="row">{year}</th>
                 {chart.series.map((series) => {
                   const point = series.points.find((item) => item.x === year);
-                  return <td key={series.id}>{point ? valueWithError(point, chart.unit) : "–"}</td>;
+                  return <td key={series.id}>{point ? valueWithError(point, chart.unit, digits) : "–"}</td>;
                 })}
               </tr>
             ))}

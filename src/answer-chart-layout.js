@@ -54,12 +54,28 @@ export function formatChartValue(value, digits = Math.abs(value) >= 1000 ? 0 : 1
   return `${value < 0 ? "−" : ""}${grouped}${fraction ? `,${fraction}` : ""}`;
 }
 
-export function chartDescription(chart) {
+export function chartDescription(chart, digits) {
   const kind = chart.kind === "bar" ? "Tulpdiagramm" : "Joondiagramm";
   const parts = (chart.series || []).map((series) => {
     const first = series.points[0];
     const last = series.points.at(-1);
-    return `${series.label}: ${first.x} – ${formatChartValue(first.y)} ${chart.unit}, ${last.x} – ${formatChartValue(last.y)} ${chart.unit}`;
+    return `${series.label}: ${first.x} – ${formatChartValue(first.y, digits)} ${chart.unit}, ${last.x} – ${formatChartValue(last.y, digits)} ${chart.unit}`;
   });
   return `${kind}. ${parts.join("; ")}.`;
+}
+
+// The maximum number of fractional digits actually present among a series'
+// values, capped at 1 so a chart never shows more precision than the source
+// (avoids drift between rounded-to-integer axis ticks and a more precise
+// end-label/tooltip/table rendering of the same underlying value).
+export function seriesPrecision(points = []) {
+  let digits = 0;
+  for (const point of points) {
+    const rounded = Number(Number(point.y).toFixed(3));
+    const text = String(rounded);
+    const dot = text.indexOf(".");
+    const fractionDigits = dot === -1 ? 0 : text.length - dot - 1;
+    if (fractionDigits > digits) digits = fractionDigits;
+  }
+  return Math.min(digits, 1);
 }
