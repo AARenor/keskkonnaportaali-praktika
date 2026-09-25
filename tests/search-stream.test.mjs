@@ -71,3 +71,9 @@ test("progressive search bounds buffered data and preserves server errors", asyn
   });
   await assert.rejects(readSearchStream(errorResponse, () => undefined), /Päring on vigane/u);
 });
+
+test("a chart on the final answer event passes the stream parser untouched", () => {
+  const chart = { kind: "line", title: "T", unit: "%", series: [{ id: "a", label: "A", points: [{ x: 2020, y: 1 }, { x: 2021, y: 2 }] }], citation: 1 };
+  const event = parseSearchStreamLine(JSON.stringify({ type: "answer", result: { answer: { title: "x" }, chart } }));
+  assert.deepEqual(event.result.chart, chart);
+});

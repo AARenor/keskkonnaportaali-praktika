@@ -1717,6 +1717,110 @@ h3 {
   line-height: 1.62;
 }
 
+.answer-chart {
+  max-width: 780px;
+  margin: 0 0 22px;
+}
+
+.answer-chart__title {
+  margin: 0 0 6px;
+  color: #294453;
+  font-size: 0.94rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.answer-chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.answer-chart__legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.answer-chart__key {
+  display: inline-block;
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.answer-chart__key--bar {
+  width: 10px;
+  height: 10px;
+}
+
+.answer-chart__frame {
+  position: relative;
+  width: 100%;
+}
+
+.answer-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  font-family: inherit;
+  touch-action: pan-y;
+}
+
+.answer-chart__grid,
+.answer-chart__crosshair {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.answer-chart__tick {
+  fill: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.answer-chart__value {
+  fill: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.answer-chart__hit {
+  fill: transparent;
+  cursor: pointer;
+  outline: none;
+}
+
+.answer-chart__hit:focus-visible {
+  fill: rgba(0, 115, 184, 0.08);
+  stroke: var(--brand-900);
+  stroke-width: 2;
+}
+
+.answer-chart__tooltip rect {
+  fill: #fff;
+  stroke: var(--line);
+  filter: drop-shadow(0 4px 12px rgba(0, 54, 98, 0.12));
+}
+
+.answer-chart__caption {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.followup-answer .answer-chart {
+  margin-top: 12px;
+}
+
 .citation {
   display: inline-flex;
   width: auto;
