@@ -142,8 +142,8 @@ export default function AnswerChart({ chart, citation = null }) {
                       onBlur={() => setActiveYear(null)}
                       onFocus={() => setActiveYear(point.x)}
                       tabIndex={0}
-                      width={Math.max(barWidth, 24)}
-                      x={x - Math.max(0, (24 - barWidth) / 2)}
+                      width={chart.series.length > 1 ? barWidth + 2 : Math.max(barWidth, 24)}
+                      x={chart.series.length > 1 ? x - 1 : x - Math.max(0, (24 - barWidth) / 2)}
                       y={MARGIN.top}
                     />
                   </g>
@@ -202,23 +202,25 @@ export default function AnswerChart({ chart, citation = null }) {
           ) : null}
         </svg>
       </div>
-      <table className="sr-only">
-        <caption>{chart.title}</caption>
-        <thead>
-          <tr><th scope="col">{chart.xLabel || "Aasta"}</th>{chart.series.map((series) => <th key={series.id} scope="col">{series.label} ({chart.unit})</th>)}</tr>
-        </thead>
-        <tbody>
-          {years.map((year) => (
-            <tr key={year}>
-              <th scope="row">{year}</th>
-              {chart.series.map((series) => {
-                const point = series.points.find((item) => item.x === year);
-                return <td key={series.id}>{point ? valueWithError(point, chart.unit) : "–"}</td>;
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="sr-only">
+        <table>
+          <caption>{chart.title}</caption>
+          <thead>
+            <tr><th scope="col">{chart.xLabel || "Aasta"}</th>{chart.series.map((series) => <th key={series.id} scope="col">{series.label} ({chart.unit})</th>)}</tr>
+          </thead>
+          <tbody>
+            {years.map((year) => (
+              <tr key={year}>
+                <th scope="row">{year}</th>
+                {chart.series.map((series) => {
+                  const point = series.points.find((item) => item.x === year);
+                  return <td key={series.id}>{point ? valueWithError(point, chart.unit) : "–"}</td>;
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <p className="answer-chart__caption">{chart.caption ? `${chart.caption} ` : ""}{citation}</p>
     </figure>
   );

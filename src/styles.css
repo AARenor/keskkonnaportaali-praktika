@@ -1724,7 +1724,7 @@ h3 {
 
 .answer-chart__title {
   margin: 0 0 6px;
-  color: #294453;
+  color: var(--ink);
   font-size: 0.94rem;
   font-weight: 600;
   line-height: 1.35;
