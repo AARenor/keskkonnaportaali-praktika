@@ -689,7 +689,7 @@ export function requiresExtendedStructuredListingBudget(query) {
     || isStatisticsWaterAbstractionQuery(query)
     || isStatisticsWastewaterBht7Query(query)
     || isClimateDailyMeanQuery(query)
-    || isForestSeriesQuery(query);
+    || (isForestSeriesQuery(query) && !isForestHarvestBalanceQuery(query));
 }
 
 function hydrologyQuerySince(now) {
@@ -1913,7 +1913,7 @@ export async function loadStructuredIndicatorDocuments(query, options = {}) {
       // The climate-data catalogue remains visible without a numeric claim.
     }
   }
-  if (isForestSeriesQuery(query)) {
+  if (isForestSeriesQuery(query) && !isForestHarvestBalanceQuery(query)) {
     try {
       const fetchPxwebDataset = options.fetchPxwebDataset || fetchOfficialPxwebDataset;
       const intent = forestSeriesIntent(query);

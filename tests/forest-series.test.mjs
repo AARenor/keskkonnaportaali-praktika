@@ -14,7 +14,11 @@ import {
   validatedForestSeriesProjection,
 } from "../server/forest-series.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
-import { loadStructuredIndicatorDocuments, requiresExtendedStructuredListingBudget } from "../server/indicators.mjs";
+import {
+  isForestHarvestBalanceQuery,
+  loadStructuredIndicatorDocuments,
+  requiresExtendedStructuredListingBudget,
+} from "../server/indicators.mjs";
 import { searchEnvironmentLive, searchTimeoutFallback } from "../server/pipeline.mjs";
 import { rankPublicSearchCandidates } from "../server/retrieval.mjs";
 import { assessSearchQuery } from "../server/search.mjs";
@@ -70,6 +74,7 @@ test("forest series intent binds KK51 indicators to a multi-year window", () => 
     ["hektarivaru viimase 5 aasta jooksul", "KK51", "18", 2021, 2025, "last-n"],
     ["juurdekasv aastate kaupa", "KK51", "26", 2016, 2025, "default"],
     ["metsasus 1990–2025", "KK51", "34", 1999, 2025, "range"],
+    ["metsamaa pindala viimaste aastate jooksul", "KK51", "1", 2016, 2025, "default"],
   ];
   for (const [query, table, code, from, to, mode] of cases) {
     const intent = forestSeriesIntent(query);
@@ -90,6 +95,10 @@ test("forest series intent binds MM03 cut types and measures", () => {
     ["harvendusraie maht viimase viie aasta jooksul", "5", "3", 2020, 2024],
     ["kuidas on raiemaht muutunud", "1", "3", 2015, 2024],
     ["lageraie maht aastate lõikes", "3", "3", 2015, 2024],
+    ["Raiepindala viimase 10 aasta jooksul", "1", "1", 2015, 2024],
+    ["harvendusraiepindala 2015–2024", "5", "1", 2015, 2024],
+    ["lageraiemaht viimase 10 aasta jooksul", "3", "3", 2015, 2024],
+    ["Kuidas on raie maht kahe kümnendi jooksul muutunud?", "1", "3", 2005, 2024],
   ];
   for (const [query, cut, measure, from, to] of cases) {
     const intent = forestSeriesIntent(query);
@@ -127,6 +136,27 @@ test("forest series intent refuses single-year, ambiguous, breakdown and Eurosta
     "Harjumaa lageraie pindala 2015–2024",
     "puistute üldvaru Pärnumaal viimase kümne aasta jooksul",
     "Tallinna metsasus aastate lõikes",
+  ]) {
+    assert.equal(forestSeriesIntent(query), null, query);
+    assert.equal(isForestSeriesQuery(query), false, query);
+  }
+});
+
+test("forest series intent refuses non-quantity, species, cross-border and single-year-trend phrasing", () => {
+  for (const query of [
+    "Kuidas on raiereeglid muutunud?",
+    "raiepiirangud aja jooksul",
+    "Metsamaa hind viimase 10 aasta jooksul",
+    "metsamaa maksustamine muutunud",
+    "vanade metsade pindala muutus",
+    "okaspuude tagavara aastate lõikes",
+    "tamme tagavara viimase kümne aasta jooksul",
+    "raievanus aastate lõikes",
+    "Kuidas raie mõjutab kliimat viimase 10 aasta andmetel",
+    "Kui palju raiuti viimase aasta jooksul?",
+    "metsamaa pindala viimasel aastal",
+    "metsamaa pindala Eestis ja Soomes 2015–2024",
+    "Metsanduse arengukava 2021–2030 raiemaht",
   ]) {
     assert.equal(forestSeriesIntent(query), null, query);
     assert.equal(isForestSeriesQuery(query), false, query);
@@ -375,6 +405,29 @@ test("the pipeline answers a forest series question from its visible source and 
   const without = searchTimeoutFallback(query, { searchResults: { items: [], total: 0 }, filters: {}, startedAt: NOW });
   assert.equal(without.chart, undefined);
   assert.equal(assessSearchQuery(query).reason, "requested-time-series-required");
+});
+
+const FOREST_HARVEST_BALANCE_QUERIES = [
+  "Kas 2024. aasta inventuuri kasvunäitaja oli 2023. aasta raietest suurem?",
+  "Kas raiutakse rohkem kui juurde kasvab viimase 10 aasta jooksul?",
+  "Kas raie ületab metsa kasvu aastate lõikes?",
+  "Kas raiemaht on viimase viie aasta jooksul olnud suurem kui metsa kasv?",
+];
+
+test("harvest-vs-growth questions are recognised by the Eurostat balance predicate", () => {
+  for (const query of FOREST_HARVEST_BALANCE_QUERIES) {
+    assert.equal(isForestHarvestBalanceQuery(query), true, query);
+  }
+});
+
+test("harvest-vs-growth questions defer to the Eurostat balance adapter and never reach the forest series PXWeb loader", async () => {
+  for (const query of FOREST_HARVEST_BALANCE_QUERIES) {
+    await loadStructuredIndicatorDocuments(query, {
+      now: NOW,
+      fetchPxwebDataset: async () => { throw new Error("must not fetch"); },
+      fetchJsonDataset: async () => { throw new Error("no network in this test"); },
+    });
+  }
 });
 
 test("a forest series document survives public ranking for its own query", async () => {
