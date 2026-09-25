@@ -215,3 +215,55 @@ test("an invalid optional action URL is omitted without suppressing a valid cita
   assert.equal(response.sources[0].actionUrl, undefined);
   assert.equal(response.sources[0].actionLabel, undefined);
 });
+
+function chartFor(citation) {
+  return {
+    kind: "line",
+    title: "Test",
+    unit: "%",
+    series: [{ id: "a", label: "A", points: [{ x: 2020, y: 1 }, { x: 2021, y: 2 }] }],
+    citation,
+  };
+}
+
+test("publicResponse keeps a valid chart, remaps its citation and drops an invalid one", () => {
+  const uncited = source({ id: "uncited", citation: 1, url: "https://keskkonnaportaal.ee/et/uncited" });
+  const cited = source({ id: "cited", citation: 2, url: "https://andmed.stat.ee/et/stat/majandus__metsamajandus/MM03" });
+  const draft = {
+    ...citedDraft([uncited, cited]),
+    answer: { ...citedDraft([]).answer, introCitations: [2] },
+    chart: chartFor(2),
+  };
+  const response = publicResponse(draft);
+  assert.deepEqual(response.sources.map((item) => item.id), ["cited"]);
+  assert.equal(response.chart.citation, 1);
+  assert.equal(response.chart.series[0].points.length, 2);
+
+  const chartOnly = publicResponse({ ...citedDraft([uncited, cited]), answer: { ...citedDraft([]).answer, introCitations: [1] }, chart: chartFor(2) });
+  assert.deepEqual(chartOnly.sources.map((item) => item.id).sort(), ["cited", "uncited"]);
+  assert.equal(chartOnly.chart.citation, chartOnly.sources.find((item) => item.id === "cited").citation);
+
+  const invalid = publicResponse({ ...citedDraft([source()]), chart: { ...chartFor(1), kind: "pie" } });
+  assert.equal(invalid.chart, undefined);
+  assert.equal(invalid.answer.title, "Kontrollitud fakt");
+
+  const unresolved = publicResponse({ ...citedDraft([source()]), chart: chartFor(9) });
+  assert.equal(unresolved.chart, undefined);
+});
+
+test("cache sanitizer retains a valid chart and drops an invalid one", () => {
+  // Uses a query distinct from the fixed answer title (as the other
+  // sanitizeCachedResponse tests above do): the default citedDraft() query
+  // "kontrollitud küsimus" shares the word "kontrollitud" with the fixed
+  // answer title "Kontrollitud fakt", which trips the pre-existing
+  // conservative retained-query-fragment privacy filter and makes the
+  // sanitizer fail closed for reasons unrelated to the chart contract.
+  const query = "roostiku ülevaade";
+  const draft = { ...citedDraft([source()]), query, chart: chartFor(1) };
+  const safe = sanitizeCachedResponse(draft, query);
+  assert.deepEqual(safe.chart, chartFor(1));
+  const restored = restoreCachedResponse(safe, query);
+  assert.deepEqual(restored.chart, chartFor(1));
+  const invalid = sanitizeCachedResponse({ ...draft, chart: { ...chartFor(1), citation: 7 } }, query);
+  assert.equal(invalid.chart, undefined);
+});

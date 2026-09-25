@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { boundedChart, validPublicChart } from "./answer-chart.mjs";
 import { officialCitationUrlEligibility } from "./citation-policy.mjs";
 import { readSearchCache, recordSearch } from "./database.mjs";
 import { answerCadastreQuestion } from "./cadastre.mjs";
@@ -50,7 +51,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v50-citation-rebinding";
+export const SEARCH_RESPONSE_REVISION = "answer-v51-forest-series-chart";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
@@ -912,6 +913,7 @@ export function publicResponse(draft, { now = Date.now() } = {}) {
       const { actionUrl: _actionUrl, actionLabel: _actionLabel, ...safeSource } = source;
       return safeSource;
     });
+  const chart = validPublicChart(response.chart, sources) ? boundedChart(response.chart) : null;
   const answer = response.answer && typeof response.answer === "object" && !Array.isArray(response.answer)
     ? response.answer
     : null;
@@ -926,6 +928,7 @@ export function publicResponse(draft, { now = Date.now() } = {}) {
     rawCitations.push(...citations);
   };
   collectCitations(answer?.introCitations);
+  if (chart) rawCitations.push(chart.citation);
   const answerParts = answer?.parts === undefined ? [] : answer.parts;
   if (!Array.isArray(answerParts)) validCitationShape = false;
   else answerParts.forEach((part) => {
@@ -959,6 +962,7 @@ export function publicResponse(draft, { now = Date.now() } = {}) {
     || !citedSourcesSupportPublicClaims) {
     return {
       ...response,
+      chart: undefined,
       clarification: "Vastuse allikaviiteid ei saanud üheselt kontrollida.",
       answer: {
         eyebrow: "Täpsustust on vaja",
@@ -983,6 +987,7 @@ export function publicResponse(draft, { now = Date.now() } = {}) {
     .filter(Number.isInteger))];
   return {
     ...response,
+    chart: chart ? { ...chart, citation: citationMap.get(chart.citation) } : undefined,
     answer: answer ? {
       ...answer,
       introCitations: compactCitations(answer.introCitations),

@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import pg from "pg";
+import { boundedChart, validPublicChart } from "./answer-chart.mjs";
 import { canonicalizePublicSearchQuery } from "./search.mjs";
 
 const { Pool } = pg;
@@ -349,24 +350,7 @@ export function sanitizeCachedResponse(response, query) {
     : "fixed";
   if (titleMode === "fixed" && !rawTitle) return null;
 
-  const safe = {
-    cacheSchema: SEARCH_CACHE_RESPONSE_SCHEMA,
-    total: Math.max(0, Math.min(Number(response.total) || 0, 1_000_000)),
-    generatedAt: boundedText(response.generatedAt, 40),
-    answer: {
-      eyebrow: boundedText(rawAnswer.eyebrow, 120),
-      titleMode,
-      ...(titleMode === "fixed" ? { title: rawTitle } : {}),
-      intro: boundedText(rawAnswer.intro, 4_000),
-      introCitations: boundedCitations(rawAnswer.introCitations),
-      parts: (Array.isArray(rawAnswer.parts) ? rawAnswer.parts : []).slice(0, 6).map((part) => ({
-        title: boundedText(part?.title, 180),
-        text: boundedText(part?.text, 4_000),
-        citations: boundedCitations(part?.citations),
-      })).filter((part) => part.title && part.text),
-      note: boundedText(rawAnswer.note, 1_000),
-    },
-    sources: (Array.isArray(response.sources) ? response.sources : []).slice(0, 10).map((source) => ({
+  const safeSources = (Array.isArray(response.sources) ? response.sources : []).slice(0, 10).map((source) => ({
       id: boundedText(source?.id, 180),
       citation: typeof source?.citation === "number"
         && Number.isInteger(source.citation)
@@ -416,9 +400,29 @@ export function sanitizeCachedResponse(response, query) {
       _evidenceVersion: boundedText(source?._evidenceVersion, 120),
       _evidenceStatusAt: boundedText(source?._evidenceStatusAt, 40),
       _publishedAt: boundedText(source?._publishedAt, 40),
-    })).filter((source) => source.id && source.title && source.url && source.citation > 0),
+    })).filter((source) => source.id && source.title && source.url && source.citation > 0);
+
+  const safe = {
+    cacheSchema: SEARCH_CACHE_RESPONSE_SCHEMA,
+    total: Math.max(0, Math.min(Number(response.total) || 0, 1_000_000)),
+    generatedAt: boundedText(response.generatedAt, 40),
+    answer: {
+      eyebrow: boundedText(rawAnswer.eyebrow, 120),
+      titleMode,
+      ...(titleMode === "fixed" ? { title: rawTitle } : {}),
+      intro: boundedText(rawAnswer.intro, 4_000),
+      introCitations: boundedCitations(rawAnswer.introCitations),
+      parts: (Array.isArray(rawAnswer.parts) ? rawAnswer.parts : []).slice(0, 6).map((part) => ({
+        title: boundedText(part?.title, 180),
+        text: boundedText(part?.text, 4_000),
+        citations: boundedCitations(part?.citations),
+      })).filter((part) => part.title && part.text),
+      note: boundedText(rawAnswer.note, 1_000),
+    },
+    sources: safeSources,
     related: (Array.isArray(response.related) ? response.related : []).map((item) => boundedText(item, 180)).filter(Boolean).slice(0, 6),
     clarification: response.clarification === null ? null : boundedText(response.clarification, 700),
+    ...(validPublicChart(response.chart, safeSources) ? { chart: boundedChart(response.chart) } : {}),
   };
 
   if (Buffer.byteLength(JSON.stringify(safe), "utf8") > SEARCH_CACHE_MAX_RESPONSE_BYTES) return null;
