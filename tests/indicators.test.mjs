@@ -1029,3 +1029,49 @@ test("forest balance five-year answer carries a grouped bar chart with gaps kept
   );
   assert.match(fiveYear.chart.caption, /^Eurostat, metsa arvepidamine \(for_vol_efa\), Eesti\./u);
 });
+
+test("forest balance five-year chart keeps each series' own gaps independent of the other series", () => {
+  // stk_flow NAI=0 / RMOV=1, time 2020..2024 at positions 0..4 (size 5), so
+  // flat index = stk_flow_position * 5 + time_position (freq/indic_fo/unit/geo are all size 1).
+  const asymmetric = structuredClone(forestFixture);
+  asymmetric.value = {
+    0: 14370.94, // NAI 2020
+    1: 14000, // NAI 2021
+    // 2 (NAI 2022) intentionally missing
+    3: 9100, // NAI 2023
+    4: 8900, // NAI 2024
+    5: 12179, // RMOV 2020
+    6: 12100, // RMOV 2021
+    7: 12013, // RMOV 2022
+    8: 11564, // RMOV 2023
+    // 9 (RMOV 2024) intentionally missing
+  };
+  asymmetric.status = {};
+  const documents = forestHarvestBalanceDocumentsFromJson("Kas raiemaht ületab juurdekasvu?", asymmetric);
+  const fiveYear = composeForestHarvestBalanceAnswer(
+    "Mida see viimase 5 aasta jooksul tähendab Kas raiemaht ületab juurdekasvu?",
+    documents,
+  );
+  assert.deepEqual(fiveYear.chart.series[0].points.map((point) => point.x), [2020, 2021, 2023, 2024]);
+  assert.deepEqual(fiveYear.chart.series[1].points.map((point) => point.x), [2020, 2021, 2022, 2023]);
+});
+
+test("forest balance five-year chart is omitted when one series has fewer than two published points", () => {
+  const sparseIncrement = structuredClone(forestFixture);
+  sparseIncrement.value = {
+    4: 8900, // NAI 2024 only
+    5: 12179, // RMOV 2020
+    6: 12100, // RMOV 2021
+    7: 12013, // RMOV 2022
+    8: 11564, // RMOV 2023
+    9: 11000, // RMOV 2024
+  };
+  sparseIncrement.status = {};
+  const documents = forestHarvestBalanceDocumentsFromJson("Kas raiemaht ületab juurdekasvu?", sparseIncrement);
+  const fiveYear = composeForestHarvestBalanceAnswer(
+    "Mida see viimase 5 aasta jooksul tähendab Kas raiemaht ületab juurdekasvu?",
+    documents,
+  );
+  assert.equal(fiveYear.chart, undefined);
+  assert.ok(fiveYear.answer);
+});
