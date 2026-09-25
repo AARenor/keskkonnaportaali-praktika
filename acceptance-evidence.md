@@ -283,3 +283,22 @@ Parandus: Coolify keskkonnamuutujate `TRUSTED_PROXY_CIDRS` read (id 498+499, rak
 | Brauseri-päistega `mets` | HTTP 200, 1365 tulemust, `Allikapõhine kokkuvõte`, tippallikas `forest-condition-review` |
 | Ründe-päritolu (`attacker.example`, `cross-site`) | 403 tagasi lükatud (usaldusmudel säilib) |
 | RU `сортировка мусора` brauseriteel | loend `total: 7`, `waste` rank 4, aus `Vajan täpsustust` (kataloogis reviewed sorteerimisjuhis puudub) |
+
+## Metsa aegridade diagrammid 25.09.2026 (6d1bdd1)
+
+Commit'id `efd9575`…`6d1bdd1` (KK51/MM03 aegrea-adapter, `chart` leping `server/answer-chart.mjs`, Eurostati viie aasta tulpdiagramm, `AnswerChart` SVG-komponent, dokumentatsioon) juurutati `main`-i push'iga; GitHub Actions `Deploy to production (Coolify)` lõppes `success` ja avalik `/api/health` tagastas täpselt `6d1bdd1e468958c9007246132452b76762f71d16` (17:13:03). Coolify deployment-ID-d ei kontrollitud, sest API-token ei ole selles töökohas kättesaadav; tõendiks on workflow'i olek ja live-revisjon.
+
+| Kontroll (`6d1bdd1` live) | Mõõdetud lõpptulemus |
+|---|---|
+| Unit/integratsioon | `npm test`: 570/570; `npm run build` ja `npm run test:sites` OK; `eval:holdout` nDCG@5 0,97 (0 viga), `eval:open` MRR 1,0, `eval:public` behaviorAccuracy 1,0 |
+| Live eval + filtrid | `eval:live` 0 viga; `audit:filters` 210/210, p95 1631 ms |
+| `lageraie pindala 2015–2024` | külm 1. päring: aus `Vajan täpsustust` (esimene PXWeb-pöördumine ei jõudnud loendieelarvesse); 2. päring: `Statistikaameti tabel MM03`, `line 1×10`, viide 1 |
+| `Metsamaa pindala viimase kümne aasta jooksul` | `Statistikaameti tabel KK51`, 2016–2025: 2 313,6 → 2 360,2 tuhat ha, `line 1×10` (mõlemal ringil) |
+| `raiemaht 20 aastat tagasi võrreldes praegusega` | `MM03`, 2004–2024, `line 1×21` |
+| `Raiepindala viimase 10 aasta jooksul` | `MM03` raiepindala (liitsõna → õige näitaja), `line 1×10` |
+| Eurostati jätkuküsimus „viimase 5 aasta” | `Allikapõhine koondvastus`, `bar 2×3`, viide 1 |
+| `Kas 2024. aasta inventuuri kasvunäitaja oli 2023. aasta raietest suurem?` | jääb Eurostati vastuseks (`võrreldav paar puudub`), ei lähe MM03 aegreale |
+| `Metsamaa pindala 2024`, `mets`, `jäätmete ringlussevõtu määr Eestis 2023` | diagrammita; 37,9 % säilib |
+| Brauser (desktop + 375 px) | diagramm, ristikursor ja tooltip (± viga), klaviatuurifookus loeb `aria-label`i, peidetud tabel, allkirja viide sama numbriga; `scrollY === 0` värskel laadimisel; 375 px horisontaalset kerimist ei ole (`scrollWidth === clientWidth`) |
+
+Teadaolev punkt: konteineri esimene PXWeb-pöördumine KK51/MM03 tabelile võib külmalt ületada struktureeritud loendieelarve; vastus jääb siis ausaks täpsustuseks ja järgmine päring saab 12 h cache'ist diagrammi.
