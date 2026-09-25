@@ -5,6 +5,7 @@ Keskkonnaportaali visuaalsel keelel põhinev praktikaprojekt, mille kaks põhios
 - vastus-enne-allikaid otsing, kus OpenAI Agents SDK manager käivitab mitme allika korral järjest nii Luna relevantsus- kui ka tõendikriitiku ainult sama päringu värskel, filtreeritud ja järjestatud ametlikul tõendipakil ning lisab nummerdatud viited;
 - PostgreSQL-i korpus koos portaali sitemapilehtede, otsingukaartide ja valitud täistekstidega; tulemusi täiendavad päringu ajal ametlikud otsinguliidesed, skeemi-, aja- ja ühikukontrolliga Ilmateenistuse vaatlus- ja prognoosi-XML, täpse jaama ja näitajaga Keskkonnaagentuuri hüdroloogia ning 25 kureeritud jaama ajaloolised `DTA08` kliimaandmed, EELISe fikseeritud Emajõe avaliku vooluveekogu WFS-kirje ja kuue nimega Natura loodusala täpsed registrikirjed ning Statistikaameti KK048 veevõtu, KK25 BHT7, KK068 ohtlike jäätmete ja KK610 kogu jäätmete taaskasutamise JSON-stat2 päringud;
 - allika-, sisutüübi-, aasta- ja järjestusfiltrid ning kuni neli iga kord uue tõendiotsingu tegevat viidatud jätkuküsimust;
+- mitme aasta metsaküsimustele (metsamaa pindala, tagavara, metsasus, raiemaht, lageraie) Statistikaameti KK51/MM03 SMI aegread koos viidatud diagrammiga, mis koostatakse samast valideeritud reast kui tekst;
 - portaali sees töötav kogu `terrapoint.ee` rakendus, mis on üldotsingust täielikult eraldatud.
 
 Avalik keskkond: [praktika.arleserver.cfd](https://praktika.arleserver.cfd)
