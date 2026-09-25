@@ -58,10 +58,11 @@ const NUMBER_WORDS = new Map([
   ["kahekumne viie", 25], ["kolmekumne", 30], ["kolmkummend", 30],
 ]);
 
-// "reegl" and "piirang" are matched without a leading boundary because they
-// mostly occur as the tail of a raie-compound (e.g. "raiereeglid",
-// "raiepiirangud"), the same reason AREA_MEASURE/VOLUME_MEASURE drop \b.
-const UNSUPPORTED_SCOPE = /\b(?:maakon\w*|vald\w*|valla\w*|linn\w*|piirkon\w*|rmk|riigimets\w*|eramets\w*|omanik\w*|omand\w*|kaitse\w*|natura|puuliik\w*|mand|mann(?:i|ik)\w*|kuus(?:k|e|ik)\w*|kas(?:k|e)|kaasik\w*|haab\w*|haav(?:a|ik)\w*|lep(?:p|a|ik)\w*|prognoos\w*|tulevi\w*|planeeri\w*|eesmark\w*|siht\w*|euroopa\w*|soome\w*|lati\w*|leedu\w*|rootsi\w*|sanitaar\w*|valgustus\w*|valikraie\w*|kinnist\w*|katastri\w*|metsateati\w*|raiedokument\w*|hukkun\w*|kahjust\w*|harjumaa\w*|hiiumaa\w*|ida virumaa\w*|jogevamaa\w*|jarvamaa\w*|laanemaa\w*|laane virumaa\w*|polvamaa\w*|parnumaa\w*|raplamaa\w*|saaremaa\w*|tartumaa\w*|valgamaa\w*|viljandimaa\w*|vorumaa\w*|virumaa\w*|tallinn\w*|tartu\w*|parnu\w*|narva\w*|hind\w*|hinna\w*|maks\w*|seadus\w*|oigus\w*|luba\w*|load\w*|vanus\w*|raievanus\w*|moju\w*|vana\b|vanad\w*|vanade\w*|kliima\w*|arengukava\w*|tamm\w*|tamme\w*|saar\w*|jalaka\w*|parn\w*|vaher\w*|vahtra\w*|okaspuu\w*|lehtpuu\w*)\b|reegl\w*|piirang\w*/u;
+// "reegl"/"piirang" are anchored to a raie/metsa compound or a standalone
+// noun form so that adverbs like "reeglina" ("as a rule") and
+// "reeglipäraselt" don't reject a legitimate series question, while
+// "raiereeglid"/"raiepiirangud"/"metsareeglid" still count as out of scope.
+const UNSUPPORTED_SCOPE = /\b(?:maakon\w*|vald\w*|valla\w*|linn\w*|piirkon\w*|rmk|riigimets\w*|eramets\w*|omanik\w*|omand\w*|kaitse\w*|natura|puuliik\w*|mand|mann(?:i|ik)\w*|kuus(?:k|e|ik)\w*|kas(?:k|e)|kaasik\w*|haab\w*|haav(?:a|ik)\w*|lep(?:p|a|ik)\w*|prognoos\w*|tulevi\w*|planeeri\w*|eesmark\w*|siht\w*|euroopa\w*|soome\w*|lati\w*|leedu\w*|rootsi\w*|sanitaar\w*|valgustus\w*|valikraie\w*|kinnist\w*|katastri\w*|metsateati\w*|raiedokument\w*|hukkun\w*|kahjust\w*|harjumaa\w*|hiiumaa\w*|ida virumaa\w*|jogevamaa\w*|jarvamaa\w*|laanemaa\w*|laane virumaa\w*|polvamaa\w*|parnumaa\w*|raplamaa\w*|saaremaa\w*|tartumaa\w*|valgamaa\w*|viljandimaa\w*|vorumaa\w*|virumaa\w*|tallinn\w*|tartu\w*|parnu\w*|narva\w*|hind\w*|hinna\w*|maks\w*|seadus\w*|oigus\w*|luba\w*|load\w*|vanus\w*|raievanus\w*|moju\w*|vana\b|vanad\w*|vanade\w*|kliima\w*|arengukava\w*|tamm\w*|tamme\w*|saar\w*|jalaka\w*|parn\w*|vaher\w*|vahtra\w*|okaspuu\w*|lehtpuu\w*|(?:\w*(?:raie|metsa))?reegl(?!ina\b|ipar)\w*|(?:\w*(?:raie|metsa))?piirang\w*)\b/u;
 const TREND_WORDS = /\b(?:aegri\w*|aegrea\w*|aastate\s+loikes|aastate\s+kaupa|aasta\s+aastalt|aastati|trend\w*|muutu\w*|dunaamika\w*|ajalug\w*|ajalooli\w*|areng\w*|kasvanud|vahenenud|langenud|tousnud|suurenenud|kahanenud|aja\s+jooksul|viimas\w*\s+aastate\w*|viimas\w*\s+aastatel\b|viimas\w*\s+aastat\b|aastakumne\w*|kumnendi\w*)\b/u;
 const COMPARISON_WORDS = /\b(?:rohkem|vahem|vorrel\w*|kui|praegu|nuud|tana|varem|suurem|vaiksem|erine\w*)\b/u;
 const AREA_MEASURE = /pindala\w*|\bhektar\w*|\bha\b/u;

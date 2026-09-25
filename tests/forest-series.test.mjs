@@ -99,6 +99,8 @@ test("forest series intent binds MM03 cut types and measures", () => {
     ["harvendusraiepindala 2015–2024", "5", "1", 2015, 2024],
     ["lageraiemaht viimase 10 aasta jooksul", "3", "3", 2015, 2024],
     ["Kuidas on raie maht kahe kümnendi jooksul muutunud?", "1", "3", 2005, 2024],
+    ["Kui palju on reeglina raiutud viimase 10 aasta jooksul?", "1", "3", 2015, 2024],
+    ["Raiemaht muutub reeglina aastate lõikes", "1", "3", 2015, 2024],
   ];
   for (const [query, cut, measure, from, to] of cases) {
     const intent = forestSeriesIntent(query);
@@ -157,6 +159,7 @@ test("forest series intent refuses non-quantity, species, cross-border and singl
     "metsamaa pindala viimasel aastal",
     "metsamaa pindala Eestis ja Soomes 2015–2024",
     "Metsanduse arengukava 2021–2030 raiemaht",
+    "metsareeglid aastate lõikes",
   ]) {
     assert.equal(forestSeriesIntent(query), null, query);
     assert.equal(isForestSeriesQuery(query), false, query);
