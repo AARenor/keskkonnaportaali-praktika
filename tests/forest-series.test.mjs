@@ -73,6 +73,10 @@ test("forest series intent refuses single-year, ambiguous, breakdown and Eurosta
     "forest area from 2015 to 2024",
     "metsasus 2024. aastal",
     `metsamaa pindala ${"aegrida ".repeat(40)}`,
+    "metsamaa pindala Tartumaal aastate lõikes",
+    "Harjumaa lageraie pindala 2015–2024",
+    "puistute üldvaru Pärnumaal viimase kümne aasta jooksul",
+    "Tallinna metsasus aastate lõikes",
   ]) {
     assert.equal(forestSeriesIntent(query), null, query);
     assert.equal(isForestSeriesQuery(query), false, query);

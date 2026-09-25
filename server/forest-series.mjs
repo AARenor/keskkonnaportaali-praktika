@@ -58,7 +58,7 @@ const NUMBER_WORDS = new Map([
   ["kahekumne viie", 25], ["kolmekumne", 30], ["kolmkummend", 30],
 ]);
 
-const UNSUPPORTED_SCOPE = /\b(?:maakon\w*|vald\w*|valla\w*|linn\w*|piirkon\w*|rmk|riigimets\w*|eramets\w*|omanik\w*|omand\w*|kaitse\w*|natura|puuliik\w*|mand|mann(?:i|ik)\w*|kuus(?:k|e|ik)\w*|kas(?:k|e)|kaasik\w*|haab\w*|haav(?:a|ik)\w*|lep(?:p|a|ik)\w*|prognoos\w*|tulevi\w*|planeeri\w*|eesmark\w*|siht\w*|euroopa|soome|lati|leedu|rootsi|sanitaar\w*|valgustus\w*|valikraie\w*|kinnist\w*|katastri\w*|metsateati\w*|raiedokument\w*|hukkun\w*|kahjust\w*)\b/u;
+const UNSUPPORTED_SCOPE = /\b(?:maakon\w*|vald\w*|valla\w*|linn\w*|piirkon\w*|rmk|riigimets\w*|eramets\w*|omanik\w*|omand\w*|kaitse\w*|natura|puuliik\w*|mand|mann(?:i|ik)\w*|kuus(?:k|e|ik)\w*|kas(?:k|e)|kaasik\w*|haab\w*|haav(?:a|ik)\w*|lep(?:p|a|ik)\w*|prognoos\w*|tulevi\w*|planeeri\w*|eesmark\w*|siht\w*|euroopa|soome|lati|leedu|rootsi|sanitaar\w*|valgustus\w*|valikraie\w*|kinnist\w*|katastri\w*|metsateati\w*|raiedokument\w*|hukkun\w*|kahjust\w*|harjumaa\w*|hiiumaa\w*|ida virumaa\w*|jogevamaa\w*|jarvamaa\w*|laanemaa\w*|laane virumaa\w*|polvamaa\w*|parnumaa\w*|raplamaa\w*|saaremaa\w*|tartumaa\w*|valgamaa\w*|viljandimaa\w*|vorumaa\w*|virumaa\w*|tallinn\w*|tartu\w*|parnu\w*|narva\w*)\b/u;
 const TREND_WORDS = /\b(?:aegri\w*|aegrea\w*|aastate\s+loikes|aastate\s+kaupa|aasta\s+aastalt|aastati|trend\w*|muutu\w*|dunaamika\w*|ajalug\w*|ajalooli\w*|areng\w*|kasvanud|vahenenud|langenud|tousnud|suurenenud|kahanenud|aja\s+jooksul|viimas\w*\s+aasta\w*|aastakumne\w*|kumnendi\w*)\b/u;
 const COMPARISON_WORDS = /\b(?:rohkem|vahem|vorrel\w*|kui|praegu|nuud|tana|varem|suurem|vaiksem|erine\w*)\b/u;
 const AREA_MEASURE = /\bpindala\w*|\bhektar\w*|\bha\b/u;
