@@ -251,6 +251,29 @@ test("publicResponse keeps a valid chart, remaps its citation and drops an inval
   assert.equal(unresolved.chart, undefined);
 });
 
+test("publicResponse drops a chart whose source cannot support a public citation without failing the answer", () => {
+  const eligible = source({ id: "eligible", citation: 1 });
+  const ineligible = source({
+    id: "ineligible",
+    citation: 2,
+    evidencePolicy: "route-only",
+    _answerEvidenceEligible: false,
+  });
+  const draft = {
+    ...citedDraft([eligible, ineligible]),
+    answer: { ...citedDraft([]).answer, introCitations: [1] },
+    chart: chartFor(2),
+  };
+  const response = publicResponse(draft);
+  assert.equal(response.answer.title, "Kontrollitud fakt");
+  assert.equal(response.chart, undefined);
+  assert.deepEqual(response.sources.map((item) => item.id), ["eligible"]);
+
+  const supported = publicResponse({ ...draft, chart: chartFor(1) });
+  assert.equal(supported.answer.title, "Kontrollitud fakt");
+  assert.equal(supported.chart.citation, 1);
+});
+
 test("cache sanitizer retains a valid chart and drops an invalid one", () => {
   // Uses a query distinct from the fixed answer title (as the other
   // sanitizeCachedResponse tests above do): the default citedDraft() query

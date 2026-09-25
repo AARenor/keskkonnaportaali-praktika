@@ -913,7 +913,14 @@ export function publicResponse(draft, { now = Date.now() } = {}) {
       const { actionUrl: _actionUrl, actionLabel: _actionLabel, ...safeSource } = source;
       return safeSource;
     });
-  const chart = validPublicChart(response.chart, sources) ? boundedChart(response.chart) : null;
+  const chartCandidate = validPublicChart(response.chart, sources) ? boundedChart(response.chart) : null;
+  const chart = chartCandidate
+    && sourceCanSupportPublicCitation(
+      sources.find((source) => Number(source?.citation) === chartCandidate.citation) || {},
+      { now },
+    ).eligible
+    ? chartCandidate
+    : null;
   const answer = response.answer && typeof response.answer === "object" && !Array.isArray(response.answer)
     ? response.answer
     : null;
