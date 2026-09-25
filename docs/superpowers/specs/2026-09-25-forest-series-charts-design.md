@@ -300,8 +300,10 @@ title line). Print keeps the chart; the tooltip is hover/focus-only.
     relative error in MM03 intro, chart shape, citation binding.
   - `validatedForestSeriesProjection` rejects a document whose summary or
     points were altered after parsing.
-- `tests/search.test.mjs` addition: `publicResponse` keeps a valid chart,
-  strips an invalid one, and never drops the answer.
+- `tests/citation-policy.test.mjs` addition (where `publicResponse` is already
+  tested): `publicResponse` keeps a valid chart, remaps its citation, strips an
+  invalid one, and never drops the answer; the cache sanitizer keeps a valid
+  chart too, since it whitelists response fields.
 - `tests/indicators.test.mjs` addition: `loadStructuredIndicatorDocuments`
   calls the PXWeb fetch once for a forest series query with the expected body
   and not at all for a single-year forest question.
