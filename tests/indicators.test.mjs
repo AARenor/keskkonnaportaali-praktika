@@ -1004,3 +1004,28 @@ test("forest balance keeps dense JSON-stat nulls missing and derives a rolling w
   assert.match(answer.answer.intro, /2026\. aasta rida selles väljavõttes veel ei ole/u);
   assert.match(answer.answer.title, /2025\. aastal.*väiksem$/u);
 });
+
+test("forest balance five-year answer carries a grouped bar chart with gaps kept", () => {
+  const documents = forestHarvestBalanceDocumentsFromJson("Kas raiemaht ületab juurdekasvu?", forestFixture);
+  const direct = composeForestHarvestBalanceAnswer("Kas raiemaht ületab juurdekasvu?", documents);
+  assert.equal(direct.chart, undefined);
+  const fiveYear = composeForestHarvestBalanceAnswer(
+    "Mida see viimase 5 aasta jooksul tähendab Kas raiemaht ületab juurdekasvu?",
+    documents,
+  );
+  assert.equal(fiveYear.chart.kind, "bar");
+  assert.equal(fiveYear.chart.title, "Netojuurdekasv ja puidu eemaldamine 2020–2024");
+  assert.equal(fiveYear.chart.unit, "mln m³ koorega");
+  assert.equal(fiveYear.chart.citation, fiveYear.answer.introCitations[0]);
+  assert.deepEqual(fiveYear.chart.series.map((series) => series.label), ["Netojuurdekasv", "Puidu eemaldamine"]);
+  const observations = documents[0]._forestBalance.observations;
+  assert.deepEqual(
+    fiveYear.chart.series[0].points,
+    observations.filter((item) => item.increment !== null).map((item) => ({ x: item.year, y: item.increment })),
+  );
+  assert.deepEqual(
+    fiveYear.chart.series[1].points,
+    observations.filter((item) => item.removals !== null).map((item) => ({ x: item.year, y: item.removals })),
+  );
+  assert.match(fiveYear.chart.caption, /^Eurostat, metsa arvepidamine \(for_vol_efa\), Eesti\./u);
+});

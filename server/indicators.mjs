@@ -1783,7 +1783,24 @@ export function composeForestHarvestBalanceAnswer(query, sources = [], controlQu
         : latestWindow.removals < latestWindow.increment ? "väiksem" : "sama suur"
       : null;
     const incompleteWindow = window.length < 5 || missingWindow.length > 0;
+    const incrementPoints = window.filter((item) => item.increment !== null).map((item) => ({ x: item.year, y: item.increment }));
+    const removalPoints = window.filter((item) => item.removals !== null).map((item) => ({ x: item.year, y: item.removals }));
+    const chart = incrementPoints.length >= 2 && removalPoints.length >= 2
+      ? {
+        kind: "bar",
+        title: `Netojuurdekasv ja puidu eemaldamine ${startYear}–${endYear}`,
+        unit: "mln m³ koorega",
+        xLabel: "Aasta",
+        series: [
+          { id: "efa-increment", label: "Netojuurdekasv", points: incrementPoints },
+          { id: "efa-removals", label: "Puidu eemaldamine", points: removalPoints },
+        ],
+        citation: eurostatCitation,
+        caption: `Eurostat, metsa arvepidamine (for_vol_efa), Eesti. Puuduvaid aastaid ei ole interpoleeritud.`,
+      }
+      : null;
     return {
+      ...(chart ? { chart } : {}),
       answer: {
         eyebrow: "Allikapõhine koondvastus",
         title: incompleteWindow

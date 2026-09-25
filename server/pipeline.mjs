@@ -1176,6 +1176,7 @@ export async function createPortalDraft(query, {
   if (forestBalance) {
     draft.answer = forestBalance.answer;
     draft.related = forestBalance.related;
+    if (forestBalance.chart) draft.chart = forestBalance.chart;
     draft.evidence.answerable = true;
   }
   if (plannedEvidence?.reason === "national-area-method-evidence-required") {
