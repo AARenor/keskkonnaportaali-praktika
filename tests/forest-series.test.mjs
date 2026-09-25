@@ -6,6 +6,7 @@ import {
   FOREST_SERIES_KK51_TABLE_URL,
   FOREST_SERIES_MM03_API_URL,
   FOREST_SERIES_MM03_TABLE_URL,
+  composeForestSeriesResponse,
   forestSeriesFromJson,
   forestSeriesIntent,
   forestSeriesRequest,
@@ -250,4 +251,58 @@ test("forest series projection re-validation rejects tampered documents", () => 
   for (const candidate of tampered) assert.equal(validatedForestSeriesProjection(query, candidate, NOW), null);
   assert.equal(validatedForestSeriesProjection("Metsamaa pindala 2020–2023", document, NOW), null, "different window");
   assert.equal(validatedForestSeriesProjection(query, document, NOW + 14 * 60 * 60_000), null, "expired fetch");
+});
+
+test("forest series response carries a cited line chart built from the same points", async () => {
+  const query = "lageraie pindala 2015–2024";
+  const documents = forestSeriesFromJson(query, await fixture("pxweb-mm03-lageraie-pindala-2015-2024.json"), {
+    now: NOW,
+    fetchedAt: FETCHED_AT,
+  });
+  const response = composeForestSeriesResponse(query, documents, { now: NOW, total: 7 });
+  assert.ok(response);
+  assert.equal(response.total, 7);
+  assert.equal(response.answer.eyebrow, "Statistikaameti tabel MM03");
+  assert.equal(response.answer.title, "Lageraie: raiepindala 2015–2024: 31,6 → 34,0 tuhat ha");
+  assert.equal(response.answer.intro, documents[0].summary);
+  assert.deepEqual(response.answer.introCitations, [1]);
+  assert.equal(response.answer.parts.length, 1);
+  assert.equal(response.answer.parts[0].title, "Mida näitaja tähendab");
+  assert.match(response.answer.parts[0].text, /raiedokumentide/u);
+  assert.deepEqual(response.answer.parts[0].citations, [1]);
+  assert.match(response.answer.note, /SMI valikuuringu aastahinnangute rida/u);
+  assert.equal(response.sources.length, 1);
+  assert.equal(response.sources[0].citation, 1);
+  assert.equal(response.sources[0].evidenceExcerpt, documents[0].content);
+  assert.equal(response.related.length, 3);
+  assert.equal(response.clarification, null);
+  assert.deepEqual(response.evidence, { kind: "structured-forest-series", answerable: true, documentIds: [documents[0].id] });
+  assert.deepEqual(response.chart, {
+    kind: "line",
+    title: "Lageraie: raiepindala 2015–2024",
+    unit: "tuhat ha",
+    xLabel: "Aasta",
+    series: [{
+      id: "mm03-3-1",
+      label: "Lageraie: raiepindala",
+      points: documents[0]._forestSeries.points.map((point) => ({ x: point.year, y: point.value, error: point.error })),
+    }],
+    citation: 1,
+    caption: "Statistikaamet, tabel MM03: Metsaraie riikliku metsainventeerimise (SMI) hinnangul. SMI valikuuringu aastahinnangud koos suhtelise veaga.",
+  });
+});
+
+test("forest series response refuses a document that does not re-validate for the query", async () => {
+  const documents = forestSeriesFromJson("Metsamaa pindala 2015–2025", await fixture("pxweb-kk51-metsamaa-pindala-2015-2025.json"), {
+    now: NOW,
+    fetchedAt: FETCHED_AT,
+  });
+  assert.equal(composeForestSeriesResponse("Metsamaa pindala 2016–2025", documents, { now: NOW }), null);
+  assert.equal(composeForestSeriesResponse("Metsamaa pindala 2015–2025", [], { now: NOW }), null);
+  assert.equal(composeForestSeriesResponse("Metsamaa pindala 2015–2025", documents, { now: NOW + 14 * 60 * 60_000 }), null);
+  const response = composeForestSeriesResponse("Metsamaa pindala 2015–2025", documents, { now: NOW });
+  assert.equal(response.answer.eyebrow, "Statistikaameti tabel KK51");
+  assert.equal(response.chart.series[0].id, "kk51-1");
+  assert.deepEqual(response.chart.series[0].points[0], { x: 2015, y: 2310.6 });
+  assert.equal(response.chart.caption, "Statistikaamet, tabel KK51: Metsavaru riikliku metsainventeerimise (SMI) hinnangul. SMI valikuuringu aastahinnangud.");
 });

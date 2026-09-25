@@ -441,3 +441,62 @@ export function validatedForestSeriesProjection(query, document, now = Date.now(
     || forestSeriesContent(projection) !== document.content) return null;
   return projection;
 }
+
+const RELATED_QUESTIONS = Object.freeze({
+  KK51: Object.freeze(["Kas raiemaht ületab juurdekasvu?", "Kui suur osa Eestist on mets?", "Lageraie pindala viimase kümne aasta jooksul"]),
+  MM03: Object.freeze(["Kas raiemaht ületab juurdekasvu?", "Metsamaa pindala viimase kümne aasta jooksul", "Mis vahe on SMI raiemahul ja metsateatiste statistikal?"]),
+});
+
+function chartFromProjection(projection) {
+  const hasError = projection.points.some((point) => point.error !== undefined);
+  return {
+    kind: "line",
+    title: `${projection.seriesLabel} ${projection.years.from}–${projection.years.to}`,
+    unit: projection.unit,
+    xLabel: "Aasta",
+    series: [{
+      id: `${projection.table.toLowerCase()}-${projection.indicatorCode}`,
+      label: projection.seriesLabel,
+      points: projection.points.map((point) => (
+        point.error === undefined ? { x: point.year, y: point.value } : { x: point.year, y: point.value, error: point.error }
+      )),
+    }],
+    citation: 1,
+    caption: `Statistikaamet, tabel ${projection.table}: ${TABLE_TITLES[projection.table]}. SMI valikuuringu aastahinnangud${hasError ? " koos suhtelise veaga" : ""}.`,
+  };
+}
+
+export function composeForestSeriesResponse(query, documents = [], options = {}) {
+  const now = Number.isFinite(Number(options.now)) ? Number(options.now) : Date.now();
+  const source = (documents || []).find((document) => validatedForestSeriesProjection(query, document, now));
+  if (!source) return null;
+  const projection = source._forestSeries;
+  const first = projection.points[0];
+  const last = projection.points.at(-1);
+  return {
+    query: String(query || "").trim(),
+    total: Number(options.total || documents.length || 1),
+    generatedAt: new Date(now).toISOString(),
+    answer: {
+      eyebrow: `Statistikaameti tabel ${projection.table}`,
+      title: `${projection.seriesLabel} ${projection.years.from}–${projection.years.to}: ${etNumber(first.value, projection.digits)} → ${etNumber(last.value, projection.digits)} ${projection.unit}`,
+      intro: source.summary,
+      introCitations: [1],
+      parts: [{
+        title: "Mida näitaja tähendab",
+        text: forestSeriesDefinition(projection.table),
+        citations: [1],
+      }],
+      note: "See on SMI valikuuringu aastahinnangute rida ühe tabeli ja näitaja kohta. See ei ole prognoos, kohaliku omavalitsuse või kinnistu näitaja ega otsus metsamajanduse kestlikkuse kohta.",
+    },
+    sources: [{ ...source, citation: 1, evidenceExcerpt: source.content }],
+    related: [...RELATED_QUESTIONS[projection.table]],
+    clarification: null,
+    evidence: {
+      kind: "structured-forest-series",
+      answerable: true,
+      documentIds: [source.id],
+    },
+    chart: chartFromProjection(projection),
+  };
+}
