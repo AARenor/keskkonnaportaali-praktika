@@ -331,3 +331,16 @@ Commit `631e282` juurutati `main`-i push'iga; workflow `success`, `/api/health` 
 | `mitu ha metsa on eestis` ⟶ `näita 2000-2025 Tallinnas` | `Otsingu ulatus` (lisasõna läheb ulatusekontrolli), diagrammita |
 | Eurostati jätkuküsimus „viimase 5 aasta” | muutumatu: `bar 2×3` |
 | Brauser (lokaalne stack) | jätkuküsimuse vastuse all 26 punktiga diagramm, aastasildid hõrendatud |
+
+## Raieküsimuse klassifikatsioon 28.09.2026 (a8d9013)
+
+Commit `a8d9013` juurutati `main`-i push'iga; workflow `success`, `/api/health` tagastas `a8d9013fba399e5763c74712bb960decdf753842` (19:53:19). „Mitu ha võetakse metsa maha” loeti varem metsamaa pindala küsimuseks; nüüd on see koguraie ja vastatakse MM03 reast (viimased 10 aastat).
+
+| Kontroll (`a8d9013` live, kaks ringi) | Mõõdetud lõpptulemus |
+|---|---|
+| Unit/integratsioon | `npm test`: 582/582; `npm run build` OK |
+| `Mitu ha võetakse eestis metsa maha` | `Statistikaameti tabel MM03`, Koguraie: raiepindala 2015–2024: 77,6 → 117,4 tuhat ha, `line 1×10` |
+| `Kui palju raiuti Eestis?` | MM03 koguraie raiemaht 2015–2024, `line 1×10` |
+| `mitu ha metsa on eestis`, `Kas raiemaht ületab juurdekasvu?` | muutumatud |
+
+Teadaolev punkt (varasem klassifikaator, mitte diagrammitee): `classifyForestryGeographyScope` loeb sõna „langetatakse” välisriigi piirkonnaks (`foreign-or-other-region`), mistõttu „kui palju metsa langetatakse” jääb täpsustuseks ka siis, kui MM03 rida on laaditud.
