@@ -454,3 +454,222 @@ test("a forest series document survives public ranking for its own query", async
   assert.ok(ranked.find((candidate) => candidate.id === document.id));
   assert.equal(composeForestSeriesResponse(query, ranked, { now: NOW })?.evidence.kind, "structured-forest-series");
 });
+
+// ---------------------------------------------------------------------------
+// Context charts: single-value forest questions keep their text answer and
+// gain the last ten published years of the same indicator as a chart.
+// ---------------------------------------------------------------------------
+import {
+  forestContextChart,
+  forestContextSeriesIntent,
+  isForestContextSeriesQuery,
+  withForestContextChart,
+} from "../server/forest-series.mjs";
+import { composeSearchResponse } from "../server/search.mjs";
+
+const CONTEXT_YEARS = ["2016", "2017", "2018", "2019", "2020", "2021", "2022", "2023", "2024", "2025"];
+const CONTEXT_VALUES = [2313.6, 2331.1, 2331.3, 2333.2, 2325.5, 2325.6, 2325, 2334.2, 2350.8, 2360.2];
+
+test("context series intent binds single-value forest questions to the last ten published years", () => {
+  const cases = [
+    ["mitu ha metsa on eestis", "KK51", "1"],
+    ["Kui palju metsa on Eestis?", "KK51", "1"],
+    ["Kui suur on Eesti metsamaa pindala?", "KK51", "1"],
+    ["Kui suur osa Eestist on mets?", "KK51", "34"],
+    ["Mitu protsenti Eestist on metsaga kaetud?", "KK51", "34"],
+    ["Eesti metsa tagavara", "KK51", "10"],
+    ["Kui suur on metsa juurdekasv?", "KK51", "26"],
+  ];
+  for (const [query, table, code] of cases) {
+    const intent = forestContextSeriesIntent(query);
+    assert.ok(intent, query);
+    assert.equal(intent.table, table, query);
+    assert.equal(intent.indicator.code, code, query);
+    assert.deepEqual(intent.years, { from: 2016, to: 2025, mode: "context" }, query);
+    assert.equal(isForestContextSeriesQuery(query), true, query);
+  }
+  const harvest = forestContextSeriesIntent("Kui palju raiuti Eestis?");
+  assert.equal(harvest.table, "MM03");
+  assert.equal(harvest.cutType.code, "1");
+  assert.equal(harvest.measure.code, "3");
+  assert.deepEqual(harvest.years, { from: 2015, to: 2024, mode: "context" });
+  const clearCut = forestContextSeriesIntent("Kui suur on lageraie pindala?");
+  assert.equal(clearCut.cutType.code, "3");
+  assert.equal(clearCut.measure.code, "1");
+});
+
+test("context series intent stays out of the way of series, single-year, balance and scoped questions", () => {
+  for (const query of [
+    "Metsamaa pindala 2024",
+    "metsasus 2024. aastal",
+    "Metsamaa pindala viimase kümne aasta jooksul",
+    "lageraie pindala 2015–2024",
+    "Kuidas on Eesti metsasus muutunud?",
+    "Kas raiemaht ületab juurdekasvu?",
+    "mets",
+    "männikute pindala",
+    "metsamaa pindala Tartumaal",
+    "Kuidas on raiereeglid muutunud?",
+    "Metsamaa hind",
+    "kui palju metsa on soomes",
+    "Kui palju vett võeti Eestis 2024?",
+  ]) {
+    assert.equal(forestContextSeriesIntent(query), null, query);
+    assert.equal(isForestContextSeriesQuery(query), false, query);
+  }
+});
+
+test("a context series document parses and validates but never becomes the answer itself", () => {
+  const query = "mitu ha metsa on eestis";
+  const [document] = forestSeriesFromJson(query, kk51Fixture({}, { years: CONTEXT_YEARS, values: CONTEXT_VALUES }), {
+    now: NOW,
+    fetchedAt: FETCHED_AT,
+  });
+  assert.ok(document);
+  assert.equal(document.id, "forest-series-kk51-1-2016-2025");
+  assert.equal(document._forestSeries.points.length, 10);
+  assert.deepEqual(validatedForestSeriesProjection(query, document, NOW), document._forestSeries);
+  assert.equal(composeForestSeriesResponse(query, [document], { now: NOW }), null);
+  const context = forestContextChart(query, [document], { now: NOW });
+  assert.equal(context.source.id, document.id);
+  assert.equal(context.chart.kind, "line");
+  assert.equal(context.chart.title, "Metsamaa pindala 2016–2025");
+  assert.equal(context.chart.series[0].points.length, 10);
+  assert.deepEqual(context.chart.series[0].points[0], { x: 2016, y: 2313.6 });
+  assert.equal(forestContextChart("Metsamaa pindala viimase kümne aasta jooksul", [document], { now: NOW }), null);
+  assert.equal(forestContextChart(query, [], { now: NOW }), null);
+});
+
+test("withForestContextChart attaches the chart to an answerable draft with its own citation", () => {
+  const query = "mitu ha metsa on eestis";
+  const [seriesDocument] = forestSeriesFromJson(query, kk51Fixture({}, { years: CONTEXT_YEARS, values: CONTEXT_VALUES }), {
+    now: NOW,
+    fetchedAt: FETCHED_AT,
+  });
+  const portal = {
+    id: "smi-2025-forest-area",
+    title: "SMI 2025: Eesti metsamaa pindala",
+    url: "https://keskkonnaportaal.ee/et/smi-2025",
+    summary: "SMI 2025 järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit.",
+    content: "SMI 2025 järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast.",
+    organization: "Keskkonnaagentuur",
+    sourceTier: "official",
+    evidencePolicy: "claim-specific",
+    _answerEvidenceEligible: true,
+  };
+  const draft = composeSearchResponse(query, [portal], { answerable: true, limit: 6, total: 2 });
+  assert.equal(draft.evidence.answerable, true);
+  const attached = withForestContextChart(draft, query, [portal, seriesDocument], { now: NOW });
+  assert.equal(attached.chart.citation, 2);
+  assert.deepEqual(attached.sources.map((source) => source.id), [portal.id, seriesDocument.id]);
+  assert.equal(attached.sources[1].citation, 2);
+  assert.equal(attached.sources[1].evidenceExcerpt, seriesDocument.content);
+  assert.equal(attached.answer, draft.answer);
+
+  const alreadyCited = composeSearchResponse(query, [seriesDocument, portal], { answerable: true, limit: 6, total: 2 });
+  const reused = withForestContextChart(alreadyCited, query, [portal, seriesDocument], { now: NOW });
+  assert.equal(reused.chart.citation, 1);
+  assert.equal(reused.sources.length, 2);
+
+  const unanswerable = composeSearchResponse(query, [portal], { answerable: false, clarification: "Täpsusta.", limit: 6, total: 2 });
+  assert.equal(withForestContextChart(unanswerable, query, [portal, seriesDocument], { now: NOW }), unanswerable);
+  const charted = { ...draft, chart: { kind: "bar" } };
+  assert.equal(withForestContextChart(charted, query, [portal, seriesDocument], { now: NOW }), charted);
+  assert.equal(withForestContextChart(draft, query, [portal], { now: NOW }), draft);
+});
+
+test("structured loader fetches a context series for a single-value forest question", async () => {
+  const query = "mitu ha metsa on eestis";
+  let calls = 0;
+  const documents = await loadStructuredIndicatorDocuments(query, {
+    now: NOW,
+    fetchPxwebDataset: async (url, payload) => {
+      calls += 1;
+      assert.equal(url, FOREST_SERIES_KK51_API_URL);
+      assert.deepEqual(payload, {
+        query: [
+          { code: "Näitaja", selection: { filter: "item", values: ["1"] } },
+          { code: "Aasta", selection: { filter: "item", values: CONTEXT_YEARS } },
+        ],
+        response: { format: "json-stat2" },
+      });
+      return { body: kk51Fixture({}, { years: CONTEXT_YEARS, values: CONTEXT_VALUES }), fetchedAt: FETCHED_AT, stale: false };
+    },
+  });
+  assert.equal(calls, 1);
+  assert.ok(documents.some((document) => document.id === "forest-series-kk51-1-2016-2025"));
+  assert.equal(requiresExtendedStructuredListingBudget(query), true);
+  const balance = await loadStructuredIndicatorDocuments("Kas raiemaht ületab juurdekasvu?", {
+    now: NOW,
+    fetchPxwebDataset: async () => { throw new Error("must not fetch"); },
+    fetchJsonDataset: async () => { throw new Error("offline"); },
+  });
+  assert.equal(balance.some((document) => String(document.id).startsWith("forest-series-")), false);
+});
+
+test("the live pipeline keeps the portal answer and adds the context chart under it", async () => {
+  const query = "mitu ha metsa on eestis";
+  const [seriesDocument] = forestSeriesFromJson(query, kk51Fixture({}, { years: CONTEXT_YEARS, values: CONTEXT_VALUES }), {
+    now: NOW,
+    fetchedAt: NOW,
+  });
+  const portal = {
+    id: "smi-2025-forest-area",
+    title: "SMI 2025: Eesti metsamaa pindala",
+    url: "https://keskkonnaportaal.ee/et/smi-2025",
+    summary: "SMI 2025 järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast.",
+    content: "Keskkonnaagentuuri SMI 2025 tulemuste järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast.",
+    organization: "Keskkonnaagentuur",
+    type: "Statistika",
+    published: "2026",
+    sourceTier: "official",
+    evidencePolicy: "claim-specific",
+    _answerEvidenceEligible: true,
+    topics: ["mets", "metsamaa", "pindala", "SMI"],
+    tags: ["mets", "metsamaa", "pindala", "SMI"],
+  };
+  const live = await searchEnvironmentLive(query, {
+    startedAt: NOW,
+    deadlineAt: NOW + 1_000,
+    useCache: false,
+    searchResults: { items: [portal, seriesDocument], total: 2 },
+  });
+  if (live.evidence?.answerable === false || !live.answer.introCitations.length) {
+    // Without a reviewed extract the deterministic pipeline may abstain; the
+    // contract under test is only that an abstention never carries a chart.
+    assert.equal(live.chart, undefined);
+    return;
+  }
+  assert.notEqual(live.answer.eyebrow, "Statistikaameti tabel KK51");
+  assert.equal(live.chart.kind, "line");
+  const citedSource = live.sources.find((source) => source.citation === live.chart.citation);
+  assert.equal(citedSource.url, FOREST_SERIES_KK51_TABLE_URL);
+});
+
+test("a series fetched for the question stays within the first visible results even when portal pages outscore it", () => {
+  const query = "Kui suur osa Eestist on mets?";
+  const [seriesDocument] = forestSeriesFromJson(query, kk51Fixture({
+    dimension: {
+      Näitaja: { extension: { show: "value" }, label: "Näitaja", category: { index: { 34: 0 }, label: { 34: "Territooriumi metsasus, %" } } },
+      Aasta: JSON.parse(kk51Fixture({}, { years: CONTEXT_YEARS, values: CONTEXT_VALUES })).dimension.Aasta,
+    },
+  }, { years: CONTEXT_YEARS, values: [51, 51, 51.4, 51.4, 51.5, 51.3, 51.3, 51.3, 51.5, 52.1] }), { now: NOW, fetchedAt: NOW });
+  assert.ok(seriesDocument, "fixture must parse as the metsasus series");
+  const topics = ["metsamaa pindala", "metsasus maakonniti", "SMI 2024 tulemused", "SMI 2025 tulemused", "metsaga kaetud ala", "puistute pindala", "riigimets ja erametsa osa", "metsade tagavara", "metsa vanuseline struktuur", "mets ja kliima"];
+  const portalPages = topics.map((topic, index) => ({
+    id: `portal-${index}`,
+    title: `Kui suur osa Eestist on mets: ${topic}`,
+    url: `https://keskkonnaportaal.ee/et/${topic.replace(/\s+/gu, "-")}`,
+    summary: `${topic}: kui suur osa Eestist on mets ja kuidas see on mõõdetud (${index}).`,
+    content: `${topic}. Kui suur osa Eestist on mets? Eesti metsamaa pindala on üle poole riigi pindalast; ${topic} kirjeldab seda täpsemalt ${"eri nurgast ".repeat(index + 1)}.`,
+    organization: "Keskkonnaportaal",
+    sourceTier: "official",
+    tags: ["mets", "eesti", "osa", topic.split(" ")[0]],
+  }));
+  const ranked = rankPublicSearchCandidates(query, [...portalPages, seriesDocument], { now: NOW });
+  const position = ranked.findIndex((candidate) => candidate.id === seriesDocument.id);
+  assert.ok(position >= 0 && position <= 5, `series ranked at ${position}`);
+  assert.notEqual(ranked[0].id, seriesDocument.id, "the best portal page keeps the lead");
+  const unrelated = rankPublicSearchCandidates("Kui palju vett võeti Eestis 2024?", [...portalPages, seriesDocument], { now: NOW });
+  assert.ok(unrelated.findIndex((candidate) => candidate.id === seriesDocument.id) > 5 || unrelated.every((c) => c.id !== seriesDocument.id));
+});

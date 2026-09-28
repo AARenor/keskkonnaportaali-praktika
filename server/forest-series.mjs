@@ -150,6 +150,58 @@ export function isForestSeriesQuery(query) {
   return forestSeriesIntent(query) !== null;
 }
 
+const CONTEXT_AREA_CUE = /\bha\b|\bhektar\w*|pindala\w*|\bkui\s+palju\b|\bmitu\b|\bkui\s+suur\b/u;
+const CONTEXT_COVER_CUE = /\bmetsasus\w*|\bprotsent\w*|\bosakaal\w*|\bsuur\s+osa\b/u;
+const PERIOD_SIGNAL = /\b(?:19|20)\d{2}\b|\bviimas\w*|\btagasi\b|\bkumnendi\w*|\baastakumne\w*/u;
+
+// A single-value forest question (no year, no trend words) keeps its normal
+// text answer; this intent only decides which official series can be shown
+// under it as context. It never triggers when the series intent already did.
+export function forestContextSeriesIntent(query) {
+  if (typeof query !== "string" || query.length > MAX_QUERY_LENGTH) return null;
+  if (forestSeriesIntent(query)) return null;
+  const text = normalize(query);
+  if (!text || UNSUPPORTED_SCOPE.test(text) || PERIOD_SIGNAL.test(text) || TREND_WORDS.test(text)) return null;
+  const hasRaie = /\b(?:raie\w*|raiu\w*|lageraie\w*|harvendus\w*)/u.test(text);
+  const hasIncrement = /juurdekasv\w*/u.test(text);
+  const hasRemovals = /\beemalda\w*/u.test(text);
+  if (hasIncrement && (hasRaie || hasRemovals)) return null;
+  const hasForest = /\bmets\w*/u.test(text);
+  // A share question ("mitu protsenti", "kui suur osa") is answered by forest
+  // cover even when the words also name the wooded area.
+  let indicator = hasForest && !hasRaie && CONTEXT_COVER_CUE.test(text)
+    ? KK51_INDICATORS.find((item) => item.code === "34")
+    : KK51_INDICATORS.find((item) => item.pattern.test(text)) || null;
+  if (!indicator && hasForest && !hasRaie && CONTEXT_AREA_CUE.test(text)) {
+    indicator = KK51_INDICATORS.find((item) => item.code === "1");
+  }
+  if (indicator && hasRaie) return null;
+  if (!indicator && !hasRaie) return null;
+  const window = (table) => {
+    const published = FOREST_SERIES_TABLE_YEARS[table];
+    return { from: published.to - DEFAULT_WINDOW_YEARS + 1, to: published.to, mode: "context" };
+  };
+  if (indicator) return { table: "KK51", indicator, years: window("KK51") };
+  const cutType = MM03_CUT_TYPES.find((item) => item.pattern.test(text));
+  const asksArea = AREA_MEASURE.test(text);
+  const asksVolume = VOLUME_MEASURE.test(text);
+  if (!cutType || (asksArea && asksVolume)) return null;
+  const measure = asksArea
+    ? MM03_MEASURES.area
+    : asksVolume
+      ? MM03_MEASURES.volume
+      : cutType.code === "3" ? MM03_MEASURES.area : MM03_MEASURES.volume;
+  return { table: "MM03", indicator: null, cutType, measure, years: window("MM03") };
+}
+
+export function isForestContextSeriesQuery(query) {
+  return forestContextSeriesIntent(query) !== null;
+}
+
+export function resolveForestSeriesIntent(query) {
+  return forestSeriesIntent(query) || forestContextSeriesIntent(query);
+}
+
 function windowYears(years) {
   const values = [];
   for (let year = years.from; year <= years.to; year += 1) values.push(String(year));
@@ -352,7 +404,7 @@ function parsePayload(intent, payload) {
 }
 
 export function forestSeriesFromJson(query, json, options = {}) {
-  const intent = forestSeriesIntent(query);
+  const intent = resolveForestSeriesIntent(query);
   const input = String(json || "");
   const now = numericTimestamp(options.now, Date.now());
   const fetchedTimestamp = numericTimestamp(options.fetchedAt, Number.NaN);
@@ -422,7 +474,7 @@ function validPoint(point, unitMax) {
 }
 
 export function validatedForestSeriesProjection(query, document, now = Date.now()) {
-  const intent = forestSeriesIntent(query);
+  const intent = resolveForestSeriesIntent(query);
   const projection = document?._forestSeries;
   if (!intent || !projection || typeof projection !== "object") return null;
   const descriptor = seriesDescriptor(intent);
@@ -476,6 +528,7 @@ function chartFromProjection(projection) {
 
 export function composeForestSeriesResponse(query, documents = [], options = {}) {
   const now = Number.isFinite(Number(options.now)) ? Number(options.now) : Date.now();
+  if (!forestSeriesIntent(query)) return null;
   const source = (documents || []).find((document) => validatedForestSeriesProjection(query, document, now));
   if (!source) return null;
   const projection = source._forestSeries;
@@ -506,5 +559,36 @@ export function composeForestSeriesResponse(query, documents = [], options = {})
       documentIds: [source.id],
     },
     chart: chartFromProjection(projection),
+  };
+}
+
+export function forestContextChart(query, documents = [], options = {}) {
+  const now = Number.isFinite(Number(options.now)) ? Number(options.now) : Date.now();
+  const intent = forestContextSeriesIntent(query);
+  if (!intent) return null;
+  const source = (documents || []).find((document) => validatedForestSeriesProjection(query, document, now));
+  if (!source) return null;
+  return { source, chart: chartFromProjection(source._forestSeries) };
+}
+
+// Adds the context chart to an answerable draft without touching its text:
+// the series document becomes (or already is) one of the draft's cited
+// sources and the chart cites that number, so publicResponse keeps the
+// source visible and renumbers both together.
+export function withForestContextChart(draft, query, documents = [], options = {}) {
+  if (!draft || typeof draft !== "object" || !draft.answer || draft.chart) return draft;
+  if (draft.evidence?.answerable === false) return draft;
+  const context = forestContextChart(query, documents, options);
+  if (!context) return draft;
+  const sources = Array.isArray(draft.sources) ? draft.sources : [];
+  const existing = sources.find((source) => source?.id === context.source.id);
+  if (existing && Number.isInteger(existing.citation) && existing.citation > 0) {
+    return { ...draft, chart: { ...context.chart, citation: existing.citation } };
+  }
+  const citation = sources.reduce((max, source) => Math.max(max, Number(source?.citation) || 0), 0) + 1;
+  return {
+    ...draft,
+    sources: [...sources, { ...context.source, citation, evidenceExcerpt: context.source.content }],
+    chart: { ...context.chart, citation },
   };
 }

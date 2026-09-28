@@ -45,9 +45,10 @@ import {
   FOREST_SERIES_KK51_API_URL,
   FOREST_SERIES_MM03_API_URL,
   forestSeriesFromJson,
-  forestSeriesIntent,
   forestSeriesRequest,
+  isForestContextSeriesQuery,
   isForestSeriesQuery,
+  resolveForestSeriesIntent,
 } from "./forest-series.mjs";
 
 export { composeForestSeriesResponse };
@@ -689,7 +690,7 @@ export function requiresExtendedStructuredListingBudget(query) {
     || isStatisticsWaterAbstractionQuery(query)
     || isStatisticsWastewaterBht7Query(query)
     || isClimateDailyMeanQuery(query)
-    || (isForestSeriesQuery(query) && !isForestHarvestBalanceQuery(query));
+    || ((isForestSeriesQuery(query) || isForestContextSeriesQuery(query)) && !isForestHarvestBalanceQuery(query));
 }
 
 function hydrologyQuerySince(now) {
@@ -1913,10 +1914,10 @@ export async function loadStructuredIndicatorDocuments(query, options = {}) {
       // The climate-data catalogue remains visible without a numeric claim.
     }
   }
-  if (isForestSeriesQuery(query) && !isForestHarvestBalanceQuery(query)) {
+  if ((isForestSeriesQuery(query) || isForestContextSeriesQuery(query)) && !isForestHarvestBalanceQuery(query)) {
     try {
       const fetchPxwebDataset = options.fetchPxwebDataset || fetchOfficialPxwebDataset;
-      const intent = forestSeriesIntent(query);
+      const intent = resolveForestSeriesIntent(query);
       const result = await fetchPxwebDataset(
         intent.table === "KK51" ? FOREST_SERIES_KK51_API_URL : FOREST_SERIES_MM03_API_URL,
         forestSeriesRequest(intent),

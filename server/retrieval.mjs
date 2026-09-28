@@ -14,6 +14,7 @@ import {
   loadStructuredIndicatorDocuments,
   validatedForestBalanceProjection,
 } from "./indicators.mjs";
+import { resolveForestSeriesIntent, validatedForestSeriesProjection } from "./forest-series.mjs";
 import {
   analyzePublicSearchQuery,
   assessSearchQuery,
@@ -1645,18 +1646,40 @@ function ensureDirectDirectoryCandidates(query, ranked = [], available = []) {
 // The result list and answer draft both start here: relevance rank, canonical
 // deduplication, a second rank with merged text, then the narrowly scoped
 // official-forestry visibility guarantee.
+// A typed year series is fetched only because the question named that
+// indicator, so it is direct evidence for the question. Lexical scoring can
+// still leave it below the first page behind broader portal pages; keep it
+// within the first visible results without displacing the best portal lead.
+const FOREST_SERIES_VISIBLE_RANK = 5;
+
+function ensureForestSeriesCandidates(query, ranked = [], now = Date.now()) {
+  if (!resolveForestSeriesIntent(query)) return ranked;
+  const index = ranked.findIndex((document) => (
+    document?._forestSeries && validatedForestSeriesProjection(query, document, now)
+  ));
+  if (index < 0 || index <= FOREST_SERIES_VISIBLE_RANK) return ranked;
+  const next = [...ranked];
+  const [document] = next.splice(index, 1);
+  next.splice(FOREST_SERIES_VISIBLE_RANK, 0, document);
+  return next;
+}
+
 export function rankPublicSearchCandidates(query, documents = [], {
   intentDocuments = [],
   ...rankingOptions
 } = {}) {
-  return ensureDirectDirectoryCandidates(
+  return ensureForestSeriesCandidates(
     query,
-    ensureForestryIntentCandidates(
+    ensureDirectDirectoryCandidates(
       query,
-      rankAndDeduplicate(query, documents, rankingOptions),
-      intentDocuments,
+      ensureForestryIntentCandidates(
+        query,
+        rankAndDeduplicate(query, documents, rankingOptions),
+        intentDocuments,
+      ),
+      [...intentDocuments, ...documents],
     ),
-    [...intentDocuments, ...documents],
+    Number.isFinite(Number(rankingOptions.now)) ? Number(rankingOptions.now) : Date.now(),
   );
 }
 

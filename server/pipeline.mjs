@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { boundedChart, validPublicChart } from "./answer-chart.mjs";
+import { withForestContextChart } from "./forest-series.mjs";
 import { officialCitationUrlEligibility } from "./citation-policy.mjs";
 import { readSearchCache, recordSearch } from "./database.mjs";
 import { answerCadastreQuestion } from "./cadastre.mjs";
@@ -1430,7 +1431,7 @@ async function searchWithinBudget(cleanQuery, {
   const llmBudget = remainingBudget(deadlineAt, 300);
   if (canGenerate && llmBudget >= 500 && typeof onDraft === "function") {
     throwIfRequestAborted(signal);
-    onDraft(publicResponse(draft, { now: startedAt }));
+    onDraft(publicResponse(withForestContextChart(draft, cleanQuery, searchResults?.items, { now: startedAt }), { now: startedAt }));
   }
   // Keep the accepted deterministic result detached from both the provider
   // input and any streamed consumer. A ready model answer must rebind its
@@ -1471,6 +1472,7 @@ async function searchWithinBudget(cleanQuery, {
   // never turn that uncited field into public navigation or hidden-prompt text.
   draft.related = mergeRelatedQuestions([], draft.related, 6);
   draft.generatedAt = new Date().toISOString();
+  draft = withForestContextChart(draft, cleanQuery, searchResults?.items, { now: startedAt });
   const response = publicResponse(draft, { now: startedAt });
   const durationMs = Date.now() - startedAt;
   const evidenceKind = draft.evidence?.kind;
