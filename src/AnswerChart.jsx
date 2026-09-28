@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { chartDescription, formatChartValue, niceDomain, seriesPrecision, splitRuns, xTickStep } from "./answer-chart-layout.js";
+import { chartDescription, formatChartValue, niceDomain, seriesPrecision, shareArcs, splitRuns, xTickStep } from "./answer-chart-layout.js";
 
 const HEIGHT = 260;
 const MARGIN = { top: 16, right: 20, bottom: 36, left: 56 };
@@ -27,7 +27,7 @@ function valueWithError(point, unit, digits) {
   return point.error === undefined ? base : `${base} (±${formatChartValue(point.error, 1)}%)`;
 }
 
-export default function AnswerChart({ chart, citation = null }) {
+function SeriesChart({ chart, citation = null }) {
   const [frameRef, width] = useContainerWidth();
   const [activeYear, setActiveYear] = useState(null);
   const titleId = useId();
@@ -229,4 +229,111 @@ export default function AnswerChart({ chart, citation = null }) {
       <p className="answer-chart__caption">{chart.caption ? `${chart.caption} ` : ""}{citation}</p>
     </figure>
   );
+}
+
+const SHARE_SIZE = 220;
+const SHARE_OUTER = 96;
+const SHARE_INNER = 60;
+// One accent for the emphasised class, a quiet single-hue ramp for the rest:
+// the story is one share, the other slices are context.
+const SHARE_NEUTRALS = ["#6f8ea3", "#8fa8b8", "#aebfcb", "#c6d3db", "#d9e2e8", "#e8eef2", "#f2f5f7"];
+
+function arcPath(start, end, outer, inner) {
+  const cx = SHARE_SIZE / 2;
+  const cy = SHARE_SIZE / 2;
+  const sweep = end - start;
+  const large = sweep > Math.PI ? 1 : 0;
+  const point = (radius, angle) => [cx + radius * Math.sin(angle), cy - radius * Math.cos(angle)];
+  const [x1, y1] = point(outer, start);
+  const [x2, y2] = point(outer, end);
+  const [x3, y3] = point(inner, end);
+  const [x4, y4] = point(inner, start);
+  return `M${x1},${y1} A${outer},${outer} 0 ${large} 1 ${x2},${y2} L${x3},${y3} A${inner},${inner} 0 ${large} 0 ${x4},${y4} Z`;
+}
+
+function ShareChart({ chart, citation = null }) {
+  const titleId = useId();
+  const descId = useId();
+  const points = chart.series[0].points;
+  const arcs = useMemo(() => shareArcs(points), [points]);
+  const emphasised = arcs.findIndex((arc) => arc.emphasis) >= 0 ? arcs.findIndex((arc) => arc.emphasis) : 0;
+  const [active, setActive] = useState(null);
+  const shown = arcs[active ?? emphasised];
+  let neutral = 0;
+  const colours = arcs.map((arc) => (arc.emphasis ? "var(--brand-700)" : SHARE_NEUTRALS[Math.min(neutral++, SHARE_NEUTRALS.length - 1)]));
+  const description = `Sektordiagramm. ${arcs.map((arc) => `${arc.label} ${formatChartValue(arc.percent, 1)} %`).join("; ")}.`;
+  return (
+    <figure className="answer-chart answer-chart--share">
+      <figcaption className="answer-chart__title" id={titleId}>{chart.title}</figcaption>
+      <div className="answer-chart__share">
+        <div className="answer-chart__donut">
+          <svg
+            aria-describedby={descId}
+            aria-label={chart.title}
+            height={SHARE_SIZE}
+            onPointerLeave={() => setActive(null)}
+            role="group"
+            viewBox={`0 0 ${SHARE_SIZE} ${SHARE_SIZE}`}
+            width={SHARE_SIZE}
+          >
+            <desc id={descId}>{description}</desc>
+            {arcs.map((arc, index) => (
+              <path
+                aria-label={`${arc.label}: ${formatChartValue(arc.y, 1)} ${chart.unit} (${formatChartValue(arc.percent, 1)} %)`}
+                className="answer-chart__slice"
+                d={arcPath(arc.start, arc.end, active === index ? SHARE_OUTER + 4 : SHARE_OUTER, SHARE_INNER)}
+                fill={colours[index]}
+                key={arc.x}
+                onBlur={() => setActive(null)}
+                onFocus={() => setActive(index)}
+                onPointerEnter={() => setActive(index)}
+                stroke="#fff"
+                strokeWidth={2}
+                tabIndex={0}
+              />
+            ))}
+            <text className="answer-chart__share-percent" textAnchor="middle" x={SHARE_SIZE / 2} y={SHARE_SIZE / 2 + 2}>
+              {formatChartValue(shown.percent, 1)} %
+            </text>
+            <text className="answer-chart__share-label" textAnchor="middle" x={SHARE_SIZE / 2} y={SHARE_SIZE / 2 + 22}>
+              {shown.label}
+            </text>
+          </svg>
+        </div>
+        <ul className="answer-chart__share-legend">
+          {arcs.map((arc, index) => (
+            <li className={active === index ? "is-active" : undefined} key={arc.x} onPointerEnter={() => setActive(index)} onPointerLeave={() => setActive(null)}>
+              <span aria-hidden="true" className="answer-chart__key answer-chart__key--bar" style={{ background: colours[index] }} />
+              <span className="answer-chart__share-name">{arc.label}</span>
+              <span className="answer-chart__share-value">{formatChartValue(arc.y, 1)} {chart.unit}</span>
+              <span className="answer-chart__share-share">{formatChartValue(arc.percent, 1)} %</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="sr-only">
+        <table>
+          <caption>{chart.title}</caption>
+          <thead>
+            <tr><th scope="col">Maakasutus</th><th scope="col">{chart.unit}</th><th scope="col">Osakaal</th></tr>
+          </thead>
+          <tbody>
+            {arcs.map((arc) => (
+              <tr key={arc.x}>
+                <th scope="row">{arc.label}</th>
+                <td>{formatChartValue(arc.y, 1)}</td>
+                <td>{formatChartValue(arc.percent, 1)} %</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="answer-chart__caption">{chart.caption ? `${chart.caption} ` : ""}{citation}</p>
+    </figure>
+  );
+}
+
+export default function AnswerChart({ chart, citation = null }) {
+  if (chart.kind === "share") return <ShareChart chart={chart} citation={citation} />;
+  return <SeriesChart chart={chart} citation={citation} />;
 }

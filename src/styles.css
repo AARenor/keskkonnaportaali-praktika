@@ -1817,6 +1817,78 @@ h3 {
   line-height: 1.5;
 }
 
+.answer-chart__share {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 28px;
+}
+
+.answer-chart__donut svg {
+  display: block;
+  width: 220px;
+  height: 220px;
+  overflow: visible;
+}
+
+.answer-chart__slice {
+  cursor: pointer;
+  outline: none;
+  transition: d 120ms ease;
+}
+
+.answer-chart__slice:focus-visible {
+  stroke: var(--brand-900);
+  stroke-width: 3;
+}
+
+.answer-chart__share-percent {
+  fill: var(--ink);
+  font-size: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.answer-chart__share-label {
+  fill: var(--muted);
+  font-size: 12px;
+}
+
+.answer-chart__share-legend {
+  flex: 1 1 260px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.9rem;
+}
+
+.answer-chart__share-legend li {
+  display: grid;
+  grid-template-columns: 12px 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  color: var(--ink);
+}
+
+.answer-chart__share-legend li.is-active {
+  background: var(--soft);
+}
+
+.answer-chart__share-value,
+.answer-chart__share-share {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.answer-chart__share-share {
+  min-width: 52px;
+  text-align: right;
+  color: var(--ink);
+  font-weight: 600;
+}
+
 .followup-answer .answer-chart {
   margin-top: 12px;
 }
@@ -1918,8 +1990,8 @@ h3 {
 .answer-followup {
   max-width: 780px;
   margin-top: 26px;
-  border-top: 1px solid #dbe4e8;
-  padding-top: 22px;
+  border-bottom: 1px solid #dbe4e8;
+  padding-bottom: 22px;
 }
 
 .followup-thread {

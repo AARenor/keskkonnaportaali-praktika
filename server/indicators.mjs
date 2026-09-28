@@ -21,6 +21,12 @@ import {
   isEelisEmajogiPublicWatercourseQuery,
   isEelisNaturaSiteQuery,
 } from "./eelis.mjs";
+import {
+  isLandUseShareQuery,
+  LAND_USE_KK07_API_URL,
+  landUseShareFromJson,
+  landUseShareRequest,
+} from "./land-use-share.mjs";
 import { sourceEvidenceEligibility } from "./source-registry.mjs";
 import {
   isStatisticsHazardousWasteQuery,
@@ -690,7 +696,8 @@ export function requiresExtendedStructuredListingBudget(query) {
     || isStatisticsWaterAbstractionQuery(query)
     || isStatisticsWastewaterBht7Query(query)
     || isClimateDailyMeanQuery(query)
-    || ((isForestSeriesQuery(query) || isForestContextSeriesQuery(query)) && !isForestHarvestBalanceQuery(query));
+    || ((isForestSeriesQuery(query) || isForestContextSeriesQuery(query)) && !isForestHarvestBalanceQuery(query))
+    || isLandUseShareQuery(query);
 }
 
 function hydrologyQuerySince(now) {
@@ -1931,6 +1938,24 @@ export async function loadStructuredIndicatorDocuments(query, options = {}) {
     } catch (error) {
       if (options.signal?.aborted || error?.name === "AbortError") throw error;
       // The reviewed SMI catalogue pages remain visible without a series.
+    }
+  }
+  if (isLandUseShareQuery(query)) {
+    try {
+      const fetchPxwebDataset = options.fetchPxwebDataset || fetchOfficialPxwebDataset;
+      const result = await fetchPxwebDataset(LAND_USE_KK07_API_URL, landUseShareRequest(), {
+        timeoutMs,
+        signal: options.signal,
+        maximumBytes: 32_000,
+      });
+      documents.push(...landUseShareFromJson(query, result.body, {
+        fetchedAt: result.fetchedAt,
+        stale: result.stale,
+        now: options.now,
+      }));
+    } catch (error) {
+      if (options.signal?.aborted || error?.name === "AbortError") throw error;
+      // The share answer keeps its text without the land-use split.
     }
   }
   if (isStatisticsWaterAbstractionQuery(query)) {

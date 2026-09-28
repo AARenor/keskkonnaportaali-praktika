@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { attachChartToDraft } from "./answer-chart.mjs";
 import { sourceEvidenceEligibility } from "./source-registry.mjs";
 import { STATISTICS_DISSEMINATION_POLICY_URL } from "./statistics.mjs";
 
@@ -602,16 +603,14 @@ export function withForestContextChart(draft, query, documents = [], options = {
   if (!draft || typeof draft !== "object" || !draft.answer || draft.chart) return draft;
   if (draft.evidence?.answerable === false) return draft;
   const context = forestContextChart(query, documents, options);
-  if (!context) return draft;
-  const sources = Array.isArray(draft.sources) ? draft.sources : [];
-  const existing = sources.find((source) => source?.id === context.source.id);
-  if (existing && Number.isInteger(existing.citation) && existing.citation > 0) {
-    return { ...draft, chart: { ...context.chart, citation: existing.citation } };
-  }
-  const citation = sources.reduce((max, source) => Math.max(max, Number(source?.citation) || 0), 0) + 1;
-  return {
-    ...draft,
-    sources: [...sources, { ...context.source, citation, evidenceExcerpt: context.source.content }],
-    chart: { ...context.chart, citation },
-  };
+  return context ? attachChartToDraft(draft, context.source, context.chart) : draft;
+}
+
+export function isUnsupportedForestScope(text) {
+  return UNSUPPORTED_SCOPE.test(String(text || ""));
+}
+
+export function hasForestPeriodSignal(text) {
+  const value = String(text || "");
+  return PERIOD_SIGNAL.test(value) || TREND_WORDS.test(value);
 }

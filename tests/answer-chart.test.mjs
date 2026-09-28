@@ -60,3 +60,25 @@ test("boundedChart copies only contract keys", () => {
   assert.deepEqual(copy.series[0].points[0], { x: 2015, y: 31.6, error: 10.3 });
   assert.deepEqual(copy.series[0].points[1], { x: 2016, y: 32.4 });
 });
+
+test("validPublicChart accepts a share chart with labelled points and rejects malformed ones", () => {
+  const share = {
+    kind: "share",
+    title: "Eesti maismaa jagunemine maakasutuse järgi 2024",
+    unit: "tuhat ha",
+    series: [{ id: "kk07-2024", label: "Maakasutus 2024", points: [{ x: 1, y: 2459.7, label: "Metsamaa", emphasis: true }, { x: 2, y: 989.9, label: "Põllumaa" }] }],
+    citation: 1,
+  };
+  assert.equal(validPublicChart(share, sources), true);
+  assert.deepEqual(boundedChart(share).series[0].points[0], { x: 1, y: 2459.7, label: "Metsamaa", emphasis: true });
+  assert.deepEqual(boundedChart(share).series[0].points[1], { x: 2, y: 989.9, label: "Põllumaa" });
+  const bad = [
+    ["no label", { ...share, series: [{ ...share.series[0], points: [{ x: 1, y: 1 }, { x: 2, y: 2 }] }] }],
+    ["two series", { ...share, series: [share.series[0], share.series[0]] }],
+    ["nine points", { ...share, series: [{ ...share.series[0], points: Array.from({ length: 9 }, (_, i) => ({ x: i + 1, y: 1, label: `L${i}` })) }] }],
+    ["negative", { ...share, series: [{ ...share.series[0], points: [{ x: 1, y: -1, label: "A" }, { x: 2, y: 2, label: "B" }] }] }],
+    ["label on a line chart", { ...chart(), series: [{ id: "a", label: "A", points: [{ x: 2015, y: 1, label: "x" }, { x: 2016, y: 2 }] }] }],
+    ["label too long", { ...share, series: [{ ...share.series[0], points: [{ x: 1, y: 1, label: "x".repeat(61) }, { x: 2, y: 2, label: "B" }] }] }],
+  ];
+  for (const [reason, candidate] of bad) assert.equal(validPublicChart(candidate, sources), false, reason);
+});

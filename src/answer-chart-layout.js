@@ -79,3 +79,14 @@ export function seriesPrecision(points = []) {
   }
   return Math.min(digits, 1);
 }
+
+export function shareArcs(points = []) {
+  const total = points.reduce((sum, point) => sum + (Number.isFinite(point.y) ? point.y : 0), 0);
+  let angle = 0;
+  return points.map((point) => {
+    const fraction = total > 0 ? point.y / total : 0;
+    const start = angle;
+    angle += fraction * Math.PI * 2;
+    return { ...point, start, end: angle, percent: Number((fraction * 100).toFixed(1)) };
+  });
+}

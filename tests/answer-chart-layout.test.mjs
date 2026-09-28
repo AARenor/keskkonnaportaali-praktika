@@ -51,3 +51,14 @@ test("chartDescription names series, range and endpoints", () => {
   });
   assert.equal(text, "Joondiagramm. Lageraie: raiepindala: 2015 – 31,6 tuhat ha, 2024 – 34,0 tuhat ha.");
 });
+
+test("shareArcs turns labelled values into angles and percentages that close the circle", async () => {
+  const { shareArcs } = await import("../src/answer-chart-layout.js");
+  const arcs = shareArcs([{ x: 1, y: 50, label: "A", emphasis: true }, { x: 2, y: 30, label: "B" }, { x: 3, y: 20, label: "C" }]);
+  assert.equal(arcs.length, 3);
+  assert.equal(arcs[0].start, 0);
+  assert.ok(Math.abs(arcs[2].end - Math.PI * 2) < 1e-9);
+  assert.deepEqual(arcs.map((arc) => arc.percent), [50, 30, 20]);
+  assert.equal(arcs[0].emphasis, true);
+  assert.equal(arcs[1].start, arcs[0].end);
+});
