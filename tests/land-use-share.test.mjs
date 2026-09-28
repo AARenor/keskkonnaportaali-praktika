@@ -189,3 +189,23 @@ test("structured loader posts the fixed KK07 request for a share question and th
   assert.equal(live.chart.kind, "share");
   assert.equal(live.sources.find((source) => source.citation === live.chart.citation).url, LAND_USE_KK07_TABLE_URL);
 });
+
+test("the land-use document fetched for a share question stays within the first visible results", async () => {
+  const { rankPublicSearchCandidates } = await import("../server/retrieval.mjs");
+  const query = "Kui suur osa Eestist on mets?";
+  const [shareDocument] = landUseShareFromJson(query, await fixture(), { now: NOW, fetchedAt: NOW });
+  const topics = ["metsamaa pindala", "metsasus maakonniti", "SMI 2024 tulemused", "SMI 2025 tulemused", "metsaga kaetud ala", "puistute pindala", "riigimets ja erametsa osa", "metsade tagavara", "metsa vanuseline struktuur", "mets ja kliima"];
+  const portalPages = topics.map((topic, index) => ({
+    id: `portal-${index}`,
+    title: `Kui suur osa Eestist on mets: ${topic}`,
+    url: `https://keskkonnaportaal.ee/et/${topic.replace(/\s+/gu, "-")}`,
+    summary: `${topic}: kui suur osa Eestist on mets ja kuidas see on mõõdetud (${index}).`,
+    content: `${topic}. Kui suur osa Eestist on mets? Eesti metsamaa pindala on üle poole riigi pindalast; ${topic} kirjeldab seda täpsemalt ${"eri nurgast ".repeat(index + 1)}.`,
+    organization: "Keskkonnaportaal",
+    sourceTier: "official",
+    tags: ["mets", "eesti", "osa", topic.split(" ")[0]],
+  }));
+  const ranked = rankPublicSearchCandidates(query, [...portalPages, shareDocument], { now: NOW });
+  const position = ranked.findIndex((candidate) => candidate.id === shareDocument.id);
+  assert.ok(position >= 0 && position <= 6, `land-use document ranked at ${position}`);
+});

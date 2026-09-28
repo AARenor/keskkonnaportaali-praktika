@@ -15,6 +15,7 @@ import {
   validatedForestBalanceProjection,
 } from "./indicators.mjs";
 import { resolveForestSeriesIntent, validatedForestSeriesProjection } from "./forest-series.mjs";
+import { landUseShareIntent, validatedLandUseShareProjection } from "./land-use-share.mjs";
 import {
   analyzePublicSearchQuery,
   assessSearchQuery,
@@ -1646,21 +1647,31 @@ function ensureDirectDirectoryCandidates(query, ranked = [], available = []) {
 // The result list and answer draft both start here: relevance rank, canonical
 // deduplication, a second rank with merged text, then the narrowly scoped
 // official-forestry visibility guarantee.
-// A typed year series is fetched only because the question named that
-// indicator, so it is direct evidence for the question. Lexical scoring can
-// still leave it below the first page behind broader portal pages; keep it
-// within the first visible results without displacing the best portal lead.
+// A typed chart document (a year series or the land-use split) is fetched
+// only because the question named that indicator, so it is direct evidence
+// for the question. Lexical scoring can still leave it below the first page
+// behind broader portal pages; keep it within the first visible results
+// without displacing the best portal lead.
 const FOREST_SERIES_VISIBLE_RANK = 5;
 
+function isTypedChartCandidate(query, document, now) {
+  return Boolean(
+    (document?._forestSeries && validatedForestSeriesProjection(query, document, now))
+    || (document?._landUseShare && validatedLandUseShareProjection(query, document, now)),
+  );
+}
+
 function ensureForestSeriesCandidates(query, ranked = [], now = Date.now()) {
-  if (!resolveForestSeriesIntent(query)) return ranked;
-  const index = ranked.findIndex((document) => (
-    document?._forestSeries && validatedForestSeriesProjection(query, document, now)
-  ));
-  if (index < 0 || index <= FOREST_SERIES_VISIBLE_RANK) return ranked;
-  const next = [...ranked];
-  const [document] = next.splice(index, 1);
-  next.splice(FOREST_SERIES_VISIBLE_RANK, 0, document);
+  if (!resolveForestSeriesIntent(query) && !landUseShareIntent(query)) return ranked;
+  const wanted = ranked.filter((document) => isTypedChartCandidate(query, document, now));
+  if (!wanted.length) return ranked;
+  const next = ranked.filter((document) => !wanted.includes(document));
+  let position = FOREST_SERIES_VISIBLE_RANK;
+  for (const document of wanted) {
+    const at = Math.min(ranked.indexOf(document), position, next.length);
+    next.splice(at, 0, document);
+    position = at + 1;
+  }
   return next;
 }
 
