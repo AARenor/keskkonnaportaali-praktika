@@ -126,7 +126,7 @@ export function forestSeriesIntent(query) {
   const hasRemovals = /\beemalda\w*/u.test(text);
   // Harvest-versus-increment questions belong to the Eurostat balance adapter.
   if (hasIncrement && (hasRaie || hasRemovals)) return null;
-  const indicator = KK51_INDICATORS.find((item) => item.pattern.test(text)) || null;
+  const indicator = resolveKk51Indicator(text, hasRaie);
   if (indicator && hasRaie) return null;
   if (!indicator && !hasRaie) return null;
   if (indicator) {
@@ -152,6 +152,22 @@ export function isForestSeriesQuery(query) {
 
 const CONTEXT_AREA_CUE = /\bha\b|\bhektar\w*|pindala\w*|\bkui\s+palju\b|\bmitu\b|\bkui\s+suur\b/u;
 const CONTEXT_COVER_CUE = /\bmetsasus\w*|\bprotsent\w*|\bosakaal\w*|\bsuur\s+osa\b/u;
+// The catalogue patterns name the indicator directly; plain forest questions
+// ("mitu ha metsa", "kui suur osa Eestist on mets") resolve through cues. A
+// share question is answered by forest cover even when it also names the area.
+function resolveKk51Indicator(text, hasRaie) {
+  const hasForest = /\bmets\w*/u.test(text);
+  if (hasForest && !hasRaie && CONTEXT_COVER_CUE.test(text)) {
+    return KK51_INDICATORS.find((item) => item.code === "34");
+  }
+  const catalogue = KK51_INDICATORS.find((item) => item.pattern.test(text)) || null;
+  if (catalogue) return catalogue;
+  if (hasForest && !hasRaie && CONTEXT_AREA_CUE.test(text)) {
+    return KK51_INDICATORS.find((item) => item.code === "1");
+  }
+  return null;
+}
+
 const PERIOD_SIGNAL = /\b(?:19|20)\d{2}\b|\bviimas\w*|\btagasi\b|\bkumnendi\w*|\baastakumne\w*/u;
 
 // A single-value forest question (no year, no trend words) keeps its normal
@@ -166,15 +182,7 @@ export function forestContextSeriesIntent(query) {
   const hasIncrement = /juurdekasv\w*/u.test(text);
   const hasRemovals = /\beemalda\w*/u.test(text);
   if (hasIncrement && (hasRaie || hasRemovals)) return null;
-  const hasForest = /\bmets\w*/u.test(text);
-  // A share question ("mitu protsenti", "kui suur osa") is answered by forest
-  // cover even when the words also name the wooded area.
-  let indicator = hasForest && !hasRaie && CONTEXT_COVER_CUE.test(text)
-    ? KK51_INDICATORS.find((item) => item.code === "34")
-    : KK51_INDICATORS.find((item) => item.pattern.test(text)) || null;
-  if (!indicator && hasForest && !hasRaie && CONTEXT_AREA_CUE.test(text)) {
-    indicator = KK51_INDICATORS.find((item) => item.code === "1");
-  }
+  const indicator = resolveKk51Indicator(text, hasRaie);
   if (indicator && hasRaie) return null;
   if (!indicator && !hasRaie) return null;
   const window = (table) => {

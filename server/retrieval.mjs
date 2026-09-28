@@ -1999,6 +1999,12 @@ export function isSafeEllipticalFollowUp(value) {
   // answer. Admit it only inside an already accepted conversation, where the
   // root supplies the indicator and subject.
   if (/^(?:aga\s+)?kas\s+(?:19|20)\d{2}\s+aastal$/u.test(normalized)) return true;
+  // A bare period request ("näita 2000-2025", "alates 2000", "viimase 20
+  // aasta jooksul") widens a dated answer's window. The root supplies the
+  // indicator; nothing else may ride along in the string.
+  const year = "(?:19|20)\\d{2}";
+  const period = `(?:${year}\\s+(?:kuni\\s+)?${year}|alates\\s+${year}|viimas\\w*\\s+(?:\\d{1,2}|[a-zõäöüšž]+)\\s+aasta\\w*(?:\\s+jooksul)?|pikem\\w*\\s+perio\\w*|aastate\\s+l[oõ]ikes)`;
+  if (new RegExp(`^(?:aga\\s+)?(?:n[aä]ita\\s+)?${period}$`, "u").test(normalized)) return true;
   // Ellipsis is a narrow full-string grammar, not a trusted prefix. Every
   // residual token must be consumed here; otherwise an unrelated suffix could
   // inherit an accepted environmental root and bypass the direct scope gate.

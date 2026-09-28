@@ -1353,7 +1353,7 @@ async function searchWithinBudget(cleanQuery, {
   }) || composeEelisNaturaSiteResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
     now: startedAt,
-  }) || composeForestSeriesResponse(cleanQuery, searchResults?.items, {
+  }) || composeForestSeriesResponse(retrievalQuery, searchResults?.items, {
     total: searchResults?.total,
     now: startedAt,
   }) || composeStatisticsWaterAbstractionResponse(cleanQuery, searchResults?.items, {
@@ -1431,7 +1431,7 @@ async function searchWithinBudget(cleanQuery, {
   const llmBudget = remainingBudget(deadlineAt, 300);
   if (canGenerate && llmBudget >= 500 && typeof onDraft === "function") {
     throwIfRequestAborted(signal);
-    onDraft(publicResponse(withForestContextChart(draft, cleanQuery, searchResults?.items, { now: startedAt }), { now: startedAt }));
+    onDraft(publicResponse(withForestContextChart(draft, retrievalQuery, searchResults?.items, { now: startedAt }), { now: startedAt }));
   }
   // Keep the accepted deterministic result detached from both the provider
   // input and any streamed consumer. A ready model answer must rebind its
@@ -1472,7 +1472,7 @@ async function searchWithinBudget(cleanQuery, {
   // never turn that uncited field into public navigation or hidden-prompt text.
   draft.related = mergeRelatedQuestions([], draft.related, 6);
   draft.generatedAt = new Date().toISOString();
-  draft = withForestContextChart(draft, cleanQuery, searchResults?.items, { now: startedAt });
+  draft = withForestContextChart(draft, retrievalQuery, searchResults?.items, { now: startedAt });
   const response = publicResponse(draft, { now: startedAt });
   const durationMs = Date.now() - startedAt;
   const evidenceKind = draft.evidence?.kind;
@@ -1532,7 +1532,7 @@ export function searchTimeoutFallback(cleanQuery, {
   }) || composeEelisNaturaSiteResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
     now: startedAt,
-  }) || composeForestSeriesResponse(cleanQuery, searchResults?.items, {
+  }) || composeForestSeriesResponse(assessmentQuery, searchResults?.items, {
     total: searchResults?.total,
     now: startedAt,
   }) || composeStatisticsWaterAbstractionResponse(cleanQuery, searchResults?.items, {
@@ -1711,7 +1711,10 @@ export async function searchEnvironmentLive(query, options = {}) {
   const validatedEllipticalFollowUp = options.allowSafeEllipticalFollowUp === true
     && directAssessment.kind === "out-of-scope"
     && isSafeEllipticalFollowUp(cleanQuery)
-    && contextualAssessment.kind === "answerable";
+    // A period-only follow-up on a dated indicator assesses as
+    // "requested-time-series-required" in context; the structured series
+    // adapter answers it first, and otherwise the clarification stands.
+    && ["answerable", "needs-clarification"].includes(contextualAssessment.kind);
   if (directAssessment.kind === "out-of-scope" && !validatedEllipticalFollowUp) {
     return publicResponse(composeScopeResponse(cleanQuery, directAssessment), { now: startedAt });
   }

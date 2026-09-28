@@ -673,3 +673,59 @@ test("a series fetched for the question stays within the first visible results e
   const unrelated = rankPublicSearchCandidates("Kui palju vett võeti Eestis 2024?", [...portalPages, seriesDocument], { now: NOW });
   assert.ok(unrelated.findIndex((candidate) => candidate.id === seriesDocument.id) > 5 || unrelated.every((c) => c.id !== seriesDocument.id));
 });
+
+// ---------------------------------------------------------------------------
+// Follow-ups that only widen the period ("näita 2000-2025") inherit the root
+// question's indicator and re-run the series with the requested window.
+// ---------------------------------------------------------------------------
+import { contextualRetrievalQuery, isSafeEllipticalFollowUp } from "../server/retrieval.mjs";
+
+const WIDE_YEARS = Array.from({ length: 26 }, (_, index) => String(2000 + index));
+const WIDE_VALUES = WIDE_YEARS.map((_, index) => Number((2240 + index * 4.6).toFixed(1)));
+
+test("a bare period request is an accepted elliptical follow-up", () => {
+  for (const value of ["näita 2000-2025", "2000–2025", "näita 2000 kuni 2025", "alates 2000", "viimase 20 aasta jooksul", "viimased 25 aastat", "näita pikemat perioodi", "aastate lõikes"]) {
+    assert.equal(isSafeEllipticalFollowUp(value), true, value);
+  }
+  for (const value of ["näita 2000-2025 Tallinnas", "2000-2025 parool", "näita kõike", "kes elab Tartus 2000-2025"]) {
+    assert.equal(isSafeEllipticalFollowUp(value), false, value);
+  }
+});
+
+test("the follow-up retrieval query carries the root subject and the period follow-up", () => {
+  const combined = contextualRetrievalQuery("mitu ha metsa on eestis", "näita 2000-2025", []);
+  assert.equal(combined, "naita 2000-2025 mitu ha metsa on eestis");
+  const intent = forestSeriesIntent(combined);
+  assert.equal(intent.table, "KK51");
+  assert.equal(intent.indicator.code, "1");
+  assert.deepEqual(intent.years, { from: 2000, to: 2025, mode: "range" });
+  const cover = forestSeriesIntent(contextualRetrievalQuery("Kui suur osa Eestist on mets?", "alates 2000", []));
+  assert.equal(cover.indicator.code, "34");
+  assert.deepEqual(cover.years, { from: 2000, to: 2025, mode: "since" });
+  assert.equal(forestSeriesIntent("mitu ha metsa on eestis"), null, "no period → still not a series question");
+});
+
+test("the live follow-up path answers the widened period from the series with a full chart", async () => {
+  const rootQuery = "mitu ha metsa on eestis";
+  const question = "näita 2000-2025";
+  const retrievalQuery = contextualRetrievalQuery(rootQuery, question, []);
+  const [seriesDocument] = forestSeriesFromJson(retrievalQuery, kk51Fixture({}, { years: WIDE_YEARS, values: WIDE_VALUES }), {
+    now: NOW,
+    fetchedAt: NOW,
+  });
+  assert.ok(seriesDocument);
+  assert.equal(seriesDocument._forestSeries.points.length, 26);
+  const live = await searchEnvironmentLive(question, {
+    startedAt: NOW,
+    deadlineAt: NOW + 1_000,
+    assessmentQuery: retrievalQuery,
+    retrievalQuery,
+    allowSafeEllipticalFollowUp: true,
+    useCache: false,
+    searchResults: { items: [seriesDocument], total: 1 },
+  });
+  assert.equal(live.answer.eyebrow, "Statistikaameti tabel KK51");
+  assert.match(live.answer.title, /^Metsamaa pindala 2000–2025/u);
+  assert.equal(live.chart.series[0].points.length, 26);
+  assert.equal(live.chart.citation, 1);
+});
