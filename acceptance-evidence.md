@@ -317,3 +317,17 @@ Commit'id `2e44eaf` (kontekstidiagramm) ja `1ec5892` (dokumentatsioon) juurutati
 | `Metsamaa pindala viimase kümne aasta jooksul` | endiselt `Statistikaameti tabel KK51` aegrea-vastus, `line 1×10` |
 | `Kas raiemaht ületab juurdekasvu?`, `Metsamaa pindala 2024`, `mets`, `jäätmete ringlussevõtu määr Eestis 2023` | muutumatud, diagrammita; 37,9 % säilib |
 | Brauser (desktop) | diagramm intro all, allkirja viide `2 Statistikaamet` → KK51 tabel; `scrollY === 0` värskel laadimisel; horisontaalset kerimist ei ole |
+
+## Perioodi laiendav jätkuküsimus 28.09.2026 (631e282)
+
+Commit `631e282` juurutati `main`-i push'iga; workflow `success`, `/api/health` tagastas `631e2820144fa8ff0de127c1fa94281e00ab06cf` (18:24:53). Ainult perioodi nimetav jätkuküsimus pärib juurküsimuse näitaja ja laiendab diagrammi.
+
+| Kontroll (`631e282` live, kaks ringi, `/api/search/follow-up`) | Mõõdetud lõpptulemus |
+|---|---|
+| Unit/integratsioon | `npm test`: 580/580; `npm run build` OK |
+| `mitu ha metsa on eestis` ⟶ `näita 2000-2025` | `Statistikaameti tabel KK51`, Metsamaa pindala 2000–2025: 2 243,1 → 2 360,2 tuhat ha, `line 1×26` |
+| `Kui suur osa Eestist on mets?` ⟶ `alates 2000` | KK51 metsasus 2000–2025: 49,5 → 52,1 %, `line 1×26` |
+| `Kui suur on lageraie pindala?` ⟶ `viimase 20 aasta jooksul` | MM03 lageraie raiepindala 2005–2024, `line 1×20` |
+| `mitu ha metsa on eestis` ⟶ `näita 2000-2025 Tallinnas` | `Otsingu ulatus` (lisasõna läheb ulatusekontrolli), diagrammita |
+| Eurostati jätkuküsimus „viimase 5 aasta” | muutumatu: `bar 2×3` |
+| Brauser (lokaalne stack) | jätkuküsimuse vastuse all 26 punktiga diagramm, aastasildid hõrendatud |
