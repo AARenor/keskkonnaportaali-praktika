@@ -34,6 +34,7 @@ import {
 } from "./search-suggestions.js";
 import { readSearchStream } from "./search-stream.js";
 import AnswerChart from "./AnswerChart.jsx";
+import { APP_BUILD_MISMATCH_EVENT, noteServerBuild } from "./app-build.js";
 
 const SOURCE = "https://keskkonnaportaal.ee";
 const DEFAULT_SEARCH_FILTERS = { source: "all", category: "", year: null, sort: "relevance" };
@@ -795,6 +796,25 @@ function citationSourceLabel(source) {
   return organization || "Allikas";
 }
 
+// Shown once the server answers from a newer build than this page: the
+// page keeps working, but new answer parts (such as a chart kind it does not
+// know) only render after a reload.
+function UpdateNotice() {
+  const [available, setAvailable] = useState(false);
+  useEffect(() => {
+    const onMismatch = () => setAvailable(true);
+    window.addEventListener(APP_BUILD_MISMATCH_EVENT, onMismatch);
+    return () => window.removeEventListener(APP_BUILD_MISMATCH_EVENT, onMismatch);
+  }, []);
+  if (!available) return null;
+  return (
+    <div className="app-update" role="status">
+      <p>Otsingust on uus versioon. Laadi leht uuesti, et näha vastuse kõiki osi.</p>
+      <button onClick={() => window.location.reload()} type="button">Laadi uuesti</button>
+    </div>
+  );
+}
+
 function Citation({ number, sources = [] }) {
   const source = sources.find((candidate) => Number(candidate.citation) === Number(number));
   const label = citationSourceLabel(source);
@@ -1030,6 +1050,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
         body: JSON.stringify(searchRequestPayload(query, appliedFilters, page, listing?.pageSize || 12)),
         signal: controller.signal,
       });
+      noteServerBuild(response);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Tulemusi ei saanud laadida.");
       if (listingRequestRef.current.id !== id) return;
@@ -1080,6 +1101,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
         }),
         signal: controller.signal,
       });
+      noteServerBuild(response);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Jätkuküsimusele ei saanud vastata.");
       if (followUpRequestRef.current.id !== id) return;
@@ -1106,6 +1128,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
         <div className="shell search-results-shell">
           <button className="back-link" onClick={onHome} type="button"><ArrowLeft size={17} /> Avalehele</button>
           <SearchForm busy={busy} initialValue={query} onSearch={onSearch} variant="results" />
+          <UpdateNotice />
         </div>
       </div>
       <div className="shell search-results-shell search-page__content">
@@ -1406,6 +1429,7 @@ export function App() {
         body: JSON.stringify(requestPayload),
         signal: controller.signal,
       });
+      noteServerBuild(response);
       await readSearchStream(response, (event) => {
         if (searchRequestRef.current.id !== requestId) return;
         if (event.type === "results") {

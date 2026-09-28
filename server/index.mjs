@@ -2,6 +2,7 @@ import express from "express";
 import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readAppBuild } from "./app-build.mjs";
 import { purgeExpiredSearchData } from "./database.mjs";
 import {
   closeCorpusStatsBackendAdmission,
@@ -87,6 +88,7 @@ const ipv6ClientPrefixBits = resolveIpv6ClientPrefixBits();
 const publicResponseConfiguration = resolvePublicResponseBudget(process.env);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const clientRoot = path.join(root, "dist", "client");
+const appBuild = readAppBuild(clientRoot);
 const proxyInflight = new Map();
 const requestWindows = new Map();
 const MAX_RATE_LIMIT_KEYS = 2_000;
@@ -187,6 +189,7 @@ app.use((request, response, next) => {
 });
 app.use((request, response, next) => {
   response.setHeader("X-Content-Type-Options", "nosniff");
+  response.setHeader("X-App-Build", appBuild);
   response.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   response.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");

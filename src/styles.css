@@ -1717,6 +1717,36 @@ h3 {
   line-height: 1.62;
 }
 
+.app-update {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--brand-50);
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.app-update p {
+  margin: 0;
+}
+
+.app-update button {
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--brand-700);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .answer-chart {
   max-width: 780px;
   margin: 0 0 22px;
