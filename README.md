@@ -6,6 +6,7 @@ Keskkonnaportaali visuaalsel keelel põhinev praktikaprojekt, mille kaks põhios
 - PostgreSQL-i korpus koos portaali sitemapilehtede, otsingukaartide ja valitud täistekstidega; tulemusi täiendavad päringu ajal ametlikud otsinguliidesed, skeemi-, aja- ja ühikukontrolliga Ilmateenistuse vaatlus- ja prognoosi-XML, täpse jaama ja näitajaga Keskkonnaagentuuri hüdroloogia ning 25 kureeritud jaama ajaloolised `DTA08` kliimaandmed, EELISe fikseeritud Emajõe avaliku vooluveekogu WFS-kirje ja kuue nimega Natura loodusala täpsed registrikirjed ning Statistikaameti KK048 veevõtu, KK25 BHT7, KK068 ohtlike jäätmete ja KK610 kogu jäätmete taaskasutamise JSON-stat2 päringud;
 - allika-, sisutüübi-, aasta- ja järjestusfiltrid ning kuni neli iga kord uue tõendiotsingu tegevat viidatud jätkuküsimust;
 - metsaküsimustele (metsamaa pindala, tagavara, metsasus, raiemaht, lageraie) Statistikaameti KK51/MM03 SMI aegread koos viidatud diagrammiga: mitme aasta küsimus vastatakse reast endast, ühe väärtuse küsimus säilitab tekstivastuse ja saab viimase kümne aasta kontekstidiagrammi;
+- metsa osakaalu küsimusele („kui suur osa Eestist on mets”) Statistikaameti KK07 maakasutuse jaotus sektordiagrammina;
 - portaali sees töötav kogu `terrapoint.ee` rakendus, mis on üldotsingust täielikult eraldatud.
 
 Avalik keskkond: [praktika.arleserver.cfd](https://praktika.arleserver.cfd)

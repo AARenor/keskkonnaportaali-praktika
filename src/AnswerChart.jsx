@@ -236,7 +236,7 @@ const SHARE_OUTER = 96;
 const SHARE_INNER = 60;
 // One accent for the emphasised class, a quiet single-hue ramp for the rest:
 // the story is one share, the other slices are context.
-const SHARE_NEUTRALS = ["#6f8ea3", "#8fa8b8", "#aebfcb", "#c6d3db", "#d9e2e8", "#e8eef2", "#f2f5f7"];
+const SHARE_NEUTRALS = ["#5f7f96", "#7d97a8", "#98adbb", "#b3c3cd", "#c9d5dc", "#dbe3e8", "#e6ecf0"];
 
 function arcPath(start, end, outer, inner) {
   const cx = SHARE_SIZE / 2;
