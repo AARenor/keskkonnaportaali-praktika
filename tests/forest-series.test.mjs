@@ -729,3 +729,46 @@ test("the live follow-up path answers the widened period from the series with a 
   assert.equal(live.chart.series[0].points.length, 26);
   assert.equal(live.chart.citation, 1);
 });
+
+test("felling phrasings without the word raie resolve to the harvest series, not forest area", () => {
+  for (const [query, cut, measure] of [
+    ["Mitu ha võetakse eestis metsa maha", "1", "1"],
+    ["kui palju metsa langetatakse eestis", "1", "3"],
+    ["kui palju metsa maha võetakse aastas", "1", "3"],
+  ]) {
+    const intent = forestContextSeriesIntent(query);
+    assert.ok(intent, query);
+    assert.equal(intent.table, "MM03", query);
+    assert.equal(intent.cutType.code, cut, query);
+    assert.equal(intent.measure.code, measure, query);
+  }
+  const series = forestSeriesIntent("Mitu ha võetakse eestis metsa maha 2015–2024");
+  assert.equal(series.table, "MM03");
+  assert.equal(series.measure.code, "1");
+});
+
+test("a felling question without a period is answered from the MM03 series itself", () => {
+  const query = "Mitu ha võetakse eestis metsa maha";
+  const years = ["2015", "2016", "2017", "2018", "2019", "2020", "2021", "2022", "2023", "2024"];
+  const payload = JSON.parse(kk51Fixture());
+  const body = JSON.stringify({
+    ...payload,
+    label: "MM03: METSARAIE RIIKLIKU METSAINVENTEERIMISE (SMI) HINNANGUL | Aasta, Raie liik ning Näitaja",
+    id: ["Aasta", "Raie liik", "Näitaja"],
+    size: [10, 1, 2],
+    dimension: {
+      Aasta: { extension: { show: "value" }, label: "Aasta", category: { index: Object.fromEntries(years.map((y, i) => [y, i])), label: Object.fromEntries(years.map((y) => [y, y])) } },
+      "Raie liik": { extension: { show: "value" }, label: "Raie liik", category: { index: { 1: 0 }, label: { 1: "Koguraie" } } },
+      Näitaja: { extension: { show: "value" }, label: "Näitaja", category: { index: { 1: 0, 2: 1 }, label: { 1: "Raiepindala, tuhat ha", 2: "Raiepindala suhteline viga, %" } } },
+    },
+    value: years.flatMap((_, i) => [77.6 + i * 4, 9.5]),
+    extension: { px: { tableid: "MM03", decimals: 0 } },
+  });
+  const [document] = forestSeriesFromJson(query, body, { now: NOW, fetchedAt: FETCHED_AT });
+  assert.ok(document);
+  const response = composeForestSeriesResponse(query, [document], { now: NOW });
+  assert.equal(response.answer.eyebrow, "Statistikaameti tabel MM03");
+  assert.match(response.answer.title, /^Koguraie: raiepindala 2015–2024/u);
+  assert.equal(response.chart.series[0].points.length, 10);
+  assert.equal(composeForestSeriesResponse("mitu ha metsa on eestis", [document], { now: NOW }), null);
+});

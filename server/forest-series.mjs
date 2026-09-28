@@ -116,11 +116,18 @@ function requestedWindow(text, table) {
   return { from, to, mode: window.mode };
 }
 
+// Felling can be asked without the word "raie": "võetakse metsa maha",
+// "langetatakse". Both forms mean the harvest series, never forest area.
+function mentionsFelling(text) {
+  return /\b(?:raie\w*|raiu\w*|lageraie\w*|harvendus\w*|langeta\w*)/u.test(text)
+    || (/\bvo(?:e|t)\w*/u.test(text) && /\bmaha\b/u.test(text));
+}
+
 export function forestSeriesIntent(query) {
   if (typeof query !== "string" || query.length > MAX_QUERY_LENGTH) return null;
   const text = normalize(query);
   if (!text || UNSUPPORTED_SCOPE.test(text)) return null;
-  const hasRaie = /\b(?:raie\w*|raiu\w*|lageraie\w*|harvendus\w*)/u.test(text);
+  const hasRaie = mentionsFelling(text);
   // No leading boundary: "netojuurdekasv" must also route to the Eurostat adapter.
   const hasIncrement = /juurdekasv\w*/u.test(text);
   const hasRemovals = /\beemalda\w*/u.test(text);
@@ -133,7 +140,9 @@ export function forestSeriesIntent(query) {
     const years = requestedWindow(text, "KK51");
     return years ? { table: "KK51", indicator, years } : null;
   }
-  const cutType = MM03_CUT_TYPES.find((item) => item.pattern.test(text));
+  // "võetakse maha"/"langetatakse" name no cut type: total felling.
+  const cutType = MM03_CUT_TYPES.find((item) => item.pattern.test(text))
+    || MM03_CUT_TYPES.find((item) => item.code === "1");
   const asksArea = AREA_MEASURE.test(text);
   const asksVolume = VOLUME_MEASURE.test(text);
   if (!cutType || (asksArea && asksVolume)) return null;
@@ -178,7 +187,7 @@ export function forestContextSeriesIntent(query) {
   if (forestSeriesIntent(query)) return null;
   const text = normalize(query);
   if (!text || UNSUPPORTED_SCOPE.test(text) || PERIOD_SIGNAL.test(text) || TREND_WORDS.test(text)) return null;
-  const hasRaie = /\b(?:raie\w*|raiu\w*|lageraie\w*|harvendus\w*)/u.test(text);
+  const hasRaie = mentionsFelling(text);
   const hasIncrement = /juurdekasv\w*/u.test(text);
   const hasRemovals = /\beemalda\w*/u.test(text);
   if (hasIncrement && (hasRaie || hasRemovals)) return null;
@@ -190,7 +199,9 @@ export function forestContextSeriesIntent(query) {
     return { from: published.to - DEFAULT_WINDOW_YEARS + 1, to: published.to, mode: "context" };
   };
   if (indicator) return { table: "KK51", indicator, years: window("KK51") };
-  const cutType = MM03_CUT_TYPES.find((item) => item.pattern.test(text));
+  // "võetakse maha"/"langetatakse" name no cut type: total felling.
+  const cutType = MM03_CUT_TYPES.find((item) => item.pattern.test(text))
+    || MM03_CUT_TYPES.find((item) => item.code === "1");
   const asksArea = AREA_MEASURE.test(text);
   const asksVolume = VOLUME_MEASURE.test(text);
   if (!cutType || (asksArea && asksVolume)) return null;
@@ -536,7 +547,11 @@ function chartFromProjection(projection) {
 
 export function composeForestSeriesResponse(query, documents = [], options = {}) {
   const now = Number.isFinite(Number(options.now)) ? Number(options.now) : Date.now();
-  if (!forestSeriesIntent(query)) return null;
+  // A felling question without a period is answered from the harvest series
+  // itself (latest year first); forest-area questions keep their SMI text
+  // answer and only gain a context chart.
+  const intent = resolveForestSeriesIntent(query);
+  if (!intent || (intent.years.mode === "context" && intent.table !== "MM03")) return null;
   const source = (documents || []).find((document) => validatedForestSeriesProjection(query, document, now));
   if (!source) return null;
   const projection = source._forestSeries;
