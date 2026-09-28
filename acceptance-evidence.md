@@ -355,3 +355,17 @@ Commit'id `5705587` (KK07 adapter, `share`-leping, sektordiagramm), `185bf34` (n
 | `Kui suur osa eestis on metsa all?`, `Kui suur osa Eestist on mets?`, `Mitu protsenti Eestist on metsaga kaetud?` | tekstivastus säilib + `share 1×7` „Eesti maismaa jagunemine maakasutuse järgi 2024”, viide → KK07 tabel; keskel 54,3 % Metsamaa |
 | `mitu ha metsa on eestis`, `Mitu ha võetakse eestis metsa maha`, `Metsamaa pindala viimase kümne aasta jooksul`, `Kas raiemaht ületab juurdekasvu?`, `mets` | muutumatud |
 | Brauser (desktop + 375 px, lokaalne stack ja live) | seitse sektorit 2 px valge vahega, metsamaa esile tõstetud, klaviatuurifookus loeb sektori sildi ja väärtuse, legend väärtuse ja osakaaluga, peidetud tabel, allkiri KK07 viitega; horisontaalset kerimist ei ole; `scrollY === 0` värskel laadimisel |
+
+## Raie osakaalu sektordiagramm ja uue versiooni teavitus 28.09.2026 (738c447)
+
+Commit'id `642149a` (legend algab protsendiga; tundmatu diagrammiliik ei joonistu), `cfac2f0` (raie osakaalu vastus MM03 raieliikide jaotusest sektordiagrammina), `245442c` (`X-App-Build` päis ja „Laadi uuesti” teavitus enne deploy’d avatud lehel) ja `738c447` (dokumentatsioon) juurutati `main`-i push'iga; workflow `success`, `/api/health` tagastas `738c4477fe7eff684005f5bbad78ef20f727b985` (20:57:51) ja päise `x-app-build: muljv9q5`.
+
+| Kontroll (`738c447` live, kaks ringi) | Mõõdetud lõpptulemus |
+|---|---|
+| Unit/integratsioon | `npm test`: 598/598; `npm run build` OK |
+| `Kui suur osa raiest on eestis lageraie` | `Statistikaameti tabel MM03`, „Lageraie moodustas 2024. aastal 29,0 % koguraie pindalast”, `share 1×5`, lageraie esile tõstetud |
+| `kui suur osa raiemahust on harvendusraie` | „Harvendusraie moodustas 2024. aastal 14,9 % koguraie mahust”, `share 1×5` |
+| `Kui suur osa Eestist on mets?` | KK07 `share 1×7` (muutumatu) |
+| `mitu ha metsa on eestis`, `Mitu ha võetakse eestis metsa maha`, `Kui suur on lageraie pindala?`, `Kas raiemaht ületab juurdekasvu?`, `mets` | muutumatud |
+| Uue versiooni teavitus (lokaalne stack) | enne uuesti ehitamist avatud vaheleht (bundle `index-B6aLUbvx.js`) näitas pärast järgmise versiooni vastust teavituse „Otsingust on uus versioon. Laadi leht uuesti…” koos nupuga; värske leht teavitust ei näita |
+| Brauser (live) | sektordiagramm 29,0 % keskel, legend protsent ees; `scrollY === 0` värskel laadimisel; horisontaalset kerimist ei ole |
