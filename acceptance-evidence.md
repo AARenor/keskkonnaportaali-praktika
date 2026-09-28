@@ -344,3 +344,14 @@ Commit `a8d9013` juurutati `main`-i push'iga; workflow `success`, `/api/health` 
 | `mitu ha metsa on eestis`, `Kas raiemaht ületab juurdekasvu?` | muutumatud |
 
 Teadaolev punkt (varasem klassifikaator, mitte diagrammitee): `classifyForestryGeographyScope` loeb sõna „langetatakse” välisriigi piirkonnaks (`foreign-or-other-region`), mistõttu „kui palju metsa langetatakse” jääb täpsustuseks ka siis, kui MM03 rida on laaditud.
+
+## Sektordiagramm metsa osakaalu küsimustele 28.09.2026 (d61760b)
+
+Commit'id `5705587` (KK07 adapter, `share`-leping, sektordiagramm), `185bf34` (nähtavuse tagamine) ja `d61760b` (dokumentatsioon, neutraalse värviastme tumendus) juurutati `main`-i push'iga; workflow `success`, `/api/health` tagastas `d61760b23558feca11f282a1a7f89b951e5246a3` (20:13:11).
+
+| Kontroll (`d61760b` live, kaks ringi) | Mõõdetud lõpptulemus |
+|---|---|
+| Unit/integratsioon | `npm test`: 591/591; `npm run build` OK |
+| `Kui suur osa eestis on metsa all?`, `Kui suur osa Eestist on mets?`, `Mitu protsenti Eestist on metsaga kaetud?` | tekstivastus säilib + `share 1×7` „Eesti maismaa jagunemine maakasutuse järgi 2024”, viide → KK07 tabel; keskel 54,3 % Metsamaa |
+| `mitu ha metsa on eestis`, `Mitu ha võetakse eestis metsa maha`, `Metsamaa pindala viimase kümne aasta jooksul`, `Kas raiemaht ületab juurdekasvu?`, `mets` | muutumatud |
+| Brauser (desktop + 375 px, lokaalne stack ja live) | seitse sektorit 2 px valge vahega, metsamaa esile tõstetud, klaviatuurifookus loeb sektori sildi ja väärtuse, legend väärtuse ja osakaaluga, peidetud tabel, allkiri KK07 viitega; horisontaalset kerimist ei ole; `scrollY === 0` värskel laadimisel |
