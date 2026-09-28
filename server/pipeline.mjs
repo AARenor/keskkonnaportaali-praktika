@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { boundedChart, validPublicChart } from "./answer-chart.mjs";
 import { withForestContextChart } from "./forest-series.mjs";
+import { composeHarvestShareResponse } from "./harvest-share.mjs";
 import { withLandUseShareChart } from "./land-use-share.mjs";
 import { officialCitationUrlEligibility } from "./citation-policy.mjs";
 import { readSearchCache, recordSearch } from "./database.mjs";
@@ -1354,6 +1355,9 @@ async function searchWithinBudget(cleanQuery, {
   }) || composeEelisNaturaSiteResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
     now: startedAt,
+  }) || composeHarvestShareResponse(retrievalQuery, searchResults?.items, {
+    total: searchResults?.total,
+    now: startedAt,
   }) || composeForestSeriesResponse(retrievalQuery, searchResults?.items, {
     total: searchResults?.total,
     now: startedAt,
@@ -1531,6 +1535,9 @@ export function searchTimeoutFallback(cleanQuery, {
   }) || composeEelisEmajogiPublicWatercourseResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
   }) || composeEelisNaturaSiteResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+    now: startedAt,
+  }) || composeHarvestShareResponse(assessmentQuery, searchResults?.items, {
     total: searchResults?.total,
     now: startedAt,
   }) || composeForestSeriesResponse(assessmentQuery, searchResults?.items, {

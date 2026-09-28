@@ -27,6 +27,12 @@ import {
   landUseShareFromJson,
   landUseShareRequest,
 } from "./land-use-share.mjs";
+import {
+  harvestShareFromJson,
+  harvestShareIntent,
+  harvestShareRequest,
+  isHarvestShareQuery,
+} from "./harvest-share.mjs";
 import { sourceEvidenceEligibility } from "./source-registry.mjs";
 import {
   isStatisticsHazardousWasteQuery,
@@ -697,7 +703,8 @@ export function requiresExtendedStructuredListingBudget(query) {
     || isStatisticsWastewaterBht7Query(query)
     || isClimateDailyMeanQuery(query)
     || ((isForestSeriesQuery(query) || isForestContextSeriesQuery(query)) && !isForestHarvestBalanceQuery(query))
-    || isLandUseShareQuery(query);
+    || isLandUseShareQuery(query)
+    || isHarvestShareQuery(query);
 }
 
 function hydrologyQuerySince(now) {
@@ -1921,7 +1928,25 @@ export async function loadStructuredIndicatorDocuments(query, options = {}) {
       // The climate-data catalogue remains visible without a numeric claim.
     }
   }
-  if ((isForestSeriesQuery(query) || isForestContextSeriesQuery(query)) && !isForestHarvestBalanceQuery(query)) {
+  if (isHarvestShareQuery(query)) {
+    try {
+      const fetchPxwebDataset = options.fetchPxwebDataset || fetchOfficialPxwebDataset;
+      const result = await fetchPxwebDataset(FOREST_SERIES_MM03_API_URL, harvestShareRequest(harvestShareIntent(query)), {
+        timeoutMs,
+        signal: options.signal,
+        maximumBytes: 32_000,
+      });
+      documents.push(...harvestShareFromJson(query, result.body, {
+        fetchedAt: result.fetchedAt,
+        stale: result.stale,
+        now: options.now,
+      }));
+    } catch (error) {
+      if (options.signal?.aborted || error?.name === "AbortError") throw error;
+      // The reviewed felling pages remain visible without the split.
+    }
+  }
+  if ((isForestSeriesQuery(query) || isForestContextSeriesQuery(query)) && !isForestHarvestBalanceQuery(query) && !isHarvestShareQuery(query)) {
     try {
       const fetchPxwebDataset = options.fetchPxwebDataset || fetchOfficialPxwebDataset;
       const intent = resolveForestSeriesIntent(query);

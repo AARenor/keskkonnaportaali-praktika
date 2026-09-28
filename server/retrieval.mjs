@@ -15,6 +15,7 @@ import {
   validatedForestBalanceProjection,
 } from "./indicators.mjs";
 import { resolveForestSeriesIntent, validatedForestSeriesProjection } from "./forest-series.mjs";
+import { harvestShareIntent, validatedHarvestShareProjection } from "./harvest-share.mjs";
 import { landUseShareIntent, validatedLandUseShareProjection } from "./land-use-share.mjs";
 import {
   analyzePublicSearchQuery,
@@ -1657,12 +1658,13 @@ const FOREST_SERIES_VISIBLE_RANK = 5;
 function isTypedChartCandidate(query, document, now) {
   return Boolean(
     (document?._forestSeries && validatedForestSeriesProjection(query, document, now))
-    || (document?._landUseShare && validatedLandUseShareProjection(query, document, now)),
+    || (document?._landUseShare && validatedLandUseShareProjection(query, document, now))
+    || (document?._harvestShare && validatedHarvestShareProjection(query, document, now)),
   );
 }
 
 function ensureForestSeriesCandidates(query, ranked = [], now = Date.now()) {
-  if (!resolveForestSeriesIntent(query) && !landUseShareIntent(query)) return ranked;
+  if (!resolveForestSeriesIntent(query) && !landUseShareIntent(query) && !harvestShareIntent(query)) return ranked;
   const wanted = ranked.filter((document) => isTypedChartCandidate(query, document, now));
   if (!wanted.length) return ranked;
   const next = ranked.filter((document) => !wanted.includes(document));
