@@ -305,8 +305,8 @@ function ShareChart({ chart, citation = null }) {
             <li className={active === index ? "is-active" : undefined} key={arc.x} onPointerEnter={() => setActive(index)} onPointerLeave={() => setActive(null)}>
               <span aria-hidden="true" className="answer-chart__key answer-chart__key--bar" style={{ background: colours[index] }} />
               <span className="answer-chart__share-name">{arc.label}</span>
-              <span className="answer-chart__share-value">{formatChartValue(arc.y, 1)} {chart.unit}</span>
               <span className="answer-chart__share-share">{formatChartValue(arc.percent, 1)} %</span>
+              <span className="answer-chart__share-value">{formatChartValue(arc.y, 1)} {chart.unit}</span>
             </li>
           ))}
         </ul>
@@ -333,7 +333,12 @@ function ShareChart({ chart, citation = null }) {
   );
 }
 
+// A page that was loaded before a deploy may receive a chart kind it does not
+// know; showing nothing is better than drawing it with the wrong geometry.
+const KNOWN_CHART_KINDS = new Set(["line", "bar", "share"]);
+
 export default function AnswerChart({ chart, citation = null }) {
+  if (!chart || !KNOWN_CHART_KINDS.has(chart.kind)) return null;
   if (chart.kind === "share") return <ShareChart chart={chart} citation={citation} />;
   return <SeriesChart chart={chart} citation={citation} />;
 }

@@ -1883,10 +1883,16 @@ h3 {
 }
 
 .answer-chart__share-share {
-  min-width: 52px;
+  min-width: 56px;
   text-align: right;
   color: var(--ink);
   font-weight: 600;
+}
+
+.answer-chart__share-value {
+  min-width: 112px;
+  text-align: right;
+  font-size: 0.85rem;
 }
 
 .followup-answer .answer-chart {
