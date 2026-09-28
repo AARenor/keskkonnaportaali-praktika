@@ -7,6 +7,7 @@ Keskkonnaportaali visuaalsel keelel põhinev praktikaprojekt, mille kaks põhios
 - allika-, sisutüübi-, aasta- ja järjestusfiltrid ning kuni neli iga kord uue tõendiotsingu tegevat viidatud jätkuküsimust;
 - metsaküsimustele (metsamaa pindala, tagavara, metsasus, raiemaht, lageraie) Statistikaameti KK51/MM03 SMI aegread koos viidatud diagrammiga: mitme aasta küsimus vastatakse reast endast, ühe väärtuse küsimus säilitab tekstivastuse ja saab viimase kümne aasta kontekstidiagrammi;
 - metsa osakaalu küsimusele („kui suur osa Eestist on mets”) Statistikaameti KK07 maakasutuse jaotus sektordiagrammina;
+- raie osakaalu küsimusele („kui suur osa raiest on lageraie”) MM03 raieliikide jaotus sektordiagrammina;
 - portaali sees töötav kogu `terrapoint.ee` rakendus, mis on üldotsingust täielikult eraldatud.
 
 Avalik keskkond: [praktika.arleserver.cfd](https://praktika.arleserver.cfd)
