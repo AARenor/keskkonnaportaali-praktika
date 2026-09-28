@@ -302,3 +302,18 @@ Commit'id `efd9575`…`6d1bdd1` (KK51/MM03 aegrea-adapter, `chart` leping `serve
 | Brauser (desktop + 375 px) | diagramm, ristikursor ja tooltip (± viga), klaviatuurifookus loeb `aria-label`i, peidetud tabel, allkirja viide sama numbriga; `scrollY === 0` värskel laadimisel; 375 px horisontaalset kerimist ei ole (`scrollWidth === clientWidth`) |
 
 Teadaolev punkt: konteineri esimene PXWeb-pöördumine KK51/MM03 tabelile võib külmalt ületada struktureeritud loendieelarve; vastus jääb siis ausaks täpsustuseks ja järgmine päring saab 12 h cache'ist diagrammi.
+
+## Kontekstidiagrammid ühe väärtuse metsaküsimustele 28.09.2026 (1ec5892)
+
+Commit'id `2e44eaf` (kontekstidiagramm) ja `1ec5892` (dokumentatsioon) juurutati `main`-i push'iga; GitHub Actions `Deploy to production (Coolify)` lõppes `success` ja avalik `/api/health` tagastas täpselt `1ec58928be8beed79e0f04ae1a3b5e68540a493e` (18:09:55). Ühe väärtuse metsaküsimus säilitab tekstivastuse ja saab sama näitaja viimase kümne aasta rea diagrammina, mis viitab oma allikale; fetched rida hoitakse nähtava tulemuselehe esimeste tulemuste seas (`ensureForestSeriesCandidates`).
+
+| Kontroll (`1ec5892` live, kaks ringi) | Mõõdetud lõpptulemus |
+|---|---|
+| Unit/integratsioon | `npm test`: 577/577; `npm run build` OK |
+| `mitu ha metsa on eestis` | `Allikapõhine kokkuvõte` (SMI 2025: 2,36 mln ha) + `line 1×10` KK51 metsamaa pindala 2016–2025, viide 2 → KK51 tabel |
+| `Kui suur osa Eestist on mets?` | tekstivastus + KK51 metsasus `line 1×10`, viide 2 |
+| `Eesti metsa tagavara` | tekstivastus + KK51 puistute üldvaru `line 1×10`, viide 2 |
+| `Kui suur on lageraie pindala?` | tekstivastus + MM03 lageraie raiepindala `line 1×10`, viide 2 |
+| `Metsamaa pindala viimase kümne aasta jooksul` | endiselt `Statistikaameti tabel KK51` aegrea-vastus, `line 1×10` |
+| `Kas raiemaht ületab juurdekasvu?`, `Metsamaa pindala 2024`, `mets`, `jäätmete ringlussevõtu määr Eestis 2023` | muutumatud, diagrammita; 37,9 % säilib |
+| Brauser (desktop) | diagramm intro all, allkirja viide `2 Statistikaamet` → KK51 tabel; `scrollY === 0` värskel laadimisel; horisontaalset kerimist ei ole |
