@@ -636,7 +636,7 @@ function isForestDepletionIntent(text) {
   return bareShortQuestion || new RegExp(`(?:\\b${forest}(?:\\s+\\w+){0,3}\\s+${modal}(?:\\s+\\w+){0,3}\\s+otsa(?:\\s+saada)?\\b|\\b${forest}(?:\\s+\\w+){0,3}\\s+otsa\\s+${modal}\\b|\\b${modal}\\s+${forest}(?:\\s+\\w+){0,3}\\s+otsa(?:\\s+saada)?\\b|\\b${modal}\\s+eestis\\s+${forest}(?:\\s+\\w+){0,3}\\s+otsa(?:\\s+saada)?\\b|\\b${forest}(?:\\s+\\w+){0,3}\\s+(?:on\\s+)?(?:ara\\s+)?${disappearing}\\b|\\b${forest}(?:\\s+\\w+){0,3}\\s+${modal}(?:\\s+\\w+){0,3}\\s+(?:ara\\s+)?${disappearing}\\b|\\b(?:metsa|metsade)\\s+(?:kadum|havim)\\w*\\b|\\b(?:enam|varsti)\\s+(?:\\w+\\s+){0,2}metsa\\s+(?:ei\\s+ole|pole)\\b)`, "u").test(text);
 }
 
-export function resolvePublicForestryIntent(query) {
+export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } = {}) {
   const text = normalize(query);
   if (!text) return null;
   const tokens = text.split(" ").filter(Boolean);
@@ -661,7 +661,7 @@ export function resolvePublicForestryIntent(query) {
     ...(multilingualForestry ? ["forest", "woodland"] : []),
   ], true) || (multilingualForestry && /\bforested\b/u.test(text)) || hasSmi || hasStem(tokens, ["rmk"]);
 
-  const geographyScope = classifyForestryGeographyScope(query);
+  const geographyScope = classifyForestryGeographyScope(query, { forPrivacyCheck });
   const municipalityScope = ["reviewed-municipality", "unknown-locality"].includes(geographyScope.kind);
   const regionalScope = ["estonian-region", "foreign-or-other-region"].includes(geographyScope.kind);
   const municipalityAreaMetric = new RegExp(`\\b(?:kui\\s+palju|kui\\s+suur\\w*|mitu\\s+hektar\\w*|metsasus\\w*|metsamaa\\w*|metsa\\s+pindala|metsaga\\s+kaetud|pindala|osakaal|protsent\\w*${multilingualForestry ? "|forest\\s+area|forest\\s+cover(?:age)?|woodland\\s+area|woodland\\s+cover(?:age)?|forest\\s+hectares?|hectares?\\s+(?:of\\s+)?(?:forest|woodland)|hectares?\\s+are\\s+forested|percentage|how\\s+many\\s+(?:forest\\s+)?hectares|how\\s+much\\s+(?:forest|woodland)" : ""})\\b`, "u").test(text);
@@ -853,8 +853,11 @@ export function resolvePublicForestryIntent(query) {
   // increment or stock question (nt "Kui palju metsa raiuti Tartu
   // vallas?"): those metrics have their own intents or no evidence path,
   // and a pindala figure would substitute the wrong metric. Such questions
-  // fall through and fail closed instead.
-  if (hasForest && municipalMetricQuestion && /\b(?:kui\s+palju|mitu|kui\s+suur\w*|metsamaa|metsasus\w*|pindala|osakaal|protsent|hektar\w*)\b/u.test(text)) {
+  // fall through and fail closed instead. The same holds for a question about
+  // another forest subject (species, age, fire, regeneration, ownership,
+  // protection, damage): "kui palju" alone does not make it an area question.
+  const asksOtherForestSubject = !forPrivacyCheck && /\b(?:\w*puuli(?:ik|ig)\w*|mand|mann\w*|kuus\w*|kask|kase\w*|kaasik\w*|haab|haav\w*|lepp\w*|lepa\w*|okaspuu\w*|lehtpuu\w*|vanus\w*|vana|vanad\w*|vanade\w*|\w*tulekahj\w*|poleng\w*|polen\w*|uuend\w*|istut\w*|kulv\w*|halda\w*|rmk|riigimets\w*|kaitst\w*|kaitse\w*|\w*urask\w*|kahjust\w*|kahjur\w*|haigus\w*|torm\w*|tuuleheit\w*)\b/u.test(text);
+  if (hasForest && municipalMetricQuestion && !asksOtherForestSubject && /\b(?:kui\s+palju|mitu|kui\s+suur\w*|metsamaa|metsasus\w*|pindala|osakaal|protsent|hektar\w*)\b/u.test(text)) {
     return {
       kind: "forest-area",
       discoveryQueries: ["metsamaa pindala SMI Eesti", "metsasuse pindala Eesti"],

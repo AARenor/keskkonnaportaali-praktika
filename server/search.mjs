@@ -1747,6 +1747,11 @@ function topicRoot(word) {
   if (word.startsWith("kuusk") || word.startsWith("kuuse") || word.startsWith("kuusik")) return "mets";
   if (word.startsWith("manni") || word.startsWith("mannik")) return "mets";
   if (word.startsWith("rai") && !word.startsWith("rain")) return "raie";
+  // Estonian compounds carry the subject at the end: sanitaarraie,
+  // harvendusraie, okaspuumetsade, segametsas.
+  if (/^\p{L}{3,}rai(?:e|u)\p{L}*$/u.test(word)) return "raie";
+  if (/^(?:okaspuu|lehtpuu|puu|sega|salu|palu|laane|nomme|soo|kuuse|manni|kase|lepa|haava)mets\p{L}*$/u.test(word)) return "mets";
+  if (word.startsWith("puuliik") || word.startsWith("puuliig") || word.startsWith("enamuspuuliik") || word.startsWith("enamuspuuliig")) return "mets";
   if (word.startsWith("netojuurdekasv") || word.startsWith("juurdekasv")) return "juurdekasv";
   if (word.startsWith("ulet")) return "uletamine";
   if (word.startsWith("noor")) return "noor";
@@ -1798,6 +1803,8 @@ function topicRoot(word) {
   if (word.startsWith("rohevorg") || word.startsWith("rohekoridor")) return "rohevorgustik";
   if (word.startsWith("voorliig") || word.startsWith("invasiiv") || word.startsWith("karuputk")) return "voorliik";
   if (word.startsWith("uluk") || word.startsWith("karu") || word.startsWith("hund") || word.startsWith("ilves") || word.startsWith("suurkisk")) return "uluk";
+  if (/^(?:poder|podr|potr|hirv|rebas|rebane|kahrik|kobra|saakal)\p{L}*$/u.test(word)) return "uluk";
+  if (/^(?:\p{L}*jaht(?:i|il|ile|ist|ide)?|\p{L}*jahi\p{L}*)$/u.test(word)) return "uluk";
   if (word.startsWith("elupaik") || word.startsWith("elupaig") || word.startsWith("vaariselupa") || word.startsWith("varjepaig")) return "elupaik";
   if (word.startsWith("pusielupai")) return "pusielupaik";
   if (word.startsWith("hoiual")) return "kaitseala";
@@ -3415,11 +3422,16 @@ function denyOnlyPossessiveForestAggregatePossessor(value) {
   return match?.groups?.possessor || null;
 }
 
+// The private-person classifier reads forest geography the older, stricter way
+// (an unplaced word is an unnamed region), so answer routing changes never
+// alter which questions it treats as personal lookups.
+const PRIVACY_CHECK = Object.freeze({ forPrivacyCheck: true });
+
 function isReviewedPublicPossessiveForestAggregatePossessor(possessor) {
   if (!possessor) return false;
   const normalizedPossessor = normalize(possessor);
   const reviewedGeographyOrProgramme = /^(?:estonia|country|nation|state|world|europe|eu|natura(?:\s+2000)?|lahemaa|vilsandi|matsalu|soomaa|karula|alutaguse|gondor|atlantis|middle\s+earth)$/u.test(normalizedPossessor);
-  const foreignScope = classifyForestryGeographyScope(`${possessor} forest area`);
+  const foreignScope = classifyForestryGeographyScope(`${possessor} forest area`, PRIVACY_CHECK);
   const normalizedForeignIdentity = normalize(foreignScope.identity || foreignScope.matched || "");
   const municipalityScope = reviewedEstonianForestryMunicipalityScope(possessor);
   const municipalityMatches = Array.isArray(municipalityScope?.matched)
@@ -3488,7 +3500,7 @@ function hasPartialReviewedGeographyPossessiveForestAggregate(value) {
   // be normalized away and forwarded as an ordinary forestry aggregate.
   if (rawPossessorHasLossyUnicode) return true;
   const normalizedPossessor = normalizePossessivePrivacyCandidate(possessor);
-  const foreignScope = classifyForestryGeographyScope(`${normalizedPossessor} forest area`);
+  const foreignScope = classifyForestryGeographyScope(`${normalizedPossessor} forest area`, PRIVACY_CHECK);
   const normalizedForeignIdentity = normalizePossessivePrivacyCandidate(
     foreignScope.identity || foreignScope.matched || "",
   );
@@ -4605,8 +4617,8 @@ export function containsPrivatePersonLookup(value, {
           || isCompleteReviewedPublicOrganizationContactQuestion(clause)
       )).length === 1
     && reviewedCountyContactCompositionClauses.filter((clause) => (
-      classifyForestryGeographyScope(clause).kind === "estonian-region"
-        && resolvePublicForestryIntent(clause)?.kind === "regional-forest-area"
+      classifyForestryGeographyScope(clause, PRIVACY_CHECK).kind === "estonian-region"
+        && resolvePublicForestryIntent(clause, PRIVACY_CHECK)?.kind === "regional-forest-area"
     )).length === 1;
   if (allowReviewedPublicClauseComposition && reviewedCountyContactComposition) {
     return reviewedCountyContactCompositionClauses.some((clause) => (
@@ -4695,10 +4707,10 @@ export function containsPrivatePersonLookup(value, {
     return false;
   }
   if (isReviewedNationalDefaultForestryAreaComplement(text)) return false;
-  const forestryGeographyScope = classifyForestryGeographyScope(text);
+  const forestryGeographyScope = classifyForestryGeographyScope(text, PRIVACY_CHECK);
   const reviewedUnsupportedNationalForestClaim = ["national-default", "national-estonia"]
     .includes(forestryGeographyScope.kind)
-    && ["forest-area", "forest-covered-area", "forest-area-method"].includes(resolvePublicForestryIntent(text)?.kind)
+    && ["forest-area", "forest-covered-area", "forest-area-method"].includes(resolvePublicForestryIntent(text, PRIVACY_CHECK)?.kind)
     && (requestsUnsupportedForestAreaBreakdown(text)
       || requestsUnsupportedForestAreaTimeSeries(text)
       || requestsUnsupportedForestAreaUnit(text))
@@ -4711,7 +4723,7 @@ export function containsPrivatePersonLookup(value, {
   if (reviewedUnsupportedNationalForestClaim) return false;
   const reviewedRegionalForestAggregateQuestion = ["estonian-region", "foreign-or-other-region"]
     .includes(forestryGeographyScope.kind)
-    && resolvePublicForestryIntent(text)?.kind === "regional-forest-area"
+    && resolvePublicForestryIntent(text, PRIVACY_CHECK)?.kind === "regional-forest-area"
     // Geography routing must never exempt an appended natural-person field.
     // The normal privacy classifier below owns those clauses; this aggregate
     // shortcut is allowed only when neither an explicit personal attribute nor
@@ -4725,7 +4737,7 @@ export function containsPrivatePersonLookup(value, {
   // personal contact, identity, ownership or private-asset field is appended.
   if (reviewedRegionalForestAggregateQuestion) return false;
   const reviewedMunicipalityForestAggregateQuestion = forestryGeographyScope.kind === "reviewed-municipality"
-    && resolvePublicForestryIntent(text)?.kind === "municipality-forest-area"
+    && resolvePublicForestryIntent(text, PRIVACY_CHECK)?.kind === "municipality-forest-area"
     && !CADASTRE_PATTERN.test(text)
     && !PRIVATE_PERSON_ATTRIBUTE_PATTERN.test(text)
     && !NAMED_PERSON_CADASTRAL_FIELD_PATTERN.test(text)
@@ -4767,7 +4779,7 @@ export function containsPrivatePersonLookup(value, {
       /^what\s+(?:percentage|percent|share)\s+of\s+[\p{L}'’-]{2,50}\s+municipality\s+is\s+(?:forest|woodland)\??$/iu,
     ].some((pattern) => pattern.test(text.trim()));
   const explicitUnknownMunicipalityAggregateQuestion = forestryGeographyScope.kind === "unknown-locality"
-    && resolvePublicForestryIntent(text)?.kind === "municipality-forest-area"
+    && resolvePublicForestryIntent(text, PRIVACY_CHECK)?.kind === "municipality-forest-area"
     && !CADASTRE_PATTERN.test(text)
     && !PRIVATE_PERSON_ATTRIBUTE_PATTERN.test(text)
     && !NAMED_PERSON_CADASTRAL_FIELD_PATTERN.test(text)
@@ -7098,7 +7110,10 @@ export function assessSearchQuery(query, options = {}) {
   }
   const nonContextRoots = roots.filter((root) => root !== topic && !ADMIN_CONTEXT_ROOTS.has(root));
   const waterContextOnly = ["vesi", "jarv"].includes(topic) && nonContextRoots.length === 0;
+  // A named felling type (sanitaarraie, lageraie) is a specific subject, not bare "raie".
+  const namesFellingType = topic === "raie" && /\b\p{L}{3,}rai(?:e|u)\p{L}*/u.test(normalized);
   if (!isStatisticsWaterAbstractionQuery(cleanQuery)
+    && !namesFellingType
     && AMBIGUOUS_ROOTS.has(topic) && (roots.length <= 1 || waterContextOnly)) {
     return {
       kind: "needs-clarification",

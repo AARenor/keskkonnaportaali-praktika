@@ -148,7 +148,10 @@ test("forestry-only municipality scope resolves bare names without widening the 
     "How much forest is there in Gondor?", "How many hectares of forest are there in Gondor?",
     "Forest area in Gondor Estonia", "How much forest is there in Gondor Estonia?",
   ]) {
-    assert.equal(classifyForestryGeographyScope(query).kind, "foreign-or-other-region", query);
+    assert.equal(classifyForestryGeographyScope(query, { forPrivacyCheck: true }).kind, "foreign-or-other-region", query);
+  }
+  for (const query of ["Forest area in Gondor Estonia", "How much forest is there in Gondor Estonia?"]) {
+    assert.match(classifyForestryGeographyScope(query).kind, /^national-/u, query);
   }
   for (const query of [
     "Forest area in the current year for Gondor",
@@ -191,7 +194,14 @@ test("forestry-only municipality scope resolves bare names without widening the 
     "Atlantise metsamaa pindala",
     "Gondor has how much forest?",
   ]) {
-    assert.equal(classifyForestryGeographyScope(query).kind, "foreign-or-other-region", query);
+    // Named real places stay foreign. An unrecognised name keeps the Estonia
+    // default for answering, and the stricter reading only for privacy.
+    if (/Gondor|Atlantis|Middle Earth/u.test(query)) {
+      assert.match(classifyForestryGeographyScope(query).kind, /^national-/u, query);
+      assert.equal(classifyForestryGeographyScope(query, { forPrivacyCheck: true }).kind, "foreign-or-other-region", query);
+    } else {
+      assert.equal(classifyForestryGeographyScope(query).kind, "foreign-or-other-region", query);
+    }
   }
   for (const query of [
     "Gondor forest area",
@@ -401,7 +411,7 @@ test("a fully consumed national forest-area method question is not mistaken for 
     "Kui palju metsa Eestis on ja kuidas seda mõõdetakse? عنوان محمد",
   ]) {
     assert.equal(hasUnresolvedForestryAreaEntity(query), true, query);
-    assert.notEqual(classifyForestryGeographyScope(query).kind, "national-estonia", query);
+    assert.notEqual(classifyForestryGeographyScope(query, { forPrivacyCheck: true }).kind, "national-estonia", query);
   }
   for (const query of [
     "Kui palju metsa Eestis on ja kuidas seda mõõdetakse? 山田太郎の住所",

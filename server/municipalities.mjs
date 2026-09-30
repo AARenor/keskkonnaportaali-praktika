@@ -456,10 +456,6 @@ export function isReviewedNationalDefaultForestryAreaComplement(value) {
   return reviewNationalDefaultForestryAreaComplement(value).reviewed;
 }
 
-function unresolvedNationalDefaultForestryAreaResidual(value) {
-  return reviewNationalDefaultForestryAreaComplement(value).residual;
-}
-
 const FORESTRY_AREA_ENTITY_CONTEXT_PATTERN = /\b(?:(?:forest|woodland)\s+(?:area|cover(?:age)?(?:\s+(?:percentage|percent|share))?|hectares?)|forest\s+hectares?|hectares?\s+(?:of\s+)?(?:forest|woodland)|hectares?\s+are\s+forested|how\s+much\s+(?:forest|woodland)|how\s+many\s+(?:forest\s+hectares?|hectares?)|metsamaa\w*\s+pindala\w*|metsasus\w*|kui\s+palju\s+metsa)\b/u;
 const FORESTRY_REVIEWED_NON_ENTITY_TOKENS = new Set([
   "a", "about", "according", "acre", "acres", "across", "age", "aged", "all", "and", "annual", "are", "area",
@@ -714,6 +710,10 @@ export function hasUnresolvedForestryLocalityScope(value) {
     && FORESTRY_UNKNOWN_PLACE_NAME_ENDING_PATTERN.test(token));
 }
 
+function unresolvedNationalDefaultForestryAreaResidual(value) {
+  return reviewNationalDefaultForestryAreaComplement(value).residual;
+}
+
 function reviewedCountyScope(value, { explicitOnly = false } = {}) {
   const raw = String(value || "").normalize("NFKC").normalize("NFC");
   for (const [identity, source] of REVIEWED_ESTONIAN_COUNTY_SURFACE_CATALOG) {
@@ -731,7 +731,11 @@ function reviewedCountyScope(value, { explicitOnly = false } = {}) {
 // closed catalogue plus positive geographic grammar: arbitrary modifiers do
 // not become places, while municipalities, counties, foreign regions and
 // unresolved locality-shaped names can never inherit a national SMI value.
-export function classifyForestryGeographyScope(value) {
+//
+// `forPrivacyCheck` keeps the older, stricter reading for the private-person
+// classifier only: there an unresolved word is still treated as an unnamed
+// region, so privacy outcomes do not change with the answer routing.
+export function classifyForestryGeographyScope(value, { forPrivacyCheck = false } = {}) {
   const text = normalizeMunicipalityText(value);
   const explicitCounty = reviewedCountyScope(value, { explicitOnly: true });
   if (explicitCounty) return { kind: "estonian-region", ...explicitCounty };
@@ -766,17 +770,17 @@ export function classifyForestryGeographyScope(value) {
   if (isReviewedNationalDefaultForestryAreaComplement(value)) {
     return { kind: "national-default", identity: "estonia", matched: null };
   }
-  // Resolve open-class entities before interpreting typed dimensions. This
-  // keeps an appended place such as “by ownership in Gondor” geographic, but
-  // allows a fully consumed public dimension such as “in Estonia by
-  // ownership” to reach its precise breakdown clarification.
-  const unresolvedAreaResidual = unresolvedNationalDefaultForestryAreaResidual(value);
-  if (hasUnresolvedForestryAreaEntity(value)) {
+  // The portal answers for Estonia only. A word that is not a reviewed
+  // county, municipality or named foreign country (RMK, a verb, a species)
+  // is not a geography, so unresolved words keep the national default.
+  const unresolvedAreaResidual = forPrivacyCheck
+    ? unresolvedNationalDefaultForestryAreaResidual(value)
+    : null;
+  if (forPrivacyCheck && hasUnresolvedForestryAreaEntity(value)) {
     return { kind: "foreign-or-other-region", identity: null, matched: null };
   }
-  // Unsupported claim dimensions are not geographies. They are classified as
-  // national here and rejected by their dedicated evidence contracts, after
-  // the open-class entity guard has already ruled out an appended place.
+  // Unsupported claim dimensions are classified as national here and
+  // rejected by their dedicated evidence contracts.
   if (requestsUnsupportedForestAreaBreakdown(value)
     || requestsUnsupportedForestAreaTimeSeries(value)
     || requestsUnsupportedForestAreaUnit(value)) {
@@ -786,10 +790,6 @@ export function classifyForestryGeographyScope(value) {
       matched: null,
     };
   }
-  // A reviewed temporal, unit or aggregate prefix is national only when it
-  // consumes the complete question. Any other trailing clause remains
-  // query-bound: otherwise “in the current year for Gondor” could inherit an
-  // Estonia-wide SMI value because the first complement looked harmless.
   if (unresolvedAreaResidual) {
     return {
       kind: "foreign-or-other-region",

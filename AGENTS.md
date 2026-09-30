@@ -18,6 +18,8 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 
 ## Durable product decisions
 
+- Forest answers are Estonia-only. A word the geography classifier cannot place (RMK, a verb, an invented name) keeps the Estonia default; only reviewed counties, municipalities and named foreign countries change the scope. The private-person classifier keeps its stricter reading (`forPrivacyCheck`), where an unplaced word is still an unnamed region, so answer routing never changes privacy outcomes.
+- The national forest-area snapshot answers only area or cover questions. A forest question about species, age, fire, regeneration, RMK, protection or damage goes to normal retrieval even when it says "kui palju".
 - Search is Estonian-only for now. Russian keyword bridges, English topic/phrase mappings and English forestry phrasing stay in the codebase but are inert unless `MULTILINGUAL_SEARCH_ENABLED=true` is set at runtime. `npm test` runs the full suite with the flag on; `tests/estonian-only.test.mjs` locks the production default (flag off).
 - Keep the primary natural-language search visible in the first mobile viewport, before the gateway tiles.
 - Search results should feel compact and Google-like: direct answer first, inline numbered links to the cited originals, the broad relevance-ranked result list, then related questions.

@@ -19,6 +19,7 @@ import {
   searchEnvironmentLive,
 } from "../server/pipeline.mjs";
 import { buildLlmRequest } from "../server/llm.mjs";
+import { classifyForestryGeographyScope } from "../server/municipalities.mjs";
 import { searchOfficialSites } from "../server/integrations.mjs";
 import {
   forestHarvestBalanceDocumentsFromJson,
@@ -587,6 +588,14 @@ test("municipal and regional scopes fail closed without borrowing national fores
     assert.equal(assessSearchQuery(query).reason, "regional-observation-required", query);
   }
   for (const [query, expectedReason] of regionalCases) {
+    // The portal answers for Estonia only: an unrecognised name is not a
+    // region, so it keeps the Estonia default instead of a geography refusal.
+    if (/Gondor|Atlantis|Middle Earth/u.test(query)
+      && classifyForestryGeographyScope(query).kind !== "foreign-or-other-region") {
+      assert.notEqual(forestEvidenceIntent(query)?.kind, "regional-forest-area", query);
+      assert.notEqual(assessSearchQuery(query).reason, "unsupported-geography", query);
+      continue;
+    }
     assert.equal(forestEvidenceIntent(query)?.kind, "regional-forest-area", query);
     const assessment = assessSearchQuery(query);
     assert.equal(assessment.kind, "needs-clarification", query);

@@ -46,7 +46,6 @@ import {
 } from "./source-registry.mjs";
 import {
   classifyForestryGeographyScope,
-  hasUnresolvedForestryAreaEntity,
   requestsUnsupportedForestAreaBreakdown,
   requestsUnsupportedForestAreaTimeSeries,
   requestsUnsupportedForestAreaUnit,
@@ -722,7 +721,6 @@ export function selectAnswerEvidence(query, documents = []) {
   const numericForestAreaIntent = ["forest-area", "forest-covered-area", "forest-area-method"]
     .includes(intent.kind);
   const geographyScope = classifyForestryGeographyScope(query);
-  const unresolvedAreaEntity = hasUnresolvedForestryAreaEntity(query);
   const unsupportedAreaBreakdown = numericForestAreaIntent
     && requestsUnsupportedForestAreaBreakdown(query);
   const unsupportedAreaTimeSeries = numericForestAreaIntent
@@ -734,7 +732,7 @@ export function selectAnswerEvidence(query, documents = []) {
     "unknown-locality",
     "estonian-region",
     "foreign-or-other-region",
-  ].includes(geographyScope.kind) || unresolvedAreaEntity;
+  ].includes(geographyScope.kind);
   // Defense in depth: routing should mark every local/regional request as
   // query-bound, but evidence selection independently recomputes geography.
   // Thus a future routing regression still cannot bind Estonia-wide SMI prose
