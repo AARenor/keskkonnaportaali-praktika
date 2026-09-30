@@ -76,3 +76,12 @@ test("the wildlife report ranks first for a moose question and carries the count
   assert.equal(top?.id, "wildlife-status-2025");
   assert.match(String(top?.content || ""), /10 000–11 000/u);
 });
+
+test("a 'how many X live' question is covered by the wildlife report", async () => {
+  const { searchEnvironment, assessEvidence } = await import("../server/search.mjs");
+  for (const query of ["Kui palju põtru elab Eestis?", "Kui palju ilveseid elab Eestis?"]) {
+    const response = searchEnvironment(query);
+    const evidence = assessEvidence(query, (response.results || response.sources || []).slice(0, 6));
+    assert.equal(evidence.directDocumentId, "wildlife-status-2025", query);
+  }
+});

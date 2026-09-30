@@ -2079,6 +2079,9 @@ export function queryTerms(query) {
     .filter((word) => word.length >= 3 && !STOP_WORDS.has(word) && !/^\d+$/u.test(word))
     .flatMap((word) => {
       if (word.startsWith("keskkonnainfo")) return ["keskkond"];
+      // "Kui palju põtru elab Eestis?" asks for a population count.
+      if (/^(?:elab|elavad|elutseb|elutsevad)$/u.test(word)
+        && /\b(?:kui\s+palju|mitu)\b/u.test(normalizedQuery)) return ["arvukus"];
       if (multilingualPhrases && word.startsWith("nesting")) return ["elupaik"];
       if ((word.startsWith("press") || word.startsWith("contact"))
         && /\bofficial\s+press\s+contact\b[\s\S]{0,60}\bprivate\s+contact\b/u.test(normalizedQuery)) {
