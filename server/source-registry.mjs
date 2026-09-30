@@ -52,6 +52,8 @@ const ROUTE_CLASS_IDS = Object.freeze({
     "forest-area", "forest-stock-stable", "forest-condition-review", "protected-forest-share",
     "forest-smi-2024-summary", "forest-smi-2025-presentation", "forest-yearbook-2023-fellings",
     "forest-climate-adaptation-report", "increment-method", "clearcut-over-time",
+    "forest-smi-2025-tables", "rmk-managed-forest-area", "moose-population-2025", "forest-fires-2025",
+    "forest-regeneration-2025-availability", "nature-protection-share-2025",
   ]),
   official_guidance: new Set([
     "waste-burning-guidance", "protected-nature-guidance", "mining-impact-guidance",
@@ -60,11 +62,13 @@ const ROUTE_CLASS_IDS = Object.freeze({
     "invasive-species-guidance", "organizational-footprint", "wetland-restoration",
     "solar-panel-end-of-life", "protected-area-construction", "wind-farm-assessment-guide",
     "forest-notice-guidance", "forest-register-workflow", "forest-rmk-data-methods",
+    "bird-hunting-season-2026", "bark-beetle-guidance",
     "water-monitoring", "protected-nature-guidance", "metsainfo-hetkeseis",
   ]),
   official_legal_context: new Set([
     "environmental-permits", "protected-area-construction", "forest-notice-guidance",
     "forest-register-workflow", "forest-law", "nature-conservation-law", "environmental-assessment",
+    "forest-management-rules",
     "protected-nature-guidance",
   ]),
   official_forestry_evidence: new Set([
@@ -75,6 +79,9 @@ const ROUTE_CLASS_IDS = Object.freeze({
     "forest-spatial-data", "forest-smi-2025-presentation", "forest-smi-methodology-20-years",
     "forest-rmk-data-methods", "forest-yearbook-2023-fellings", "forest-climate-adaptation-report",
     "forest-register-workflow", "increment-method", "clearcut-over-time", "official-forest-register-wfs",
+    "forest-smi-2025-tables", "rmk-managed-forest-area", "forest-management-rules",
+    "moose-population-2025", "bird-hunting-season-2026", "bark-beetle-guidance",
+    "forest-fires-2025", "forest-regeneration-2025-availability",
   ]),
   official_environmental_assessment: new Set([
     "environmental-assessment", "wind-farm-assessment-guide", "mining-impact-guidance",
@@ -89,6 +96,7 @@ const STRUCTURED_SOURCE_IDS = new Set([
   "statistics-water-abstraction-2024", "statistics-wastewater-bht7-2024", "statistics-hazardous-waste-2024",
   "statistics-total-waste-recovery",
   "climate-station-daily-mean", "municipal-waste-recycling",
+  "forest-smi-2025-tables", "forest-fires-2025",
 ]);
 const LIVE_SOURCE_IDS = new Set([
   "weather-forecast", "current-weather-observations", "kaia-service", "air-quality-live", "marine-observations", "marine-ice-map",

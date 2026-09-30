@@ -487,13 +487,16 @@ const FORESTRY_REVIEWED_NON_ENTITY_TOKENS = new Set([
   // Normalized Estonian request, national, temporal, unit and aggregate words.
   "aasta", "aastal", "aastane", "aastate", "ajalooline", "ajalugu", "andmed", "andmetel", "anna",
   "eestis", "eestil", "hektar", "hektarit", "hektarites", "ja", "jargi", "kaitse", "kaupa", "kogu", "loikes",
-  "kokku", "kui", "metsa", "metsamaa", "metsasus", "muutus", "muutused", "omandivormi",
+  "ehk", "kokku", "kui", "metsa", "metsamaa", "metsasus", "muutus", "muutused", "omandivormi", "rmk",
   "mis", "mulle", "naita", "ning", "oli", "on", "osakaal", "palju", "pindala", "praegune", "protsent",
   "protsendid", "protsentides", "range", "riigi", "statistika", "suur", "tanapaeval", "tanavu", "uusim",
   "viimane",
 ]);
 const FORESTRY_REVIEWED_NON_ENTITY_TOKEN_PATTERNS = Object.freeze([
   /^(?:omandivorm|omandiliik|omanikuliig|kaitsekategoori|kaitseklass|kaitsestaatus|kaitsereziim|majandamiskategoori|majandamisviis|majandamisstaatus|puuliig|vanuseklass|maakasutus|tootlikkus)\w*$/u,
+  /^(?:uuenda|istuta|kulva)\w*$/u,
+  /^halda\w*$/u,
+  /^teel$/u,
 ]);
 const FORESTRY_AREA_PREPOSITION_COMPLEMENT_PATTERN = /(?=\b(?:in|for|of)\s+(?:the\s+)?([a-z][a-z0-9-]*(?:\s+[a-z][a-z0-9-]*){0,4}))/gu;
 const FORESTRY_AREA_PREFIX_ENTITY_PATTERN = /^(?:(?:what\s+(?:is|was)|show\s+(?:me)?|give\s+me|tell\s+me|compare)\s+(?:the\s+)?)?((?:[a-z][a-z-]*\s+){1,7}?)(?:forest|woodland)\s+(?:area|cover(?:age)?(?:\s+(?:percentage|percent|share))?)\b/u;

@@ -105,13 +105,13 @@ test("SMI 2025 answers tree species, conifer trend and 2025 felling from its own
   const { rankPublicSearchCandidates } = await import("../server/retrieval.mjs");
   const { directEvidenceExtract } = await import("../server/pipeline.mjs");
   const directory = officialServiceCatalogueDocuments();
-  for (const [query, expected] of [
-    ["Millised on Eesti metsade enamuspuuliigid ja kui suur on nende osakaal?", /kaasikud \(0,71 miljonit ha\)/u],
-    ["Kuidas on okaspuumetsade pindala Eestis viimase kümne aasta jooksul muutunud?", /32 000 ha/u],
-    ["Kui palju raiuti Eestis metsa 2025. aastal?", /11 miljonit m³/u],
+  for (const [query, expectedDocumentId, expected] of [
+    ["Millised on Eesti metsade enamuspuuliigid ja kui suur on nende osakaal?", "forest-smi-2025-tables", /kask 30%[\s\S]*mänd 29%[\s\S]*kuusk 19%/u],
+    ["Kuidas on okaspuumetsade pindala Eestis viimase kümne aasta jooksul muutunud?", "forest-smi-2025-tables", /31,9 tuhat[\s\S]*32 000 hektarit/u],
+    ["Kui palju raiuti Eestis metsa 2025. aastal?", "forest-smi-2025-presentation", /2025\. aasta raiemahu eksperthinnang 11,0 miljonit m³/u],
   ]) {
     const visible = rankPublicSearchCandidates(query, directory, { intentDocuments: directory, now: Date.now() });
-    assert.equal(visible[0]?.id, "forest-stock-stable", query);
+    assert.equal(visible[0]?.id, expectedDocumentId, query);
     assert.match(directEvidenceExtract(query, visible[0]), expected, query);
   }
 });

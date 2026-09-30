@@ -73,11 +73,121 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     type: "Ametlik juhis",
     published: "jooksev",
     url: "https://www.keskkonnaamet.ee/elusloodus-looduskaitse/metsandus/metsateatis-ja-metsaregister",
-    tags: ["mets", "metsateatis", "metsaregister", "raie", "metsakahjustus", "kinnistu"],
+    tags: ["mets", "metsateatis", "metsaregister", "raie", "metsakahjustus", "kinnistu", "riigilõiv"],
     summary: "Metsateatis on dokument, mille metsaomanik esitab Keskkonnaametile kavandatava raie või olulise metsakahjustuse kohta; Keskkonnaamet kontrollib teatise nõuetekohasust ja kavandatud raie vastavust nõuetele.",
-    content: "Metsateatis käsitleb kavandatavat raiet või metsaregistrisse kandmata olulist metsakahjustust. Teatise esitamine, menetlemine või raiet lubav otsus ei tõenda, et raie on looduses juba tehtud. Metsateatise saab esitada Metsaregistri kaudu, kus omanik valib oma kinnistu ja täidab vormi. Konkreetse kinnistu inventeerimisandmete, eraldiste ja teatiste vaatamiseks tuleb kasutada riiklikku Metsaregistrit ehk Metsaportaali.",
-    locator: "Metsateatise definitsioon; millal ja kuidas teatis esitada.",
-    _forestryIntentKinds: ["forest-notice", "property-forest-data"],
+    content: "Metsateatis käsitleb kavandatavat raiet või metsaregistrisse kandmata olulist metsakahjustust. Teatise esitamine, menetlemine või raiet lubav otsus ei tõenda, et raie on looduses juba tehtud. Metsateatise saab esitada Metsaregistri kaudu, kus omanik valib oma kinnistu ja täidab vormi. Konkreetse kinnistu inventeerimisandmete, eraldiste ja teatiste vaatamiseks tuleb kasutada riiklikku Metsaregistrit ehk Metsaportaali. Keskkonnaameti kehtiva juhise järgi võib metsaomanik metsateatist esitamata raiuda kuni 20 tihumeetrit puitu kinnisasja kohta aastas. Alates 1. juulist 2024 tuleb uuendusraie ja raadamise iga metsateatise läbivaatamise eest tasuda 30 eurot riigilõivu; muud raietüübid ei ole selle juhise järgi tasulised.",
+    locator: "Metsateatise definitsioon; millal ja kuidas teatis esitada; 20 tihumeetri erand ning uuendusraie ja raadamise 30-eurone riigilõiv.",
+    _forestryIntentKinds: ["forest-notice", "forest-notice-exception", "forest-notice-exception-fee", "property-forest-data"],
+  },
+  {
+    id: "forest-smi-2025-tables",
+    title: "SMI 2025 tulemuste andmetabelid",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Metsastatistika andmetabel",
+    published: "18.08.2026",
+    url: "https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI%20tulemused%202025/SMI%202025%20tulemused.xlsx",
+    tags: ["mets", "SMI", "puuliigid", "omandivorm", "okaspuu", "vanuseklass", "2025"],
+    summary: "SMI 2025 töövihik annab metsamaa pindala puuliigi, omandivormi ja vanuseklassi järgi ning sisaldab 1999–2025 aegridu.",
+    content: "SMI 2025 tabelite järgi oli Eesti metsamaa pindala 2 360,2 tuhat hektarit ehk 52,1% Eesti pindalast. Metsaga metsamaa ehk puistute pindala oli 2 151,2 tuhat hektarit ehk 47,45%; metsamaa ja metsaga kaetud metsamaa on eri näitajad. Tabeli 6 järgi olid Eesti metsamaa peamiste puuliikide osakaalud enamuspuuliigi alusel kask 30%, mänd 29% ja kuusk 19%. Need osakaalud kirjeldavad metsamaa enamuspuuliiki, mitte kõigi üksikpuude arvu. Omandivormi tabelis oli riigimetskondade metsamaad 1 088,108 tuhat hektarit ja muud riigimaad 93,158 tuhat hektarit ehk riigimaad kokku 1 181,266 tuhat hektarit ehk 50,0% metsamaast. Füüsiliste isikute metsamaad oli 618,223 ja juriidiliste isikute metsamaad 559,618 tuhat hektarit ehk eramaad kokku 1 177,841 tuhat hektarit ehk 49,9%; 1,093 tuhande hektari omand oli määramata. Töölehe 31 aegridade järgi oli männikute ja kuusikute ehk okaspuupuistute pindala 2016. aastal kokku 1 164,8 tuhat hektarit ning 2025. aastal 1 132,9 tuhat hektarit: vähenemine oli 31,9 tuhat ehk ümardatult 32 000 hektarit. Vanuseklasside tabeli järgi oli 2025. aastal üle 100-aastaste puistute pindala 184,0 tuhat hektarit. Kõrge vanus ise ei anna puistule automaatset õiguslikku kaitset; kaitsestaatus tuleb kontrollida kaitstava objekti, vööndi ja kehtivate ruumiandmete järgi.",
+    locator: "Töölehed 1, 2, 3, 6, 13 ja 31: metsamaa ja puistute pindala, omandivorm, enamuspuuliik, vanuseklassid ning puuliikide 1999–2025 pindala aegrida.",
+    _publishedAt: "2026-08-18",
+    _forestryIntentKinds: ["forest-covered-area", "forest-species-share", "forest-ownership-share", "conifer-area-trend", "old-forest-area-protection"],
+  },
+  {
+    id: "rmk-managed-forest-area",
+    title: "RMK hallatava metsamaa pindala 2026. aasta jaanuaris",
+    organization: "Riigimetsa Majandamise Keskus",
+    type: "Ametlik metsastatistika",
+    published: "2026",
+    url: "https://rmk.ee/uudised/uudis/riigimetsas-kasvas-rangelt-kaitstava-metsa-pindala-300-000-hektarini/",
+    tags: ["mets", "RMK", "riigimets", "metsamaa", "pindala", "2026"],
+    summary: "RMK 2026. aasta jaanuari andmete järgi oli RMK hallatavat metsamaad 1 029 902 hektarit.",
+    content: "RMK avaldatud 2026. aasta jaanuari andmete järgi oli RMK hallatavat metsamaad 1 029 902 hektarit. See on RMK hallatav metsamaa, mitte kogu Eesti riigi omandis oleva metsamaa või kogu Eesti metsamaa pindala.",
+    locator: "2026. aasta jaanuari RMK metsamaa ja kaitsejaotuse andmed.",
+    _publishedAt: "2026-01-31",
+    _forestryIntentKinds: ["rmk-managed-forest-area"],
+  },
+  {
+    id: "forest-management-rules",
+    title: "Metsa majandamise eeskiri",
+    organization: "Riigi Teataja",
+    type: "Kehtiv õigusakt",
+    published: "jooksev",
+    url: "https://www.riigiteataja.ee/akt/115122017017?leiaKehtiv=",
+    tags: ["mets", "raie", "sanitaarraie", "raievanus", "mänd", "boniteet"],
+    summary: "Metsa majandamise eeskiri sätestab puuliigi ja boniteediklassi järgi raievanused ning sanitaarraie tingimused.",
+    content: "Metsa majandamise eeskirja § 6 lõike 3 järgi tohib sanitaarraiet teha mis tahes vanusega puistus, kuid puistu täius ei tohi sanitaarraie käigus langeda alla 30%. Eeskirja § 3 järgi ei ole männi lageraievanus üks kindel arv: hariliku männi raievanused on boniteediklasside 1A, 1, 2, 3, 4 ning 5 ja 5A järgi vastavalt 90, 90, 90, 100, 110 ja 120 aastat ehk 90–120 aastat. Lageraie võib olla lubatud ka küpsusdiameetri või muude seaduses sätestatud tingimuste alusel, mistõttu konkreetse puistu otsus ei põhine ainult vanusel.",
+    locator: "§ 3 lõiked 1–3: raievanused ja küpsusdiameeter; § 6 lõige 3: sanitaarraie igas vanuses puistus ning 30% täiuse alampiir.",
+    _forestryIntentKinds: ["sanitary-cutting-rules", "pine-cutting-age"],
+  },
+  {
+    id: "moose-population-2025",
+    title: "Ulukiasurkondade seisund ja küttimissoovitus 2025",
+    organization: "Keskkonnaagentuur",
+    type: "Riiklik seirearuanne",
+    published: "2025",
+    url: "https://keskkonnaportaal.ee/sites/default/files/SEIREARUANNE_2025.pdf",
+    tags: ["uluk", "põder", "arvukus", "seire", "2025"],
+    summary: "Keskkonnaagentuuri hinnangul oli põdra asurkonna suurus 2025. aasta alguses 10 000–11 000 isendit.",
+    content: "Keskkonnaagentuuri 2025. aasta ulukiseire aruande järgi oli põdra asurkonna suurus 2025. aasta alguses jätkuvalt mõõdukas: 10 000–11 000 isendit. Tegemist on üleriigilise asurkonna suuruse hinnanguga, mitte täpse loendusega ühel kuupäeval.",
+    locator: "Põdra peatüki kokkuvõte ja küttimissoovitus: asurkonna hinnang 2025. aasta alguses.",
+    _publishedAt: "2025-06-01",
+    _forestryIntentKinds: ["moose-population-2025"],
+  },
+  {
+    id: "bird-hunting-season-2026",
+    title: "Enne linnujahti veendu reeglites",
+    organization: "Keskkonnaamet",
+    type: "Ametlik jahindusjuhis",
+    published: "11.08.2026",
+    url: "https://keskkonnaamet.ee/uudised/enne-linnujahti-veendu-palun-reeglites",
+    tags: ["lind", "linnujaht", "jahipidamine", "kormoran", "veelind", "hani", "lagle"],
+    summary: "Keskkonnaamet selgitab, et eri linnuliikide küttimisajad algavad eri kuupäevadel ning enne jahti tuleb kontrollida liiki ja kehtivat jahieeskirja.",
+    content: "Keskkonnaameti 11. augusti 2026 juhise järgi ei ole linnujahil üht alguskuupäeva: kormorani võib küttida alates 1. augustist, vee- ja soolindude küttimisaeg algab 20. augustil ning hanede ja laglede küttimisaeg 20. septembril. Küttida tohib ainult lubatud liiki ja loa alusel ning enne jahti tuleb kontrollida kehtivat jahieeskirja. Veelinnujahil ja märgaladel ei tohi kasutada pliihaavleid ega elektroonilisi peibutusvahendeid.",
+    locator: "11.08.2026 juhis: kormorani, vee- ja soolindude ning hanede ja laglede küttimisaja algus ja peamised keelud.",
+    _publishedAt: "2026-08-11",
+    _forestryIntentKinds: ["bird-hunting-season"],
+  },
+  {
+    id: "bark-beetle-guidance",
+    title: "Kuuse-kooreürask: kuidas teda tunda ja ära hoida?",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Ametlik metsakaitsejuhend",
+    published: "27.05.2025",
+    url: "https://keskkonnaportaal.ee/et/kuuse-kooreurask-kuidas-teda-tunda-ja-ara-hoida-juhend-metsaomanikule",
+    tags: ["mets", "kuusk", "kooreürask", "kahjur", "püünispuu", "feromoon"],
+    summary: "Juhend kirjeldab värskelt asustatud kuuse tunnuseid ning kahjustuste vähendamist püünispuude ja õigeaegse väljaveoga.",
+    content: "Kuuse-kooreürask on üks olulisemaid kuusekahjureid Euroopas. Mardikas kaevandab kuuse koore all, toitub koore niineosast ja põhjustab sellega kuuskede kuivamist. Värskelt kuuse-kooreüraski asustatud puu võra võib olla veel roheline. Tunnusteks on 2–2,5 mm läbimõõduga sisenemisavad, tüvel esinevad vaigunired ja pruunikas näripuru, mis lamaval tüvel koguneb kuhjakestena ning seisval puul okstele, juurekaelale või ämblikuvõrkudele. Kahjustuste vähendamiseks kasutatakse enne lendlust langetatud püünispuid; need ja värskelt asustatud puud tuleb mõne nädala jooksul pärast asustamist välja vedada. Feromoondispenserid paigaldatakse vahetult enne lendluse algust ning võimalusel 10–15 meetri kaugusele kasvavatest keskealistest ja vanematest okaspuudest.",
+    locator: "Uuendatud 27.05.2025; seotud juhendmaterjali peatükid „Kahjustuse tuvastamine” ning „Kahjustuste vältimine ja vähendamine”.",
+    _publishedAt: "2025-05-27",
+    _forestryIntentKinds: ["bark-beetle-guidance", "bark-beetle-damage"],
+  },
+  {
+    id: "forest-fires-2025",
+    title: "Päästeameti metsa- ja maastikutulekahjude avaandmed 2014–2025",
+    organization: "Päästeamet",
+    type: "Ametlik avaandmestik",
+    published: "2025",
+    url: "https://www.rescue.ee/et/juhend/avaandmed/metsa-ja-maastikutulekahjud",
+    tags: ["mets", "metsatulekahju", "maastikutulekahju", "Päästeamet", "2025"],
+    summary: "Päästeameti PÄIS-e avaandmetes oli 2025. aastal 60 sündmust, mille põlenguobjekt oli mets või mets koos maastikuga.",
+    content: "Päästeameti metsa- ja maastikutulekahjude PÄIS-e avaandmestikus oli 2025. aastal 357 metsa- ja maastikutulekahju sündmuse kirjet. Neist 32 kirje välja „mis põles” väärtus oli „Mets” ja 28 väärtus „Mets, maastik”, seega oli metsa hõlmanud tulekahjusündmusi kokku 60. See arv ei ole null ega tähenda kõigi 357 maastikupõlengu nimetamist metsatulekahjuks.",
+    locator: "Avaandmete CSV 2014–2025: 2025. aasta read, väli „mis_poles”; Mets 32 ja Mets, maastik 28.",
+    _publishedAt: "2026-01-01",
+    _forestryIntentKinds: ["forest-fires-2025"],
+  },
+  {
+    id: "forest-regeneration-2025-availability",
+    title: "Metsa-aastaraamatud ja metsauuendamise avaldatud andmed",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Ametlik statistika avaldamise loend",
+    published: "jooksev",
+    url: "https://keskkonnaportaal.ee/et/metsa-aastaraamatud",
+    tags: ["mets", "metsauuendamine", "istutamine", "külv", "2025", "andmete saadavus"],
+    summary: "Avalikus metsa-aastaraamatute loendis ei ole 2025. aasta üleriigilist istutamise ja külvamise pindala veel avaldatud.",
+    content: "Keskkonnaportaali avalikus metsa-aastaraamatute loendis on uusim terviklik väljaanne „Aastaraamat Mets 2023”. SMI 2025 tulemuste tabelid ei sisalda üleriigilist metsauuendamise istutamise ja külvamise pindala. 2025. aasta üleriigilist istutamise ja külvamise teel uuendatud metsamaa pindala ei ole nendes ametlikes avalikes allikates avaldatud. Andme puudumine ei tähenda nullväärtust; täpset varasema aasta arvu ei tohi 2025. aastale üle kanda.",
+    locator: "Metsa-aastaraamatute avalik loend ja uusim terviklik aastaraamat; 2025. aasta metsauuendamise koondnäitaja saadavus.",
+    _forestryIntentKinds: ["forest-regeneration-2025-availability"],
   },
   {
     id: "forest-law",
@@ -86,11 +196,11 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     type: "Kehtiv õigusakt",
     published: "jooksev",
     url: "https://www.riigiteataja.ee/akt/MS",
-    tags: ["mets", "metsamaa", "raie", "metsateatis", "säästev majandamine", "tagavara"],
+    tags: ["mets", "metsamaa", "raie", "lageraie", "raielank", "metsateatis", "säästev majandamine", "tagavara"],
     summary: "Metsaseadus sätestab metsa kui ökosüsteemi kaitse, säästva majandamise, metsaressursi arvestuse ja metsateatise õigusliku raami.",
-    content: "Metsaseaduse eesmärk on tagada metsa kui ökosüsteemi kaitse ja säästev majandamine. Seadus eristab metsa, metsamaad, metsaressursi arvestust ja konkreetseid metsamajandamise tegevusi. Kasvava metsa tagavara on metsaressursi näitaja, mitte automaatselt lubatud või majanduslikult kättesaadav raiemaht. Raie lubatavus sõltub muu hulgas metsa seisundist, vanusest, asukohast, õiguslikest piirangutest ja nõuetekohasest menetlusest. Metsateatise kohustus ja erandid on sätestatud §-s 41.",
-    locator: "§ 2, § 3, § 6, § 9 ja § 41; kontrolli alati kehtivat redaktsiooni.",
-    _forestryIntentKinds: ["stock-versus-harvestable", "clearcut-value-judgement", "forest-notice", "logging-in-protected-areas"],
+    content: "Metsaseaduse eesmärk on tagada metsa kui ökosüsteemi kaitse ja säästev majandamine. Seadus eristab metsa, metsamaad, metsaressursi arvestust ja konkreetseid metsamajandamise tegevusi. Kasvava metsa tagavara on metsaressursi näitaja, mitte automaatselt lubatud või majanduslikult kättesaadav raiemaht. Raie lubatavus sõltub muu hulgas metsa seisundist, vanusest, asukohast, õiguslikest piirangutest ja nõuetekohasest menetlusest. Metsaseaduse § 28 järgi tehakse sanitaarraiet metsa sanitaarse seisundi parandamiseks ning ohuallikat mittekujutavate surevate või surnud puude puidu kasutamise võimaldamiseks, kui see ei ohusta elustiku mitmekesisust. Metsaseaduse § 29 lõike 11 järgi on lageraielangi ülempiir olenevalt kasvukohast kaks hektarit luitel, erosiooni- või tuuleohtlikul ning loo ja sambliku kasvukohal, viis hektarit loetletud soo- ja rabakasvukohtades ning muudes kasvukohatüüpides üldjuhul seitse hektarit; viie ja seitsme hektari piirangul on seaduses ühe metsaeraldise erand. Metsateatise kohustus ja erandid on sätestatud §-s 41. § 41 lõike 14 järgi võib metsaomanik metsateatist esitamata raiuda kuni 20 tihumeetrit puitu kinnisasja kohta aastas.",
+    locator: "§ 2, § 3, § 6, § 9, § 28, § 29 lõige 11 ja § 41; kontrolli alati kehtivat redaktsiooni.",
+    _forestryIntentKinds: ["stock-versus-harvestable", "clearcut-value-judgement", "clearcut-size-limits", "sanitary-cutting-definition", "sanitary-cutting-rules", "forest-notice", "forest-notice-exception-fee", "logging-in-protected-areas"],
   },
   {
     id: "nature-conservation-law",
@@ -120,6 +230,20 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     _forestryIntentKinds: ["protected-forest-share", "stock-versus-harvestable"],
   },
   {
+    id: "nature-protection-share-2025",
+    title: "Kaitstavate alade pindala ja osakaal territooriumist",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Keskkonnanäitaja",
+    published: "12.05.2026",
+    url: "https://keskkonnaportaal.ee/et/kaitstavate-alade-pindala-ja-osakaal-territooriumist",
+    tags: ["looduskaitse", "kaitstavad alad", "pindala", "osakaal", "EELIS", "2025"],
+    summary: "31.12.2025 seisuga oli kaitse all 20% Eesti maismaast ilma suurte järvedeta, 21% koos suurte järvedega ja 23,5% Eesti kogupindalast koos territoriaalmerega.",
+    content: "31.12.2025 seisuga oli kaitse all 20% Eesti maismaast ilma suurte järvedeta ja 21% maismaast koos suurte järvedega. Kaitstava ala kogupindala koos territoriaalmerega oli 1 658 779 hektarit ehk 23,5% Eesti kogupindalast. Need osakaalud kasutavad erinevaid nimetajaid, seega tuleb vastuses täpsustada, kas Eesti pindala tähendab maismaad, maismaad koos suurte järvedega või kogupindala koos territoriaalmerega.",
+    locator: "Joonis 1 ja selle 31.12.2025 selgitus: maismaa, suured järved, territoriaalmeri ja kogupindala.",
+    _publishedAt: "2026-05-12",
+    _forestryIntentKinds: ["nature-protection-share-2025"],
+  },
+  {
     id: "forest-spatial-data",
     title: "Ruumiandmete teenused ja EELISe kasutamine",
     organization: "Keskkonnaagentuur / Keskkonnaportaal",
@@ -144,7 +268,7 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     content: "SMI 2025 aastahinnang koondab ligikaudu 28 000 proovitükki ja viie aasta mõõtmised ning üks proovitükk esindab keskmiselt 156,2 hektarit. Valikuuringu tulemused üldistatakse kogu Eestile ning hinnangutega kaasneb valimist tulenev statistiline viga. 2025. aastal muudeti puude kõrguse, tagavara, alla 8 cm puude mahu, juurdekasvu, suremuse ja netojuurdekasvu arvutusmetoodikat; esitlus hoiatab, et seetõttu muutuvad kõik mahuhinnangud ja eri metoodikaga avaldatud arve ei tohi käsitleda täiesti võrreldavana. Uue metoodikaga oli metsamaa pindala 2 360,2 tuhat hektarit ehk 52,1% Eesti pindalast ning kasvava metsa tagavara 466 miljonit m³. Metsamaast oli 20,2% mittemajandatav, 10,4% majanduspiiranguga ja 69,4% majandusmets. Enamuspuuliigi järgi moodustasid mänd 29%, kuusk 19% ja kask 30% metsamaa pindalast. Nii noorte kui ka vanade metsade pindala suurenes, puistute keskmine vanus oli 55 aastat ning 2025. aasta raiemahu eksperthinnang 11,0 miljonit m³.",
     locator: "SMI 2025 tulemuste esitlus: valimi maht ja üldistamine, metoodikamuutus, pindala, tagavara, majanduskategooriad, puuliigid, vanusjaotus ja raiemaht.",
     _publishedAt: "2026-08-18",
-    _forestryIntentKinds: ["smi-method-comparison", "forest-stock-uncertainty", "sample-size-and-precision", "increment-method", "increment-estimate-2024", "stock-versus-harvestable", "protected-forest-share", "forest-management-category-share", "forest-age-trend", "pine-versus-spruce", "harvest-over-time"],
+    _forestryIntentKinds: ["smi-method-comparison", "forest-stock-uncertainty", "sample-size-and-precision", "increment-method", "increment-estimate-2024", "stock-versus-harvestable", "protected-forest-share", "forest-management-category-share", "forest-age-trend", "pine-versus-spruce", "forest-harvest-2025", "harvest-over-time"],
   },
   {
     id: "forest-smi-methodology-20-years",
@@ -219,6 +343,210 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
 ];
 
 const INTENTS = {
+  "forest-harvest-2025": {
+    serviceDocumentIds: ["forest-smi-2025-presentation"],
+    discoveryQueries: ["SMI 2025 raiemahu eksperthinnang"],
+    evidenceGroups: [
+      ["2025. aasta raiemahu eksperthinnang"],
+      ["11,0 miljonit m³", "11 miljonit m³"],
+    ],
+  },
+  "bark-beetle-damage": {
+    serviceDocumentIds: ["bark-beetle-guidance"],
+    discoveryQueries: ["kuuse-kooreürask kuusik kahjustab niineosa kuivamine"],
+    evidenceGroups: [
+      ["kuuse-kooreürask"],
+      ["koore all"],
+      ["niineosast"],
+      ["kuuskede kuivamist"],
+    ],
+  },
+  "sanitary-cutting-definition": {
+    serviceDocumentIds: ["forest-law"],
+    discoveryQueries: ["metsaseadus sanitaarraie metsa sanitaarse seisundi parandamine"],
+    evidenceGroups: [
+      ["sanitaarraiet"],
+      ["metsa sanitaarse seisundi parandamiseks"],
+      ["surevate või surnud puude"],
+      ["elustiku mitmekesisust"],
+    ],
+  },
+  "forest-notice-exception": {
+    serviceDocumentIds: ["forest-notice-guidance"],
+    discoveryQueries: ["metsateatis küttepuud 20 tihumeetrit kinnisasja kohta aastas"],
+    evidenceGroups: [
+      ["metsateatist esitamata"],
+      ["20 tihumeetrit"],
+      ["kinnisasja kohta aastas"],
+    ],
+  },
+  "nature-protection-share-2025": {
+    serviceDocumentIds: ["nature-protection-share-2025"],
+    discoveryQueries: ["Eesti kaitstavate alade osakaal 31.12.2025"],
+    evidenceGroups: [
+      ["31.12.2025"],
+      ["20%"],
+      ["21%"],
+      ["23,5%"],
+      ["territoriaalmerega"],
+    ],
+  },
+  "forest-species-share": {
+    serviceDocumentIds: ["forest-smi-2025-tables"],
+    discoveryQueries: ["SMI 2025 enamuspuuliik kask mänd kuusk osakaal"],
+    evidenceGroups: [
+      ["kask 30%"],
+      ["mänd 29%"],
+      ["kuusk 19%"],
+      ["enamuspuuliigi"],
+    ],
+  },
+  "forest-ownership-share": {
+    serviceDocumentIds: ["forest-smi-2025-tables"],
+    discoveryQueries: ["SMI 2025 metsamaa omandivorm riigimaa eramaa"],
+    evidenceGroups: [
+      ["riigimaad kokku 1 181,266 tuhat hektarit"],
+      ["50,0%"],
+      ["eramaad kokku 1 177,841 tuhat hektarit"],
+      ["49,9%"],
+      ["omand oli määramata"],
+    ],
+  },
+  "rmk-managed-forest-area": {
+    serviceDocumentIds: ["rmk-managed-forest-area"],
+    discoveryQueries: ["RMK hallatav metsamaa 2026 pindala"],
+    evidenceGroups: [
+      ["rmk hallatavat metsamaad"],
+      ["1 029 902 hektarit"],
+      ["mitte kogu eesti riigi omandis"],
+    ],
+  },
+  "forest-regeneration-2025-availability": {
+    serviceDocumentIds: ["forest-regeneration-2025-availability"],
+    discoveryQueries: ["metsauuendamine istutamine külv 2025 Eesti"],
+    evidenceGroups: [
+      [
+        "2025. aasta üleriigilist istutamise ja külvamise pindala",
+        "2025. aasta üleriigilist istutamise ja külvamise teel uuendatud metsamaa pindala",
+      ],
+      ["ei ole", "pole"],
+      ["avaldatud"],
+      ["ei tähenda", "mitte null"],
+    ],
+  },
+  "conifer-area-trend": {
+    serviceDocumentIds: ["forest-smi-2025-tables"],
+    discoveryQueries: ["SMI okaspuupuistute pindala 2016 2025"],
+    evidenceGroups: [
+      ["okaspuupuistute pindala"],
+      ["2016. aastal kokku 1 164,8 tuhat hektarit"],
+      ["2025. aastal 1 132,9 tuhat hektarit"],
+      ["31,9 tuhat", "32 000 hektarit"],
+    ],
+  },
+  "sanitary-cutting-rules": {
+    serviceDocumentIds: ["forest-management-rules"],
+    discoveryQueries: ["metsa majandamise eeskiri sanitaarraie vanus täius 30"],
+    evidenceGroups: [
+      ["sanitaarraiet"],
+      ["mis tahes vanusega puistus"],
+      ["alla 30%"],
+    ],
+  },
+  "moose-population-2025": {
+    serviceDocumentIds: ["moose-population-2025"],
+    discoveryQueries: ["Keskkonnaagentuur põdra asurkonna suurus 2025"],
+    evidenceGroups: [
+      ["põdra asurkonna suurus"],
+      ["2025. aasta alguses"],
+      ["10 000–11 000 isendit", "10 000 - 11 000 isendit"],
+      ["hinnang", "mitte täpse loendusega"],
+    ],
+  },
+  "bird-hunting-season": {
+    serviceDocumentIds: ["bird-hunting-season-2026"],
+    discoveryQueries: ["Keskkonnaamet linnujaht 2026 kormoran veelinnud haned lagled"],
+    evidenceGroups: [
+      ["kormorani"],
+      ["1. augustist"],
+      ["20. augustil"],
+      ["20. septembril"],
+      ["jahieeskirja"],
+    ],
+  },
+  "smi-definition": {
+    serviceDocumentIds: ["smi"],
+    discoveryQueries: ["mis on statistiline metsainventuur SMI valikuuring"],
+    evidenceGroups: [
+      ["statistiline metsainventuur ehk smi"],
+      ["üleriigiliste proovitükkidega"],
+      ["valikuuring"],
+      ["kogu eesti metsade üldistatud hinnang"],
+    ],
+  },
+  "bark-beetle-guidance": {
+    serviceDocumentIds: ["bark-beetle-guidance"],
+    discoveryQueries: ["kuuse-kooreürask tunnused näripuru püünispuu"],
+    evidenceGroups: [
+      ["2–2,5 mm", "2-2,5 mm"],
+      ["vaigunired"],
+      ["näripuru"],
+      ["püünispuid"],
+      ["välja vedada"],
+    ],
+  },
+  "clearcut-size-limits": {
+    serviceDocumentIds: ["forest-law"],
+    discoveryQueries: ["metsaseadus lageraielangi pindala kaks viis seitse hektarit"],
+    evidenceGroups: [
+      ["lageraielangi ülempiir"],
+      ["kaks hektarit"],
+      ["viis hektarit"],
+      ["seitse hektarit"],
+    ],
+  },
+  "pine-cutting-age": {
+    serviceDocumentIds: ["forest-management-rules"],
+    discoveryQueries: ["metsa majandamise eeskiri harilik mänd raievanus boniteet"],
+    evidenceGroups: [
+      ["hariliku männi raievanused"],
+      ["90, 90, 90, 100, 110 ja 120 aastat"],
+      ["90–120 aastat", "90-120 aastat"],
+      ["boniteediklass"],
+    ],
+  },
+  "forest-notice-exception-fee": {
+    serviceDocumentIds: ["forest-notice-guidance"],
+    discoveryQueries: ["metsateatis 20 tihumeetrit riigilõiv 30 eurot"],
+    evidenceGroups: [
+      ["20 tihumeetrit"],
+      ["30 eurot"],
+      ["uuendusraie"],
+      ["raadamise"],
+    ],
+  },
+  "old-forest-area-protection": {
+    serviceDocumentIds: ["forest-smi-2025-tables", "nature-conservation-law"],
+    discoveryQueries: ["SMI 2025 üle 100 aastaste puistute pindala", "vana mets automaatne kaitse"],
+    evidenceGroups: [
+      ["üle 100-aastaste puistute pindala"],
+      ["184,0 tuhat hektarit"],
+      ["ei anna", "ei tulene"],
+      ["automaatset õiguslikku kaitset", "üksnes vanuse tõttu"],
+      ["kaitstavast loodusobjektist", "kaitstava objekti"],
+    ],
+    minimumSupportingDocuments: 2,
+  },
+  "forest-fires-2025": {
+    serviceDocumentIds: ["forest-fires-2025"],
+    discoveryQueries: ["Päästeamet metsa maastikutulekahjud 2025 avaandmed"],
+    evidenceGroups: [
+      ["2025. aastal"],
+      ["mets või mets koos maastikuga"],
+      ["kokku 60"],
+      ["357"],
+    ],
+  },
   "forest-area-method": {
     serviceDocumentIds: [
       "forest-stock-stable",
@@ -301,16 +629,16 @@ const INTENTS = {
     minimumSupportingDocuments: 2,
   },
   "forest-covered-area": {
-    serviceDocumentIds: ["forest-area", "forest-condition-review"],
-    discoveryQueries: ["SMI metsaga kaetud pindala puistud", "metsamaa ja puistute pindala"],
+    serviceDocumentIds: ["forest-smi-2025-tables"],
+    discoveryQueries: ["SMI 2025 metsamaa metsaga metsamaa pindala osakaal"],
     evidenceGroups: [
-      ["metsaga kaetud", "puistute pindala"],
-      ["47,11%", "2 135,8"],
-      ["metsamaa"],
-      ["51,8%", "2 350,6"],
+      ["metsaga metsamaa", "puistute pindala"],
+      ["2 151,2 tuhat hektarit"],
+      ["47,45%"],
+      ["2 360,2 tuhat hektarit"],
+      ["52,1%"],
       ["eri näitajad", "ei ole sama"],
     ],
-    minimumSupportingDocuments: 2,
   },
   "forest-overview": {
     serviceDocumentIds: ["forest-area", "smi", "forest-condition-review", "metsainfo-hetkeseis"],
@@ -657,9 +985,102 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
   const multilingualForestry = isForestryMultilingual();
   const hasForest = hasStem(tokens, [
     "mets", "puist", "tagavara", "metsavaru", "puiduvaru", "juurdekasv", "netojuurdekasv",
-    "lagerai", "metsateat", "raieteat", "metsaregis", "takseer", "mand", "kuusk",
+    "lagerai", "sanitaarrai", "metsatulekah", "metsateat", "raieteat", "metsaregis", "takseer",
+    "mand", "kuusk", "okaspuu", "kooreurask",
     ...(multilingualForestry ? ["forest", "woodland"] : []),
   ], true) || (multilingualForestry && /\bforested\b/u.test(text)) || hasSmi || hasStem(tokens, ["rmk"]);
+
+  // Claim-specific national questions must resolve before the generic
+  // area/geography fallback. Several begin with “kui palju metsa”, but ask
+  // about regeneration, fire events or ownership rather than forest area.
+  if (hasHarvest && /\b2025\b/u.test(text)
+    && /\b(?:kui\s+palju|raiemaht\w*|maht\w*|tihumeet\w*)\b/u.test(text)) {
+    return resolved("forest-harvest-2025");
+  }
+  if (/\b(?:puuliig\w*|enamuspuuliig\w*)\b/u.test(text)
+    && /\b(?:osakaal\w*|protsent\w*|peamis\w*|domineeri\w*)\b/u.test(text)) {
+    return resolved("forest-species-share");
+  }
+  if (/\b(?:riigi\w*|riigimets\w*)\b/u.test(text)
+    && /\b(?:eraomanik\w*|eramets\w*|eramaa\w*)\b/u.test(text)
+    && /\b(?:osa|osakaal\w*|protsent\w*|kuulu\w*|omand\w*)\b/u.test(text)) {
+    return resolved("forest-ownership-share");
+  }
+  if (/\brmk\b/u.test(text)
+    && /\b(?:halda\w*|hallata\w*|hallatav\w*)\b/u.test(text)
+    && /\b(?:mets\w*|hektar\w*|pindala\w*|palju)\b/u.test(text)) {
+    return resolved("rmk-managed-forest-area");
+  }
+  if (/\b2025\b/u.test(text)
+    && /\b(?:uuenda\w*|uuendati\w*)\b/u.test(text)
+    && /\bistuta\w*\b/u.test(text)
+    && /\bkulva\w*\b/u.test(text)) {
+    return resolved("forest-regeneration-2025-availability");
+  }
+  if (/\bokaspuu\w*\b/u.test(text)
+    && ((/\b2016\b/u.test(text) && /\b2025\b/u.test(text))
+      || /\b(?:viimase\s+)?(?:10|kumne)\s+aasta\w*\b|\bviimase\s+kumnendi\w*\b/u.test(text))
+    && /\b(?:pindala\w*|muutu\w*|vahen\w*|suuren\w*)\b/u.test(text)) {
+    return resolved("conifer-area-trend");
+  }
+  if (/^mis\s+on\s+sanitaarrai\w*$/u.test(text)) {
+    return resolved("sanitary-cutting-definition");
+  }
+  if (/\bsanitaarrai\w*\b/u.test(text)
+    && /\b(?:vanus\w*|puistu\w*|tohib\w*|lubat\w*)\b/u.test(text)) {
+    return resolved("sanitary-cutting-rules");
+  }
+  if (/\b(?:poder|podr|potr)\w*\b/u.test(text)
+    && /\b(?:arvuk\w*|asurk\w*|palju|arv\w*)\b/u.test(text)) {
+    return resolved("moose-population-2025");
+  }
+  if (/\blinnujaht\w*\b/u.test(text)
+    || (/\b(?:lind|linnu|linde|lindude)\w*\b/u.test(text)
+      && /\b(?:jaht\w*|kutt\w*|kuti\w*)\b/u.test(text))) {
+    return resolved("bird-hunting-season");
+  }
+  if (hasSmi && (/^(?:mis|mida)\s+(?:on|tahendab)\s+smi$/u.test(text)
+    || /^mis\s+on\s+statistiline\s+metsainventuur(?:\s+ehk\s+smi)?$/u.test(text))) {
+    return resolved("smi-definition");
+  }
+  if (/\b(?:kuuse\s+)?kooreurask\w*\b/u.test(text)
+    && /\b(?:tund\w*|ara\s+tund\w*|torj\w*|valdi\w*|hoid\w*)\b/u.test(text)) {
+    return resolved("bark-beetle-guidance");
+  }
+  if (/\b(?:kuuse\s+)?kooreurask\w*\b/u.test(text)
+    && /\b(?:mis\s+on|kahjust\w*|kuusik\w*|kuiv\w*)\b/u.test(text)) {
+    return resolved("bark-beetle-damage");
+  }
+  if (hasClearcut
+    && /\b(?:raielank\w*|lageraielank\w*|langi\w*)\b/u.test(text)
+    && /\b(?:suur\w*|pindala\w*|hektar\w*|maksimaal\w*)\b/u.test(text)) {
+    return resolved("clearcut-size-limits");
+  }
+  if (/\b(?:mand|mann|manniku|mannipuistu)\w*\b/u.test(text)
+    && /\b(?:raievanus\w*|vanus\w*)\b/u.test(text)
+    && /\b(?:rai\w*|lagerai\w*|tohib\w*)\b/u.test(text)) {
+    return resolved("pine-cutting-age");
+  }
+  if (hasNotice
+    && /\b(?:riigiloiv\w*|tasu\w*|euro\w*|20\s+tihumeet\w*|ei\s+pea)\b/u.test(text)) {
+    return resolved("forest-notice-exception-fee");
+  }
+  if (hasNotice && /\b(?:küttepuu\w*|kuttepuu\w*|oma\s+mets\w*)\b/u.test(text)) {
+    return resolved("forest-notice-exception");
+  }
+  if (/\b(?:ule\s+100|100\s*aasta)\w*\b/u.test(text)
+    && /\b(?:mets\w*|puistu\w*)\b/u.test(text)
+    && /\b(?:kaitse\w*|kaitst\w*|palju|pindala\w*)\b/u.test(text)) {
+    return resolved("old-forest-area-protection");
+  }
+  if (/\bmetsatulekah\w*\b/u.test(text) && /\b2025\b/u.test(text)) {
+    return resolved("forest-fires-2025");
+  }
+  if (/\b(?:eestist|eesti\s+pindala\w*|eesti\s+maismaa\w*|kogupindala\w*)\b/u.test(text)
+    && /\b(?:looduskaitse\w*|kaitstav\w*|kaitse\s+all)\b/u.test(text)
+    && /\b(?:osa|osakaal\w*|protsent\w*|palju|suur)\b/u.test(text)) {
+    return resolved("nature-protection-share-2025");
+  }
 
   const geographyScope = classifyForestryGeographyScope(query, { forPrivacyCheck });
   const municipalityScope = ["reviewed-municipality", "unknown-locality"].includes(geographyScope.kind);
@@ -779,7 +1200,7 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
   // closed on query-bound geography instead.
   if (hasForest && !regionalScope && !municipalityScope && /\b(?:mittemajandatav\w*|majanduspiirang\w*|piiranguga\s+metsamaa)\b/u.test(text)
     && /\b(?:kui\s+suur|kui\s+palju|mitu|osa|osakaal|protsent\w*)\b/u.test(text)) return resolved("forest-management-category-share");
-  if (hasForest && !regionalScope && !municipalityScope && /\b(?:kaitse\s+all|kaitstud|kaitsealuse|rangelt\s+kaitstav)\b/u.test(text)
+  if (hasForest && !regionalScope && !municipalityScope && /\b(?:kaitse\s+all|kaitstud|kaitsealuse|kaitstav\w*|range\s+kaitse|rangelt\s+kaitstav)\b/u.test(text)
     && /\b(?:kui\s+suur|kui\s+palju|mitu|osa|osakaal|protsent\w*)\b/u.test(text)) return resolved("protected-forest-share");
   if (hasProtection && (hasHarvest || hasNotice)) return resolved("logging-in-protected-areas");
   if (hasNotice || (/\braiekavatsus\w*\b/u.test(text) && /\blubav\w*\s+mar(?:k|g)\w*\b/u.test(text))) return resolved("forest-notice");

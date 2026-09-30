@@ -44,14 +44,14 @@ const DETERMINISTIC_CASES = [
   ["SMI vs lausmetsakorraldus – tagavara on ülehinnatud.", "smi-method-comparison", /ei tõenda[^.]*üle hinnatud/iu],
   ["Tagavara ei võrdu reaalselt kättesaadava puiduga.", "stock-versus-harvestable", /ei ole aastane raiemaht[^.]*raiutav puidukogus/iu],
   ["RMK andmed vs SMI andmed.", "rmk-versus-smi", /RMK hallatavate[\s\S]*SMI[\s\S]*kogu Eesti/iu],
-  ["Metsasuse ja pindala protsendid.", "forest-covered-area", /51,8[4%][\s\S]*47,11%[\s\S]*eri näitajad/iu],
+  ["Metsasuse ja pindala protsendid.", "forest-covered-area", /2\s*360,2[\s\S]*52,1%[\s\S]*2\s*151,2[\s\S]*47,45%[\s\S]*eri näitajad/iu],
   ["Suurem valim ei tähenda automaatselt täpsemat tulemust.", "sample-size-and-precision", /Valimi suurus üksi ei määra hinnangu täpsust/iu],
   ["Eesti metsad hävivad kiiresti.", "forest-depletion", /ei viita[^.]*otsa saamas/iu],
   ["Kõik lageraied on keskkonnavastased.", "clearcut-value-judgement", /kõik lageraied[^.]*ei ole mõõdetav üksikfakt/iu],
   ["Vana mets on automaatselt kaitse all.", "old-forest-protection", /ei anna[^.]*automaatset õiguslikku kaitset/iu],
   ["Metsaregistri ja SMI andmed peavad alati kattuma.", "forest-data-sources", /SMI[\s\S]*Metsaregister[\s\S]*kinnistu/iu],
   ["Metsa tagavara on üks kindel vaieldamatu number.", "forest-stock-uncertainty", /mitte üks kindel vaieldamatu number/iu],
-  ["Kui suur osa Eestist on kaetud metsaga?", "forest-covered-area", /47,11%/u],
+  ["Kui suur osa Eestist on kaetud metsaga?", "forest-covered-area", /47,45%/u],
   ["Miks annavad eri allikad erinevaid numbreid?", "why-forest-numbers-differ", /katvus[\s\S]*andmeaasta[\s\S]*definitsioon/iu],
   ["Mis vahe on SMI-l ja metsaregistril?", "forest-data-sources", /SMI[\s\S]*Metsaregister[\s\S]*kinnistu/iu],
   ["Kuidas arvutatakse juurdekasvu?", "increment-method", /Kogujuurdekasv[\s\S]*Netojuurdekasv[\s\S]*mudelipõhise meetodi[\s\S]*mitmese imputeerimise/iu],
@@ -76,6 +76,49 @@ const BALANCE_QUERIES = [
 ];
 
 const MUNICIPAL_QUERY = "Kui palju metsa on minu koduvallas?";
+
+const REPORTED_FORESTRY_WILDLIFE_CASES = [
+  ["Millised on Eesti metsade peamised puuliigid ja nende osakaal?", "forest-species-share", /kask[^.]*30%[\s\S]*mänd[^.]*29%[\s\S]*kuusk[^.]*19%/iu],
+  ["Kui suur osa Eesti metsadest on rangelt kaitstud?", "protected-forest-share", /16,8%[\s\S]*rangelt kaitstav/iu],
+  ["Kui suur osa metsamaast kuulub riigile ja kui suur osa eraomanikele?", "forest-ownership-share", /riigimaa[^.]*50,0%[\s\S]*eramaa[^.]*49,9%/iu],
+  ["Kui palju metsamaad haldab RMK?", "rmk-managed-forest-area", /1\s*029\s*902\s+hektar/iu],
+  ["Kui palju metsa uuendati 2025. aastal istutamise ja külvamise teel?", "forest-regeneration-2025-availability", /2025\. aasta[^.]*ei ole[^.]*avaldatud[\s\S]*(?:ei tähenda|mitte)[^.]*null/iu],
+  ["Kuidas muutus okaspuupuistute pindala aastatel 2016–2025?", "conifer-area-trend", /1\s*164,8[\s\S]*1\s*132,9[\s\S]*(?:31,9|32)\s*(?:tuhat|000)\s+hektar/iu],
+  ["Kas sanitaarraiet tohib teha igas vanuses puistus?", "sanitary-cutting-rules", /mis tahes vanusega puistus[\s\S]*30%/iu],
+  ["Kui suur on põtrade arvukus Eestis?", "moose-population-2025", /2025\. aasta alguses[\s\S]*10\s*000\s*[–-]\s*11\s*000/iu],
+  ["Millal tohib Eestis linde küttida?", "bird-hunting-season", /1\. august[\s\S]*20\. august[\s\S]*20\. septemb/iu],
+  ["Mis on SMI?", "smi-definition", /statistiline metsainventuur[\s\S]*proovitükk[\s\S]*valikuuring/iu],
+  ["Kuidas kuuse-kooreüraskit ära tunda ja tõrjuda?", "bark-beetle-guidance", /2[–-]2,5\s*mm[\s\S]*vaigunire[\s\S]*näripuru[\s\S]*püünispu/iu],
+  ["Kui suur võib olla lageraielank?", "clearcut-size-limits", /kaks hektarit[\s\S]*viis hektarit[\s\S]*seitse hektarit/iu],
+  ["Mis vanuses tohib männipuistut raiuda?", "pine-cutting-age", /90[–-]120\s+aast/iu],
+  ["Millal ei pea metsateatist esitama ja kui suur on riigilõiv?", "forest-notice-exception-fee", /20\s+tihumeetrit[\s\S]*uuendusraie[\s\S]*raadamis[\s\S]*30\s+eurot/iu],
+  ["Kui palju on Eestis üle 100-aastast metsa ja kas see on kaitse all?", "old-forest-area-protection", /184,0\s+tuhat hektarit[\s\S]*ei anna[^.]*automaatset[^.]*kaitset/iu],
+  ["Kui palju oli Eestis 2025. aastal metsatulekahjusid?", "forest-fires-2025", /metsa hõlmanud tulekahjusündmusi kokku 60/iu],
+];
+
+const ORIGINAL_REPORTED_QUERY_CASES = [
+  ["Millised on Eesti metsade enamuspuuliigid ja kui suur on nende osakaal?", /kask[^.]*30%[\s\S]*mänd[^.]*29%[\s\S]*kuusk[^.]*19%/iu],
+  ["Kui palju raiuti Eestis metsa 2025. aastal?", /2025\. aasta raiemahu eksperthinnang[^.]*11(?:,0)?\s+miljonit m³/iu],
+  ["Mis on kuuse-kooreürask ja kuidas ta kuusikuid kahjustab?", /koore all[\s\S]*niineosast[\s\S]*kuivamist/iu],
+  ["Kui suur osa Eesti metsamaast on range kaitse all?", /16,8%[^.]*rangelt kaitstav/iu],
+  ["Kaitstavate metsade osakaal Eestis", /28,4%[\s\S]*16,8%/iu],
+  ["Kui suur osa Eesti metsamaast kuulub riigile ja kui suur osa eraomanikele?", /riigimaad[^.]*50,0%[\s\S]*eramaad[^.]*49,9%/iu],
+  ["Kui palju on Eestis üle 100 aasta vanuseid metsi?", /184,0\s+tuhat hektarit/iu],
+  ["Kui palju metsa uuendati ehk istutati ja külvati Eestis 2025. aastal?", /2025\. aasta[^.]*ei ole[^.]*avaldatud[\s\S]*ei tähenda[^.]*null/iu],
+  ["Kui palju metsa haldab RMK?", /1\s*029\s*902\s+hektarit/iu],
+  ["Kuidas on okaspuumetsade pindala Eestis viimase kümne aasta jooksul muutunud?", /1\s*164,8[\s\S]*1\s*132,9[\s\S]*31,9\s+tuhat/iu],
+  ["Kui palju oli Eestis metsatulekahjusid 2025. aastal?", /metsa hõlmanud tulekahjusündmusi kokku 60/iu],
+  ["Kui palju on Eestis metsa ja kui suur on metsasus protsentides?", /2\s*360,2\s+tuhat hektarit[\s\S]*52,1%[\s\S]*2\s*151,2\s+tuhat hektarit[\s\S]*47,45%/iu],
+  ["Mis on statistiline metsainventuur ehk SMI?", /statistiline metsainventuur[^.]*proovitükk[^.]*valikuuring/iu],
+  ["Kui suur võib metsaseaduse järgi olla lageraie langi maksimaalne pindala?", /kaks hektarit[\s\S]*viis hektarit[\s\S]*seitse hektarit/iu],
+  ["Kas oma metsast küttepuude tegemiseks on vaja metsateatist esitada?", /metsateatist esitamata[^.]*20\s+tihumeetrit/iu],
+  ["Mis on sanitaarraie?", /metsa sanitaarse seisundi parandamiseks[\s\S]*surevate või surnud puude/iu],
+  ["Mis on männi raievanus?", /90–120\s+aastat/iu],
+  ["Kas metsateatise esitamine on tasuline?", /uuendusraie[\s\S]*raadamise[\s\S]*30\s+eurot/iu],
+  ["Kui palju põtru elab Eestis?", /2025\. aasta alguses[\s\S]*10\s*000–11\s*000/iu],
+  ["Millal algab Eestis linnujaht ja mida peab jälgima?", /1\. august[\s\S]*20\. august[\s\S]*20\. septemb/iu],
+  ["Kui suur osa Eesti pindalast on looduskaitse all?", /31\.12\.2025[\s\S]*20%[\s\S]*21%[\s\S]*23,5%/iu],
+];
 
 function answerText(draft) {
   return [draft.answer.intro, ...draft.answer.parts.map((part) => part.text)].join("\n");
@@ -116,6 +159,93 @@ function assertNumericClaimsHaveVisibleWitnesses(draft, query) {
     }
   }
 }
+
+test("reported forestry, wildlife and legal questions route to claim-specific official evidence", async () => {
+  const directory = officialServiceCatalogueDocuments();
+  for (const [query, expectedIntent, expectedAnswer] of REPORTED_FORESTRY_WILDLIFE_CASES) {
+    assert.equal(containsPrivatePersonLookup(query), false, query);
+    assert.equal(assessSearchQuery(query).kind, "answerable", query);
+    assert.equal(forestEvidenceIntent(query)?.kind, expectedIntent, query);
+
+    const visible = rankPublicSearchCandidates(query, directory, {
+      intentDocuments: directory,
+      now: NOW,
+    }).slice(0, 12);
+    const plan = selectAnswerEvidence(query, visible);
+    assert.equal(plan?.kind, expectedIntent, query);
+    assert.equal(plan?.strong, true, query);
+
+    const draft = await createPortalDraft(query, {
+      deadlineAt: Date.now(),
+      searchResults: { total: visible.length, items: visible },
+    });
+    const text = answerText(draft);
+    assert.match(text, expectedAnswer, query);
+    assert.doesNotMatch(text, /2,36\s+miljonit hektarit|52,1%\s+Eesti pindalast/iu, query);
+    assert.ok(usedCitations(draft).size >= 1, query);
+    assertNumericClaimsHaveVisibleWitnesses(draft, query);
+  }
+});
+
+test("public aggregate exemptions do not weaken named-person and property privacy", () => {
+  for (const query of [
+    ...REPORTED_FORESTRY_WILDLIFE_CASES.map(([query]) => query),
+    "Kui suur on riigi- ja erametsa osakaal?",
+    "Kui palju metsamaad on RMK hallata?",
+  ]) {
+    assert.equal(containsPrivatePersonLookup(query), false, query);
+  }
+  for (const query of [
+    "Kui palju metsamaad haldab Jaan Tamm?",
+    "Kui suur osa metsamaast kuulub Jaan Tammele?",
+    "Kas Jaan Tamme kinnistul tohib teha sanitaarraiet?",
+    "Milline on Jaan Tamme metsa raievanus?",
+  ]) {
+    assert.equal(containsPrivatePersonLookup(query), true, query);
+    assert.equal(assessSearchQuery(query).reason, "personal-data-lookup", query);
+  }
+});
+
+test("every originally reported query returns the current claim-specific answer", async () => {
+  const directory = officialServiceCatalogueDocuments();
+  for (const [query, expectedAnswer] of ORIGINAL_REPORTED_QUERY_CASES) {
+    assert.equal(containsPrivatePersonLookup(query), false, query);
+    assert.equal(assessSearchQuery(query).kind, "answerable", query);
+    const visible = rankPublicSearchCandidates(query, directory, {
+      intentDocuments: directory,
+      now: NOW,
+    }).slice(0, 12);
+    const draft = await createPortalDraft(query, {
+      deadlineAt: Date.now(),
+      searchResults: { total: visible.length, items: visible },
+    });
+    assert.match(answerText(draft), expectedAnswer, query);
+    assert.ok(usedCitations(draft).size >= 1, query);
+    assertNumericClaimsHaveVisibleWitnesses(draft, query);
+  }
+});
+
+test("common nominative wildlife and protection-share variants keep claim-specific evidence", async () => {
+  const directory = officialServiceCatalogueDocuments();
+  for (const [query, expectedIntent, expectedAnswer] of [
+    ["Kui arvukas on põder Eestis?", "moose-population-2025", /10\s*000–11\s*000/iu],
+    ["Kui suur osa Eestist on kaitse all?", "nature-protection-share-2025", /20%[\s\S]*21%[\s\S]*23,5%/iu],
+  ]) {
+    assert.equal(containsPrivatePersonLookup(query), false, query);
+    assert.equal(assessSearchQuery(query).kind, "answerable", query);
+    assert.equal(forestEvidenceIntent(query)?.kind, expectedIntent, query);
+    const visible = rankPublicSearchCandidates(query, directory, {
+      intentDocuments: directory,
+      now: NOW,
+    }).slice(0, 12);
+    const draft = await createPortalDraft(query, {
+      deadlineAt: Date.now(),
+      searchResults: { total: visible.length, items: visible },
+    });
+    assert.match(answerText(draft), expectedAnswer, query);
+    assertNumericClaimsHaveVisibleWitnesses(draft, query);
+  }
+});
 
 test("all 30 supplied forestry misconceptions and FAQs have an explicit public route", () => {
   assert.equal(DETERMINISTIC_CASES.length + BALANCE_QUERIES.length + 1, 30);
@@ -933,7 +1063,6 @@ test("municipal and regional scopes fail closed without borrowing national fores
     ["Forest cover in 2030", "forest-covered-area"],
     ["Woodland cover in 1999", "forest-covered-area"],
     ["What was Estonia forest coverage in 2010?", "forest-covered-area"],
-    ["Forest coverage in 2025", "forest-covered-area"],
     ["Forest cover as of 2020", "forest-covered-area"],
   ]) {
     assert.equal(containsPrivatePersonLookup(query), false, query);

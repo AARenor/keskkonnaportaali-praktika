@@ -26,6 +26,7 @@ export const OFFICIAL_CITATION_ORIGIN_VALUES = Object.freeze([
   "https://proto.envir.ee",
   "https://register.keskkonnaportaal.ee",
   "https://register.metsad.ee",
+  "https://rescue.ee",
   "https://rmk.ee",
   "https://tableau.envir.ee",
   "https://tallinn.ee",
@@ -35,6 +36,7 @@ export const OFFICIAL_CITATION_ORIGIN_VALUES = Object.freeze([
   "https://www.foresteurope.org",
   "https://www.ilmateenistus.ee",
   "https://www.riigiteataja.ee",
+  "https://www.rescue.ee",
   "https://www.tallinn.ee",
   "https://www.terviseamet.ee",
 ]);

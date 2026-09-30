@@ -3268,6 +3268,10 @@ const ANY_CASE_FOREST_METRIC_TO_NAMED_PERSON_PATTERN = new RegExp(
   String.raw`(?<!\p{L})(?:forest|woodland)\s+(?:area|cover(?:age)?)\s+(?:of|for)\s+${CAPTURED_ANY_CASE_PERSON_NAME_SOURCE}(?!\p{L})`,
   "giu",
 );
+const ANY_CASE_NAMED_PERSON_FOREST_CUTTING_AGE_PATTERN = new RegExp(
+  String.raw`(?<!\p{L})${CAPTURED_ESTONIAN_GENITIVE_PERSON_NAME_SOURCE}\s+(?:metsa|metsamaa|puistu)\w*\s+raievanus\w*(?!\p{L})`,
+  "giu",
+);
 const ANY_CASE_FOREST_ASSET_IN_NAMED_PERSON_NAME_PATTERN = new RegExp(
   String.raw`(?<!\p{L})${PRIVATE_FOREST_ASSOCIATION_ASSET_SOURCE}\s+(?:is\s+)?(?:registered\s+|recorded\s+)?(?:in|under)\s+${CAPTURED_ANY_CASE_PERSON_NAME_SOURCE}(?:'s|’s)?\s+name(?!\p{L})`,
   "giu",
@@ -3561,6 +3565,18 @@ function isCompletePublicForestOwnershipAggregate(value) {
     || /^(?:forest|woodland)(?:\s+(?:area|land|property))?\s+(?:is\s+)?(?:state|public|municipal|government)[-\s]+owned(?:\s+in\s+estonia)?\??$/iu.test(text);
 }
 
+function isCompleteReviewedNationalForestryFactQuestion(value) {
+  const text = normalizePossessivePrivacyCandidate(value);
+  return [
+    /^kui suur osa (?:eesti )?(?:metsamaast|metsadest) kuulub riigile ja kui suur osa (?:kuulub )?eraomanikele$/u,
+    /^kui palju (?:metsa|metsamaad) (?:haldab rmk|on rmk hallata|on rmk hallatav)$/u,
+    /^kas sanitaarraiet (?:tohib|voib) teha igas vanuses (?:puistus|metsas)$/u,
+    /^sanitaarraie igas vanuses (?:puistus|metsas)$/u,
+    /^kui suur osa (?:eesti )?(?:metsamaast|metsadest) on (?:range|rangelt) kaitse all$/u,
+    /^kaitstavate metsade osakaal eestis$/u,
+  ].some((pattern) => pattern.test(text));
+}
+
 function hasPersonPrefixedReviewedMunicipalityAssetAssociation(value) {
   const text = String(value || "");
   const normalizedText = normalize(text);
@@ -3798,6 +3814,7 @@ function hasEarlyBoundedNamedPrivateAssetAssociation(value) {
     ANY_CASE_ESTONIAN_NAMED_PERSON_PRIVATE_LAND_PATTERN,
     ANY_CASE_ESTONIAN_NAMED_PERSON_PRIVATE_COMPOUND_ASSET_PATTERN,
     HYPHENATED_ESTONIAN_NAMED_PERSON_PRIVATE_ASSET_PATTERN,
+    ANY_CASE_NAMED_PERSON_FOREST_CUTTING_AGE_PATTERN,
     ANY_CASE_OWNERSHIP_TO_NAMED_PERSON_PATTERN,
   ]) {
     pattern.lastIndex = 0;
@@ -4536,6 +4553,11 @@ export function containsPrivatePersonLookup(value, {
   if (hasLossyUnicodeProtectedConstructionResidual(canonicalText)) return true;
   if (IMPERATIVE_PRIVATE_OWNER_ENUMERATION_PATTERN.test(canonicalText)) return true;
   if (IMPERATIVE_NAMED_OWNER_LOOKUP_PATTERN.test(canonicalText)) return true;
+  // These complete national fact questions contain ownership/management or
+  // “vanuses puistus” wording that resembles a person/asset relation after
+  // normalization. Their closed grammar has no slot for a name or property;
+  // any appended identity therefore misses the exception and remains private.
+  if (isCompleteReviewedNationalForestryFactQuestion(canonicalText)) return false;
   if (hasReviewedForestTopicPersonResidual(canonicalText)) return true;
   // A request phrase is presentation, not query substance. Strip at most one
   // complete finite request prefix and run the entire privacy classifier again
