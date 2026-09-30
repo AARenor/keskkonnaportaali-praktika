@@ -1094,7 +1094,7 @@ const SEARCH_DOCUMENTS = [
     summary:
       "Keskkonnaagentuuri 2026. aasta ulukiseire ülevaade koondab jahiulukite arvukuse ja asurkondade muutused ning 2026. aasta jahihooaja küttimissoovitused, sealhulgas suurkiskjate käsitluse.",
     content:
-      "Keskkonnaagentuuri ülevaate „Ulukiasurkondade seisund ja küttimissoovitus 2026” järgi on põdra üldarvukus püsinud stabiilselt 10 000–11 000 isendi vahemikus; sama taseme hoidmiseks soovitatakse 2026. aasta jahihooajal küttida kokku 3 200–3 580 põtra. Punahirve arvukus on saartel jätkuvalt väga kõrge ning mandril on nii arvukus kui ka asustatud alad oluliselt suurenenud. Metssea arvukus langes kevadeks aastaga kolmandiku võrra, Mandri-Eestis sigade Aafrika katku leviku tõttu ligi kaks korda; 2026. jahihooajal soovitatakse küttida ligi 13 000 metssiga. Metskitse asurkonna suurust hinnati 2026. aasta alguses 55 000–65 000 isendile. Karu arvukus on tõusutrendis: 2025. aastal registreeriti vähemalt 98 sama-aastaste poegadega emakaru ja asurkonna suurus oli vähemalt 1 100 isendit. Hundi arvukus 2025. aastal mõnevõrra suurenes ja jäi kõrgemaks suurkiskjate tegevuskavas kokku lepitud maksimummäärast. Ilvese pesakondade arv jäi 2025. aastal viiendiku võrra väiksemaks kui aasta varem; poegadega emailveseid eristati vähemalt 80 ja üldarvukus oli möödunud sügisel tõenäoliselt 650–800 isendit. Hallhülge asurkonna seisund on väga hea ja arvukus stabiilne. Šaakali arvukus kasvab, kopra, valgejänese, rebase ja metsnugise arvukus on langustrendis, mägra ja halljänese arvukus tõuseb.",
+      "Keskkonnaagentuuri ülevaate „Ulukiasurkondade seisund ja küttimissoovitus 2026” järgi on põdra üldarvukus püsinud stabiilselt 10 000–11 000 isendi vahemikus. Sama taseme hoidmiseks soovitatakse 2026. aasta jahihooajal küttida kokku 3 200–3 580 põtra. Punahirve arvukus on saartel jätkuvalt väga kõrge ning mandril on nii arvukus kui ka asustatud alad oluliselt suurenenud. Metssea arvukus langes kevadeks aastaga kolmandiku võrra, Mandri-Eestis sigade Aafrika katku leviku tõttu ligi kaks korda. 2026. jahihooajal soovitatakse küttida ligi 13 000 metssiga. Metskitse asurkonna suurust hinnati 2026. aasta alguses 55 000–65 000 isendile. Karu arvukus on tõusutrendis: 2025. aastal registreeriti vähemalt 98 sama-aastaste poegadega emakaru ja asurkonna suurus oli vähemalt 1 100 isendit. Hundi arvukus 2025. aastal mõnevõrra suurenes ja jäi kõrgemaks suurkiskjate tegevuskavas kokku lepitud maksimummäärast. Ilvese pesakondade arv jäi 2025. aastal viiendiku võrra väiksemaks kui aasta varem. Ilvese üldarvukus oli möödunud sügisel tõenäoliselt 650–800 isendit ning poegadega emailveseid eristati vähemalt 80. Hallhülge asurkonna seisund on väga hea ja arvukus stabiilne. Šaakali arvukus kasvab, kopra, valgejänese, rebase ja metsnugise arvukus on langustrendis, mägra ja halljänese arvukus tõuseb.",
   },
 ];
 
@@ -1343,6 +1343,9 @@ export function hasCompleteSentenceEnding(value = "") {
 
 const STOP_WORDS = new Set([
   "abil",
+  "nende",
+  "need",
+  "neid",
   "aga",
   "andmed",
   "andmete",
@@ -2071,6 +2074,16 @@ export function bridgeTermsToDiscoveryQuery(roots = []) {
   return [...new Set(terms)].slice(0, 4).join(' ');
 }
 
+const WILDLIFE_SPECIES_ROOTS = Object.freeze([
+  [/^(?:poder|podr|potr)\p{L}*$/u, "poder"],
+  [/^ilves\p{L}*$/u, "ilves"],
+  [/^karu(?!put)\p{L}*$/u, "karu"],
+  [/^hun(?:t|d)\p{L}*$/u, "hunt"],
+  [/^(?:punahirv|hirv)\p{L}*$/u, "hirv"],
+  [/^metskit\p{L}*$/u, "metskits"],
+  [/^(?:metssiga|metssea|metssigu|metssiku)\p{L}*$/u, "metssiga"],
+]);
+
 export function queryTerms(query) {
   const normalizedQuery = normalize(query);
   const multilingualPhrases = isMultilingualSearchEnabled();
@@ -2079,6 +2092,13 @@ export function queryTerms(query) {
     .filter((word) => word.length >= 3 && !STOP_WORDS.has(word) && !/^\d+$/u.test(word))
     .flatMap((word) => {
       if (word.startsWith("keskkonnainfo")) return ["keskkond"];
+      // A named game species stays a term of its own, so a passage about
+      // that species outranks the report's general summary.
+      const species = WILDLIFE_SPECIES_ROOTS.find(([pattern]) => pattern.test(word));
+      if (species) return ["uluk", species[1]];
+      // Tree-species and conifer questions keep their subject next to "mets".
+      if (/^(?:enamus)?puuli(?:ik|ig)\p{L}*$/u.test(word)) return ["mets", "puuliik"];
+      if (/^okaspuu\p{L}*$/u.test(word)) return ["mets", "okaspuu"];
       // "Kui palju põtru elab Eestis?" asks for a population count.
       if (/^(?:elab|elavad|elutseb|elutsevad)$/u.test(word)
         && /\b(?:kui\s+palju|mitu)\b/u.test(normalizedQuery)) return ["arvukus"];
@@ -2332,7 +2352,14 @@ export function queryRootVariants(root) {
   if (root === "biojaatmed") return ["biojaat", "kompost"];
   if (root === "rohevorgustik") return ["rohevorg", "roheline vorgustik", "rohekoridor"];
   if (root === "voorliik") return ["voorliik", "invasiiv"];
-  if (root === "uluk") return ["uluk", "karu", "suurkisk", "wildlife", "animal"];
+  if (root === "uluk") return ["uluk", "karu", "suurkisk", "podr", "potr", "ilves", "hunt", "hundi", "hirv", "metskit", "metssiga", "metssea", "wildlife", "animal"];
+  if (root === "poder") return ["poder", "podr", "potr"];
+  if (root === "puuliik") return ["puuliik", "puuliig", "kaasik", "mannik", "kuusik"];
+  if (root === "okaspuu") return ["okaspuu"];
+  if (root === "hunt") return ["hunt", "hundi", "hunte"];
+  if (root === "hirv") return ["hirv"];
+  if (root === "metskits") return ["metskit"];
+  if (root === "metssiga") return ["metssiga", "metssea", "metssigu"];
   if (root === "margala") return ["margal", "raba", "soo"];
   if (root === "taastamine") return ["taastam", "tervendam", "restoration", "regeneration"];
   if (root === "pais") return ["pais", "randetoke"];
@@ -7330,9 +7357,9 @@ const OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     type: "Metsastatistika",
     published: "18.08.2026",
     url: "https://keskkonnaagentuur.ee/uudised/smi-metsatagavara-stabiilne",
-    tags: ["mets", "SMI", "tagavara", "metsade seisund", "trend", "vanusjaotus"],
+    tags: ["mets", "SMI", "tagavara", "metsade seisund", "trend", "vanusjaotus", "puuliik", "enamuspuuliik", "kaasik", "männik", "okaspuumets", "raiemaht"],
     summary: "SMI 2025 järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast ning kasvava metsa tagavara püsis stabiilsena 466 miljoni m³ juures.",
-    content: "Keskkonnaagentuuri SMI 2025 tulemuste järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast. Kasvava metsa tagavara püsis stabiilsena 466 miljoni m³ juures ja ligikaudu 20% metsamaast oli mittemajandatav. Jätkuvalt suurenes nii noorte kui ka vanade metsade pindala: noorte metsade kasvu seostati raie ja metsastumisega ning vanade metsade kasvu mittemajandatava metsamaa ja metsaomanike valikutega. 2025. aasta raiemahu eksperthinnang oli 11 miljonit m³ ning viimaste aastate tase ligikaudu 11–12 miljonit m³. Metsa pindala, tagavara, vanuseline struktuur, puuliigiline koosseis ja raiemaht kirjeldavad eri tahke ega ole omavahel asendatavad näitajad.",
+    content: "Keskkonnaagentuuri SMI 2025 tulemuste järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast. Kasvava metsa tagavara püsis stabiilsena 466 miljoni m³ juures ja ligikaudu 20% metsamaast oli mittemajandatav. Enamuspuuliigi järgi on metsadest suurima pindalaga kaasikud (0,71 miljonit ha) ja männikud (0,70 miljonit ha), okaspuu enamusega metsade osakaal metsade kogupindalast on 48% (1,13 miljonit hektarit). Kasvava metsa tagavarast moodustavad okaspuu enamusega metsad 53% (247 miljonit m³). Viimase kümne aastaga (2016–2025) on okaspuumetsade pindala vähenenud 32 000 ha võrra (2016. aastal 1,17 miljonit ha). Puistutes on suurenenud puude liigiline mitmekesisus: vähenenud on monokultuursete ning suurenenud kolmest ja enamast puuliigist koosnevate puistute pindala. Jätkuvalt suurenes nii noorte kui ka vanade metsade pindala: noorte metsade kasvu seostati raie ja metsastumisega ning vanade metsade kasvu mittemajandatava metsamaa ja metsaomanike valikutega. Raiemahu eksperthinnangu alusel raiuti Eestis 2025. aastal metsa 11 miljonit m³ ning viimaste aastate tase on ligikaudu 11–12 miljonit m³. Metsa pindala, tagavara, vanuseline struktuur, puuliigiline koosseis ja raiemaht kirjeldavad eri tahke ega ole omavahel asendatavad näitajad.",
     locator: "SMI 2025 põhinäitajad: metsamaa pindala, tagavara, vanusjaotus, puuliigid, juurdekasv ja raiemahu eksperthinnang.",
   },
   {

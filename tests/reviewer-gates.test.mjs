@@ -85,3 +85,33 @@ test("a 'how many X live' question is covered by the wildlife report", async () 
     assert.equal(evidence.directDocumentId, "wildlife-status-2025", query);
   }
 });
+
+test("a species question leads with that species' count, not the report summary", async () => {
+  const { searchEnvironment } = await import("../server/search.mjs");
+  const { directEvidenceExtract } = await import("../server/pipeline.mjs");
+  for (const [query, expected] of [
+    ["Kui palju põtru elab Eestis?", /10 000–11 000/u],
+    ["Kui palju ilveseid elab Eestis?", /650–800/u],
+    ["Kui palju karusid elab Eestis?", /1 100/u],
+  ]) {
+    const response = searchEnvironment(query);
+    const top = (response.results || response.sources || [])[0];
+    assert.match(directEvidenceExtract(query, top), expected, query);
+  }
+});
+
+test("SMI 2025 answers tree species, conifer trend and 2025 felling from its own sentences", async () => {
+  const { officialServiceCatalogueDocuments } = await import("../server/search.mjs");
+  const { rankPublicSearchCandidates } = await import("../server/retrieval.mjs");
+  const { directEvidenceExtract } = await import("../server/pipeline.mjs");
+  const directory = officialServiceCatalogueDocuments();
+  for (const [query, expected] of [
+    ["Millised on Eesti metsade enamuspuuliigid ja kui suur on nende osakaal?", /kaasikud \(0,71 miljonit ha\)/u],
+    ["Kuidas on okaspuumetsade pindala Eestis viimase kümne aasta jooksul muutunud?", /32 000 ha/u],
+    ["Kui palju raiuti Eestis metsa 2025. aastal?", /11 miljonit m³/u],
+  ]) {
+    const visible = rankPublicSearchCandidates(query, directory, { intentDocuments: directory, now: Date.now() });
+    assert.equal(visible[0]?.id, "forest-stock-stable", query);
+    assert.match(directEvidenceExtract(query, visible[0]), expected, query);
+  }
+});
