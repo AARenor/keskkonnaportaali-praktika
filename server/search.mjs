@@ -1085,14 +1085,16 @@ const SEARCH_DOCUMENTS = [
   },
   {
     id: "wildlife-status-2025",
-    title: "Ulukiasurkondade seisund ja küttimissoovitus 2025",
+    title: "Ulukiasurkondade seisund ja küttimissoovitus 2026",
     organization: "Keskkonnaagentuur",
     type: "Riiklik ulukiseire ülevaade",
-    published: "jooksev",
-    url: "https://keskkonnaagentuur.ee/uudised/keskkonnaagentuur-avaldas-varske-raporti-milles-antakse-ulevaade-ulukiasurkondade",
-    tags: ["uluk", "ulukiseire", "karu", "hunt", "ilves", "arvukus", "asurkond", "2025"],
+    published: "2026",
+    url: "https://keskkonnaagentuur.ee/uudised/keskkonnaagentuur-avaldas-2026-aasta-ulukiasurkondade-seisundi-ulevaate-ja",
+    tags: ["uluk", "ulukiseire", "põder", "punahirv", "metssiga", "metskits", "karu", "hunt", "ilves", "hallhüljes", "arvukus", "asurkond", "küttimissoovitus", "2026"],
     summary:
-      "Keskkonnaagentuuri 2025. aasta ulukiseire ülevaade koondab jahiulukite arvukuse ja asurkondade muutused ning uue jahihooaja küttimissoovitused, sealhulgas suurkiskjate käsitluse.",
+      "Keskkonnaagentuuri 2026. aasta ulukiseire ülevaade koondab jahiulukite arvukuse ja asurkondade muutused ning 2026. aasta jahihooaja küttimissoovitused, sealhulgas suurkiskjate käsitluse.",
+    content:
+      "Keskkonnaagentuuri ülevaate „Ulukiasurkondade seisund ja küttimissoovitus 2026” järgi on põdra üldarvukus püsinud stabiilselt 10 000–11 000 isendi vahemikus; sama taseme hoidmiseks soovitatakse 2026. aasta jahihooajal küttida kokku 3 200–3 580 põtra. Punahirve arvukus on saartel jätkuvalt väga kõrge ning mandril on nii arvukus kui ka asustatud alad oluliselt suurenenud. Metssea arvukus langes kevadeks aastaga kolmandiku võrra, Mandri-Eestis sigade Aafrika katku leviku tõttu ligi kaks korda; 2026. jahihooajal soovitatakse küttida ligi 13 000 metssiga. Metskitse asurkonna suurust hinnati 2026. aasta alguses 55 000–65 000 isendile. Karu arvukus on tõusutrendis: 2025. aastal registreeriti vähemalt 98 sama-aastaste poegadega emakaru ja asurkonna suurus oli vähemalt 1 100 isendit. Hundi arvukus 2025. aastal mõnevõrra suurenes ja jäi kõrgemaks suurkiskjate tegevuskavas kokku lepitud maksimummäärast. Ilvese pesakondade arv jäi 2025. aastal viiendiku võrra väiksemaks kui aasta varem; poegadega emailveseid eristati vähemalt 80 ja üldarvukus oli möödunud sügisel tõenäoliselt 650–800 isendit. Hallhülge asurkonna seisund on väga hea ja arvukus stabiilne. Šaakali arvukus kasvab, kopra, valgejänese, rebase ja metsnugise arvukus on langustrendis, mägra ja halljänese arvukus tõuseb.",
   },
 ];
 

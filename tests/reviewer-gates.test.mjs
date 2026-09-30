@@ -59,3 +59,20 @@ test("plain forest-area questions keep the forest-area snapshot", () => {
     assert.equal(resolvePublicForestryIntent(query)?.kind, "forest-area", query);
   }
 });
+
+test("the hourly page-body backfill limit defaults to 300 and is capped", async () => {
+  const { corpusBackfillHydrateLimit } = await import("../server/corpus.mjs");
+  assert.equal(corpusBackfillHydrateLimit(undefined), 300);
+  assert.equal(corpusBackfillHydrateLimit(""), 300);
+  assert.equal(corpusBackfillHydrateLimit("0"), 0);
+  assert.equal(corpusBackfillHydrateLimit("5000"), 1_000);
+  assert.equal(corpusBackfillHydrateLimit("-4"), 0);
+});
+
+test("the wildlife report ranks first for a moose question and carries the count", async () => {
+  const { searchEnvironment } = await import("../server/search.mjs");
+  const response = searchEnvironment("Kui palju põtru elab Eestis?");
+  const top = (response.results || response.sources || [])[0];
+  assert.equal(top?.id, "wildlife-status-2025");
+  assert.match(String(top?.content || ""), /10 000–11 000/u);
+});

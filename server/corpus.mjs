@@ -1699,7 +1699,7 @@ export async function persistHydratedCorpusDocument(
           metadata_quality = GREATEST(metadata_quality, 3),
           fetched_at = NOW(),
           last_seen_at = NOW(),
-          last_seen_run = $6,
+          last_seen_run = COALESCE($6::BIGINT, last_seen_run),
           is_available = TRUE
       WHERE canonical_url = $1
       RETURNING id
@@ -2685,6 +2685,48 @@ export function closeCorpusStatsBackendAdmission(reason) {
   return corpusStatsBackendAdmission.close(reason);
 }
 
+export function corpusBackfillHydrateLimit(value = process.env.CORPUS_BACKFILL_HYDRATE_LIMIT) {
+  const parsed = Number(value);
+  return Math.max(0, Math.min(Number.isFinite(parsed) && String(value ?? "").trim() !== "" ? parsed : 300, 1_000));
+}
+
+// Hydrates portal rows that have never been fetched, news and topic pages
+// first. It records no run: persistence keeps each row's last_seen_run, so the
+// next full sync's retirement pass and freshness check are unaffected.
+export async function hydrateCorpusBacklog({ limit = 300 } = {}) {
+  await ensureCorpusSchema();
+  const safeLimit = Math.max(0, Math.trunc(Number(limit) || 0));
+  if (!databaseEnabled() || !safeLimit) return { status: "disabled", hydrated: 0, skipped: 0, errors: 0 };
+  return withDatabaseClient(async (client) => {
+    const lock = await client.query("SELECT pg_try_advisory_lock(hashtext('practice-corpus-sync')) AS locked");
+    if (!lock.rows[0]?.locked) return { status: "busy", hydrated: 0, skipped: 0, errors: 0 };
+    try {
+      const backlog = await client.query(`
+        SELECT canonical_url
+        FROM practice_corpus_documents
+        WHERE content = ''
+          AND is_available = TRUE
+          AND NOT (metadata ? 'hydration_attempted_at')
+          AND source_key IN ('portal-sitemap', 'portal-catalog')
+          AND (
+            canonical_url LIKE 'https://keskkonnaportaal.ee/%'
+            OR canonical_url LIKE 'https://www.keskkonnaportaal.ee/%'
+          )
+        ORDER BY
+          CASE WHEN canonical_url ~ '/(uudised|teemad)/' THEN 0 ELSE 1 END,
+          published_at DESC NULLS LAST,
+          id DESC
+        LIMIT $1
+      `, [safeLimit]);
+      const urls = backlog.rows.map((row) => row.canonical_url);
+      const result = await hydrateUrls(client, urls, null, { limit: safeLimit });
+      return { status: "ready", remainingChecked: urls.length, ...result };
+    } finally {
+      await client.query("SELECT pg_advisory_unlock(hashtext('practice-corpus-sync'))").catch(() => undefined);
+    }
+  });
+}
+
 export async function startCorpusSyncIfStale() {
   if (!databaseEnabled() || String(process.env.CORPUS_SYNC_ON_START ?? "true").toLocaleLowerCase("en") === "false") {
     return { status: "disabled" };
@@ -2698,7 +2740,12 @@ export async function startCorpusSyncIfStale() {
       WHERE status = 'ready' AND finished_at > NOW() - ($1 * INTERVAL '1 hour')
       LIMIT 1
     `, [hours]);
-    if (recent?.rowCount) return { status: "fresh" };
+    if (recent?.rowCount) {
+      // Between full syncs, keep filling page bodies. A title-only row cannot
+      // rank for words that appear only in the page text, nor serve as evidence.
+      const backfill = await hydrateCorpusBacklog({ limit: corpusBackfillHydrateLimit() });
+      return { status: "fresh", backfill };
+    }
     const seedQueries = String(process.env.CORPUS_SEED_QUERIES || "mets")
       .split(",").map(normalizeCorpusQuery).filter(Boolean).slice(0, 5);
     return syncPortalCorpus({
