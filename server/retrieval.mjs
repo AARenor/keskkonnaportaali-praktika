@@ -1208,17 +1208,34 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
     && roots.some((root) => ["vesi", "jogi", "jarv", "emajogi", "mootmine"].includes(root))) return 1;
   if (roots.includes("suplusvesi") && document.id === "bathing-water-quality") return 5;
   if (roots.includes("joogivesi") && document.id === "drinking-water-guidance") return 5;
+  if (roots.includes("uvkiirgus") && document.id === "solar-uv-guidance") return 6;
+  if (roots.includes("mura")
+    && roots.includes("tervisemoju")
+    && document.id === "environmental-noise-health") return 5;
   if (roots.includes("mura") && roots.includes("tartu") && document.id === "tartu-noise-map") return 5;
   if (roots.includes("reovesi")
     && roots.includes("kohtkaitlus")
     && document.id === "wastewater-local-treatment") return 5;
-  if (roots.includes("meri")
-    && roots.includes("mereprugi")
-    && document.id === "baltic-sea-litter") return 5;
+  if (roots.includes("meri") && roots.includes("mereprugi")) {
+    if (roots.includes("uuring") && document.id === "marine-microplastic-research") return 6;
+    if (document.id === "baltic-sea-litter") return roots.includes("uuring") ? 0 : 5;
+  }
   if (roots.includes("asbest") && document.id === "hazardous-waste-asbestos") return 5;
   if (roots.includes("pais") && roots.includes("kala") && document.id === "river-dams-fish") return 5;
   if (roots.includes("rohevorgustik") && document.id === "green-network-planning-guide") return 5;
   if (roots.includes("voorliik") && document.id === "invasive-species-guidance") return 5;
+  if (roots.includes("tolmeldaja") && document.id === "pollinator-monitoring-methodology") return 5;
+  if (roots.includes("kutus")
+    && roots.includes("seisund")
+    && document.id === "fuel-quality-monitoring") return 5;
+  if (roots.includes("kliima")
+    && roots.includes("kohanemine")
+    && roots.includes("arengukava")
+    && document.id === "climate-adaptation") return 5;
+  if (roots.includes("margala")
+    && roots.includes("pindala")
+    && /\b2013\b/u.test(normalizedQuery)
+    && document.id === "bogs-overview") return 5;
   if (isElectricVehicleImpactIntent(roots) && document.id === "electric-vehicle-lifecycle") return 6;
   if (roots.includes("jalajalg")
     && !roots.includes("elektriauto")
@@ -1228,7 +1245,7 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
     && roots.includes("taastamine")
     && document.id === "wetland-restoration") return 5;
   if (roots.includes("pestitsiid")
-    && roots.includes("pohjavesi")
+    && roots.some((root) => ["vesi", "pohjavesi"].includes(root))
     && document.id === "groundwater-pesticide-monitoring") return 5;
   if (roots.includes("paikesepaneel")
     && roots.includes("jaat")
@@ -1300,7 +1317,11 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
     && roots.some((root) => ["keskkonnaluba", "menetluse", "menetlus", "staatus"].includes(root))
     && document.id === "environmental-permits") return 3;
   if (roots.includes("kese") && roots.includes("seire") && document.id === "kese-monitoring") return 3;
-  if (roots.includes("muld") && document.id === "soil-monitoring-results") return 3;
+  if (roots.includes("maahoive") && document.id === "soil-land-take") return 5;
+  if (roots.includes("jaakreostus") && document.id === "residual-pollution") return 5;
+  if (roots.includes("muld") && document.id === "soil-monitoring-results") {
+    return roots.some((root) => ["maahoive", "jaakreostus"].includes(root)) ? 0 : 3;
+  }
   if (roots.includes("kiirgus") && document.id === "radiation-monitoring") return 3;
   if (roots.includes("ajalooline") && roots.includes("temperatuur") && document.id === "historical-weather-data") return 3;
   if (roots.some((root) => ["vesi", "emajogi", "jogi"].includes(root))

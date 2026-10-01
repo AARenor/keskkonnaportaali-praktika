@@ -36,6 +36,8 @@ test("estonian-only mode blocks the russian bridge", () => {
     assert.deepEqual(buildDiscoveryQueries("сортировка мусора"), []);
     assert.equal(searchEnvironment("сортировка мусора").sources.length, 0);
     assert.equal(searchEnvironment("подземные воды").sources.length, 0);
+    assert.equal(assessSearchQuery("Что такое PFAS в Эстонии?").kind, "out-of-scope");
+    assert.equal(searchEnvironment("Что такое PFAS в Эстонии?").sources.length, 0);
   });
 });
 
@@ -48,6 +50,12 @@ test("estonian-only mode blocks pure english queries", () => {
       "water quality",
       "Groundwater data in Estonia",
       "Groundwater API in Estonia",
+      "What is PFAS pollution in Estonia?",
+      "PFAS pollution Estonia",
+      "PFAS Estonia",
+      "What is the PRTR register in Estonia?",
+      "PRTR Estonia",
+      "UV index",
     ]) {
       assert.equal(assessSearchQuery(query).kind, "out-of-scope", query);
       const environment = searchEnvironment(query);
@@ -63,6 +71,8 @@ test("estonian-only mode keeps estonian retrieval intact", () => {
     assert.ok(searchEnvironment("mets").sources.length > 0);
     assert.ok(searchEnvironment("KOTKAS keskkonnaloa menetluse staatus").sources.length > 0);
     assert.ok(searchEnvironment("metsa pindala").sources.length > 0);
+    assert.equal(assessSearchQuery("PFAS Eestis").kind, "answerable");
+    assert.equal(assessSearchQuery("PRTR register Eestis").kind, "answerable");
   });
 });
 

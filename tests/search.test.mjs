@@ -20,7 +20,8 @@ import {
   isCurrentWeatherObservationQuery,
   isLatestPublishedHydrologyQuery,
 } from "../server/indicators.mjs";
-import { rankSearchCandidates } from "../server/retrieval.mjs";
+import { canonicalResultUrl, prepareRankedSearchResults, rankSearchCandidates } from "../server/retrieval.mjs";
+import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
 
 test("normalize handles Estonian diacritics", () => {
   assert.equal(normalize("ÕHUKVALITEET ja jäätmed"), "ohukvaliteet ja jaatmed");
@@ -695,6 +696,196 @@ test("official source catalogue covers monitoring, APIs, spatial data, weather, 
   assert.equal(ids.size, SEARCH_DOCUMENTS.length);
 });
 
+test("researched official source expansion covers twenty-five previously missing Estonian intents", async () => {
+  const documents = officialServiceCatalogueDocuments();
+  const byId = new Map(documents.map((document) => [document.id, document]));
+  const now = Date.parse("2026-10-01T13:30:00Z");
+  const cases = [
+    ["radooni päritolu Eestis", "radon-guidance", "official_guidance"],
+    ["müra tervisemõju", "environmental-noise-health", "official_guidance"],
+    ["hallitus ja õhuniiskus", "indoor-climate-guidance", "official_guidance"],
+    ["kemikaali ohutuskaart", "chemical-safety-data-sheet", "official_guidance"],
+    ["biotsiidi luba Eestis", "biocide-guidance", "official_guidance"],
+    ["PFAS saasteained", "persistent-pollutants", "official_guidance"],
+    ["PRTR saasteainete heite register", "prtr-register", "official_data_or_api"],
+    ["mulla seisund ja maahõive Eestis", "soil-land-take", "official_indicator_or_report"],
+    ["pakendi- ja plastijäätmed Eestis", "packaging-plastic-waste", "official_indicator_or_report"],
+    ["biojäätmete näited", "biowaste-overview", "official_guidance"],
+    ["vedelkütuse kvaliteediseire", "fuel-quality-monitoring", "official_indicator_or_report"],
+    ["kliimamuutustega kohanemise arengukava", "climate-adaptation", "official_guidance"],
+    ["jääkreostus pinnases ja põhjavees", "residual-pollution", "official_guidance"],
+    ["nitraaditundlik ala ja veekaitse", "agricultural-water-protection", "official_guidance"],
+    ["kaevandamisjäätmed ja jäätmehoidlad", "mining-waste-guidance", "official_guidance"],
+    ["kalapüügi keeluajad ja kalade alammõõdud", "fishing-restrictions", "official_guidance"],
+    ["kimalaste seire metoodika", "pollinator-monitoring-methodology", "official_indicator_or_report"],
+    ["Eesti soode pindala 2013", "bogs-overview", "official_indicator_or_report"],
+    ["mikroplastireostus", "microplastic-pollution", "official_guidance"],
+    ["häiriv lõhn kuhu teatada", "odor-guidance", "official_guidance"],
+    ["Eesti rannikuvee ökoloogiline seisund", "coastal-water-status", "official_indicator_or_report"],
+    ["mikroprügi uuring Eesti meri", "marine-microplastic-research", "official_indicator_or_report"],
+    ["UV-kiirgus Eestis", "solar-uv-guidance", "official_guidance"],
+    ["radioaktiivsed jäätmed Eestis", "radioactive-waste-guidance", "official_guidance"],
+    ["looduslikud radionukliidid põhjavees", "natural-radionuclides-guidance", "official_guidance"],
+  ];
+
+  assert.ok(documents.length >= 144, `expected at least 144 reviewed sources, got ${documents.length}`);
+  const addedIds = new Set(cases.map(([, id]) => id));
+  const addedUrls = cases.map(([, id]) => canonicalResultUrl(byId.get(id)?.url));
+  const baselineUrls = new Set(documents
+    .filter((document) => !addedIds.has(document.id))
+    .map((document) => canonicalResultUrl(document.url)));
+  assert.equal(new Set(addedUrls).size, cases.length, "new source URLs are pairwise unique");
+  for (const url of addedUrls) {
+    assert.equal(baselineUrls.has(url), false, `${url} is new to the baseline catalogue`);
+  }
+  for (const [query, expectedId, routeClass] of cases) {
+    const source = byId.get(expectedId);
+    assert.ok(source, `${expectedId} exists`);
+    assert.equal(source.url.startsWith("https://"), true, `${expectedId} uses HTTPS`);
+    assert.equal(source.sourceProfile.evidencePolicy, "versioned", `${expectedId} has reviewed version policy`);
+    assert.equal(source.sourceProfile.evidenceEligible, true, `${expectedId} is current evidence`);
+    assert.equal(source.sourceProfile.checkedAt, "2026-10-01", `${expectedId} review date`);
+    assert.ok(source.sourceProfile.routeClasses.includes(routeClass), `${expectedId} route class`);
+    assert.equal(source.sourceProfile.freshness.basis, "reviewed-at", `${expectedId} freshness basis`);
+
+    const ranked = rankSearchCandidates(query, documents, { now });
+    assert.equal(ranked[0]?.id, expectedId, `${query} ranks its directly reviewed source first`);
+    const scored = ranked.slice(0, 5).map((document) => ({
+      ...document,
+      score: document._ranking.score,
+    }));
+    assert.equal(assessEvidence(query, scored).strong, true, `${query} has passage-level evidence`);
+
+    const tagOnly = {
+      ...source,
+      title: "Ametlik keskkonnaallikas",
+      summary: "",
+      content: "",
+      locator: "",
+      score: 50,
+    };
+    assert.equal(assessEvidence(query, [tagOnly]).strong, false, `${expectedId} tags alone cannot authorize an answer`);
+  }
+
+  const staleAt = Date.parse("2026-11-02T00:00:01Z");
+  for (const [, expectedId] of cases) {
+    const source = byId.get(expectedId);
+    assert.equal(sourceEvidenceEligibility(source, { now: staleAt }).eligible, false, `${expectedId} expires closed`);
+  }
+
+  for (const root of ["radoon", "hallitus", "biotsiid", "PFAS", "PRTR", "maahõive", "vedelkütus", "jääkreostus", "kimalased", "sood", "mikroplast", "lõhn", "rannikuvesi", "radioaktiivsed jäätmed", "radionukliidid"]) {
+    const query = `Leia Jaan Tamme kinnistu ${root}`;
+    assert.equal(assessSearchQuery(query).kind, "out-of-scope", `${root} is rejected before retrieval`);
+    const blocked = await prepareRankedSearchResults(query, {
+      page: 1,
+      pageSize: 5,
+      deadlineAt: Date.now() + 1_000,
+      clientKey: "source-expansion-privacy-test",
+    });
+    assert.equal(blocked.total, 0, `${root} cannot reach the full production catalogue`);
+    assert.equal(blocked.mode, "blocked-before-retrieval", `${root} stops before external discovery`);
+  }
+
+  const boundedClaims = [
+    ["Kui suur on minu korteri radoonitase praegu?", "radon-guidance"],
+    ["Kas Aquaclean biotsiid on praegu Eestis lubatud?", "biocide-guidance"],
+    ["Kui palju PFASi eraldas Enefit PRTRis 2025?", "prtr-register"],
+    ["Kas Metsa 3 pinnas on jääkreostunud?", "residual-pollution"],
+    ["Kas Tartu tankla diislikütus vastab täna nõuetele?", "fuel-quality-monitoring"],
+    ["radooni päritolu Soomes", "radon-guidance"],
+    ["PFAS Saksamaal", "persistent-pollutants"],
+    ["kalapüügi keeluajad Lätis", "fishing-restrictions"],
+    ["kimalaste arvukus Tartus 2026", "pollinator-monitoring-methodology"],
+    ["Kas minu maatükil on soo?", "bogs-overview"],
+    ["Soode pindala Soomes", "bogs-overview"],
+    ["Kas Plastitööstus OÜ täidab plastigraanulite määrust?", "microplastic-pollution"],
+    ["Kas Muuga Terminal ületab praegu lõhnanormi?", "odor-guidance"],
+    ["Kas Haapsalu rannikuveekogum on 2026 heas seisundis?", "coastal-water-status"],
+    ["Mikroplast Saksamaal", "microplastic-pollution"],
+    ["Lõhnahäiring Soomes", "odor-guidance"],
+    ["Rannikuvee seisund Lätis", "coastal-water-status"],
+    ["Kui palju mikroplasti on Pärnu rannikuvees 2026?", "marine-microplastic-research"],
+    ["UV-indeks Tartus 2026", "solar-uv-guidance"],
+    ["Kui palju radioaktiivseid jäätmeid on Paldiskis praegu?", "radioactive-waste-guidance"],
+    ["Kas Metsa 3 kaevuvee radionukliidide tase on ohutu?", "natural-radionuclides-guidance"],
+    ["Radioaktiivsed jäätmed Soomes", "radioactive-waste-guidance"],
+    ["radioaktiivne kiirgus Eestis", "radioactive-waste-guidance"],
+  ];
+  for (const [query, sourceId] of boundedClaims) {
+    const source = byId.get(sourceId);
+    assert.equal(assessEvidence(query, [{ ...source, score: 50 }]).strong, false, `${sourceId} fails closed outside its reviewed claim`);
+  }
+
+  for (const [query, expectedId] of [
+    ["müra seire Tallinnas", "tallinn-noise-map"],
+    ["mullaseire tulemused Eestis", "soil-monitoring-results"],
+    ["pestitsiidid põhjavees", "groundwater-pesticide-monitoring"],
+    ["märgalade taastamine", "wetland-restoration"],
+    ["Läänemere seisundihinnang 2024", "marine-strategy-status"],
+    ["kiirgustase Eestis praegu", "radiation-monitoring"],
+    ["radioaktiivne kiirgus Eestis", "radiation-monitoring"],
+  ]) {
+    assert.equal(rankSearchCandidates(query, documents, { now })[0]?.id, expectedId, `${query} keeps the narrower existing source first`);
+  }
+});
+
+test("reviewed gap sources outrank incidental official-page mentions", () => {
+  const catalogue = officialServiceCatalogueDocuments();
+  const byId = new Map(catalogue.map((document) => [document.id, document]));
+  const now = Date.parse("2026-10-01T13:30:00Z");
+  const cases = [
+    {
+      query: "vedelkütuse kvaliteediseire",
+      expectedId: "fuel-quality-monitoring",
+      distractor: {
+        id: "incidental-ksh-fuel",
+        title: "KSH eelhinnangu ja KSH algatamata jätmise otsuse näide",
+        summary: "Veokite ja teiste mehhanismide poolt kütuse, põhiliselt vedelkütuse kasutamisega kaasneva mõju näide detailplaneeringu keskkonnamõju strateegilise hindamise eelhinnangus.",
+        content: "Eelhinnangu näide käsitleb muu hulgas vedelkütust ja keskkonnaseisundit, kuid ei ole kütuse kvaliteediseire tulemus.",
+      },
+    },
+    {
+      query: "kliimamuutustega kohanemise arengukava",
+      expectedId: "climate-adaptation",
+      distractor: {
+        id: "old-climate-adaptation-news",
+        title: "Keskkonnaministeeriumis valmis kliimamuutustega kohanemise arengukava eelnõu",
+        summary: "Vana uudis kliimamuutustega kohanemise arengukava eelnõu valmimisest.",
+        content: "Uudis kirjeldab arengukava eelnõu valmimist, mitte praegust ametlikku teemajuhendit.",
+      },
+    },
+    {
+      query: "Eesti soode pindala 2013",
+      expectedId: "bogs-overview",
+      distractor: {
+        id: "incidental-wetland-permit",
+        title: "Jäätmevaldkonna keskkonnaluba",
+        published: "15.06.2021",
+        summary: "Keskkonnaloa juhis mainib üle 100 hektari pindalaga märgala kuivendussüsteemi ehitamist ja EL määrust 715/2013.",
+        content: "Loamenetluse loetelu ei ole Eesti soode 2013. aasta pindala inventuur.",
+      },
+    },
+  ];
+
+  for (const { query, expectedId, distractor } of cases) {
+    const expected = byId.get(expectedId);
+    assert.ok(expected);
+    const ranked = rankSearchCandidates(query, [{
+      ...distractor,
+      organization: "Keskkonnaamet",
+      type: "Ametlik leht",
+      published: distractor.published || "01.01.2017",
+      url: `https://keskkonnaamet.ee/${distractor.id}`,
+      tags: ["ametlik allikas"],
+      topics: ["ametlik allikas"],
+      sourceTier: "official",
+      evidencePolicy: "route-only",
+      _answerEvidenceEligible: false,
+    }, expected], { now });
+    assert.equal(ranked[0]?.id, expectedId, `${query} prefers the reviewed subject source`);
+  }
+});
+
 test("frozen broad-search routing set has perfect deterministic route accuracy", async () => {
   const dataset = JSON.parse(await readFile(
     new URL("../evaluation/environment_search_queries_v1.json", import.meta.url),
@@ -726,6 +917,7 @@ test("keyword variety: English and colloquial variants reach the right domain", 
     ["level", "maar"],
     ["uputuse oht", "uleujutusrisk"],
     ["soil contamination", "saaste"],
+    ["vedelkytuse seire", "kutus"],
   ];
   for (const [query, expected] of rootCases) {
     assert.ok(queryTerms(query).includes(expected), `${query} -> ${expected}`);

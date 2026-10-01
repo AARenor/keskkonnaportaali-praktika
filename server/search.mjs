@@ -1128,6 +1128,8 @@ const SEARCH_DOCUMENTS = [
 // fixtures above. Dynamic/register landing pages are navigation results only;
 // they cannot become answer evidence until a typed adapter supplies the
 // required observation time or registry version.
+const SOURCE_EXPANSION_REVIEWED_AT = "2026-10-01T00:00:00.000Z";
+
 const ADDITIONAL_OFFICIAL_SERVICE_DOCUMENTS = [
   {
     id: "current-weather-observations",
@@ -1336,6 +1338,356 @@ const ADDITIONAL_OFFICIAL_SERVICE_DOCUMENTS = [
     delivery: "catalog-and-bounded-hydration",
     freshness: { class: "six-year-cycle", basis: "source-version", maxAgeMs: 7 * 366 * 24 * 60 * 60 * 1000, requiresSourceTimestamp: true },
     _answerEvidenceEligible: true,
+  },
+  {
+    id: "radon-guidance",
+    title: "Radoon hoonetes ja radooniohtlikud piirkonnad",
+    organization: "Kliimaministeerium",
+    type: "Ametlik kiirgusohutuse juhend",
+    published: "27.08.2024",
+    url: "https://kliimaministeerium.ee/elurikkus-keskkonnakaitse/kiirgus/radoon",
+    locator: "Jaotis „Radoon”: allikad, radooniohtlikud piirkonnad, terviserisk ja ehituslikud leevendusmeetmed.",
+    tags: ["radoon", "siseõhk", "hoone", "radoonirisk", "kiirgus", "Põhja-Eesti", "kopsuvähk", "ventilatsioon"],
+    summary: "Kliimaministeeriumi juhend selgitab radooni päritolu, Eesti radooniohtlikke piirkondi, terviseriski ja ehituslikke leevendusmeetmeid.",
+    content: "Radoon on looduslik kiirguse allikas ja selle peamine allikas Eestis on pinnas. Maapinnas tekkiv gaasiline radoon võib jõuda hoonete siseruumidesse; kõrget sisaldust võib leiduda peaaegu kõikjal Eestis, kuigi peamine radooniohtlik piirkond on Põhja-Eesti ning riskipiirkondi on ka Lääne-Virumaal ja Tartumaal. Radoonirikka õhu sissehingamisel suureneb kopsuvähki haigestumise risk. Leht soovitab ehituslike meetmetena korrastada ventilatsioonisüsteemi ning sulgeda põranda, seina ja läbiviikude nähtavad augud ja praod. Piirkonna kaart ega üldjuhend ei tõenda ühe hoone radoonitaset.",
+    routeClasses: ["official_guidance", "official_indicator_or_report"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "environmental-noise-health",
+    title: "Müra ja vibratsioon elukeskkonnas",
+    organization: "Terviseamet",
+    type: "Ametlik keskkonnatervise juhend",
+    published: "27.04.2026",
+    url: "https://terviseamet.ee/keskkonnatervis/fuusikalised-ohutegurid-elukeskkonnas/mura-ja-vibratsioon",
+    locator: "Jaotised „Mis on müra?” ning müra tervisemõju, allikad ja regulatsioonid.",
+    tags: ["müra", "vibratsioon", "tervisemõju", "liiklusmüra", "tööstusmüra", "naabrimüra", "soojuspump"],
+    summary: "Terviseameti juhend käsitleb elukeskkonna müra ja vibratsiooni allikaid, tervisemõju ning välis- ja siseruumi müra erinevat regulatsiooni.",
+    content: "Terviseameti järgi on müra ebameeldiv, häiriv või muul viisil inimese tervist ja heaolu kahjustav heli. Elukeskkonna allikad hõlmavad liiklust, tööstust, tehnoseadmeid, ehitustöid, naabrimüra ja meelelahutust. Euroopa Keskkonnaameti andmetele tugineva lehe järgi mõjutavad kõrged keskkonnamüra tasemed Eestis üle 300 000 inimese. Üldjuhend ei tõenda ühe seadme või aadressi normiületust; see vajab olukorrale sobivat mõõtmist ja õige normi valimist.",
+    routeClasses: ["official_guidance", "official_indicator_or_report"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "indoor-climate-guidance",
+    title: "Sisekliima, hallitus ja liigniiskus",
+    organization: "Terviseamet",
+    type: "Ametlik keskkonnatervise juhend",
+    published: "26.01.2026",
+    url: "https://terviseamet.ee/keskkonnatervis/sisekliima",
+    locator: "Jaotised „Hallitus ja liigniiskus” ning „Ruumi õhutemperatuur haridusasutustes”.",
+    tags: ["sisekliima", "hallitus", "liigniiskus", "õhuniiskus", "toatemperatuur", "ventilatsioon"],
+    summary: "Terviseameti sisekliima juhend käsitleb ruumi temperatuuri, niiskust, hallituse tekkepõhjuseid ja ventilatsiooni.",
+    content: "Terviseameti järgi veedab inimene 80–90% ajast siseruumides. Tubades soovitatakse hoida temperatuuri 20–22 °C ja suhtelist õhuniiskust 35–60% ning liigniiskus välja ventileerida. Hallituse puhul tuleb tuvastada ja kõrvaldada tekkepõhjus, näiteks ehitustehniline probleem või liigniiskus; ainult tõrjekemikaalist ei piisa, kui algpõhjus jääb alles.",
+    routeClasses: ["official_guidance"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "chemical-safety-data-sheet",
+    title: "Kemikaali ohutuskaart",
+    organization: "Terviseamet",
+    type: "Ametlik kemikaaliohutuse juhend",
+    published: "23.12.2025",
+    url: "https://terviseamet.ee/kemikaali-tooteohutus/ohutuskaart",
+    locator: "Jaotis „Ohutuskaardid”: koostamine, 16 jagu, esitamine ja ajakohastamine.",
+    tags: ["kemikaal", "ohutuskaart", "SDS", "REACH", "CLP", "16 jagu", "ohtlik aine", "ohtlik segu"],
+    summary: "Terviseameti juhend selgitab, millal kemikaali ohutuskaart on nõutav, kuidas see koostatakse ja tarneahelas esitatakse.",
+    content: "Kemikaali ohutuskaart peab olema koostatud pädeva isiku poolt, eesti keeles, 16 jaoga, konkreetse aine või segu kohta ning lihtsa, selge ja täpse keelekasutusega. See esitatakse tasuta hiljemalt aine või segu esimeseks tarneks ning ajakohastatakse muu hulgas siis, kui ilmneb riskijuhtimist või ohte mõjutav uus teave. Juhend seob nõuded REACH- ja CLP-määrusega.",
+    routeClasses: ["official_guidance", "official_legal_context"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "biocide-guidance",
+    title: "Biotsiidide ohutu kasutamine ja turule lubamine",
+    organization: "Terviseamet",
+    type: "Ametlik biotsiidijuhend",
+    published: "28.09.2026",
+    url: "https://terviseamet.ee/kemikaalid-igapaevaelus/biotsiidid",
+    locator: "Jaotised „Eesti turule lubatud biotsiidid”, märgistus ja kahjulike organismide tõrje.",
+    tags: ["biotsiid", "desinfitseerimisvahend", "tõrjevahend", "kemikaal", "BPR", "528/2012", "luba"],
+    summary: "Terviseameti leht selgitab biotsiidide liike, ohutut kasutamist, märgistust ja Eestis turule lubamise kontrolli.",
+    content: "Biotsiide reguleerivad biotsiidiseadus ja Euroopa Liidu biotsiidimäärus 528/2012. Eestis tohib müüa ja kasutada biotsiidi, millel on määruse kohane luba või biotsiidiseaduse kohane registreerimistunnistus; number peab olema märgitud toote etiketile. Konkreetse toote praegune loaolek tuleb kontrollida Terviseameti ajakohasest lubatud biotsiidide vaatest, mitte tuletada üldjuhendist.",
+    routeClasses: ["official_guidance", "official_legal_context"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "persistent-pollutants",
+    title: "Püsivad orgaanilised saasteained ja PFAS",
+    organization: "Kliimaministeerium",
+    type: "Ametlik kemikaalide teemaülevaade",
+    published: "01.07.2026",
+    url: "https://kliimaministeerium.ee/elurikkus-keskkonnakaitse/toostusheide-ja-kemikaalid/kemikaalid",
+    locator: "Jaotised „Püsivad orgaanilised saasteained” ning „Per- ja polüfluoroalküülid (PFAS)”.",
+    tags: ["kemikaal", "püsiv orgaaniline saasteaine", "POS", "PFAS", "PFOS", "PFOA", "elavhõbe", "saaste"],
+    summary: "Kliimaministeeriumi ülevaade selgitab püsivaid orgaanilisi saasteaineid, nende keskkonda sattumist ning PFAS-saasteainete rühma.",
+    content: "Püsivad orgaanilised saasteained on mürgised, püsivad, võivad liikuda õhu ja veega kaugele ning akumuleeruvad rasvkudedes. Osa neist toodetakse pestitsiidide või tööstuskemikaalidena ja osa tekib tahtmatult põlemis- või tööstusprotsessides. PFAS-ainete hulka kuuluvad muu hulgas PFOS ja PFOA ning nendega seotud ühendid. Üldleht ei tõenda konkreetse toote koostist ega ühe koha saastetaset.",
+    routeClasses: ["official_guidance", "official_indicator_or_report"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "prtr-register",
+    title: "Saasteainete heite- ja ülekanderegister PRTR",
+    organization: "Kliimaministeerium",
+    type: "Ametlik tööstusheite register",
+    published: "22.01.2026",
+    url: "https://kliimaministeerium.ee/energeetika-maavarad/valisohk/prtr-register",
+    locator: "PRTRi kirjeldus, aruandekohustus ja KOTKASe registriviide.",
+    tags: ["PRTR", "saasteaine", "heide", "ülekanne", "tööstusheide", "jäätmed", "KOTKAS", "register"],
+    summary: "PRTR on riiklik elektrooniline andmebaas tööstuskäitiste saasteainete heidete ja ülekannete avalikustamiseks.",
+    content: "Saasteainete heite- ja ülekanderegister ehk PRTR on riiklik elektrooniline andmebaas, mis annab ligipääsu keskkonnainfole. Registrisse koondatakse saasteainete heited õhku, vette ja maismaale, saasteainete ülekanded reoveega ning ohtlike ja tavajäätmete ülekanded. Eesti register on integreeritud KOTKASesse. Ühe ettevõtte või aasta heitkogus tuleb kontrollida registrikirjest koos aine, perioodi, ühiku ja aruandeversiooniga.",
+    routeClasses: ["official_data_or_api", "official_spatial_or_register", "official_indicator_or_report"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "soil-land-take",
+    title: "Muld ja maahõive Eestis",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Ametlik teema- ja seireülevaade",
+    published: "31.07.2026",
+    url: "https://keskkonnaportaal.ee/et/teemad/muld-ja-maahoive",
+    locator: "Jaotised „Ülevaade”, „Mullaseire ülesanne” ja maahõive kontseptsioon.",
+    tags: ["muld", "mullaseire", "maahõive", "maakasutus", "mulla seisund", "ETAK", "tehisobjektid"],
+    summary: "Keskkonnaportaali ülevaade seob mullaseire, mulla hea seisundi ja maahõive kontseptsiooni ning juhatab ametlike seireandmete juurde.",
+    content: "Mullaseire ülesanne on mõista muldades toimuvaid looduslikke muutusi ning jälgida inimtegevuse mõju mullastikule. Eesti maahõive esmase ülevaate annab Keskkonnaagentuuris ETAKi andmetel tehtud analüüs sellest, kui palju on pinnast kaetud tehisobjektidega; maahõive kontseptsiooni väljatöötamine on lehe järgi Eestis alles ees. Üks seireala või kaart ei kirjelda automaatselt kogu Eesti mulla seisundit.",
+    routeClasses: ["official_indicator_or_report", "official_guidance"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "packaging-plastic-waste",
+    title: "Pakendi- ja plastijäätmed Eestis",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Ametlik jäätmeülevaade",
+    published: "29.05.2026",
+    url: "https://keskkonnaportaal.ee/et/teemad/jaatmed-ja-ringmajandus/jaatmed/pakendi-ja-plastijaatmed",
+    locator: "Pakendi- ja plastijäätmete ülevaade ning 2023. aasta kogused.",
+    tags: ["pakendijäätmed", "plastijäätmed", "pakend", "plast", "jäätmed", "2023"],
+    summary: "Keskkonnaportaali ülevaade kirjeldab pakendi- ja plastijäätmete teket, liike ning ametlikke koguseid.",
+    content: "Keskkonnaportaali järgi tekib Eestis aastas ligikaudu 100 000 tonni plastijäätmeid, arvestades liigiti kogutud plasti ja segaolmejäätmetes olevat plasti. 2023. aastal tekkis pakendijäätmeid 139 kilogrammi elaniku kohta ehk kokku 190 813 tonni. Teise aasta kogus või pakendiettevõtja kohustused vajavad sama aasta ametlikku aruannet või lehel eraldi viidatud tootjavastutuse juhendit.",
+    routeClasses: ["official_indicator_or_report", "official_guidance"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "biowaste-overview",
+    title: "Biojäätmed ja nende liigiti kogumine",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Ametlik jäätmejuhend",
+    published: "29.05.2026",
+    url: "https://keskkonnaportaal.ee/et/teemad/jaatmed-ja-ringmajandus/jaatmed/biojaatmed",
+    locator: "Biojäätmete määratlus ning aia-, haljastus-, toidu- ja köögijäätmete näited.",
+    tags: ["biojäätmed", "toidujäätmed", "aiajäätmed", "haljastusjäätmed", "kompost", "liigiti kogumine"],
+    summary: "Keskkonnaportaali juhend määratleb biojäätmed ja loetleb aia-, haljastus-, toidu- ning köögijäätmete praktilised näited.",
+    content: "Biojäätmed on biolagunevad aia- ja haljastujäätmed ning kodumajapidamises, büroos, kaubanduses, toitlustuses ja toiduainetööstuses tekkinud toidu- ja köögijäätmed. Nende hulka kuuluvad näiteks niidetud muru, lehed, umbrohi, riknenud toit, puu- ja köögiviljakoored, kalaluud, kondid, muna- ja pähklikoored ning kohvi- ja teepaks koos filtriga. Täpne kogumisviis sõltub kohaliku omavalitsuse jäätmehoolduseeskirjast.",
+    routeClasses: ["official_guidance"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "fuel-quality-monitoring",
+    title: "Vedelkütuse kvaliteediseire Eestis",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Ametlik seireülevaade",
+    published: "11.08.2026",
+    url: "https://keskkonnaportaal.ee/et/teemad/valisohk/vedelkutuse-seire",
+    locator: "Vedelkütuse seire ulatus ning 2025. aasta mootorikütuse ja kütteõli proovide tulemused.",
+    tags: ["vedelkütus", "kütus", "bensiin", "diislikütus", "kütteõli", "kütuse kvaliteet", "seire", "2025"],
+    summary: "Keskkonnaportaali seireleht kirjeldab bensiini, diislikütuse, kütteõli ja biokütuse kvaliteedikontrolli ning aastaseid tulemusi.",
+    content: "Vedelkütuste kvaliteediseire hõlmab bensiini ja diislikütuse kvaliteedi kontrolli ning samuti kütteõlisid ja biokütuseid. 2025. aastal võeti tanklatest 561 kütuseproovi, millest viis ei vastanud nõuetele; 71 kütteõliproovist kaks ei vastanud nõuetele. Need arvud kirjeldavad 2025. aasta seirevalimit, mitte iga tankla praegust kütusekvaliteeti.",
+    routeClasses: ["official_indicator_or_report"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "climate-adaptation",
+    title: "Kliimamuutustega kohanemise arengukava",
+    organization: "Kliimaministeerium",
+    type: "Ametlik kliimapoliitika juhend",
+    published: "28.09.2026",
+    url: "https://kliimaministeerium.ee/kestlikkus-kliima/kliimapoliitika/kliimamuutustega-kohanemine",
+    locator: "Arengukava eesmärk ja kaheksa kliimamuutuste mõjuga kohanemise võtmevaldkonda.",
+    tags: ["kliimamuutus", "kohanemine", "arengukava", "kliimarisk", "maakasutus", "inimtervis", "taristu", "energeetika"],
+    summary: "Kliimaministeeriumi leht koondab Eesti kliimamuutustega kohanemise arengukava eesmärgi, valdkonnad ja rakendusmaterjalid.",
+    content: "Kliimamuutustega kohanemise arengukava aastani 2030 kiideti heaks 2. märtsil 2017. Selle strateegiline eesmärk on suurendada Eesti riigi, regionaalse ja kohaliku tasandi valmisolekut ning võimet kliimamuutuste mõjuga kohaneda. Mõju käsitletakse kaheksas võtmevaldkonnas, sealhulgas planeeringud ja maakasutus, inimtervis ja päästevõimekus, looduskeskkond, biomajandus, taristu, energeetika, majandus ning ühiskond ja teadlikkus.",
+    routeClasses: ["official_guidance", "official_indicator_or_report"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "residual-pollution",
+    title: "Jääkreostus, reostunud pinnas ja põhjavesi",
+    organization: "Kliimaministeerium",
+    type: "Ametlik reostusülevaade",
+    published: "06.03.2026",
+    url: "https://kliimaministeerium.ee/jaakreostus-0",
+    locator: "Jaotis „Jääkreostusalad”: tervise- ja keskkonnariskid ning registriandmete roll.",
+    tags: ["jääkreostus", "reostunud pinnas", "põhjavesi", "ohtlik aine", "keskkonnaregister", "saaste"],
+    summary: "Kliimaministeeriumi ülevaade selgitab jääkreostuse riske pinnasele, põhjaveele, veekogudele ja inimeste tervisele.",
+    content: "Jääkreostusobjekt võib jääda märkamatuks kuni reostus jõuab kaevu, kanalisatsiooni või veekogusse või kuni kaevetöödel leitakse maetud ohtlikud jäätmed ja reostunud pinnas. Pinnas või põhjavesi loetakse reostunuks, kui vähemalt ühe ohtliku aine sisaldus ületab maa kasutustüübile vastava piirarvu; elumaal on piirarvud rangemad kui tööstusmaal. Üldleht ei tõenda ühe kinnistu seisundit, milleks tuleb kontrollida registriobjekti ja uuringuid.",
+    routeClasses: ["official_guidance", "official_spatial_or_register"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "agricultural-water-protection",
+    title: "Põllumajandus, nitraaditundlik ala ja veekaitse",
+    organization: "Kliimaministeerium",
+    type: "Ametlik veekaitse juhend",
+    published: "09.09.2025",
+    url: "https://kliimaministeerium.ee/merendus-veekeskkond/veekasutamine-ja-kaitse/pollumajandus-ja-veekaitse",
+    locator: "Nitraadidirektiiv, nitraaditundlik ala, tegevuskava, seire ja kaart.",
+    tags: ["põllumajandus", "veekaitse", "nitraat", "nitraaditundlik ala", "põhjavesi", "pinnavesi", "väetis"],
+    summary: "Kliimaministeeriumi juhend seob põllumajanduskoormuse, nitraaditundlikud alad, rangemad veekaitsenõuded ja ametliku seire.",
+    content: "Nitraadidirektiiv on vee kaitsmisel põllumajanduskoormuse eest üks vee raamdirektiivi rakendamise vahendeid. Intensiivse põllumajandustootmisega piirkondades moodustatakse põhja- ja pinnavee kaitseks nitraaditundlikud alad, millele kehtivad veeseaduse alusel rangemad keskkonnakaitsenõuded. Leht juhatab tegevuskava, ala kaardi ning põhjavee nitraatioonide seire juurde; ühe proovi tulemus ei kirjelda automaatselt kogu ala seisundit.",
+    routeClasses: ["official_guidance", "official_legal_context", "official_indicator_or_report"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "mining-waste-guidance",
+    title: "Kaevandamisjäätmed ja jäätmehoidlad",
+    organization: "Kliimaministeerium",
+    type: "Ametlik kaevandamisjäätmete juhend",
+    published: "23.01.2025",
+    url: "https://kliimaministeerium.ee/energeetika-maavarad/maavarad/kaevandamisjaatmed-ja-hoidlad",
+    locator: "Kaevandamisjäätmete määratlus, jäätmehoidlad ja regulatsiooni eesmärk.",
+    tags: ["kaevandamisjäätmed", "jäätmehoidla", "aheraine", "katend", "kaevandamine", "maavara", "keskkonnamõju"],
+    summary: "Kliimaministeeriumi juhend selgitab kaevandamisjäätmete liike, jäätmehoidlaid ning keskkonna- ja tervisemõju vähendamise nõudeid.",
+    content: "Kaevandamisjäätmed tekivad maavarade uuringul, kaevandamisel, rikastamisel ja ladustamisel ning kaevandamistöö tulemusena. Nende hulka võivad kuuluda rikastamisjäätmed, aheraine ja katend. Regulatsiooni eesmärk on vältida või võimalikult palju vähendada selliste jäätmete käitlemisest tulenevat kahjulikku mõju keskkonnale ja inimeste tervisele. Üldjuhend ei tõenda ühe hoidla praegust ohutust ega loa täitmist.",
+    routeClasses: ["official_guidance", "official_legal_context"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "fishing-restrictions",
+    title: "Kalapüügi keeluajad, -alad ja kalade alammõõdud",
+    organization: "Keskkonnaamet",
+    type: "Ametlik kalapüügijuhend",
+    published: "28.04.2026",
+    url: "https://keskkonnaamet.ee/elusloodus-looduskaitse/kalastamine/keeluajad-ja-alad-alammoodud",
+    locator: "Püügipiirangud, päevased kogused, kalade alammõõdud ning liigiti keeluajad ja -alad.",
+    tags: ["kalapüük", "keeluaeg", "keeluala", "alammõõt", "püügipiirang", "haug", "ahven", "lõhe", "forell"],
+    summary: "Keskkonnaameti juhend koondab harrastuskalapüügi keeluajad, -alad, alammõõdud ja päevased püügipiirangud.",
+    content: "Kalapüügi keeluajad, -alad ja kalade alammõõdud sõltuvad liigist, veekogust ja ajast. Keskkonnaameti juhend koondab päevased püügipiirangud; kala pikkust mõõdetakse suletud suuga ninamiku tipust sabauime lõpuni. Kuna piirangud võivad muutuda ja erineda veekoguti, tuleb enne püüki kontrollida lehe ajakohast kuupäeva ja konkreetse liigi ning koha reeglit.",
+    routeClasses: ["official_guidance", "official_legal_context"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "pollinator-monitoring-methodology",
+    title: "Kimalaste seire metoodika Eestis",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Ametlik seiremetoodika aruanne",
+    published: "26.09.2024",
+    url: "https://keskkonnaportaal.ee/et/keskkonnaagentuuri-kimalaste-seire-metoodika-valjatootamise-projekti-aruanne-2019",
+    locator: "2019. aasta projekti eesmärk, uus kimalaste seiremetoodika ja varasema 1996–2016 andmestiku piirangud.",
+    tags: ["kimalane", "tolmeldaja", "seire", "seiremetoodika", "liigirikkus", "arvukus", "1996–2016", "2020"],
+    summary: "Keskkonnaagentuuri aruande leht kirjeldab kimalaste riikliku seiremetoodika eesmärki, rakendumist ja varasema andmestiku piiranguid.",
+    content: "2019. aastal valminud kimalaste seire metoodika eesmärk oli võimaldada koguda eri alade ja koosluste infot ning kirjeldada muutusi riigi kimalasekooslustes tervikuna. Uus metoodika rakendus 2020. aastast ja võimaldab kimalaste ning päevaliblikate andmeid paralleelselt analüüsida. 1996.–2016. aasta andmestiku analüüsis ei muutunud seirealade kimalaste liigirikkus ja keskmine arvukus oluliselt, kuid varasem metoodika ei võimaldanud hinnata põllumajandusmaastike maakasutuse mõju; seda piirangut tuleb iga vana aegrida kasutades säilitada.",
+    routeClasses: ["official_indicator_or_report"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "bogs-overview",
+    title: "Eesti soode levik, kaitse ja taastamine",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Ametlik keskkonnanäitaja ülevaade",
+    published: "29.10.2024",
+    url: "https://keskkonnaportaal.ee/et/sood",
+    locator: "Jaotised „Levik” ning soode kaitse, kuivenduse mõju ja veerežiimi taastamine.",
+    tags: ["soo", "raba", "märgala", "turvas", "soode pindala", "kuivendamine", "kaitse", "taastamine", "2013"],
+    summary: "Keskkonnaportaali näitajaleht eristab soo kitsama definitsiooni kõigist turbaga seotud aladest ning kirjeldab levikut, kaitset ja kuivenduse mõju.",
+    content: "Eestimaa Looduse Fondi koordineeritud 2013. aasta inventuuri järgi oli Eesti soode pindala ligi 278 000 hektarit ehk 6,1% territooriumist. See ei ole sama mis laiem 22% hinnang, mis hõlmab ka soostunud metsi ja rohumaid ning degradeerunud soid sõltumata turbalasundi paksusest või turba jätkuvast ladestumisest. Lehe järgi jäi 209 575 hektarit ehk 75% Eesti soodest kaitstavatele aladele, kuid pindala- ja kaitsenäidud kannavad lehel nimetatud inventuuri või seisukuupäeva ega kirjelda automaatselt tänast ulatust.",
+    routeClasses: ["official_indicator_or_report", "official_guidance"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "microplastic-pollution",
+    title: "Mikroplastireostus ja plastigraanulite kadu",
+    organization: "Kliimaministeerium",
+    type: "Ametlik mikroplastireostuse juhend",
+    published: "15.12.2025",
+    url: "https://kliimaministeerium.ee/mikroplastireostuse-vahendamine",
+    locator: "Mikroplasti keskkonnapüsivus, levik ja plastigraanulite kao allikad.",
+    tags: ["mikroplast", "mikroplastireostus", "plastigraanul", "plast", "saaste", "pinnas", "veekogu", "ökosüsteem"],
+    summary: "Kliimaministeeriumi juhend kirjeldab mikroplasti püsiva ja piiriülese saasteainena ning selgitab plastigraanulite kao teid keskkonda.",
+    content: "Mikroplast on keskkonnas püsiv, levinud ja piiriülene saasteaine, mida on leitud pinnasest, veekogudest, ookeanidest ning kaugetest piirkondadest. See kahjustab elusorganisme, ökosüsteeme ja bioloogilist mitmekesisust ning võib kanda mürgiseid aineid. Plastigraanulite kaod tekivad tootmisel, transpordil, ladustamisel ja töötlemisel. Üldjuhend ei tõenda ühe ettevõtte praegust nõuetele vastavust ega konkreetse koha mikroplastisisaldust.",
+    routeClasses: ["official_guidance"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "odor-guidance",
+    title: "Häiriv lõhn välisõhus",
+    organization: "Keskkonnaamet",
+    type: "Ametlik välisõhu ja lõhnahäiringu juhend",
+    published: "27.04.2026",
+    url: "https://keskkonnaamet.ee/keskkonnakasutus-kiirgus/ohk-ja-kliima/lohn-mura",
+    locator: "Jaotis „Ebameeldiva või ärritava lõhnaga aine”: määratlus, teavitamine ja hindamine.",
+    tags: ["lõhn", "lõhnahäiring", "hais", "välisõhk", "1247", "lõhnaaine", "teatamine"],
+    summary: "Keskkonnaameti juhend selgitab lõhnahäiringut, selle hindamist ja häirivast lõhnast teatamist.",
+    content: "Ebameeldiva lõhnaga aine on inimtegevusest põhjustatud välisõhku väljutatav aine või ainete segu. Lõhnataju on subjektiivne ja häiriva lõhna olemasolu ei tähenda alati otsest ohtu tervisele. Häirivast lõhnast tuleb teavitada riigiinfo telefoni 1247. Seda, kas lõhnaainele sätestatud normi ületatakse, määrab ekspertrühm tunnustatud meetoditega; üldjuhend ise ei tõenda ühe heiteallika praegust normiületust.",
+    routeClasses: ["official_guidance"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "coastal-water-status",
+    title: "Rannikuveekogumite ökoloogiline seisund",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Ametlik rannikuvee seisundiindikaator",
+    published: "25.10.2024",
+    url: "https://keskkonnaportaal.ee/et/rannikuveekogumite-seisund",
+    locator: "16 rannikuveekogumi ökoloogilise seisundi indikaator, metoodika ja 2021. aasta algandmed.",
+    tags: ["rannikuvesi", "rannikuveekogum", "ökoloogiline seisund", "Läänemeri", "veekogum", "seire", "2021", "2024"],
+    summary: "Keskkonnaportaali indikaator kirjeldab Eesti 16 rannikuveekogumi ökoloogilise seisundi hindamist ja 2024. aastal avaldatud koondhinnangut.",
+    content: "25. oktoobril 2024 uuendatud indikaator arvestab kõigi 16 Eesti rannikuveekogumi ökoloogilist seisundit ning kasutab 2021. aasta Exceli algandmeid. Leht kirjeldab viimaste aastate koondhinnangut stabiilselt kesisena ja märgib, et vaid üksikud kogumid klassifitseerusid mõnel aastal heasse seisundiklassi. Enamikku kogumeid seiratakse kuueaastase rotatsioonitsükliga ja vaheaastal kasutatakse viimast seirehinnangut; seetõttu ei tõenda see väljavõte ühe kogumi praegust seisundit.",
+    routeClasses: ["official_indicator_or_report"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "marine-microplastic-research",
+    title: "Mikroplasti ja mikroprügi uuringud Eesti merealal",
+    organization: "Kliimaministeerium",
+    type: "Ametlik merekeskkonna uuringute kataloog",
+    published: "05.01.2026",
+    url: "https://kliimaministeerium.ee/merendus-veekeskkond/merekeskkonna-kaitse/uuringud",
+    locator: "Jaotised „Mikroplast” ja „Mikroprügi”: Eesti mereala uuringud, aruanded ning andmestik.",
+    tags: ["mikroplast", "mikroprügi", "meri", "rannikumeri", "merekeskkond", "uuring", "seire", "andmestik"],
+    summary: "Kliimaministeeriumi kataloog koondab Eesti mereala mikroplasti ja mikroprügi uuringud, aruanded, seiremetoodikad ning ühe projektiga seotud andmestiku.",
+    content: "Mikroplasti projekt uuris esmakordselt kogu Eesti merekeskkonnas mikroplasti peamisi allikaid, võimalikke levikuteid ning koguseid ja iseloomu veepinnal, veesambas, setete ülemises kihis ja valitud mereelustikus. Mikroprügi uuringud käsitlevad mere pinnakihi ja merepõhja setete prügi hulka, koostist ning seiremeetodeid. Leht lingib lõpparuande, proovide andmestiku ja teised uuringuaruanded, kuid kataloogitekst ei anna ühe koha praegust mikroplastisisaldust.",
+    routeClasses: ["official_indicator_or_report"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "solar-uv-guidance",
+    title: "Päike ja UV-kiirgus",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Ametlik UV-kiirguse juhend",
+    published: "11.04.2023",
+    url: "https://keskkonnaportaal.ee/et/paike-ja-uv-kiirgus",
+    locator: "Jaotis „UV-kiirgus”: UV-indeks, tervisemõju, mõõtejaamad ja hetkenäidu link.",
+    tags: ["UV-kiirgus", "ultraviolettkiirgus", "UV-indeks", "päikesekiirgus", "päike", "nahk", "Tõravere", "mõõtmine"],
+    summary: "Keskkonnaportaali juhend selgitab UV-kiirgust, UV-indeksi tähendust, tervisemõju ja Eesti ametlike hetkemõõtmiste asukohta.",
+    content: "Erüteemse UV-kiirguse intensiivsust mõõdetakse spetsiaalsete sensoritega ja avaldatakse UV-indeksina. Kui UV-indeks on suurem kui 6, kasvab pika päikese käes viibimise korral põletusrisk; saadud kiirgusdoos sõltub ka kokkupuute ajast. Eestis mõõdetakse UV-indeksit Tõravere, Tallinn-Harku, Roomassaare ja Pärnu-Sauga meteoroloogiajaamades ning leht suunab Ilmateenistuse hetkemõõtmisele. Staatiline juhend ei tõenda tänast UV-indeksi väärtust.",
+    routeClasses: ["official_guidance"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "radioactive-waste-guidance",
+    title: "Radioaktiivsed jäätmed Eestis",
+    organization: "Kliimaministeerium",
+    type: "Ametlik radioaktiivsete jäätmete juhend",
+    published: "24.03.2026",
+    url: "https://kliimaministeerium.ee/elurikkus-keskkonnakaitse/kiirgus/radioaktiivsed-jaatmed",
+    locator: "Radioaktiivsete jäätmete määratlus, Eesti jäätmevoogude päritolu ja riikliku tegevuskava roll.",
+    tags: ["radioaktiivsed jäätmed", "radionukliid", "kiirgusohutus", "jäätmekäitlus", "KORAK", "tegevuskava"],
+    summary: "Kliimaministeeriumi juhend määratleb radioaktiivsed jäätmed, kirjeldab Eesti jäätmevoogude päritolu ja suunab riikliku käitluse tegevuskava juurde.",
+    content: "Radioaktiivsete jäätmetena käsitletakse radionukliide sisaldavaid või nendega saastunud aineid, materjale või esemeid, mille aktiivsus ületab seaduse alusel sätestatud tasemeid ja mida tulevikus ei kavatseta kasutada. Lehe 24. märtsil 2026 kontrollitud versiooni järgi on Eesti radioaktiivsed jäätmevood väikesed, enamik pärineb Nõukogude Liidu ajast ning tänapäeval tekitavad neid peamiselt vastava loaga meditsiini-, tööstus- ja teadusasutused. Leht suunab 2020. aastal kinnitatud riikliku käitluse tegevuskava juurde, kuid ei tõenda konkreetse objekti praegust jäätmekogust, ohutust ega loa täitmist.",
+    routeClasses: ["official_guidance", "official_indicator_or_report"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
+  },
+  {
+    id: "natural-radionuclides-guidance",
+    title: "Looduslikud radionukliidid põhjavees ja materjalides",
+    organization: "Kliimaministeerium",
+    type: "Ametlik loodusliku kiirguse juhend",
+    published: "22.01.2024",
+    url: "https://kliimaministeerium.ee/elurikkus-keskkonnakaitse/kiirgus/looduslikud-radionukliidid",
+    locator: "NORM-materjalid ning jaotis „Radionukliidid põhjavees”: päritolu ja mõjutatud põhjaveekihid.",
+    tags: ["looduslik radionukliid", "NORM", "põhjavesi", "uraan", "toorium", "raadium", "kiirgus", "Kambrium-Vend"],
+    summary: "Kliimaministeeriumi juhend selgitab looduslike radionukliidide esinemist materjalides ja Eesti põhjavees ning nimetab enim mõjutatud põhjaveekihid.",
+    content: "Looduslikke radionukliide sisaldavaid NORM-materjale leidub loodusvarades ja põhjavees; leht nimetab nende seas uraan-238, toorium-232, kaalium-40 ning lagunemisrea tütarradionukliide. Eesti põhjavee kohati kõrget radioaktiivsust põhjustavad ümbritsevatest pinnasekihtidest põhjaveelademesse pääsevad looduslikud radionukliidid. Need mõjutavad peamiselt Kambrium-Vendi ja mõningal määral Ordoviitsium-Kambriumi veeladestute vett, pinnavees on neid lehe järgi üldjuhul vähe. Üldjuhend ei tõenda ühe kaevu radionukliidisisaldust, joogivee ohutust ega praegu kehtivat piirväärtust.",
+    routeClasses: ["official_guidance", "official_indicator_or_report"],
+    _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
   },
 ];
 
@@ -1811,6 +2163,7 @@ function topicRoot(word) {
   if (word.startsWith("jaatmekaitluskoh")) return "jaatmekaitluskoht";
   if (word.startsWith("asbest") || word.startsWith("eterniit")) return "asbest";
   if (word.startsWith("biojaat") || word.startsWith("kompost")) return "biojaatmed";
+  if (word.startsWith("plastijaat")) return "plastijaatmed";
   if (word.startsWith("pakend")) return "jaat";
   if (word.startsWith("pudel") || word.startsWith("klaas")) return "klaas";
   if (word.startsWith("diivan") || word.startsWith("divan") || word.startsWith("moobel")) return "suurjaatmed";
@@ -1832,6 +2185,23 @@ function topicRoot(word) {
   if (word.startsWith("peenosak") || word.startsWith("pm10") || word.startsWith("pm2")
     || word === "no2" || word === "co" || word.startsWith("vingugaas")) return "ohukvaliteet";
   if (word === "ohk" || word.startsWith("valisoh")) return "ohk";
+  if (word === "uv" || word.startsWith("ultraviolett")) return "uvkiirgus";
+  if (word.startsWith("radioaktiiv")) return "radioaktiivne";
+  if (word.startsWith("radionukliid")) return "radionukliid";
+  if (word.startsWith("radoon")) return "radoon";
+  if (word.startsWith("sisekliim")) return "sisekliima";
+  if (word.startsWith("hallitus")) return "hallitus";
+  if (word.startsWith("liigniisk") || word.startsWith("ohuniisk") || word.startsWith("niiskus")) return "niiskus";
+  if (word.startsWith("kemikaal")) return "kemikaal";
+  if (word.startsWith("ohutuskaart")) return "ohutuskaart";
+  if (word.startsWith("biotsiid")) return "biotsiid";
+  if (word.startsWith("kimal") || word.startsWith("tolmeld")) return "tolmeldaja";
+  if (word.startsWith("mikroplast")) return "mikroplast";
+  if (word.startsWith("lohn") || word.startsWith("hais")) return "lohn";
+  if (word.startsWith("okoloog")) return "okoloogia";
+  if (/^(?:teatada|teatamine|teatamist)$/u.test(word)) return "teatamine";
+  if (["pfas", "pfos", "pfoa"].includes(word)) return "pfas";
+  if (word === "prtr") return "prtr";
   if (word.startsWith("saast")) return "saaste";
   if (word.startsWith("reost")) return "saaste";
   if (word.startsWith("veereost")) return "saaste";
@@ -1852,6 +2222,7 @@ function topicRoot(word) {
   if (word.startsWith("kaitstav")) return "kaitstav";
   if (word.startsWith("liig") || word.startsWith("rahni") || word.startsWith("nahkhiir") || word.startsWith("hulj")
     || word.startsWith("konn") || word.startsWith("pesapaig")) return "liik";
+  if (word.startsWith("rannikuve")) return "rannikuvesi";
   if (word.startsWith("suplusve") || word.startsWith("rannave") || word.startsWith("supluskoh")
     || word.startsWith("rannas") || word.startsWith("ranna") || word.startsWith("rand")) return "suplusvesi";
   if (word.startsWith("rannikumer")) return "meri";
@@ -1859,13 +2230,14 @@ function topicRoot(word) {
   if (word.startsWith("vaikepuhast") || word.startsWith("omapuhast") || word.startsWith("kohtkait") || word.startsWith("kogumismahut")) return "kohtkaitlus";
   if (word.startsWith("pestitsiid") || word.startsWith("taimekaitsevah")) return "pestitsiid";
   if (word.startsWith("nitraat")) return "nitraat";
+  if (word.startsWith("veekaits")) return "veekaitse";
   if (word.startsWith("pinnave")) return "vesi";
   if (word.startsWith("pohjave")) return "pohjavesi";
   if (word.startsWith("puurkaev") || word.startsWith("puurauk") || word.startsWith("salvkaev") || word.startsWith("kaevu")) return "puurkaev";
   if (word.startsWith("registr")) return "register";
   if (word === "bht7") return "vesi";
   if (word === "bod7") return "vesi";
-  if (word.startsWith("mereprug")) return "mereprugi";
+  if (word.startsWith("mereprug") || word.startsWith("mikroprug")) return "mereprugi";
   if (word.startsWith("laanemer")) return "laanemeri";
   if (word.startsWith("eutrofeer") || word.startsWith("eutrofer") || word.startsWith("oitse")
     || word.startsWith("vetik") || word.startsWith("sinivetik")) return "eutrofeerumine";
@@ -1925,15 +2297,20 @@ function topicRoot(word) {
   if (word.startsWith("elektriaut")) return "elektriauto";
   if (word.startsWith("elutsuk")) return "elutsukkel";
   if (word.startsWith("energi") || word.startsWith("taastuvenergi") || word.startsWith("paikeseenergi")) return "energia";
+  if (word.startsWith("vedelkut") || word.startsWith("vedelkyt") || word.startsWith("kutus") || word.startsWith("kytus")) return "kutus";
   if (word.startsWith("transpor")) return "transport";
   if (word.startsWith("maavar")) return "maavara";
   if (word.startsWith("kaevand") || word.includes("karjaar")) return "kaevandus";
   if (word.startsWith("korrasta")) return "korrastamine";
   if (word.startsWith("polevkiv")) return "polevkivi";
   if (word.startsWith("mull")) return "muld";
+  if (word.startsWith("maahoiv") || word.startsWith("netohoiv")) return "maahoive";
+  if (word.startsWith("jaakreost")) return "jaakreostus";
   if (word.startsWith("mura")) return "mura";
+  if (word.startsWith("vibratsioon")) return "mura";
   if (word.startsWith("margal") || word.startsWith("turba") || word.startsWith("rab") || /^soo(?:d|s|st|de|del|des)?$/u.test(word)) return "margala";
   if (word.startsWith("taasta")) return "taastamine";
+  if (word.startsWith("kohanem")) return "kohanemine";
   if (word.startsWith("pais")) return "pais";
   if (word.startsWith("kalapuugi") || word.startsWith("kalapuuk") || word.startsWith("kalastus")) return "kalapuuk";
   if (/^kal(?:a|ad|ade|ast|astik|aliik)/u.test(word)) return "kala";
@@ -2123,7 +2500,7 @@ export function queryTerms(query) {
   const multilingualPhrases = isMultilingualSearchEnabled();
   const roots = [...new Set(normalizedQuery
     .split(/\s+/u)
-    .filter((word) => word.length >= 3 && !STOP_WORDS.has(word) && !/^\d+$/u.test(word))
+    .filter((word) => (word.length >= 3 || word === "uv") && !STOP_WORDS.has(word) && !/^\d+$/u.test(word))
     .flatMap((word) => {
       if (word.startsWith("keskkonnainfo")) return ["keskkond"];
       // A named game species stays a term of its own, so a passage about
@@ -2192,6 +2569,7 @@ export function queryTerms(query) {
       if (word.startsWith("kliimastsenaarium")) return ["kliima", "stsenaarium"];
       if (word.startsWith("mereprug")) return ["meri", "mereprugi"];
       if (word.startsWith("asbestijaat")) return ["asbest", "jaat"];
+      if (word.startsWith("kaevandamisjaat")) return ["kaevandus", "jaat", "kaevandamisjaatmed"];
       if (word.startsWith("paikesepaneelijaat")) return ["paikesepaneel", "jaat"];
       if (word.startsWith("suplusveekvalite")) return ["suplusvesi", "seisund"];
       if (word.startsWith("ohusaast")) return ["ohk", "saaste"];
@@ -2384,6 +2762,31 @@ export function queryRootVariants(root) {
   if (root === "sorteerimine") return ["sorteer", "sortimine", "sorting", "jaatmete liigiti kogumine"];
   if (root === "asbest") return ["asbest", "eterniit"];
   if (root === "biojaatmed") return ["biojaat", "kompost"];
+  if (root === "plastijaatmed") return ["plastijaat"];
+  if (root === "radoon") return ["radoon"];
+  if (root === "uvkiirgus") return ["uv kiirgus", "uv indeks", "ultraviolett"];
+  if (root === "radioaktiivne") return ["radioaktiiv"];
+  if (root === "radionukliid") return ["radionukliid", "norm materjal"];
+  if (root === "sisekliima") return ["sisekliim"];
+  if (root === "hallitus") return ["hallitus"];
+  if (root === "niiskus") return ["niiskus", "liigniisk", "ohuniisk"];
+  if (root === "kemikaal") return ["kemikaal"];
+  if (root === "ohutuskaart") return ["ohutuskaart", "sds"];
+  if (root === "biotsiid") return ["biotsiid"];
+  if (root === "tolmeldaja") return ["tolmeld", "kimal"];
+  if (root === "mikroplast") return ["mikroplast"];
+  if (root === "lohn") return ["lohn", "hais"];
+  if (root === "rannikuvesi") return ["rannikuve", "rannikuveekogum"];
+  if (root === "teatamine") return ["teatad", "teatam"];
+  if (root === "okoloogia") return ["okoloogil"];
+  if (root === "pfas") return ["pfas", "pfos", "pfoa"];
+  if (root === "prtr") return ["prtr", "saasteainete heite ja ulekanderegister"];
+  if (root === "maahoive") return ["maahoiv", "netohoiv"];
+  if (root === "kutus") return ["kutus", "kytus", "vedelkut", "vedelkyt", "bensiin", "diislikut", "kutteoli"];
+  if (root === "kohanemine") return ["kohanem"];
+  if (root === "jaakreostus") return ["jaakreost"];
+  if (root === "veekaitse") return ["veekaits"];
+  if (root === "kaevandamisjaatmed") return ["kaevandamisjaat"];
   if (root === "rohevorgustik") return ["rohevorg", "roheline vorgustik", "rohekoridor"];
   if (root === "voorliik") return ["voorliik", "invasiiv"];
   if (root === "uluk") return ["uluk", "karu", "suurkisk", "podr", "potr", "ilves", "hunt", "hundi", "hirv", "metskit", "metssiga", "metssea", "wildlife", "animal"];
@@ -2428,13 +2831,13 @@ const DOMAIN_ROOTS = new Set([
   "vesi", "jarv", "jogi", "meri", "laanemeri", "pohjavesi", "puurkaev", "jaaolud", "ohk", "ohukvaliteet", "saaste", "heide", "kasvuhoonegaas",
   "jaat", "jaatmekaitluskoht", "prugi", "rehv", "polet", "ringmajandus", "ringlussevott", "loodus", "looduskaitse", "elurikkus", "elupaik",
   "kaitseala", "natura", "liik", "seire", "loodusvaatlus", "eutrofeerumine", "keskkond", "keskkonnaportaal", "keskkonnaluba", "menetlus", "piirang", "lubatavus",
-  "suplusvesi", "joogivesi", "reovesi", "kohtkaitlus", "pestitsiid", "nitraat", "mereprugi", "asbest", "biojaatmed",
+  "suplusvesi", "joogivesi", "reovesi", "kohtkaitlus", "pestitsiid", "nitraat", "mereprugi", "rannikuvesi", "asbest", "biojaatmed", "plastijaatmed", "mikroplast",
   "rohevorgustik", "voorliik", "uluk", "margala", "pais", "kala", "osoon", "paikesepaneel", "jalajalg", "susinik",
   "tuulepark", "aku", "uleujutusrisk",
   "kodus", "kalapuuk", "ranne", "klaas", "suurjaatmed",
   "keskkonnamoju", "kotkas", "kmh", "ksh", "kataster", "kinnistu", "metsaregister",
-  "elektriauto", "energia", "transport", "kütus", "kytus", "maavara", "kaevandus", "muld",
-  "mura", "kiirgus", "climate", "forest", "water", "weather", "pollution", "waste",
+  "elektriauto", "energia", "transport", "kutus", "maavara", "kaevandus", "muld", "maahoive", "jaakreostus", "kaevandamisjaatmed",
+  "mura", "lohn", "kiirgus", "uvkiirgus", "radioaktiivne", "radionukliid", "radoon", "sisekliima", "hallitus", "niiskus", "kemikaal", "ohutuskaart", "biotsiid", "pfas", "prtr", "veekaitse", "tolmeldaja", "climate", "forest", "water", "weather", "pollution", "waste",
   "biodiversity", "nature", "air", "animal", "species", "habitat", "wildlife", "woodland",
   "sea", "ocean", "river", "lake", "data", "andmed", "metaandmed", "api", "statistika", "ruumikiht", "allalaadimine", "kaart", "register", "metsateatis",
 ]);
@@ -2447,6 +2850,26 @@ const ENGLISH_ONLY_DOMAIN_ROOTS = new Set([
   "biodiversity", "nature", "air", "animal", "species", "habitat", "wildlife", "woodland",
   "sea", "ocean", "river", "lake", "data", "api",
 ]);
+const ENGLISH_ONLY_QUERY_MARKERS = new Set([
+  "what", "where", "when", "why", "which", "who", "how",
+  "is", "are", "does", "do", "can", "could", "should", "would",
+  "the", "in", "of", "for", "about", "estonia",
+]);
+const ENGLISH_ONLY_SUBJECT_WORDS = new Set([
+  "pollution", "emission", "emissions", "chemical", "chemicals",
+  "guidance", "information", "monitoring", "status",
+]);
+
+function hasEnglishOnlyQueryFrame(value) {
+  if (isMultilingualSearchEnabled()) return false;
+  const words = normalize(value).split(/\s+/u).filter(Boolean);
+  const markerCount = words.filter((word) => ENGLISH_ONLY_QUERY_MARKERS.has(word)).length;
+  return /\buv\s+index\b/u.test(words.join(" "))
+    || (words.includes("estonia") && words.some((word) => ["pfas", "pfos", "pfoa", "prtr"].includes(word)))
+    || /^(?:what|where|when|why|which|who|how|is|are|does|do|can|could|should|would)\b/u.test(words.join(" "))
+    || markerCount >= 2
+    || (markerCount >= 1 && words.some((word) => ENGLISH_ONLY_SUBJECT_WORDS.has(word)));
+}
 const ADMIN_CONTEXT_ROOTS = new Set([
   "tallinn", "tartu", "parnu", "parnumaa", "narva", "viljandi", "rakvere", "voru",
   "kuressaare", "haapsalu", "johvi", "harjumaa", "saaremaa", "kohtla", "ida", "virumaa",
@@ -2463,15 +2886,18 @@ const DOMAIN_FAMILY_BY_ROOT = new Map([
   ["kliima", "climate"], ["ilm", "weather"], ["temperatuur", "weather"], ["sademed", "weather"],
   ["vesi", "water"], ["jarv", "water"], ["jogi", "water"], ["meri", "water"], ["laanemeri", "water"],
   ["water", "water"], ["sea", "water"], ["ocean", "water"], ["river", "water"], ["lake", "water"],
-  ["pohjavesi", "water"], ["suplusvesi", "water"], ["joogivesi", "water"], ["reovesi", "water"], ["mereprugi", "water"], ["pais", "water"],
-  ["ohk", "air"], ["ohukvaliteet", "air"], ["saaste", "air"], ["osoon", "air"],
-  ["jaat", "waste"], ["prugi", "waste"], ["asbest", "waste"], ["biojaatmed", "waste"],
+  ["pohjavesi", "water"], ["suplusvesi", "water"], ["joogivesi", "water"], ["reovesi", "water"], ["mereprugi", "water"], ["rannikuvesi", "water"], ["pais", "water"],
+  ["ohk", "air"], ["ohukvaliteet", "air"], ["saaste", "air"], ["lohn", "air"], ["osoon", "air"],
+  ["jaat", "waste"], ["prugi", "waste"], ["asbest", "waste"], ["biojaatmed", "waste"], ["plastijaatmed", "waste"], ["mikroplast", "waste"], ["kaevandamisjaatmed", "waste"],
   ["looduskaitse", "nature"], ["elurikkus", "nature"], ["liik", "nature"], ["kala", "nature"],
   ["nature", "nature"], ["biodiversity", "nature"], ["animal", "nature"], ["species", "nature"],
   ["habitat", "nature"], ["wildlife", "nature"], ["forest", "forest"], ["woodland", "forest"],
-  ["voorliik", "nature"], ["uluk", "nature"], ["margala", "nature"], ["rohevorgustik", "nature"],
-  ["muld", "soil"], ["maavara", "soil"], ["kaevandus", "soil"],
-  ["energia", "energy"], ["transport", "energy"], ["elektriauto", "energy"], ["paikesepaneel", "energy"],
+  ["voorliik", "nature"], ["uluk", "nature"], ["margala", "nature"], ["tolmeldaja", "nature"], ["rohevorgustik", "nature"],
+  ["muld", "soil"], ["maahoive", "soil"], ["jaakreostus", "soil"], ["maavara", "soil"], ["kaevandus", "soil"],
+  ["energia", "energy"], ["transport", "energy"], ["elektriauto", "energy"], ["paikesepaneel", "energy"], ["kutus", "energy"],
+  ["uvkiirgus", "health"], ["radioaktiivne", "health"], ["radionukliid", "health"], ["radoon", "health"], ["sisekliima", "health"], ["hallitus", "health"], ["niiskus", "health"],
+  ["kemikaal", "chemicals"], ["ohutuskaart", "chemicals"], ["biotsiid", "chemicals"], ["pfas", "chemicals"], ["prtr", "chemicals"],
+  ["veekaitse", "water"],
   ["aku", "energy"], ["uleujutusrisk", "water"],
   ["api", "data"], ["data", "data"], ["andmed", "data"], ["metaandmed", "data"], ["statistika", "data"],
   ["ruumikiht", "spatial"], ["kaart", "spatial"], ["register", "spatial"],
@@ -6940,6 +7366,15 @@ export function assessSearchQuery(query, options = {}) {
       topic: null,
       reason: "personal-data-lookup",
       clarification: "Ma ei aita tuvastada eraisiku elukohta, vara ega muid isikuga seostatavaid registriandmeid. Avalikke keskkonnaobjekte saab otsida objekti tunnuse järgi ametlikust registrist.",
+    };
+  }
+  if (!isMultilingualSearchEnabled()
+    && (FOREIGN_SCRIPT_PATTERN.test(cleanQuery) || hasEnglishOnlyQueryFrame(cleanQuery))) {
+    return {
+      kind: "out-of-scope",
+      topic: null,
+      reason: "unsupported-language",
+      clarification: "Otsing töötab praegu eestikeelsete päringutega.",
     };
   }
   if (isReviewedGenericProtectedAreaConsentQuery(cleanQuery)) {

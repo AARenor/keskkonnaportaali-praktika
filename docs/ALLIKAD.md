@@ -63,7 +63,7 @@ Versioonitud metsakorpus sisaldab 16 algallikat ja 21 vastusedokumenti ning sell
 
 ## Kontrollitud kataloogi- ja suunamisallikad
 
-Runtime'i kataloogis on 119 kirjet. Need aitavad valida õige ametliku teenuse ja on nõrga võrguolukorra korral kasutajale suunavad allikad, kuid ei muutu automaatselt konkreetse arvu või õigusliku järelduse tõendiks. 01.10.2026 ametlik allikainventuur hõlmas 8463 Keskkonnaportaali sitemap'i URL-i ning eraldi kontrollitud metsanduse primaarallikaid; varasemad ja lisatud lehed lukustatakse realistliku avaliku eval-maatriksi, FAQ/väärarusaamade, sõnastusvariantide ja teemaliste peibutusallikate vastu.
+Runtime'i kataloogis on 144 kirjet. Need aitavad valida õige ametliku teenuse ja on nõrga võrguolukorra korral kasutajale suunavad allikad, kuid ei muutu automaatselt konkreetse arvu või õigusliku järelduse tõendiks. 01.10.2026 ametlik allikainventuur hõlmas 8463 Keskkonnaportaali sitemap'i URL-i ning eraldi kontrollitud metsanduse primaarallikaid; varasemad ja lisatud lehed lukustatakse realistliku avaliku eval-maatriksi, FAQ/väärarusaamade, sõnastusvariantide ja teemaliste peibutusallikate vastu.
 
 Kataloogi allikaprofiil (`server/source-registry.mjs`) määrab eraldi marsruudiklassi, tarneviisi, värskusklassi ja tõendipoliitika. Need väljad ei lähe avalikku API-sse, kuid takistavad teenuse maandumislehte muutumast seal peituva väärtuse tõendiks.
 
@@ -71,10 +71,42 @@ Kataloogi allikaprofiil (`server/source-registry.mjs`) määrab eraldi marsruudi
 |---|---|
 | `route-only` | Kuvab ametliku teenuse õige suunana; ei anna selle kirje tekstiga AI-le faktivastuse õigust. |
 | `timestamped` | Jooksev väärtus on AI-tõend ainult tüübikindla adapteri mõõte- või kehtivusajaga. |
-| `versioned` | Muutuv õigus-, loa- või menetlusseis vajab versiooni või kontrollitud staatuse aega. |
+| `versioned` | Kontrollitud versioon võib tõendada seal otseselt kaetud püsijuhist või aastaga seotud näitu; muutuv õigus-, loa- või menetlusseis vajab eraldi ajakohast staatust. |
 | `claim-specific` | Püsilehe puhastatud sisu võib tõendada ainult päringuga samas lõigus otseselt kaetud väidet. |
 
 Uus kate sisaldab Ilmateenistuse jooksvaid ilma-, hoiatuse- ja hüdroloogiavaateid, Terviseameti joogivee juhist, pinnaveekogumite seisundit, riiklikke ja käitisepõhiseid õhuheiteid, PAKIS-e ja PROTO registreid, Natura alasid, Loodusvaatluste andmebaasi, Metsaportaali, kliimapoliitika andmeväravat ning üleujutusriski kaarte. Ilmateenistuse vaatlus- ja prognoosi-XML-il, `f_hydroseire` kahel täpsel jaamal, `f_kliima_paev` 25 kureeritud jaama `DTA08` päevanäitudel, EELISe Emajõe avaliku vooluveekogu kirjel, `f_rahvalad` kuue nimega Natura loodusala kirjetel, Statistikaameti KK048, KK25 ja KK068 2024. aasta riiklikel koondlahtritel ning KK610 ühe aasta 2002–2024 kogu jäätmete taaskasutamise lahtril on valideeritud adapter; muud dünaamilised vaated jäävad tahtlikult `route-only` või tõendikõlbmatuks `timestamped` kirjeks, kuni nende jaoks on skeemi, aja ja ühiku valideerimisega adapter.
+
+### 01.10.2026 teine allikalaiendus
+
+Teine uurimisring lisas 25 otseselt kontrollitud ametlikku püsilehte. Kõik kasutavad `versioned`-poliitikat, 01.10.2026 kontrollversiooni ja 31-päevast suletud värskuspiiri. See lubab kasutada ainult lehel otseselt kaetud üldjuhist või selgelt nimetatud aasta näitu; registriobjekti, toote, ettevõtte, kinnistu, loa, õigusliku seisu või praeguse mõõtetulemuse kohta tuleb endiselt kasutada ajakohast teenust või valideeritud adapterit.
+
+| Valdkond | Kontrollitud ametlik allikas | Otsene runtime-roll ja piirang |
+|---|---|---|
+| Radoon | [Kliimaministeerium: Radoon](https://kliimaministeerium.ee/elurikkus-keskkonnakaitse/kiirgus/radoon), uuendatud 27.08.2024 | Radooni päritolu, riskipiirkonnad, terviserisk ja ehituslikud leevendusmeetmed; kaart ei tõenda ühe hoone taset. |
+| Keskkonnamüra | [Terviseamet: Müra ja vibratsioon](https://terviseamet.ee/keskkonnatervis/fuusikalised-ohutegurid-elukeskkonnas/mura-ja-vibratsioon), uuendatud 27.04.2026 | Müraallikad ja tervisemõju; ei otsusta ühe aadressi või seadme normiületust. |
+| Sisekliima | [Terviseamet: Sisekliima](https://terviseamet.ee/keskkonnatervis/sisekliima), uuendatud 26.01.2026 | Hallitus, liigniiskus, ventilatsioon ja soovituslikud sisekliima vahemikud; ei asenda hoone ekspertiisi. |
+| Kemikaaliohutus | [Terviseamet: Ohutuskaart](https://terviseamet.ee/kemikaali-tooteohutus/ohutuskaart), uuendatud 23.12.2025 | REACH/CLP ohutuskaardi koostamise, 16 jao, esitamise ja uuendamise üldnõuded. |
+| Biotsiidid | [Terviseamet: Biotsiidid](https://terviseamet.ee/kemikaalid-igapaevaelus/biotsiidid), uuendatud 28.09.2026 | BPR-i, loa/registreeringu ja märgistuse üldjuhis; ühe toote kehtiv luba kontrollitakse live-nimekirjast. |
+| Püsivad saasteained | [Kliimaministeerium: Kemikaalid](https://kliimaministeerium.ee/elurikkus-keskkonnakaitse/toostusheide-ja-kemikaalid/kemikaalid), uuendatud 01.07.2026 | POS-ide ja PFAS-ainete omadused; ei tõenda toote koostist ega koha saastetaset. |
+| Tööstusheide | [Kliimaministeerium: PRTR register](https://kliimaministeerium.ee/energeetika-maavarad/valisohk/prtr-register), uuendatud 22.01.2026 | Registri ulatus ja aruandekohustus; ettevõtte/aasta heide kontrollitakse KOTKASest koos ühiku ja versiooniga. |
+| Muld ja maahõive | [Keskkonnaportaal: Muld ja maahõive](https://keskkonnaportaal.ee/et/teemad/muld-ja-maahoive), uuendatud 31.07.2026 | Mullaseire ja ETAKi tehisobjektide analüüsil põhinev esmane maahõive ülevaade; ühe ala tulemust ei üldistata Eestile. |
+| Pakendi- ja plastijäätmed | [Keskkonnaportaal: Pakendi- ja plastijäätmed](https://keskkonnaportaal.ee/et/teemad/jaatmed-ja-ringmajandus/jaatmed/pakendi-ja-plastijaatmed), uuendatud 29.05.2026 | 2023. aasta pakendijäätmete kogus ja plastijäätmete ülevaade; muu aasta kogus või ettevõtja kohustus vajab oma aruannet/juhendit. |
+| Biojäätmed | [Keskkonnaportaal: Biojäätmed](https://keskkonnaportaal.ee/et/teemad/jaatmed-ja-ringmajandus/jaatmed/biojaatmed), uuendatud 29.05.2026 | Riiklik määratlus ja praktilised näited; kogumisviis sõltub kohaliku omavalitsuse eeskirjast. |
+| Vedelkütus | [Keskkonnaportaal: Vedelkütuse seire](https://keskkonnaportaal.ee/et/teemad/valisohk/vedelkutuse-seire), uuendatud 11.08.2026 | 2025. aasta kütuseproovide seiretulemus; ei kinnita iga tankla praegust kvaliteeti. |
+| Kliimakohanemine | [Kliimaministeerium: Kliimamuutustega kohanemine](https://kliimaministeerium.ee/kestlikkus-kliima/kliimapoliitika/kliimamuutustega-kohanemine), uuendatud 28.09.2026 | Riikliku arengukava eesmärk ja kaheksa valdkonda; ei ole kohalik riskiprognoos. |
+| Jääkreostus | [Kliimaministeerium: Jääkreostus](https://kliimaministeerium.ee/jaakreostus-0), uuendatud 06.03.2026 | Reostunud pinnase/põhjavee üldkriteerium ja riskid; kinnistu seisund vajab registrit ja uuringut. |
+| Põllumajanduse veekaitse | [Kliimaministeerium: Põllumajandus ja veekaitse](https://kliimaministeerium.ee/merendus-veekeskkond/veekasutamine-ja-kaitse/pollumajandus-ja-veekaitse), uuendatud 09.09.2025 | Nitraaditundliku ala, rangemate nõuete, tegevuskava ja seire kontekst; ei otsusta ühe ettevõtte vastavust. |
+| Kaevandamisjäätmed | [Kliimaministeerium: Kaevandamisjäätmed ja -jäätmehoidlad](https://kliimaministeerium.ee/energeetika-maavarad/maavarad/kaevandamisjaatmed-ja-hoidlad), uuendatud 23.01.2025 | Jäätmeliigid ja regulatsiooni eesmärk; ei tõenda ühe hoidla ohutust ega loa täitmist. |
+| Kalapüük | [Keskkonnaamet: Keeluajad ja -alad, alammõõdud](https://keskkonnaamet.ee/elusloodus-looduskaitse/kalastamine/keeluajad-ja-alad-alammoodud), uuendatud 28.04.2026 | Piirangute ja mõõtmise juhend; liik, koht ja kuupäev tuleb enne püüki uuesti kontrollida. |
+| Tolmeldajate seire | [Keskkonnaportaal: Kimalaste seire metoodika](https://keskkonnaportaal.ee/et/keskkonnaagentuuri-kimalaste-seire-metoodika-valjatootamise-projekti-aruanne-2019), uuendatud 26.09.2024 | 2019 metoodika eesmärk, rakendumine 2020. aastast ja 1996–2016 andmestiku piirang; ei ole 2026. aasta arvukusnäit. |
+| Sood | [Keskkonnaportaal: Sood](https://keskkonnaportaal.ee/et/sood), uuendatud 29.10.2024 | 2013 inventuuri pindala, kitsama soo mõiste ja kaitse/kuivenduse kontekst; arvud säilitavad inventuuri- või seisukuupäeva. |
+| Mikroplast | [Kliimaministeerium: Mikroplastireostuse vähendamine](https://kliimaministeerium.ee/mikroplastireostuse-vahendamine), uuendatud 15.12.2025 | Mikroplasti keskkonnapüsivus, levik ja plastigraanulite kao teed; ei tõenda ettevõtte vastavust ega ühe koha sisaldust. |
+| Lõhnahäiring | [Keskkonnaamet: Lõhn, müra](https://keskkonnaamet.ee/keskkonnakasutus-kiirgus/ohk-ja-kliima/lohn-mura), uuendatud 27.04.2026 | Häiriva lõhna määratlus, hindamine ja 1247 teavitusjuhis; leht ei tõenda ühe heiteallika normiületust. |
+| Rannikuvee seisund | [Keskkonnaportaal: Rannikuveekogumite seisund](https://keskkonnaportaal.ee/et/rannikuveekogumite-seisund), uuendatud 25.10.2024 | 16 kogumi koondmetoodika ja 2021. aasta algandmetel põhinev avaldatud seisundikirjeldus; ei ole ühe kogumi praegune seisund. |
+| Mere mikroplastiuuringud | [Kliimaministeerium: Merekeskkonna uuringud](https://kliimaministeerium.ee/merendus-veekeskkond/merekeskkonna-kaitse/uuringud), uuendatud 05.01.2026 | Eesti mereala mikroplasti ja mikroprügi aruannete, seiremetoodikate ning projektandmestiku kataloog; ei anna ühe koha praegust sisaldust. |
+| UV-kiirgus | [Keskkonnaportaal: Päike ja UV-kiirgus](https://keskkonnaportaal.ee/et/paike-ja-uv-kiirgus), uuendatud 11.04.2023 | UV-indeksi tähendus, tervisemõju, mõõtejaamad ja Ilmateenistuse hetkenäidu link; staatiline väljavõte ei ole tänane indeks. |
+| Radioaktiivsed jäätmed | [Kliimaministeerium: Radioaktiivsed jäätmed](https://kliimaministeerium.ee/elurikkus-keskkonnakaitse/kiirgus/radioaktiivsed-jaatmed), uuendatud 24.03.2026 | Määratlus, Eesti jäätmevoogude päritolu ja riikliku tegevuskava roll; ei tõenda objekti praegust kogust, ohutust ega loa täitmist. |
+| Looduslikud radionukliidid | [Kliimaministeerium: Looduslikud radionukliidid](https://kliimaministeerium.ee/elurikkus-keskkonnakaitse/kiirgus/looduslikud-radionukliidid), uuendatud 22.01.2024 | NORM-materjalid ning põhjavee radionukliidide päritolu ja mõjutatud veeladestud; ei otsusta ühe kaevu ohutust ega kehtivat piirväärtust. |
 
 | Valdkond | Ametlik teenus | Kontrollitud omadus | Runtime-roll |
 |---|---|---|---|
