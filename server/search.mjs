@@ -8496,6 +8496,13 @@ export function composeScopeResponse(query, assessment) {
   }
 
   const isOutOfScope = assessment.kind === "out-of-scope";
+  const outOfScopeTitle = {
+    "invalid-query-length": "Palun lühenda otsingut",
+    "unsafe-instruction": "Süsteemijuhiste päringut ei saa täita",
+    "personal-data-lookup": "Eraisiku andmeid otsing ei kuva",
+    "unsupported-language": "Palun kirjuta küsimus eesti keeles",
+    "outside-environment-domain": "Palun küsi Eesti keskkonna kohta",
+  }[assessment.reason] || "Palun täpsusta küsimust";
   const topicSources = assessment.topic === "kataster"
     ? responseSources(["environment-register", "official-geoserver"])
     : [];
@@ -8504,20 +8511,16 @@ export function composeScopeResponse(query, assessment) {
     total: topicSources.length,
     generatedAt: new Date().toISOString(),
     answer: {
-      eyebrow: isOutOfScope ? "Otsingu ulatus" : "Vajan täpsustust",
-      title: isOutOfScope
-        ? "See otsing vastab Eesti keskkonnaandmete küsimustele"
-        : "Palun täpsusta küsimust",
-      intro: isOutOfScope
-        ? "Ma ei anna juhuslikku üldvastust, kui küsimus ei ole Eesti keskkonnaandmete või keskkonnaregistrite kohta."
-        : assessment.clarification,
+      eyebrow: isOutOfScope ? "Täpsusta päringut" : "Vajan täpsustust",
+      title: isOutOfScope ? outOfScopeTitle : "Palun täpsusta küsimust",
+      intro: assessment.clarification,
       introCitations: [],
       parts: [],
-      note: "Piisava ametliku tõendita jätab otsing vastuse koostamata.",
+      note: isOutOfScope ? null : "Piisava ametliku tõendita jätab otsing vastuse koostamata.",
     },
     sources: topicSources,
     related: ["Eesti metsade seisund", "õhukvaliteet Tallinnas", "põhjavee seisund", "jäätmete käitlemine"],
-    clarification: isOutOfScope ? assessment.clarification : null,
+    clarification: null,
     evidence: {
       kind: isOutOfScope ? "safe-abstention" : "needs-clarification",
       answerable: false,

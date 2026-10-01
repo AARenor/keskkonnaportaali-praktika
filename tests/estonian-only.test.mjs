@@ -60,6 +60,9 @@ test("estonian-only mode blocks pure english queries", () => {
       assert.equal(assessSearchQuery(query).kind, "out-of-scope", query);
       const environment = searchEnvironment(query);
       assert.equal(environment.sources.length, 0, query);
+      if (query === "Groundwater data in Estonia") {
+        assert.equal(environment.answer.title, "Palun kirjuta küsimus eesti keeles");
+      }
     }
   });
 });
