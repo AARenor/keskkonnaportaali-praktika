@@ -41,7 +41,15 @@ test("estonian-only mode blocks the russian bridge", () => {
 
 test("estonian-only mode blocks pure english queries", () => {
   withEstonianOnly(() => {
-    for (const query of ["forest area", "waste sorting at home", "bathing water", "water quality"]) {
+    for (const query of [
+      "forest area",
+      "waste sorting at home",
+      "bathing water",
+      "water quality",
+      "Groundwater data in Estonia",
+      "Groundwater API in Estonia",
+    ]) {
+      assert.equal(assessSearchQuery(query).kind, "out-of-scope", query);
       const environment = searchEnvironment(query);
       assert.equal(environment.sources.length, 0, query);
     }

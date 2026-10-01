@@ -2438,13 +2438,14 @@ const DOMAIN_ROOTS = new Set([
   "biodiversity", "nature", "air", "animal", "species", "habitat", "wildlife", "woodland",
   "sea", "ocean", "river", "lake", "data", "andmed", "metaandmed", "api", "statistika", "ruumikiht", "allalaadimine", "kaart", "register", "metsateatis",
 ]);
-// English-only domain roots: inert in Estonian-only mode so English
-// passthrough words cannot satisfy scope gating on their own. "data" and
-// "api" stay language-neutral (used in Estonian technical text).
+// English-only domain roots are inert in Estonian-only mode. Language-neutral
+// technical words may refine an Estonian topic but cannot establish scope on
+// their own, otherwise an English subject plus "data" or "API" bypasses the
+// language gate.
 const ENGLISH_ONLY_DOMAIN_ROOTS = new Set([
   "climate", "forest", "water", "weather", "pollution", "waste",
   "biodiversity", "nature", "air", "animal", "species", "habitat", "wildlife", "woodland",
-  "sea", "ocean", "river", "lake",
+  "sea", "ocean", "river", "lake", "data", "api",
 ]);
 const ADMIN_CONTEXT_ROOTS = new Set([
   "tallinn", "tartu", "parnu", "parnumaa", "narva", "viljandi", "rakvere", "voru",
