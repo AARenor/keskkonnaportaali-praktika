@@ -10,6 +10,7 @@ import {
 } from "./smi-tables.mjs";
 import { sourceEvidenceEligibility } from "./source-registry.mjs";
 import { STATISTICS_DISSEMINATION_POLICY_URL } from "./statistics.mjs";
+import { classifyForestryGeographyScope } from "./municipalities.mjs";
 
 export const FOREST_SERIES_KK51_API_URL = "https://andmed.stat.ee/api/v1/et/stat/keskkond/loodusvarad-ja-nende-kasutamine/metsavaru/KK51.PX";
 export const FOREST_SERIES_KK51_TABLE_URL = "https://andmed.stat.ee/et/stat/keskkond__loodusvarad-ja-nende-kasutamine__metsavaru/KK51";
@@ -75,7 +76,8 @@ const UNSUPPORTED_SCOPE = /\b(?:maakon\w*|vald\w*|valla\w*|linn\w*|piirkon\w*|rm
 const TREND_WORDS = /\b(?:aegri\w*|aegrea\w*|aastate\s+loikes|aastate\s+kaupa|aasta\s+aastalt|aastati|trend\w*|muutu\w*|dunaamika\w*|ajalug\w*|ajalooli\w*|areng\w*|kasvanud|vahenenud|langenud|tousnud|suurenenud|kahanenud|aja\s+jooksul|viimas\w*\s+aastate\w*|viimas\w*\s+aastatel\b|viimas\w*\s+aastat\b|aastakumne\w*|kumnendi\w*)\b/u;
 const COMPARISON_WORDS = /\b(?:rohkem|vahem|vorrel\w*|kui|praegu|nuud|tana|varem|suurem|vaiksem|erine\w*)\b/u;
 const AREA_MEASURE = /pindala\w*|\bhektar\w*|\bha\b/u;
-const VOLUME_MEASURE = /maht\w*|mahu\w*|\bm3\b|\btihumeet\w*|\bkuupmeet\w*|\btm\b|\braiuti\b|\braiutakse\b|\braiutud\b/u;
+const VOLUME_MEASURE = /maht\w*|mahu\w*|\bm3\b|\btihumeet\w*|\bkuupmeet\w*|\btm\b/u;
+const FELLING_VOLUME_CUE = /\b(?:raiuti|raiutakse|raiutud|langeta\w*)\b/u;
 
 function normalize(value) {
   return String(value || "")
@@ -127,15 +129,20 @@ function requestedWindow(text, table) {
 
 // Felling can be asked without the word "raie": "võetakse metsa maha",
 // "langetatakse". Both forms mean the harvest series, never forest area.
-function mentionsFelling(text) {
-  return /\b(?:raie\w*|raiu\w*|lageraie\w*|harvendus\w*|langeta\w*)/u.test(text)
+function mentionsFellingVerb(text) {
+  return FELLING_VOLUME_CUE.test(text)
     || (/\bvo(?:e|t)\w*/u.test(text) && /\bmaha\b/u.test(text));
+}
+
+function mentionsFelling(text) {
+  return /\b(?:raie\w*|raiu\w*|lageraie\w*|harvendus\w*)/u.test(text)
+    || mentionsFellingVerb(text);
 }
 
 export function forestSeriesIntent(query) {
   if (typeof query !== "string" || query.length > MAX_QUERY_LENGTH) return null;
   const text = normalize(query);
-  if (!text || UNSUPPORTED_SCOPE.test(text)) return null;
+  if (!text || isUnsupportedForestScope(text)) return null;
   const hasRaie = mentionsFelling(text);
   // No leading boundary: "netojuurdekasv" must also route to the Eurostat adapter.
   const hasIncrement = /juurdekasv\w*/u.test(text);
@@ -153,7 +160,7 @@ export function forestSeriesIntent(query) {
   const cutType = MM03_CUT_TYPES.find((item) => item.pattern.test(text))
     || MM03_CUT_TYPES.find((item) => item.code === "1");
   const asksArea = AREA_MEASURE.test(text);
-  const asksVolume = VOLUME_MEASURE.test(text);
+  const asksVolume = VOLUME_MEASURE.test(text) || (!asksArea && mentionsFellingVerb(text));
   if (!cutType || (asksArea && asksVolume)) return null;
   const measure = asksArea
     ? MM03_MEASURES.area
@@ -195,7 +202,7 @@ export function forestContextSeriesIntent(query) {
   if (typeof query !== "string" || query.length > MAX_QUERY_LENGTH) return null;
   if (forestSeriesIntent(query)) return null;
   const text = normalize(query);
-  if (!text || UNSUPPORTED_SCOPE.test(text) || PERIOD_SIGNAL.test(text) || TREND_WORDS.test(text)) return null;
+  if (!text || isUnsupportedForestScope(text) || PERIOD_SIGNAL.test(text) || TREND_WORDS.test(text)) return null;
   const hasRaie = mentionsFelling(text);
   const hasIncrement = /juurdekasv\w*/u.test(text);
   const hasRemovals = /\beemalda\w*/u.test(text);
@@ -212,7 +219,7 @@ export function forestContextSeriesIntent(query) {
   const cutType = MM03_CUT_TYPES.find((item) => item.pattern.test(text))
     || MM03_CUT_TYPES.find((item) => item.code === "1");
   const asksArea = AREA_MEASURE.test(text);
-  const asksVolume = VOLUME_MEASURE.test(text);
+  const asksVolume = VOLUME_MEASURE.test(text) || (!asksArea && mentionsFellingVerb(text));
   if (!cutType || (asksArea && asksVolume)) return null;
   const measure = asksArea
     ? MM03_MEASURES.area
@@ -549,6 +556,19 @@ export function validatedForestSeriesProjection(query, document, now = Date.now(
   const intent = resolveForestSeriesIntent(query);
   const projection = document?._forestSeries;
   if (!intent || !projection || typeof projection !== "object") return null;
+  if (projection.source === "smi") {
+    const expected = smiForestSeriesDocument(query);
+    return expected
+      && document.id === expected.id && document.url === expected.url
+      && document.title === expected.title && document.published === expected.published
+      && document.locator === expected.locator && document.organization === expected.organization
+      && document.retrieval === expected.retrieval
+      && sourceEvidenceEligibility(document, { now }).eligible === true
+      && document._contentHash === expected._contentHash
+      && document.summary === expected.summary && document.content === expected.content
+      && JSON.stringify(projection) === JSON.stringify(expected._forestSeries)
+      ? projection : null;
+  }
   const descriptor = seriesDescriptor(intent);
   const tableUrl = intent.table === "KK51" ? FOREST_SERIES_KK51_TABLE_URL : FOREST_SERIES_MM03_TABLE_URL;
   const fetchedAt = Date.parse(String(projection.fetchedAt || ""));
@@ -613,14 +633,23 @@ export function composeForestSeriesResponse(query, documents = [], options = {})
   const projection = source._forestSeries;
   const first = projection.points[0];
   const last = projection.points.at(-1);
+  const isCurrentQuantity = intent.years.mode === "context";
+  const origin = projection.source === "smi"
+    ? `Keskkonnaagentuuri SMI ${SMI_2025_YEAR} tulemuste töölehe ${projection.worksheet}`
+    : `Statistikaameti tabeli ${projection.table} (SMI hinnang)`;
   return {
     query: String(query || "").trim(),
     total: Number(options.total || documents.length || 1),
     generatedAt: new Date(now).toISOString(),
     answer: {
       eyebrow: projection.source === "smi" ? `Keskkonnaagentuur, SMI ${SMI_2025_YEAR}` : `Statistikaameti tabel ${projection.table}`,
-      title: `${projection.seriesLabel} ${projection.years.from}–${projection.years.to}: ${etNumber(first.value, projection.digits)} → ${etNumber(last.value, projection.digits)} ${projection.unit}`,
-      intro: source.summary,
+      title: isCurrentQuantity
+        ? `${projection.seriesLabel} ${last.year}. aastal: ${etNumber(last.value, projection.digits)} ${projection.unit}`
+        : `${projection.seriesLabel} ${projection.years.from}–${projection.years.to}: ${etNumber(first.value, projection.digits)} → ${etNumber(last.value, projection.digits)} ${projection.unit}`,
+      intro: isCurrentQuantity
+        ? `${origin} järgi oli ${projection.sentenceLabel} ${last.year}. aastal ${etNumber(last.value, projection.digits)} ${projection.unit}. See on viimane selles allikas avaldatud aasta; allolev diagramm näitab eelnevate aastate konteksti.`
+          + (last.error === undefined ? "" : ` Hinnangu suhteline viga oli ±${etNumber(last.error, 1)}%.`)
+        : source.summary,
       introCitations: [1],
       parts: [{
         title: "Mida näitaja tähendab",
@@ -664,7 +693,10 @@ export function withForestContextChart(draft, query, documents = [], options = {
 }
 
 export function isUnsupportedForestScope(text) {
-  return UNSUPPORTED_SCOPE.test(String(text || ""));
+  const normalized = normalize(text);
+  return UNSUPPORTED_SCOPE.test(normalized)
+    || /\b(?:miks|misparast|pohjus\w*|soltu\w*|tulene\w*)\b/u.test(normalized)
+    || !["national-estonia", "national-default"].includes(classifyForestryGeographyScope(normalized).kind);
 }
 
 export function hasForestPeriodSignal(text) {

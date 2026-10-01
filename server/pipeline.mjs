@@ -57,7 +57,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v57-evidence-recovery";
+export const SEARCH_RESPONSE_REVISION = "answer-v58-natural-question-wording";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",

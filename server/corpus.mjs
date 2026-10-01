@@ -125,6 +125,7 @@ const WIKIPEDIA_TITLES = [
 const QUERY_STOPWORDS = new Set([
   "aga", "ei", "eesti", "eestis", "ehk", "et", "ja", "kas", "kui", "kuidas", "kus", "meie",
   "miks", "mis", "mida", "millal", "milline", "ning", "on", "oma", "palun", "praegu", "praegune", "praegused", "hetke", "hetkel",
+  "selgita", "selgitage", "sooviksin", "teada", "mind", "huvitab",
   "täna", "tana", "homme", "homne", "ülehomme", "ulehomme", "reaalajas", "see",
   "seda", "selle", "siis", "suur", "suured", "suurus", "uusim", "uusimad", "värske", "värsked", "või", "ule", "üle", "uks", "üks",
 ]);
@@ -254,6 +255,7 @@ function corpusTermRoot(term) {
   if (/^läänemer/iu.test(term)) return "läänemer";
   if (/^mer/iu.test(term)) return "mer";
   if (/^hei[dt]/iu.test(term)) return "heide";
+  if (/^ringmajand/iu.test(term)) return "ringmajandus";
   if (/^ringlussevõt/iu.test(term)) return "ringlussevõt";
   if (/^(?:tohib|lubat|keelat)$/iu.test(term)) return "lubatav";
   if (/^võib$/iu.test(term)) return "lubatav";

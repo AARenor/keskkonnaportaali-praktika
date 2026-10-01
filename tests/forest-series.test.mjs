@@ -819,7 +819,8 @@ test("a felling question without a period is answered from the MM03 series itsel
   assert.ok(document);
   const response = composeForestSeriesResponse(query, [document], { now: NOW });
   assert.equal(response.answer.eyebrow, "Statistikaameti tabel MM03");
-  assert.match(response.answer.title, /^Koguraie: raiepindala 2015–2024/u);
+  assert.equal(response.answer.title, "Koguraie: raiepindala 2024. aastal: 113,6 tuhat ha");
+  assert.match(response.answer.intro, /Hinnangu suhteline viga oli ±9,5%/u);
   assert.equal(response.chart.series[0].points.length, 10);
   assert.equal(composeForestSeriesResponse("mitu ha metsa on eestis", [document], { now: NOW }), null);
 });

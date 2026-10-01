@@ -1783,6 +1783,12 @@ const STOP_WORDS = new Set([
   "siis",
   "tahan",
   "soovin",
+  "sooviksin",
+  "selgita",
+  "selgitage",
+  "teada",
+  "mind",
+  "huvitab",
   "vana",
   "vanu",
   "mida",
@@ -1910,7 +1916,7 @@ function discoveryTerm(word) {
   if (normalized.startsWith("mereprug")) return "mereprügi";
   if (normalized.startsWith("rohevorg")) return "rohevõrgustik";
   if (normalized.startsWith("voorliig") || normalized.startsWith("invasiiv")) return "võõrliigid";
-  if (normalized.startsWith("margal") || normalized.startsWith("rab") || normalized.startsWith("soo")) return "märgalad";
+  if (normalized.startsWith("margal") || normalized.startsWith("rab") || /^soo(?:d|s|st|de|del|des)?$/u.test(normalized)) return "märgalad";
   if (normalized.startsWith("jaatmekaitluskoh")) return "jäätmekäitluskohad";
   if (normalized.startsWith("autorehv") || normalized.startsWith("rehv")) return "rehvide";
   if (normalized.startsWith("polet")) return "põletamine";
@@ -2172,6 +2178,7 @@ function topicRoot(word) {
   if (word.startsWith("patarei") || word.startsWith("ravim") || word.startsWith("varvipurk")) return "jaat";
   if (word.startsWith("aku")) return "aku";
   if (word.startsWith("jaat")) return "jaat";
+  if (word.startsWith("ringmajand")) return "ringmajandus";
   if (word.startsWith("ringlussevot")) return "ringlussevott";
   if (word === "maar" || word.startsWith("protsent")) return "maar";
   if (word.startsWith("prugil")) return "jaatmekaitluskoht";
