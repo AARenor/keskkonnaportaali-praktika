@@ -14,6 +14,8 @@ Avalik keskkond: [praktika.arleserver.cfd](https://praktika.arleserver.cfd)
 
 Arhitektuur, turve, piirangud ja kontrollnimekiri on kirjeldatud failis [PROJEKT.md](./PROJEKT.md). Korduvkäivitatavad tootmise tõendid ja docs-to-code kaart on failis [acceptance-evidence.md](./acceptance-evidence.md). Otsingu andmevoo ja Luna teenuse privaatsuspiir on failis [PRIVAATSUS.md](./PRIVAATSUS.md). Portaali ja uue otsingu uurimus asub failis [docs/ARHITEKTUUR.md](./docs/ARHITEKTUUR.md), ametlike API-de register failis [docs/ALLIKAD.md](./docs/ALLIKAD.md) ning visuaalse regressiooni tõendid failis [design-qa.md](./design-qa.md).
 
+Sihtrühmad ja vastusestiil on versioonitud failis [docs/PERSONAD.md](./docs/PERSONAD.md). Eraldi juhendid on [tavakasutajale](./docs/KASUTUSJUHEND.md) ning [IT-haldurile](./docs/IT-HOOLDUS.md), sealhulgas SMI, aastaraamatu „Mets“ ja puidubilansi iga-aastane hooldusprotsess.
+
 ## Kiirkäivitus
 
 ```bash

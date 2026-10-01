@@ -15,6 +15,7 @@ import {
   validatedForestBalanceProjection,
 } from "./indicators.mjs";
 import { resolveForestSeriesIntent, validatedForestSeriesProjection } from "./forest-series.mjs";
+import { forestrySourcePreference } from "./forestry-source-policy.mjs";
 import { harvestShareIntent, validatedHarvestShareProjection } from "./harvest-share.mjs";
 import { landUseShareIntent, validatedLandUseShareProjection } from "./land-use-share.mjs";
 import {
@@ -58,7 +59,7 @@ import {
 } from "./statistics.mjs";
 
 const PUBLIC_ITEM_FIELDS = [
-  "id", "title", "url", "summary", "locator", "organization", "type", "published", "topics", "sourceTier",
+  "id", "title", "url", "summary", "locator", "organization", "type", "published", "updated", "dataYear", "dataAsOf", "topics", "sourceTier",
 ];
 const PUBLIC_FILTER_SOURCES = new Set(["all", "trusted", "official", "reviewed", "supplementary", "other"]);
 const PUBLIC_FILTER_SORTS = new Set(["relevance", "newest"]);
@@ -1478,6 +1479,9 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
     : 0;
   const forestryIntent = forestEvidenceIntent(query);
   const intentEvidence = intentEvidenceForDocument(forestryIntent, document);
+  const forestryHierarchy = forestryIntent || isForestHarvestBalanceQuery(query)
+    ? forestrySourcePreference(document)
+    : 0;
   const forestMethodQuestion = roots.includes("mets")
     && roots.includes("mootmine")
     && /\b(?:kuidas|metood\w*|moot\w*|mõõt\w*|hinnat\w*)\b/iu.test(String(query || ""));
@@ -1523,6 +1527,7 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
     + upstreamSignal
     + sqlSignal
     + intentEvidence.score
+    + forestryHierarchy
     + (directMatch ? 4 : 0)
     - conflictingTitleYear
     - roundupPenalty
@@ -1550,6 +1555,7 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
     publishedAt: publishedAt || 0,
     futureDated,
     intentEvidence: intentEvidence.score,
+    forestrySourcePriority: forestryHierarchy,
     yearMatch,
   };
 }

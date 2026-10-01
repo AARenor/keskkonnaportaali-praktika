@@ -11,6 +11,75 @@ import {
 
 export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
   {
+    id: "bark-beetle-monitoring-2026",
+    title: "Kuuse-kooreüraskite seire tulemused 2026",
+    organization: "Keskkonnaagentuur",
+    type: "Jooksvad seireandmed",
+    published: "14.05.2024",
+    updated: "03.09.2026",
+    dataYear: "2026",
+    dataAsOf: "02.09.2026",
+    url: "https://keskkonnaportaal.ee/et/kuuse-kooreuraskite-seire-tulemused-2026",
+    tags: ["mets", "kuuse-kooreürask", "seire", "feromoonpüünis", "RMK", "2026"],
+    summary: "Keskkonnaagentuuri ja RMK 2026. aasta kuuse-kooreüraski seire näitab feromoonpüüniste maakondlikke keskmisi nädalate lõikes; allalaaditavad andmed olid kontrolli ajal seisuga 2. september 2026.",
+    content: "Kuuse-kooreüraskit seirab Keskkonnaagentuur koostöös RMK-ga. RMK seirepunktid paiknevad igas Mandri-Eesti maakonnas ja Saaremaal ning igas punktis on neli feromoonpüünist, mille tulemustest arvutatakse maakonna keskmine. Interaktiivses töölauas on esitatud seirepunktide keskmised nädalate lõikes alates 12. maist 2026. Allalaaditav Exceli andmestik oli seisuga 2. september 2026 ja leht uuendati 3. septembril 2026.",
+    locator: "2026. aasta seirekirjeldus ja allalaaditav Excel: seirepunktid, neli püünist, nädala keskmised ning andmete seis 02.09.2026.",
+    _publishedAt: "2026-09-03",
+    _catalogueReviewedAt: "2026-10-01T00:00:00.000Z",
+    _forestryIntentKinds: ["bark-beetle-monitoring"],
+  },
+  {
+    id: "wood-balance-overview",
+    title: "Puidubilanss – ülevaade Eesti puidukasutuse mahust",
+    organization: "Keskkonnaagentuur",
+    type: "Ametlik puidukasutuse ülevaade",
+    published: "15.12.2021",
+    updated: "02.09.2026",
+    dataYear: "2023",
+    dataAsOf: "18.03.2026",
+    url: "https://keskkonnaportaal.ee/et/puidubilanss-ulevaade-eesti-puidukasutuse-mahust",
+    tags: ["mets", "puit", "puidubilanss", "puiduallikad", "import", "eksport", "tootmine", "lõpptarbimine"],
+    summary: "Puidubilanss kirjeldab sortimentide kaupa Eesti puiduallikaid ja kasutamist alates päritolust ning tööstuses liikumisest kuni lõpptarbimiseni; uusim avalik ülevaade on Puidubilanss 2023.",
+    content: "Puidubilansi eesmärk on anda ülevaade Eesti puidukasutuse mahust ning esitada sortimentide kaupa puiduallikad ja kasutamine. See käsitleb puidu ja puittoodete päritolu, importi, eksporti, tootmist, liikumist tööstuses ja lõpptarbimist. Ülevaate koostamiseks vajalikud andmed saavad täismahus avalikuks umbes pooleteise aastase viibega. Uusim loetletud väljaanne on Puidubilanss 2023, seisuga 18. märts 2026.",
+    locator: "Puidubilansi eesmärk ja ulatus, andmete ligikaudu pooleteiseaastane viive ning Puidubilanss 2023.",
+    _publishedAt: "2026-09-02",
+    _catalogueReviewedAt: "2026-10-01T00:00:00.000Z",
+    _forestryIntentKinds: ["wood-balance-definition", "forest-publication-cycle"],
+  },
+  {
+    id: "forest-yearbook-overview",
+    title: "Metsa aastaraamatud",
+    organization: "Keskkonnaagentuur",
+    type: "Statistika väljaannete loend",
+    published: "15.12.2021",
+    updated: "17.08.2026",
+    dataYear: "2023",
+    url: "https://keskkonnaportaal.ee/et/metsa-aastaraamatud",
+    tags: ["mets", "metsa aastaraamat", "Aastaraamat Mets", "metsandusstatistika", "Mets 2023"],
+    summary: "Aastaraamat „Mets“ on Keskkonnaagentuuri koostatav iga-aastane terviklik metsandusstatistika kokkuvõte; avalikus loendis on uusim väljaanne „Aastaraamat Mets 2023“.",
+    content: "Aastaraamat „Mets“ on Keskkonnaagentuuri koostatav väljaanne ja kõige põhjalikum iga-aastane statistiline kokkuvõte Eesti metsadest ja metsandusest. See koondab metsade seisundi ja kasutamise, jahinduse, metsa- ja puidutööstuse ning rahvusvahelise metsandusstatistika andmeid. Keskkonnaportaali 17. augustil 2026 uuendatud avalikus loendis on uusim terviklik väljaanne „Aastaraamat Mets 2023“; väljaande aasta ja avaldamise kuupäev ei ole seega sama mõiste.",
+    locator: "Aastaraamatu otstarve, iga-aastane koostamine ja avaliku väljaannete loendi uusim kirje.",
+    _publishedAt: "2026-08-17",
+    _catalogueReviewedAt: "2026-10-01T00:00:00.000Z",
+    _forestryIntentKinds: ["forest-publication-cycle"],
+  },
+  {
+    id: "lulucf-definition",
+    title: "Maakasutus, maakasutuse muutus ja metsandus (LULUCF)",
+    organization: "Keskkonnaagentuur",
+    type: "Ametlik mõisteselgitus",
+    published: "31.01.2022",
+    updated: "07.01.2026",
+    url: "https://keskkonnaportaal.ee/et/teemad/mets/maakasutus-maakasutuse-muutus-ja-metsandus-lulucf",
+    tags: ["mets", "LULUCF", "maakasutus", "kasvuhoonegaasid", "süsiniku sidumine", "inventuur"],
+    summary: "LULUCF tähendab maakasutuse, maakasutuse muutuse ja metsanduse sektorit, mis on üks rahvusvahelise kasvuhoonegaaside inventuuri valdkond.",
+    content: "LULUCF on lühend ingliskeelsest nimetusest Land Use, Land Use Change and Forestry ehk maakasutuse, maakasutuse muutuse ja metsanduse sektor. See on rahvusvaheliselt määratletud kasvuhoonegaaside inventeerimise valdkond. Keskkonnaagentuur koondab ja analüüsib igal aastal selle sektori inventuuriandmeid; sektor hõlmab metsamaad, põllumaad, rohumaad, märgalasid, asulaid ja muid maid ning arvestab inimtekkeliste kasvuhoonegaaside heidet ja sidumist.",
+    locator: "LULUCFi definitsioon, kuus maakategooriat ning kasvuhoonegaaside iga-aastase inventuuri ulatus.",
+    _publishedAt: "2026-01-07",
+    _catalogueReviewedAt: "2026-10-01T00:00:00.000Z",
+    _forestryIntentKinds: ["lulucf-definition"],
+  },
+  {
     id: "increment-method",
     title: "Kuidas hinnatakse SMI-s metsa juurdekasvu?",
     organization: "Keskkonnaagentuur / Keskkonnaportaal",
@@ -220,14 +289,17 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     title: "Metsamaa, sh kaitsealuse metsamaa osakaal Eestis",
     organization: "Keskkonnaagentuur / Keskkonnaportaal",
     type: "Keskkonnanäitaja",
-    published: "17.06.2026",
+    published: "12.04.2023",
+    updated: "07.01.2026",
+    dataYear: "2024",
     url: "https://keskkonnaportaal.ee/et/metsamaa-sh-kaitsealuse-metsamaa-osakaal-eestis",
     tags: ["mets", "metsamaa", "kaitse", "range kaitse", "osakaal", "ETAK"],
     summary: "ETAK-i metsade ja kaitstavate alade ruumiandmetel põhineva näitaja järgi oli 2024. aastal kaitse all 28,4% Eesti metsadest, sealhulgas 16,8% rangelt kaitstav metsamaa.",
-    content: "2024. aasta seisuga oli 28,4% Eesti metsadest kaitse all ja 16,8% rangelt kaitstav metsamaa. Need on õigusliku kaitse ruumianalüüsi näitajad. SMI majanduskategooriad, näiteks mittemajandatav või majanduspiiranguga metsamaa, kirjeldavad teistsugust jaotust ning neid ei tohi kaitsealuse metsamaa protsendiga automaatselt samastada. Konkreetse kinnistu kaitserežiim tuleb kontrollida ruumiandmetest ja kehtivast õigusaktist.",
+    content: "ETAK tähendab Eesti topograafia andmekogu. ETAK on kaardiandmestik, kus maa jaguneb kõlvikuteks, näiteks metsamaaks, rohumaaks ja haritavaks maaks. ETAK-i ruumiandmeid kasutatakse kaitsealuse metsamaa pindala hindamiseks, sest väiksema ala puhul muutuks SMI statistiline viga liiga suureks; ETAK-i metsamaa definitsioon ei ole siiski sama mis SMI Eesti metsa definitsioon. 2024. aasta seisuga oli 28,4% Eesti metsadest kaitse all ja 16,8% rangelt kaitstav metsamaa. Need on õigusliku kaitse ruumianalüüsi näitajad. SMI majanduskategooriad, näiteks mittemajandatav või majanduspiiranguga metsamaa, kirjeldavad teistsugust jaotust ning neid ei tohi kaitsealuse metsamaa protsendiga automaatselt samastada. Konkreetse kinnistu kaitserežiim tuleb kontrollida ruumiandmetest ja kehtivast õigusaktist.",
     locator: "Keskkonnaülevaate kaitse näitaja ja 2024. aastast kasutatav kaitstava metsamaa arvutusmetoodika.",
-    _publishedAt: "2026-06-17",
-    _forestryIntentKinds: ["protected-forest-share", "stock-versus-harvestable"],
+    _publishedAt: "2026-01-07",
+    _catalogueReviewedAt: "2026-10-01T00:00:00.000Z",
+    _forestryIntentKinds: ["protected-forest-share", "stock-versus-harvestable", "etak-definition"],
   },
   {
     id: "nature-protection-share-2025",
@@ -343,6 +415,56 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
 ];
 
 const INTENTS = {
+  "bark-beetle-monitoring": {
+    serviceDocumentIds: ["bark-beetle-monitoring-2026"],
+    discoveryQueries: ["kuuse-kooreüraski seire tulemused 2026 feromoonpüünised"],
+    evidenceGroups: [
+      ["feromoonpüünist"],
+      ["nädalate lõikes"],
+      ["2. september 2026", "2. septembril 2026"],
+      ["Keskkonnaagentuur koostöös RMK-ga"],
+    ],
+  },
+  "wood-balance-definition": {
+    serviceDocumentIds: ["wood-balance-overview"],
+    discoveryQueries: ["puidubilanss puiduallikad kasutamine lõpptarbimine"],
+    evidenceGroups: [
+      ["puiduallikad"],
+      ["lõpptarbimist", "lõpptarbimine"],
+      ["pooleteise aastase viibega"],
+      ["Puidubilanss 2023"],
+    ],
+  },
+  "lulucf-definition": {
+    serviceDocumentIds: ["lulucf-definition"],
+    discoveryQueries: ["LULUCF maakasutuse maakasutuse muutuse metsanduse sektor"],
+    evidenceGroups: [
+      ["maakasutuse, maakasutuse muutuse ja metsanduse sektor"],
+      ["kasvuhoonegaaside inventeerimise valdkond"],
+      ["inimtekkeliste kasvuhoonegaaside"],
+    ],
+  },
+  "etak-definition": {
+    serviceDocumentIds: ["protected-forest-share"],
+    discoveryQueries: ["ETAK Eesti topograafia andmekogu kaardiandmestik kõlvik"],
+    evidenceGroups: [
+      ["Eesti topograafia andmekogu"],
+      ["kaardiandmestik"],
+      ["kõlvikuteks"],
+      ["ei ole siiski sama", "ei ole sama"],
+    ],
+  },
+  "forest-publication-cycle": {
+    serviceDocumentIds: ["smi", "forest-yearbook-overview"],
+    discoveryQueries: ["SMI tulemused avaldamine", "metsa aastaraamat uusim väljaanne"],
+    evidenceGroups: [
+      ["SMI 2025"],
+      ["18. august 2026", "18. augustil 2026"],
+      ["iga-aastane statistiline kokkuvõte", "iga-aastase metsade statistilise kokkuvõtte"],
+      ["Aastaraamat Mets 2023"],
+    ],
+    minimumSupportingDocuments: 2,
+  },
   "forest-harvest-2025": {
     serviceDocumentIds: ["forest-smi-2025-presentation"],
     discoveryQueries: ["SMI 2025 raiemahu eksperthinnang"],
@@ -986,9 +1108,29 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
   const hasForest = hasStem(tokens, [
     "mets", "puist", "tagavara", "metsavaru", "puiduvaru", "juurdekasv", "netojuurdekasv",
     "lagerai", "sanitaarrai", "metsatulekah", "metsateat", "raieteat", "metsaregis", "takseer",
-    "mand", "kuusk", "okaspuu", "kooreurask",
+    "mand", "kuusk", "okaspuu", "kooreurask", "kuusekooreurask",
     ...(multilingualForestry ? ["forest", "woodland"] : []),
   ], true) || (multilingualForestry && /\bforested\b/u.test(text)) || hasSmi || hasStem(tokens, ["rmk"]);
+
+  if (/\bpuidubilans\w*\b/u.test(text)) return resolved("wood-balance-definition");
+  if (/\blulucf\b/u.test(text)) return resolved("lulucf-definition");
+  if (/\betak\b/u.test(text)) return resolved("etak-definition");
+  if ((hasSmi || /\bstatistiline\s+metsainventuur\w*\b/u.test(text))
+    && /\b(?:metsa\s+)?aastaraamat\w*\b/u.test(text)
+    && /\b(?:millal|avalda\w*|ilmub|ilmuma|ajakava\w*|graafik\w*)\b/u.test(text)) {
+    return resolved("forest-publication-cycle");
+  }
+  if (/\b(?:kuuse\s*)?kooreurask\w*\b/u.test(text)
+    && /\b(?:andm\w*|seire\w*|tulemus\w*|püünis\w*)\b/u.test(text)) {
+    return resolved("bark-beetle-monitoring");
+  }
+  if (/^(?:kuuse\s*)?kooreurask\w*$/u.test(text)) return resolved("bark-beetle-damage");
+  if (hasIncrement
+    && /\b(?:kogujuurdekasv\w*|kogu\s+juurdekasv\w*)\b/u.test(text)
+    && /\bnetojuurdekasv\w*\b/u.test(text)
+    && /\b(?:vahe|erinev\w*)\b/u.test(text)) {
+    return resolved("increment-method");
+  }
 
   // Claim-specific national questions must resolve before the generic
   // area/geography fallback. Several begin with “kui palju metsa”, but ask
@@ -1043,11 +1185,11 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
     || /^mis\s+on\s+statistiline\s+metsainventuur(?:\s+ehk\s+smi)?$/u.test(text))) {
     return resolved("smi-definition");
   }
-  if (/\b(?:kuuse\s+)?kooreurask\w*\b/u.test(text)
+  if (/\b(?:kuuse\s*)?kooreurask\w*\b/u.test(text)
     && /\b(?:tund\w*|ara\s+tund\w*|torj\w*|valdi\w*|hoid\w*)\b/u.test(text)) {
     return resolved("bark-beetle-guidance");
   }
-  if (/\b(?:kuuse\s+)?kooreurask\w*\b/u.test(text)
+  if (/\b(?:kuuse\s*)?kooreurask\w*\b/u.test(text)
     && /\b(?:mis\s+on|kahjust\w*|kuusik\w*|kuiv\w*)\b/u.test(text)) {
     return resolved("bark-beetle-damage");
   }
@@ -1251,7 +1393,7 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
   // national SMI figures simply because the metric wording is familiar.
   if (hasForest && regionalScope && municipalityAreaMetric) return resolved("regional-forest-area");
 
-  if (hasForest && (/\b(?:metsaga\s+kaetud|kaetud\s+metsaga|puistute\s+pindala|metsaga\s+metsamaa)\b/u.test(text)
+  if (hasForest && (/\b(?:metsaga\s+kaetud|kaetud\s+metsaga|puistute\s+pindala\w*|metsaga\s+metsamaa)\b/u.test(text)
     || /\b(?:mitu|kui\s+suur)\s+(?:protsenti|osa)\s+eesti\w*\b[\s\S]{0,30}\bmets\w*\b/u.test(text))) {
     return resolved("forest-covered-area");
   }

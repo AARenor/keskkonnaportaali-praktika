@@ -7410,11 +7410,16 @@ const OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     organization: "Keskkonnaagentuur / Keskkonnaportaal",
     type: "Metoodika",
     published: "jooksev",
+    updated: "18.08.2026",
+    dataYear: "2025",
+    dataAsOf: "18.08.2026",
     url: "https://keskkonnaportaal.ee/et/teemad/mets/metsastatistika-sh-smi",
     tags: ["mets", "SMI", "metsainventeerimine", "statistika", "metoodika"],
     summary: "SMI on üleriigiliste proovitükkidega valikuuring, mille põhjal koostatakse statistiliste meetoditega kogu Eesti metsade üldistatud hinnang.",
-    content: "Statistiline metsainventuur ehk SMI on üleriigiliste proovitükkidega valikuuring. SMI põhjal koostatakse statistiliste meetoditega kogu Eesti metsade üldistatud hinnang ning näitajaga kaasneb statistiline viga. SMI tagavara on valimi põhjal arvutatud statistiline hinnang koos veaga, mitte üks kindel vaieldamatu number. SMI sobib riigi metsade seisundi ja muutuste hindamiseks, mitte üksiku kinnistu inventeerimisandmete esitamiseks. Lausmetsakorralduse inventeerimisandmed kirjeldavad mõõdetud kinnistuid ja metsaeraldisi ega kata tingimata sama üldkogumit või ajaseisu. Valimi suurus üksi ei määra hinnangu täpsust: olulised on ka valikukava, proovitükkide esinduslikkus, mõõtmiskvaliteet ja avaldatud veahinnang. Erinevus lausmetsakorralduse registriandmetest ei tõenda iseenesest, et SMI tagavara oleks üle hinnatud; enne tuleb võrrelda üldkogumit, definitsiooni, andmeaastat ja ebakindlust.",
+    content: "Statistiline metsainventuur ehk SMI on üleriigiliste proovitükkidega valikuuring. SMI põhjal koostatakse statistiliste meetoditega kogu Eesti metsade üldistatud hinnang ning näitajaga kaasneb statistiline viga. Keskkonnaagentuur koostab SMI põhjal iga-aastase metsade statistilise kokkuvõtte. SMI 2025 tulemused ja ettekanne avaldati seisuga 18. august 2026. SMI tagavara on valimi põhjal arvutatud statistiline hinnang koos veaga, mitte üks kindel vaieldamatu number. SMI sobib riigi metsade seisundi ja muutuste hindamiseks, mitte üksiku kinnistu inventeerimisandmete esitamiseks. Lausmetsakorralduse inventeerimisandmed kirjeldavad mõõdetud kinnistuid ja metsaeraldisi ega kata tingimata sama üldkogumit või ajaseisu. Valimi suurus üksi ei määra hinnangu täpsust: olulised on ka valikukava, proovitükkide esinduslikkus, mõõtmiskvaliteet ja avaldatud veahinnang. Erinevus lausmetsakorralduse registriandmetest ei tõenda iseenesest, et SMI tagavara oleks üle hinnatud; enne tuleb võrrelda üldkogumit, definitsiooni, andmeaastat ja ebakindlust.",
     locator: "SMI kui üleriigiline proovitükkidega valikuuring ning kogu Eesti üldistatud statistiline hinnang koos veahinnanguga.",
+    _publishedAt: "2026-08-18",
+    _catalogueReviewedAt: "2026-10-01T00:00:00.000Z",
   },
   {
     id: "forest-area",
@@ -7511,6 +7516,9 @@ export function reviewedCatalogueEvidenceVersion(document = {}) {
     document.organization,
     document.type,
     document.published,
+    document.updated,
+    document.dataYear,
+    document.dataAsOf,
     document.url,
     document.summary,
     document.content,
@@ -7521,7 +7529,12 @@ export function reviewedCatalogueEvidenceVersion(document = {}) {
     document.topics,
   ];
   const digest = createHash("sha256").update(JSON.stringify(extract)).digest("hex");
-  return `catalogue-review-2026-09-19:${digest}`;
+  const reviewedAt = catalogueReviewedAt(document);
+  return `catalogue-review-${reviewedAt.slice(0, 10)}:${digest}`;
+}
+
+function catalogueReviewedAt(document = {}) {
+  return document._evidenceStatusAt || document._catalogueReviewedAt || CATALOGUE_REVIEWED_AT;
 }
 
 function withReviewedCatalogueEvidence(document, { forceRouteOnly = false } = {}) {
@@ -7535,12 +7548,13 @@ function withReviewedCatalogueEvidence(document, { forceRouteOnly = false } = {}
   }
   if (document.evidencePolicy === "claim-specific"
     && document.freshness?.requiresSourceTimestamp === true) return document;
+  const reviewedAt = catalogueReviewedAt(document);
   return {
     ...document,
     evidencePolicy: "versioned",
     _answerEvidenceEligible: true,
     _evidenceVersion: reviewedCatalogueEvidenceVersion(document),
-    _evidenceStatusAt: CATALOGUE_REVIEWED_AT,
+    _evidenceStatusAt: reviewedAt,
     freshness: {
       class: "reviewed-catalogue-extract",
       basis: "reviewed-at",

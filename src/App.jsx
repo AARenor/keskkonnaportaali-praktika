@@ -27,7 +27,7 @@ import {
   Youtube,
 } from "lucide-react";
 import { safeExternalHref } from "./url-safety.js";
-import { sourceOrganizationLabel } from "./source-label.js";
+import { sourceDateMeta, sourceOrganizationLabel } from "./source-label.js";
 import {
   REVIEWED_SEARCH_SUGGESTIONS,
   shouldFetchRemoteSuggestions,
@@ -825,7 +825,7 @@ function Citation({ number, sources = [] }) {
       title={source
         ? [
           source.title,
-          sourceOrganizationLabel(source),
+          sourceDateMeta(source),
           source.evidenceExcerpt ? `Tõend: ${source.evidenceExcerpt.slice(0, 320)}` : "",
           source.locator ? `Vaata: ${source.locator}` : "",
         ].filter(Boolean).join(" — ")
@@ -935,8 +935,7 @@ function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRe
             <ExternalAnchor className="broad-result" href={item.url} key={item.id}>
               <div className="broad-result__meta">
                 <span className={`source-tier source-tier--${item.sourceTier || "other"}`}>{sourceTierLabel(item.sourceTier)}</span>
-                <span>{sourceOrganizationLabel(item)}</span>
-                {item.published ? <span>{item.published}</span> : null}
+                {sourceDateMeta(item) ? <span>{sourceDateMeta(item)}</span> : null}
               </div>
               <h3>{item.title}<ExternalLink size={15} /></h3>
               {item.summary ? <p>{item.summary}</p> : null}

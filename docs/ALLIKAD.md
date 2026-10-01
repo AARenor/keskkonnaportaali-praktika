@@ -1,8 +1,14 @@
 # Ametlike allikate ja API-de register
 
-Uuendatud: 25.08.2026
+Uuendatud: 01.10.2026
 
 See register kirjeldab, millised allikad on otsingu päringuteel aktiivsed, millised on kasutajale suunavad kataloogiallikad ning milliseid teenuseid ei kasutata enne eraldi valideeritud adapterit. Ükski allikas ei anna mudelile õigust kasutada üldteadmisi: vastus peab jääma tagastatud tõendite piiresse.
+
+## Metsandusallikate prioriteet
+
+Võrreldava relevantsuse ja väitekatvuse korral rakendub järjestus **SMI → metsaaastaraamat → puidubilanss → Keskkonnaportaal/Keskkonnaagentuur → Kliimaministeerium → täiendavad ametlikud allikad → Eurostat → taustallikad**. Relevantsus jääb esmaseks: hierarhia ei tõsta SMI dokumenti ette, kui see kasutaja küsimust ei kata. Ühine runtime-poliitika on failis `server/forestry-source-policy.mjs`.
+
+01.10.2026 laiendus ei lisanud ühtki uut Statistikaameti allikat. Olemasolevad KK51, MM03 ja KK07 adapterid jäid muutmata kitsaste diagrammilepingutena.
 
 ## Aktiivsed päringutee allikad
 
@@ -34,6 +40,17 @@ Kõigil võrguallikatel on HTTPS-hostide allowlist, päringu ajapiir, vastusemah
 
 ## Metsastatistika avaldamisseis
 
+01.10.2026 kontroll kinnitas järgmised hooldatavad väljaanded ja mõisteallikad:
+
+| Allikas | Väljaandja | Avaldatud / uuendatud | Runtime-roll |
+|---|---|---|---|
+| [Metsastatistika, sh SMI](https://keskkonnaportaal.ee/et/teemad/mets/metsastatistika-sh-smi) | Keskkonnaagentuur | SMI 2025 tulemused seisuga 18.08.2026 | Esmane riiklik metsaressursi valikuuring; pindala, tagavara, koosseis, juurdekasv ja metoodika |
+| [Metsa aastaraamatud](https://keskkonnaportaal.ee/et/metsa-aastaraamatud) | Keskkonnaagentuur | leht uuendatud 17.08.2026; uusim loetletud „Mets 2023“ | Terviklik iga-aastane metsandusstatistika; väljaande aasta ei ole avaldamiskuupäev |
+| [Puidubilanss](https://keskkonnaportaal.ee/et/puidubilanss-ulevaade-eesti-puidukasutuse-mahust) | Keskkonnaagentuur | leht uuendatud 02.09.2026; „Puidubilanss 2023“ seisuga 18.03.2026 | Puiduallikad, import, eksport, tootmine, tööstusvood ja lõpptarbimine; andmed avalikustuvad ligikaudu 1,5-aastase viibega |
+| [Kuuse-kooreüraskite seire 2026](https://keskkonnaportaal.ee/et/kuuse-kooreuraskite-seire-tulemused-2026) | Keskkonnaagentuur koostöös RMK-ga | andmed seisuga 02.09.2026; leht uuendatud 03.09.2026 | Feromoonpüüniste maakondlikud nädala keskmised; eraldi liigikirjeldusest ja tõrjejuhisest |
+| [LULUCF](https://keskkonnaportaal.ee/et/teemad/mets/maakasutus-maakasutuse-muutus-ja-metsandus-lulucf) | Keskkonnaagentuur | uuendatud 07.01.2026 | Maakasutuse, maakasutuse muutuse ja metsanduse KHG-inventuuri mõiste ning ulatus |
+| [Metsamaa ja kaitsealuse metsamaa osakaal](https://keskkonnaportaal.ee/et/metsamaa-sh-kaitsealuse-metsamaa-osakaal-eestis) | Keskkonnaagentuur | uuendatud 07.01.2026 | ETAK-i kui Eesti topograafia andmekogu ja SMI erineva rolli selgitus |
+
 19.08.2026 kontrollis oli **SMI 2025** ametlik esitlus-PDF juba Keskkonnaportaali failiruumis avaldatud: [„SMI 2025 ettekanne”](https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI%20tulemused%202025/SMI%202025%20ettekanne.pdf), serveri `Last-Modified` 18.08.2026. PDF-i metaandmed, tekstikiht ja visuaalselt renderdatud võtmelehed kinnitasid muu hulgas 2,3602 mln ha metsamaad (52,1%), 466 mln m³ tagavara, majanduskategooriad 20,2% / 10,4% / 69,4%, puistute keskmise vanuse 55 aastat ning 2025. aasta raiemahu 11,0 mln m³ eksperthinnangu. Teemakataloogi maandumisleht näitas samal kontrollhetkel veel SMI 2024 aastakäiku, seega käsitleb rakendus seda indeksi viitena, mitte tõendina, et uuem PDF puudub. Uus PDF on runtime'i ametlikus metsakataloogis eraldi allikana ja selle väiteid ei segata SMI 2024 metoodika või arvudega.
 
 21.08.2026 kontrolliti juurdekasvu küsimuse jaoks Keskkonnaportaali [SMI ja LULUCF andmehõive metoodikalehte](https://keskkonnaportaal.ee/et/statistilise-metsainventuuri-smi-ja-maakasutuse-maakasutuse-muutuse-ja-metsanduse-lulucf-andmehoive) ning selle ametlikku 2025 lõpparuannet. Aruande lehekülg 22 defineerib kogu- ja netojuurdekasvu ning kirjeldab mudelipõhist ja mitmese imputeerimise meetodit: mudelpuude andmed viiakse alalistele ja sealt juhumetsa meetodiga ajutistele proovitükkidele. Runtime'i allikas `increment-method` kasutab kontrollitud väljavõtet ja kuvab kasutajale sama lehekülje lokaatori; see ei tuleta meetodit SMI 2024 arvutabeli ühest joonealusest märkusest.
@@ -46,7 +63,7 @@ Versioonitud metsakorpus sisaldab 16 algallikat ja 21 vastusedokumenti ning sell
 
 ## Kontrollitud kataloogi- ja suunamisallikad
 
-Runtime'i kataloogis on 99 kirjet: 75 üldist keskkonnaallikat, 22 metsanduse tõendiallikat ja kaks katastri-/Metsaregistri WFS-allikat. Need aitavad valida õige ametliku teenuse ja on nõrga võrguolukorra korral kasutajale suunavad allikad, kuid ei muutu automaatselt konkreetse arvu või õigusliku järelduse tõendiks. 18.08.2026 varasema 48 siht-URL-i automaatne kontroll sai kõigilt eduka vastuse või ümbersuunamise; 19.–22.08 lisatud lehed ja andmetabel kontrolliti eraldi nende ametlikul hostil ning lukustati realistliku 147 päringuga arendusmaatriksi, 30 FAQ/väärarusaama ja 88 metsanduse sõnastusvariandi ning teemaliste peibutusallikate vastu.
+Runtime'i kataloogis on 119 kirjet. Need aitavad valida õige ametliku teenuse ja on nõrga võrguolukorra korral kasutajale suunavad allikad, kuid ei muutu automaatselt konkreetse arvu või õigusliku järelduse tõendiks. 01.10.2026 ametlik allikainventuur hõlmas 8463 Keskkonnaportaali sitemap'i URL-i ning eraldi kontrollitud metsanduse primaarallikaid; varasemad ja lisatud lehed lukustatakse realistliku avaliku eval-maatriksi, FAQ/väärarusaamade, sõnastusvariantide ja teemaliste peibutusallikate vastu.
 
 Kataloogi allikaprofiil (`server/source-registry.mjs`) määrab eraldi marsruudiklassi, tarneviisi, värskusklassi ja tõendipoliitika. Need väljad ei lähe avalikku API-sse, kuid takistavad teenuse maandumislehte muutumast seal peituva väärtuse tõendiks.
 

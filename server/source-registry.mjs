@@ -54,6 +54,7 @@ const ROUTE_CLASS_IDS = Object.freeze({
     "forest-climate-adaptation-report", "increment-method", "clearcut-over-time",
     "forest-smi-2025-tables", "rmk-managed-forest-area", "moose-population-2025", "forest-fires-2025",
     "forest-regeneration-2025-availability", "nature-protection-share-2025",
+    "bark-beetle-monitoring-2026", "wood-balance-overview", "forest-yearbook-overview", "lulucf-definition",
   ]),
   official_guidance: new Set([
     "waste-burning-guidance", "protected-nature-guidance", "mining-impact-guidance",
@@ -82,6 +83,7 @@ const ROUTE_CLASS_IDS = Object.freeze({
     "forest-smi-2025-tables", "rmk-managed-forest-area", "forest-management-rules",
     "moose-population-2025", "bird-hunting-season-2026", "bark-beetle-guidance",
     "forest-fires-2025", "forest-regeneration-2025-availability",
+    "bark-beetle-monitoring-2026", "wood-balance-overview", "forest-yearbook-overview", "lulucf-definition",
   ]),
   official_environmental_assessment: new Set([
     "environmental-assessment", "wind-farm-assessment-guide", "mining-impact-guidance",
@@ -327,6 +329,11 @@ export function officialSourceProfile(document = {}, options = {}) {
   const delivery = sourceDelivery(document);
   const evidencePolicy = evidencePolicyFor(document);
   const freshness = freshnessFor(document, delivery);
+  const evidenceCheckedAt = clean(document._evidenceStatusAt || document._catalogueReviewedAt);
+  const evidenceCheckedAtMs = strictTimestamp(evidenceCheckedAt);
+  const checkedAt = evidenceCheckedAtMs === null
+    ? "2026-09-19"
+    : new Date(evidenceCheckedAtMs).toISOString().slice(0, 10);
   return Object.freeze({
     id: clean(document.id),
     canonicalUrl: clean(document.url),
@@ -338,7 +345,7 @@ export function officialSourceProfile(document = {}, options = {}) {
     evidenceEligible: sourceEvidenceEligibility(document, options).eligible,
     freshness,
     freshnessClass: freshness.class,
-    checkedAt: "2026-09-19",
+    checkedAt,
   });
 }
 

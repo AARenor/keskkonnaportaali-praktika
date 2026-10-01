@@ -56,7 +56,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v55-estonian-data-gate";
+export const SEARCH_RESPONSE_REVISION = "answer-v56-official-knowledge";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
@@ -1010,9 +1010,9 @@ export function publicResponse(draft, { now = Date.now() } = {}) {
     } : answer,
     sources: visibleSources.map((source, index) => {
       const publicKeys = [
-        "id", "citation", "title", "organization", "type", "published", "url", "evidenceExcerpt", "locator", "actionUrl", "actionLabel", "tags", "sourceTier",
+        "id", "citation", "title", "organization", "type", "published", "updated", "dataYear", "dataAsOf", "url", "evidenceExcerpt", "locator", "actionUrl", "actionLabel", "tags", "sourceTier",
       ];
-      if (!source.evidenceExcerpt) publicKeys.splice(7, 0, "summary");
+      if (!source.evidenceExcerpt) publicKeys.push("summary");
       return {
         ...Object.fromEntries(publicKeys
           .filter((key) => source[key] !== undefined)
@@ -1258,6 +1258,9 @@ export function searchListingRevision(listing = {}) {
       actionUrl: item.actionUrl ? canonicalResultUrl(item.actionUrl) : null,
       actionLabel: item.actionLabel,
       published: item.published,
+      updated: item.updated,
+      dataYear: item.dataYear,
+      dataAsOf: item.dataAsOf,
       publishedAt: item._publishedAt,
       sourceTier: item.sourceTier,
       routeClasses: item.routeClasses,
