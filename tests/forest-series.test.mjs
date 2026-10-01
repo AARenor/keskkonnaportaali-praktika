@@ -19,7 +19,6 @@ import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
 import {
   isForestHarvestBalanceQuery,
   loadStructuredIndicatorDocuments,
-  requiresExtendedStructuredListingBudget,
 } from "../server/indicators.mjs";
 import { searchEnvironmentLive, searchTimeoutFallback } from "../server/pipeline.mjs";
 import { rankPublicSearchCandidates } from "../server/retrieval.mjs";
@@ -362,8 +361,6 @@ test("structured loader posts one bounded forest series request only for a serie
   });
   assert.equal(calls, 1);
   assert.equal(documents.some((document) => document.url === SMI_2025_TABLES_URL), false);
-  assert.equal(requiresExtendedStructuredListingBudget(query), true);
-
   const single = await loadStructuredIndicatorDocuments("Metsamaa pindala 2024", {
     now: NOW,
     fetchPxwebDataset: async () => { throw new Error("must not fetch"); },
@@ -621,7 +618,6 @@ test("structured loader adds the SMI context series for a single-value forest qu
     fetchPxwebDataset: async () => { throw new Error("must not fetch"); },
   });
   assert.ok(documents.some((document) => document.id === "forest-series-smi2025-1-2016-2025"));
-  assert.equal(requiresExtendedStructuredListingBudget(query), true);
   const balance = await loadStructuredIndicatorDocuments("Kas raiemaht ületab juurdekasvu?", {
     now: NOW,
     fetchPxwebDataset: async () => { throw new Error("must not fetch"); },

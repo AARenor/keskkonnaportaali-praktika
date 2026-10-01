@@ -14,7 +14,6 @@ import {
 import { createGracefulShutdown } from "./graceful-shutdown.mjs";
 import { createBoundedNdjsonWriter } from "./http-stream.mjs";
 import { getKeskkonnaportaalSuggestions } from "./integrations.mjs";
-import { requiresExtendedStructuredListingBudget } from "./indicators.mjs";
 import {
   createDeadlineCleanupLease,
   searchEnvironmentLive,
@@ -570,14 +569,11 @@ app.post("/api/search/stream", async (request, response) => {
   let publicListing = emptySearchListing(filters, page, pageSize);
   let resultsWritten = false;
   try {
-    // Most searches keep the fast progressive-listing target. Exact typed
-    // PostgREST, WFS and PXWeb queries may need their full bounded structured
-    // fetch window on a cold connection, without extending the overall limit.
-    // Pass the overall deadline into retrieval so its own 5.5 s upstream cap
-    // is not accidentally collapsed by this outer streaming phase.
+    // Retrieval owns bounded upstream timeouts. Its half of the request budget
+    // outlives the longest 5.5 s fetch; the other half remains for hydration,
+    // grounded synthesis, citation rebinding and transport.
     const listingBudgetMs = progressiveListingBudgetMs({
       remainingMs: deadlineAt - Date.now(),
-      slowStructured: requiresExtendedStructuredListingBudget(query),
     });
     const searchResults = await settleWithinDeadline(prepareRankedSearchResults(query, {
       page,

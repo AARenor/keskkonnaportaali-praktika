@@ -132,7 +132,6 @@ import {
   MUNICIPAL_WASTE_RECYCLING_CSV_URL,
   MUNICIPAL_WASTE_RECYCLING_PAGE_URL,
   nationalWeatherForecastFromXml,
-  requiresExtendedStructuredListingBudget,
   WEATHER_FORECAST_XML_URL,
 } from "../server/indicators.mjs";
 import {
@@ -757,24 +756,13 @@ test("the all-at-once search keeps transport margin under load", () => {
   assert.equal(searchDeadline(50_000, JSON_SEARCH_DEADLINE_CEILING_MS, "15000"), 62_000);
 });
 
-test("the progressive stream gives only recognized slow structured data a larger listing window", () => {
-  assert.equal(progressiveListingBudgetMs({ remainingMs: 15_000 }), 3_500);
-  assert.equal(progressiveListingBudgetMs({ remainingMs: 15_000, slowStructured: true }), 7_000);
-  assert.equal(progressiveListingBudgetMs({ remainingMs: 2_000, slowStructured: true }), 2_000);
-  assert.equal(progressiveListingBudgetMs({ remainingMs: -1, slowStructured: true }), 1);
-  for (const query of [
-    "Mis on viimane avaldatud Emajõe veetase Tartu jaamas?",
-    "Kas Emajõgi on EELISe avaliku kirje järgi avalikult kasutatav veekogu?",
-    "Kui palju vett võeti Eestis 2024?",
-    "Mis oli Jõgeva ööpäeva keskmine õhutemperatuur 21. augustil 2025?",
-    "Mitu tonni bioloogilist hapnikutarvet (BHT7) juhiti 2024. aastal Eestis pinnaveekogudesse?",
-    "Kui palju ohtlikke jäätmeid tekkis Eestis 2024. aastal?",
-  ]) assert.equal(requiresExtendedStructuredListingBudget(query), true, query);
-  for (const query of [
-    "vesi",
-    "Mis on Tallinna temperatuur praegu?",
-    "Kui palju põhjavett võeti Eestis 2024?",
-  ]) assert.equal(requiresExtendedStructuredListingBudget(query), false, query);
+test("the progressive stream keeps retrieval alive until the final-response reserve", () => {
+  const productionBudget = progressiveListingBudgetMs({ remainingMs: 15_000 });
+  assert.equal(productionBudget, 7_500);
+  assert.ok(productionBudget >= 5_500, "listing window must outlive the longest bounded structured fetch");
+  assert.equal(progressiveListingBudgetMs({ remainingMs: 2_000 }), 1_000);
+  assert.equal(progressiveListingBudgetMs({ remainingMs: 1_000 }), 500);
+  assert.equal(progressiveListingBudgetMs({ remainingMs: -1 }), 1);
 });
 
 test("the listing endpoint shares the global search capacity boundary", async () => {

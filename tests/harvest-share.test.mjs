@@ -11,7 +11,7 @@ import {
   validatedHarvestShareProjection,
 } from "../server/harvest-share.mjs";
 import { FOREST_SERIES_MM03_API_URL, FOREST_SERIES_MM03_TABLE_URL } from "../server/forest-series.mjs";
-import { loadStructuredIndicatorDocuments, requiresExtendedStructuredListingBudget } from "../server/indicators.mjs";
+import { loadStructuredIndicatorDocuments } from "../server/indicators.mjs";
 import { searchEnvironmentLive, searchTimeoutFallback } from "../server/pipeline.mjs";
 import { rankPublicSearchCandidates } from "../server/retrieval.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
@@ -134,7 +134,6 @@ test("the loader fetches only the cut-type split for a share question and the pi
   });
   assert.deepEqual(urls, ["Aasta/Raie liik/Näitaja"]);
   assert.deepEqual(documents.map((document) => document.id), ["harvest-share-mm03-1-2024"]);
-  assert.equal(requiresExtendedStructuredListingBudget(query), true);
 
   const [document] = harvestShareFromJson(query, await fixture(), { now: NOW, fetchedAt: NOW });
   const fallback = searchTimeoutFallback(query, { searchResults: { items: [document], total: 1 }, filters: {}, startedAt: NOW });

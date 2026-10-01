@@ -1849,9 +1849,8 @@ export async function prepareRankedSearchResults(query, {
   const discoveryQueries = buildDiscoveryQueries(query, 3);
   const discoveryTimeout = Math.max(250, Math.min(2_200, remaining(deadlineAt, 12_000)));
   // Structured official datasets are compact and high-value evidence. The
-  // hydrology PostgREST endpoint currently responds in roughly four seconds,
-  // so keep a bounded 5.5 s slice while preserving nine seconds for ranking
-  // and answer composition under the normal 15 s request deadline.
+  // hydrology PostgREST endpoint can take roughly four seconds, so keep each
+  // structured fetch bounded at 5.5 s inside the stream's 7.5 s listing half.
   const structuredTimeout = Math.max(250, Math.min(5_500, remaining(deadlineAt, 9_000)));
   const liveDiscovery = shouldUseLiveDiscovery(safePage)
     ? discoveryQueries.map((discoveryQuery) => searchOfficialSites(discoveryQuery, 6, {

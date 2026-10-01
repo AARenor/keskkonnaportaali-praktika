@@ -17,7 +17,7 @@ import {
   validatedLandUseShareProjection,
   withLandUseShareChart,
 } from "../server/land-use-share.mjs";
-import { loadStructuredIndicatorDocuments, requiresExtendedStructuredListingBudget } from "../server/indicators.mjs";
+import { loadStructuredIndicatorDocuments } from "../server/indicators.mjs";
 import { searchEnvironmentLive } from "../server/pipeline.mjs";
 import { SMI_2025_TABLES_URL } from "../server/smi-tables.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
@@ -156,8 +156,6 @@ test("structured loader adds the SMI land-category split without fetching KK07 a
   const smi = documents.find((document) => document.id === "smi-2025-land-categories");
   assert.ok(smi);
   assert.equal(documents.some((document) => document.id === "land-use-share-kk07-2024"), false);
-  assert.equal(requiresExtendedStructuredListingBudget(query), true);
-
   const portal = {
     id: "smi-2024-forest-area",
     title: "SMI 2024: Eesti metsamaa pindala",

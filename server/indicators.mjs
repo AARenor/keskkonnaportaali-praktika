@@ -696,20 +696,6 @@ export function isLatestPublishedHydrologyQuery(query) {
   return Boolean(latestPublishedHydrologyIntent(query));
 }
 
-export function requiresExtendedStructuredListingBudget(query) {
-  return isLatestPublishedHydrologyQuery(query)
-    || isEelisEmajogiPublicWatercourseQuery(query)
-    || isEelisNaturaSiteQuery(query)
-    || isStatisticsHazardousWasteQuery(query)
-    || isStatisticsTotalWasteRecoveryQuery(query)
-    || isStatisticsWaterAbstractionQuery(query)
-    || isStatisticsWastewaterBht7Query(query)
-    || isClimateDailyMeanQuery(query)
-    || ((isForestSeriesQuery(query) || isForestContextSeriesQuery(query)) && !isForestHarvestBalanceQuery(query))
-    || isLandUseShareQuery(query)
-    || isHarvestShareQuery(query);
-}
-
 function hydrologyQuerySince(now) {
   const currentHour = Math.floor(now / (60 * 60_000)) * 60 * 60_000;
   return new Date(currentHour - LATEST_HYDROLOGY_MAX_AGE_MS).toISOString().slice(0, 19);
