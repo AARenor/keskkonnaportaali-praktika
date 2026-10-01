@@ -1884,6 +1884,10 @@ h3 {
   font-size: 12px;
 }
 
+.answer-chart__share-label--wrapped {
+  font-size: 11px;
+}
+
 .answer-chart__share-legend {
   flex: 1 1 260px;
   margin: 0;

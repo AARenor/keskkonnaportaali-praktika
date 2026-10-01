@@ -26,6 +26,8 @@ import {
   LAND_USE_KK07_API_URL,
   landUseShareFromJson,
   landUseShareRequest,
+  smiLandCategoriesValid,
+  smiLandCategoryDocument,
 } from "./land-use-share.mjs";
 import {
   harvestShareFromJson,
@@ -61,6 +63,7 @@ import {
   isForestContextSeriesQuery,
   isForestSeriesQuery,
   resolveForestSeriesIntent,
+  smiForestSeriesDocument,
 } from "./forest-series.mjs";
 
 export { composeForestSeriesResponse };
@@ -1830,7 +1833,7 @@ export function composeForestHarvestBalanceAnswer(query, sources = [], controlQu
             citations: [handbookCitation],
           }] : []),
           ...(fiveYearCitation ? [{
-            title: "KAURi eraldi viie raiehooaja vaade",
+            title: "Keskkonnaagentuuri eraldi viie raiehooaja vaade",
             text: "Keskkonnaagentuuri 2024. aasta SMI ülevaates oli 2018/2019–2022/2023 viie raiehooaja keskmine raiemaht 11,2 miljonit tihumeetrit; 2021. aasta hinnang oli 10,0 ja 2022. aasta hinnang 12,1 miljonit tihumeetrit. See ei ole sama ajavahemik ega üks-ühele sama näitaja kui Eurostati removals-rida.",
             citations: [fiveYearCitation],
           }] : []),
@@ -1881,7 +1884,7 @@ export function composeForestHarvestBalanceAnswer(query, sources = [], controlQu
           citations: [handbookCitation],
         }] : []),
         ...(methodCitation ? [{
-          title: "Eraldi KAURi raiemahu võrdlus",
+          title: "Keskkonnaagentuuri eraldi raiemahu võrdlus",
           text: "Netojuurdekasv on kogu juurdekasv pärast loodusliku suremuse mahaarvamist. Keskkonnaagentuur kirjutab eraldi majandatavate metsade SMI võrdluses, et elusate puude raiemaht oli viimase kümnendi keskmisena netojuurdekasvust kõrgem, kuid 20 aasta vaates madalam.",
           citations: [methodCitation],
         }] : []),
@@ -1946,7 +1949,13 @@ export async function loadStructuredIndicatorDocuments(query, options = {}) {
       // The reviewed felling pages remain visible without the split.
     }
   }
-  if ((isForestSeriesQuery(query) || isForestContextSeriesQuery(query)) && !isForestHarvestBalanceQuery(query) && !isHarvestShareQuery(query)) {
+  const forestSeriesQuery = (isForestSeriesQuery(query) || isForestContextSeriesQuery(query))
+    && !isForestHarvestBalanceQuery(query) && !isHarvestShareQuery(query);
+  // Keskkonnaagentuur's own SMI workbook comes first; Statistikaamet's
+  // republication is fetched only for series the workbook does not publish.
+  const smiSeries = forestSeriesQuery ? smiForestSeriesDocument(query) : null;
+  if (smiSeries) documents.push(smiSeries);
+  if (forestSeriesQuery && !smiSeries) {
     try {
       const fetchPxwebDataset = options.fetchPxwebDataset || fetchOfficialPxwebDataset;
       const intent = resolveForestSeriesIntent(query);
@@ -1965,7 +1974,9 @@ export async function loadStructuredIndicatorDocuments(query, options = {}) {
       // The reviewed SMI catalogue pages remain visible without a series.
     }
   }
-  if (isLandUseShareQuery(query)) {
+  if (isLandUseShareQuery(query) && smiLandCategoriesValid()) {
+    documents.push(smiLandCategoryDocument());
+  } else if (isLandUseShareQuery(query)) {
     try {
       const fetchPxwebDataset = options.fetchPxwebDataset || fetchOfficialPxwebDataset;
       const result = await fetchPxwebDataset(LAND_USE_KK07_API_URL, landUseShareRequest(), {

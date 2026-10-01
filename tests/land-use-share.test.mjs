@@ -13,11 +13,13 @@ import {
   landUseShareFromJson,
   landUseShareIntent,
   landUseShareRequest,
+  smiLandCategoryDocument,
   validatedLandUseShareProjection,
   withLandUseShareChart,
 } from "../server/land-use-share.mjs";
 import { loadStructuredIndicatorDocuments, requiresExtendedStructuredListingBudget } from "../server/indicators.mjs";
 import { searchEnvironmentLive } from "../server/pipeline.mjs";
+import { SMI_2025_TABLES_URL } from "../server/smi-tables.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
 
 const NOW = Date.parse("2026-09-28T12:00:00Z");
@@ -142,25 +144,20 @@ test("withLandUseShareChart attaches the sector chart to an answerable share ans
   assert.equal(withLandUseShareChart(unanswerable, query, [portal, shareDocument], { now: NOW }), unanswerable);
 });
 
-test("structured loader posts the fixed KK07 request for a share question and the live pipeline prefers the sector chart", async () => {
+test("structured loader adds the SMI land-category split without fetching KK07 and the live pipeline cites it", async () => {
   const query = "Kui suur osa eestis on metsa all?";
-  let calls = 0;
   const documents = await loadStructuredIndicatorDocuments(query, {
     now: NOW,
-    fetchPxwebDataset: async (url, payload) => {
-      calls += 1;
-      if (url === LAND_USE_KK07_API_URL) {
-        assert.deepEqual(payload, landUseShareRequest());
-        return { body: await fixture(), fetchedAt: FETCHED_AT, stale: false };
-      }
+    fetchPxwebDataset: async (url) => {
+      if (url === LAND_USE_KK07_API_URL) throw new Error("must not fetch KK07");
       throw new Error("offline");
     },
   });
-  assert.ok(calls >= 1);
-  assert.ok(documents.some((document) => document.id === "land-use-share-kk07-2024"));
+  const smi = documents.find((document) => document.id === "smi-2025-land-categories");
+  assert.ok(smi);
+  assert.equal(documents.some((document) => document.id === "land-use-share-kk07-2024"), false);
   assert.equal(requiresExtendedStructuredListingBudget(query), true);
 
-  const [shareDocument] = landUseShareFromJson(query, await fixture(), { now: NOW, fetchedAt: NOW });
   const portal = {
     id: "smi-2024-forest-area",
     title: "SMI 2024: Eesti metsamaa pindala",
@@ -180,14 +177,49 @@ test("structured loader posts the fixed KK07 request for a share question and th
     startedAt: NOW,
     deadlineAt: NOW + 1_000,
     useCache: false,
-    searchResults: { items: [portal, shareDocument], total: 2 },
+    searchResults: { items: [portal, smi], total: 2 },
   });
   if (live.evidence?.answerable === false || !live.answer.introCitations.length) {
     assert.equal(live.chart, undefined);
     return;
   }
   assert.equal(live.chart.kind, "share");
-  assert.equal(live.sources.find((source) => source.citation === live.chart.citation).url, LAND_USE_KK07_TABLE_URL);
+  assert.equal(live.sources.find((source) => source.citation === live.chart.citation).url, SMI_2025_TABLES_URL);
+});
+
+test("the share chart prefers Keskkonnaagentuur's SMI split over KK07 and reuses the cited SMI workbook", async () => {
+  const query = "Kui suur osa Eestist on metsaga kaetud?";
+  const [kk07] = landUseShareFromJson(query, await fixture(), { now: NOW, fetchedAt: FETCHED_AT });
+  const smi = smiLandCategoryDocument();
+  assert.equal(sourceEvidenceEligibility(smi, { now: NOW }).eligible, true);
+  assert.match(smi.summary, /metsamaa 2 360,2 tuhat ha ehk 52,1 %/u);
+  assert.match(smi.content, /2 151,2 tuhat ha ehk 47,4 %/u);
+  const { source, chart } = landUseShareChart(query, [kk07, smi], { now: NOW });
+  assert.equal(source.id, smi.id);
+  assert.equal(chart.title, "Eesti pindala jagunemine maakategooriate järgi 2025");
+  assert.deepEqual(chart.series[0].points[0], { x: 1, y: 2360.2, label: "Metsamaa", emphasis: true });
+  assert.ok(chart.series[0].points.length <= 8);
+  const sum = chart.series[0].points.reduce((total, point) => total + point.y, 0);
+  assert.ok(Math.abs(sum - 4533.9) < 1, `sum ${sum}`);
+  assert.match(chart.caption, /^Keskkonnaagentuur, SMI 2025 tabel 1/u);
+  assert.equal(landUseShareChart(query, [kk07], { now: NOW }).source.id, kk07.id, "KK07 only without the SMI workbook in results");
+
+  const workbookEntry = {
+    id: "forest-smi-2025-tables",
+    title: "SMI 2025 tulemuste andmetabelid",
+    url: SMI_2025_TABLES_URL,
+    summary: "SMI 2025 tabelite järgi oli Eesti metsamaa pindala 2 360,2 tuhat hektarit ehk 52,1% Eesti pindalast.",
+    content: "SMI 2025 tabelite järgi oli Eesti metsamaa pindala 2 360,2 tuhat hektarit ehk 52,1% Eesti pindalast.",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    sourceTier: "official",
+    evidencePolicy: "claim-specific",
+    _answerEvidenceEligible: true,
+  };
+  const draft = composeSearchResponse(query, [workbookEntry], { answerable: true, limit: 6, total: 3 });
+  const attached = withLandUseShareChart(draft, query, [workbookEntry, kk07, smi], { now: NOW });
+  const cited = attached.sources.find((candidate) => candidate.citation === attached.chart.citation);
+  assert.equal(cited.url, SMI_2025_TABLES_URL);
+  assert.equal(attached.sources.some((candidate) => candidate.id === kk07.id), false);
 });
 
 test("the land-use document fetched for a share question stays within the first visible results", async () => {

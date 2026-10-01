@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
 import { attachChartToDraft } from "./answer-chart.mjs";
+import {
+  SMI_2025_YEAR,
+  smiSeriesPoints,
+  smiSeriesWorksheet,
+  smiStructuredDocument,
+  smiTablesSource,
+  smiWorkbookInResults,
+} from "./smi-tables.mjs";
 import { sourceEvidenceEligibility } from "./source-registry.mjs";
 import { STATISTICS_DISSEMINATION_POLICY_URL } from "./statistics.mjs";
 
@@ -339,7 +347,10 @@ export function forestSeriesStatement(projection) {
   const errorSentence = last.error === undefined
     ? ""
     : ` ${last.year}. aasta hinnangu suhteline viga oli ±${etNumber(last.error, 1)}%.`;
-  return `Statistikaameti tabeli ${projection.table} (SMI hinnang) järgi oli ${projection.sentenceLabel} ${first.year}. aastal ${etNumber(first.value, digits)} ${unit} ja ${last.year}. aastal ${etNumber(last.value, digits)} ${unit}. `
+  const origin = projection.source === "smi"
+    ? `Keskkonnaagentuuri SMI ${SMI_2025_YEAR} tulemuste töölehe ${projection.worksheet}`
+    : `Statistikaameti tabeli ${projection.table} (SMI hinnang)`;
+  return `${origin} järgi oli ${projection.sentenceLabel} ${first.year}. aastal ${etNumber(first.value, digits)} ${unit} ja ${last.year}. aastal ${etNumber(last.value, digits)} ${unit}. `
     + `Perioodi ${projection.years.from}–${projection.years.to} väikseim avaldatud väärtus oli ${etNumber(min.value, digits)} ${unit} (${min.year}) ja suurim ${etNumber(max.value, digits)} ${unit} (${max.year}); avaldatud aastaid on ${points.length}.`
     + (gaps.length ? ` Aastate ${gaps.join(", ")} kohta ei ole väärtust avaldatud.` : "")
     + ` ${trendSentence(projection)}${errorSentence}`;
@@ -352,7 +363,48 @@ export function forestSeriesDefinition(table) {
 }
 
 export function forestSeriesContent(projection) {
+  if (projection.source === "smi") return `${forestSeriesStatement(projection)} ${forestSeriesDefinition(projection.table)}`;
   return `${forestSeriesStatement(projection)} ${forestSeriesDefinition(projection.table)} JSON-stat2 vastuse eksitavat „updated” välja ei kasutata avaldamisaja ega värskuse tõendina.`;
+}
+
+// Keskkonnaagentuur publishes the SMI series itself; KK51 and MM03 are
+// Statistikaamet's republication of the same estimates. The primary source
+// is preferred whenever its workbook covers the requested indicator and
+// window, so the chart and the SMI text answer share one publisher.
+export function isSmiForestSeriesQuery(query) {
+  return smiForestSeriesDocument(query) !== null;
+}
+
+export function smiForestSeriesDocument(query) {
+  const intent = resolveForestSeriesIntent(query);
+  if (!intent) return null;
+  const descriptor = seriesDescriptor(intent);
+  const points = smiSeriesPoints(intent.table, descriptor.indicatorCode, intent.years);
+  if (!points || points.length < MIN_WINDOW_YEARS
+    || !points.every((point) => validPoint(point, descriptor.max))) return null;
+  const projection = {
+    table: intent.table,
+    source: "smi",
+    worksheet: smiSeriesWorksheet(intent.table, descriptor.indicatorCode),
+    indicatorCode: descriptor.indicatorCode,
+    seriesLabel: descriptor.seriesLabel,
+    sentenceLabel: descriptor.sentenceLabel,
+    unit: descriptor.unit,
+    digits: unitDigits(descriptor.unit),
+    years: { from: intent.years.from, to: intent.years.to },
+    points,
+  };
+  return {
+    ...smiStructuredDocument({
+      id: `forest-series-smi${SMI_2025_YEAR}-${descriptor.idSuffix}-${intent.years.from}-${intent.years.to}`,
+      title: `SMI ${SMI_2025_YEAR}: ${descriptor.seriesLabel} ${intent.years.from}–${intent.years.to}`,
+      summary: forestSeriesStatement(projection),
+      content: forestSeriesContent(projection),
+      locator: `SMI ${SMI_2025_YEAR} tulemuste töövihik, tööleht ${projection.worksheet}: ${descriptor.seriesLabel}, ${intent.years.from}–${intent.years.to}.`,
+      topics: ["aegrida", descriptor.seriesLabel, String(intent.years.from), String(intent.years.to)],
+    }),
+    _forestSeries: projection,
+  };
 }
 
 function seriesDescriptor(intent) {
@@ -535,14 +587,16 @@ function chartFromProjection(projection) {
     unit: projection.unit,
     xLabel: "Aasta",
     series: [{
-      id: `${projection.table.toLowerCase()}-${projection.indicatorCode}`,
+      id: `${projection.source === "smi" ? "smi" : projection.table.toLowerCase()}-${projection.indicatorCode}`,
       label: projection.seriesLabel,
       points: projection.points.map((point) => (
         point.error === undefined ? { x: point.year, y: point.value } : { x: point.year, y: point.value, error: point.error }
       )),
     }],
     citation: 1,
-    caption: `Statistikaamet, tabel ${projection.table}: ${TABLE_TITLES[projection.table]}. SMI valikuuringu aastahinnangud${hasError ? " koos suhtelise veaga" : ""}.`,
+    caption: projection.source === "smi"
+      ? `Keskkonnaagentuur, SMI ${SMI_2025_YEAR} tulemuste tööleht ${projection.worksheet}: ${projection.seriesLabel.toLocaleLowerCase("et")}. SMI valikuuringu aastahinnangud.`
+      : `Statistikaamet, tabel ${projection.table}: ${TABLE_TITLES[projection.table]}. SMI valikuuringu aastahinnangud${hasError ? " koos suhtelise veaga" : ""}.`,
   };
 }
 
@@ -553,7 +607,8 @@ export function composeForestSeriesResponse(query, documents = [], options = {})
   // answer and only gain a context chart.
   const intent = resolveForestSeriesIntent(query);
   if (!intent || (intent.years.mode === "context" && intent.table !== "MM03")) return null;
-  const source = (documents || []).find((document) => validatedForestSeriesProjection(query, document, now));
+  const smi = smiWorkbookInResults(documents) ? smiForestSeriesDocument(query) : null;
+  const source = smi || (documents || []).find((document) => validatedForestSeriesProjection(query, document, now));
   if (!source) return null;
   const projection = source._forestSeries;
   const first = projection.points[0];
@@ -563,7 +618,7 @@ export function composeForestSeriesResponse(query, documents = [], options = {})
     total: Number(options.total || documents.length || 1),
     generatedAt: new Date(now).toISOString(),
     answer: {
-      eyebrow: `Statistikaameti tabel ${projection.table}`,
+      eyebrow: projection.source === "smi" ? `Keskkonnaagentuur, SMI ${SMI_2025_YEAR}` : `Statistikaameti tabel ${projection.table}`,
       title: `${projection.seriesLabel} ${projection.years.from}–${projection.years.to}: ${etNumber(first.value, projection.digits)} → ${etNumber(last.value, projection.digits)} ${projection.unit}`,
       intro: source.summary,
       introCitations: [1],
@@ -590,6 +645,8 @@ export function forestContextChart(query, documents = [], options = {}) {
   const now = Number.isFinite(Number(options.now)) ? Number(options.now) : Date.now();
   const intent = forestContextSeriesIntent(query);
   if (!intent) return null;
+  const smi = smiWorkbookInResults(documents) ? smiForestSeriesDocument(query) : null;
+  if (smi) return { source: smiTablesSource(options.draftSources) || smi, chart: chartFromProjection(smi._forestSeries) };
   const source = (documents || []).find((document) => validatedForestSeriesProjection(query, document, now));
   if (!source) return null;
   return { source, chart: chartFromProjection(source._forestSeries) };
@@ -602,7 +659,7 @@ export function forestContextChart(query, documents = [], options = {}) {
 export function withForestContextChart(draft, query, documents = [], options = {}) {
   if (!draft || typeof draft !== "object" || !draft.answer || draft.chart) return draft;
   if (draft.evidence?.answerable === false) return draft;
-  const context = forestContextChart(query, documents, options);
+  const context = forestContextChart(query, documents, { ...options, draftSources: draft.sources });
   return context ? attachChartToDraft(draft, context.source, context.chart) : draft;
 }
 

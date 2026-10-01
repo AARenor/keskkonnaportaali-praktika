@@ -251,6 +251,22 @@ function arcPath(start, end, outer, inner) {
   return `M${x1},${y1} A${outer},${outer} 0 ${large} 1 ${x2},${y2} L${x3},${y3} A${inner},${inner} 0 ${large} 0 ${x4},${y4} Z`;
 }
 
+// The donut hole is 120 px wide: a long class name ("Asustusala, teed ja
+// trassid") is wrapped onto two short lines instead of spilling over the ring.
+const SHARE_LABEL_LINE = 16;
+
+function shareLabelLines(label) {
+  const text = String(label || "");
+  if (text.length <= SHARE_LABEL_LINE) return [text];
+  const words = text.split(/\s+/u);
+  let first = "";
+  while (words.length && `${first} ${words[0]}`.trim().length <= SHARE_LABEL_LINE) first = `${first} ${words.shift()}`.trim();
+  if (!first) first = words.shift();
+  let second = words.join(" ");
+  if (second.length > SHARE_LABEL_LINE) second = `${second.slice(0, SHARE_LABEL_LINE - 1).trimEnd()}…`;
+  return second ? [first, second] : [first];
+}
+
 function ShareChart({ chart, citation = null }) {
   const titleId = useId();
   const descId = useId();
@@ -259,6 +275,7 @@ function ShareChart({ chart, citation = null }) {
   const emphasised = arcs.findIndex((arc) => arc.emphasis) >= 0 ? arcs.findIndex((arc) => arc.emphasis) : 0;
   const [active, setActive] = useState(null);
   const shown = arcs[active ?? emphasised];
+  const labelLines = shareLabelLines(shown.label);
   let neutral = 0;
   const colours = arcs.map((arc) => (arc.emphasis ? "var(--brand-700)" : SHARE_NEUTRALS[Math.min(neutral++, SHARE_NEUTRALS.length - 1)]));
   const description = `Sektordiagramm. ${arcs.map((arc) => `${arc.label} ${formatChartValue(arc.percent, 1)} %`).join("; ")}.`;
@@ -292,11 +309,18 @@ function ShareChart({ chart, citation = null }) {
                 tabIndex={0}
               />
             ))}
-            <text className="answer-chart__share-percent" textAnchor="middle" x={SHARE_SIZE / 2} y={SHARE_SIZE / 2 + 2}>
+            <text className="answer-chart__share-percent" textAnchor="middle" x={SHARE_SIZE / 2} y={SHARE_SIZE / 2 + (labelLines.length > 1 ? -4 : 2)}>
               {formatChartValue(shown.percent, 1)} %
             </text>
-            <text className="answer-chart__share-label" textAnchor="middle" x={SHARE_SIZE / 2} y={SHARE_SIZE / 2 + 22}>
-              {shown.label}
+            <text
+              className={`answer-chart__share-label${labelLines.length > 1 ? " answer-chart__share-label--wrapped" : ""}`}
+              textAnchor="middle"
+              x={SHARE_SIZE / 2}
+              y={SHARE_SIZE / 2 + (labelLines.length > 1 ? 14 : 22)}
+            >
+              {labelLines.map((line, index) => (
+                <tspan dy={index === 0 ? 0 : 14} key={line} x={SHARE_SIZE / 2}>{line}</tspan>
+              ))}
             </text>
           </svg>
         </div>

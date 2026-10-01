@@ -11,8 +11,10 @@ import {
   forestSeriesIntent,
   forestSeriesRequest,
   isForestSeriesQuery,
+  smiForestSeriesDocument,
   validatedForestSeriesProjection,
 } from "../server/forest-series.mjs";
+import { SMI_2025_TABLES_URL } from "../server/smi-tables.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
 import {
   isForestHarvestBalanceQuery,
@@ -345,7 +347,9 @@ test("forest series response refuses a document that does not re-validate for th
 });
 
 test("structured loader posts one bounded forest series request only for a series intent", async () => {
-  const query = "Metsamaa pindala 2015–2025";
+  // Metsasus is not a national series in the SMI workbook, so it still comes
+  // from Statistikaamet KK51.
+  const query = "Territooriumi metsasus 2015–2025";
   let calls = 0;
   const documents = await loadStructuredIndicatorDocuments(query, {
     now: NOW,
@@ -357,7 +361,7 @@ test("structured loader posts one bounded forest series request only for a serie
     },
   });
   assert.equal(calls, 1);
-  assert.deepEqual(documents.map((document) => document.id), ["forest-series-kk51-1-2015-2025"]);
+  assert.equal(documents.some((document) => document.url === SMI_2025_TABLES_URL), false);
   assert.equal(requiresExtendedStructuredListingBudget(query), true);
 
   const single = await loadStructuredIndicatorDocuments("Metsamaa pindala 2024", {
@@ -371,6 +375,38 @@ test("structured loader posts one bounded forest series request only for a serie
     fetchPxwebDataset: async () => { throw new Error("upstream down"); },
   });
   assert.deepEqual(failed, []);
+});
+
+test("structured loader uses Keskkonnaagentuur's SMI workbook first and skips Statistikaamet for covered series", async () => {
+  const query = "Metsamaa pindala 2015–2025";
+  const documents = await loadStructuredIndicatorDocuments(query, {
+    now: NOW,
+    fetchPxwebDataset: async () => { throw new Error("must not fetch"); },
+  });
+  assert.deepEqual(documents.map((document) => document.id), ["forest-series-smi2025-1-2015-2025"]);
+  const [document] = documents;
+  assert.equal(document.url, SMI_2025_TABLES_URL);
+  assert.equal(document.organization, "Keskkonnaagentuur / Keskkonnaportaal");
+  assert.equal(sourceEvidenceEligibility(document, { now: NOW }).eligible, true);
+  assert.match(document.summary, /^Keskkonnaagentuuri SMI 2025 tulemuste töölehe 25 järgi oli metsamaa pindala 2015\. aastal 2 310,6 tuhat ha ja 2025\. aastal 2 360,2 tuhat ha\./u);
+
+  const [kk51] = forestSeriesFromJson(query, await fixture("pxweb-kk51-metsamaa-pindala-2015-2025.json"), { now: NOW, fetchedAt: FETCHED_AT });
+  const response = composeForestSeriesResponse(query, [kk51, document], { now: NOW });
+  assert.equal(response.answer.eyebrow, "Keskkonnaagentuur, SMI 2025");
+  assert.deepEqual(response.sources.map((source) => source.id), [document.id]);
+  assert.equal(response.chart.series[0].id, "smi-1");
+  assert.deepEqual(response.chart.series[0].points.map((point) => point.y), kk51._forestSeries.points.map((point) => point.value));
+  assert.match(response.chart.caption, /^Keskkonnaagentuur, SMI 2025 tulemuste tööleht 25: metsamaa pindala\./u);
+  // Deduplication may merge the series into the workbook's catalogue entry;
+  // the workbook URL in the results is enough to keep the SMI series first.
+  const catalogue = { id: "forest-smi-2025-tables", title: "SMI 2025 tulemuste andmetabelid", url: SMI_2025_TABLES_URL };
+  assert.equal(composeForestSeriesResponse(query, [kk51, catalogue], { now: NOW }).sources[0].id, document.id);
+  assert.equal(composeForestSeriesResponse(query, [kk51], { now: NOW }).sources[0].id, kk51.id);
+
+  const felling = smiForestSeriesDocument("lageraie pindala 2015–2024");
+  assert.deepEqual(felling._forestSeries.points.map((point) => point.value), [31.6, 32.4, 35.6, 34.6, 29.7, 29.7, 27.1, 32.6, 32, 34]);
+  assert.equal(smiForestSeriesDocument("Territooriumi metsasus 2015–2025"), null);
+  assert.equal(smiForestSeriesDocument("Puistute varu juurdekasv 2015–2025"), null);
 });
 
 test("the pipeline answers a forest series question from its visible source and abstains without it", async () => {
@@ -578,26 +614,13 @@ test("withForestContextChart attaches the chart to an answerable draft with its 
   assert.equal(withForestContextChart(draft, query, [portal], { now: NOW }), draft);
 });
 
-test("structured loader fetches a context series for a single-value forest question", async () => {
+test("structured loader adds the SMI context series for a single-value forest question without fetching", async () => {
   const query = "mitu ha metsa on eestis";
-  let calls = 0;
   const documents = await loadStructuredIndicatorDocuments(query, {
     now: NOW,
-    fetchPxwebDataset: async (url, payload) => {
-      calls += 1;
-      assert.equal(url, FOREST_SERIES_KK51_API_URL);
-      assert.deepEqual(payload, {
-        query: [
-          { code: "Näitaja", selection: { filter: "item", values: ["1"] } },
-          { code: "Aasta", selection: { filter: "item", values: CONTEXT_YEARS } },
-        ],
-        response: { format: "json-stat2" },
-      });
-      return { body: kk51Fixture({}, { years: CONTEXT_YEARS, values: CONTEXT_VALUES }), fetchedAt: FETCHED_AT, stale: false };
-    },
+    fetchPxwebDataset: async () => { throw new Error("must not fetch"); },
   });
-  assert.equal(calls, 1);
-  assert.ok(documents.some((document) => document.id === "forest-series-kk51-1-2016-2025"));
+  assert.ok(documents.some((document) => document.id === "forest-series-smi2025-1-2016-2025"));
   assert.equal(requiresExtendedStructuredListingBudget(query), true);
   const balance = await loadStructuredIndicatorDocuments("Kas raiemaht ületab juurdekasvu?", {
     now: NOW,
@@ -605,6 +628,38 @@ test("structured loader fetches a context series for a single-value forest quest
     fetchJsonDataset: async () => { throw new Error("offline"); },
   });
   assert.equal(balance.some((document) => String(document.id).startsWith("forest-series-")), false);
+});
+
+test("the context chart prefers the SMI workbook and reuses the citation of the cited SMI entry", async () => {
+  const query = "mitu ha metsa on eestis";
+  const [kk51] = forestSeriesFromJson(query, kk51Fixture({}, { years: CONTEXT_YEARS, values: CONTEXT_VALUES }), { now: NOW, fetchedAt: FETCHED_AT });
+  const smi = smiForestSeriesDocument(query);
+  const workbookEntry = {
+    id: "forest-smi-2025-tables",
+    title: "SMI 2025 tulemuste andmetabelid",
+    url: SMI_2025_TABLES_URL,
+    summary: "SMI 2025 tabelite järgi oli Eesti metsamaa pindala 2 360,2 tuhat hektarit ehk 52,1% Eesti pindalast.",
+    content: "SMI 2025 tabelite järgi oli Eesti metsamaa pindala 2 360,2 tuhat hektarit ehk 52,1% Eesti pindalast.",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    sourceTier: "official",
+    evidencePolicy: "claim-specific",
+    _answerEvidenceEligible: true,
+  };
+  const draft = {
+    answer: { title: "Metsamaa", intro: workbookEntry.summary, introCitations: [1], parts: [] },
+    sources: [{ ...workbookEntry, citation: 1 }],
+    evidence: { answerable: true },
+  };
+  const attached = withForestContextChart(draft, query, [kk51, smi], { now: NOW });
+  assert.equal(attached.chart.citation, 1);
+  assert.equal(attached.sources.length, 1);
+  assert.equal(attached.chart.series[0].id, "smi-1");
+  assert.equal(attached.chart.series[0].points.at(-1).y, 2360.2);
+
+  const uncited = withForestContextChart({ ...draft, sources: [] }, query, [kk51, smi], { now: NOW });
+  assert.equal(uncited.sources[0].id, smi.id);
+  const fallback = withForestContextChart({ ...draft, sources: [] }, query, [kk51], { now: NOW });
+  assert.equal(fallback.sources[0].id, kk51.id);
 });
 
 test("the live pipeline keeps the portal answer and adds the context chart under it", async () => {

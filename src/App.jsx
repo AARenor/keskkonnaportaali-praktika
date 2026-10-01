@@ -27,6 +27,7 @@ import {
   Youtube,
 } from "lucide-react";
 import { safeExternalHref } from "./url-safety.js";
+import { sourceOrganizationLabel } from "./source-label.js";
 import {
   REVIEWED_SEARCH_SUGGESTIONS,
   shouldFetchRemoteSuggestions,
@@ -790,10 +791,7 @@ function Home({ onSearch, busy, searchInputRef }) {
 }
 
 function citationSourceLabel(source) {
-  const organization = String(source?.organization || "").trim();
-  if (/^Keskkonnaagentuur$/iu.test(organization)) return "KAUR";
-  if (/^Keskkonnaportaal/u.test(organization)) return "Keskkonnaportaal";
-  return organization || "Allikas";
+  return sourceOrganizationLabel(source) || "Allikas";
 }
 
 // Shown once the server answers from a newer build than this page: the
@@ -827,7 +825,7 @@ function Citation({ number, sources = [] }) {
       title={source
         ? [
           source.title,
-          source.organization,
+          sourceOrganizationLabel(source),
           source.evidenceExcerpt ? `Tõend: ${source.evidenceExcerpt.slice(0, 320)}` : "",
           source.locator ? `Vaata: ${source.locator}` : "",
         ].filter(Boolean).join(" — ")
@@ -937,7 +935,7 @@ function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRe
             <ExternalAnchor className="broad-result" href={item.url} key={item.id}>
               <div className="broad-result__meta">
                 <span className={`source-tier source-tier--${item.sourceTier || "other"}`}>{sourceTierLabel(item.sourceTier)}</span>
-                <span>{item.organization}</span>
+                <span>{sourceOrganizationLabel(item)}</span>
                 {item.published ? <span>{item.published}</span> : null}
               </div>
               <h3>{item.title}<ExternalLink size={15} /></h3>

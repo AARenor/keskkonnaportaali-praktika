@@ -6,6 +6,15 @@ import {
   isUnsupportedForestScope,
   normalizeForestSeriesText as normalize,
 } from "./forest-series.mjs";
+import {
+  SMI_2025_FOREST_WITH_TREES,
+  SMI_2025_LAND_CATEGORIES,
+  SMI_2025_TOTAL_AREA,
+  SMI_2025_YEAR,
+  smiStructuredDocument,
+  smiTablesSource,
+  smiWorkbookInResults,
+} from "./smi-tables.mjs";
 import { sourceEvidenceEligibility } from "./source-registry.mjs";
 import { STATISTICS_DISSEMINATION_POLICY_URL } from "./statistics.mjs";
 
@@ -233,9 +242,73 @@ function chartFromProjection(projection) {
   };
 }
 
+export function smiLandCategoriesValid() {
+  const sum = SMI_2025_LAND_CATEGORIES.reduce((total, part) => total + part.value, 0);
+  return SMI_2025_LAND_CATEGORIES.length <= 8
+    && SMI_2025_LAND_CATEGORIES.every((part) => Number.isFinite(part.value) && part.value > 0)
+    && Math.abs(sum - SMI_2025_TOTAL_AREA) <= SMI_2025_TOTAL_AREA * TOTAL_TOLERANCE;
+}
+
+function smiShareOf(value) {
+  return etNumber((value / SMI_2025_TOTAL_AREA) * 100, 1);
+}
+
+// Keskkonnaagentuur's SMI 2025 worksheet 1 is the same workbook the forest
+// share text cites ("52,1% Eesti pindalast"), so it is the chart's first
+// choice; KK07 is only used if this extract is ever withdrawn.
+export function smiLandCategoryDocument() {
+  const [forest, ...rest] = SMI_2025_LAND_CATEGORIES;
+  const restText = rest.map((part, index) => (
+    `${index === rest.length - 1 ? "ja " : ""}${part.label.toLocaleLowerCase("et")} ${etNumber(part.value, 1)} ${UNIT} (${smiShareOf(part.value)} %)`
+  )).join(", ");
+  const summary = `Keskkonnaagentuuri SMI ${SMI_2025_YEAR} tabeli 1 järgi oli Eesti üldpindalast (${etNumber(SMI_2025_TOTAL_AREA, 1)} ${UNIT}) metsamaa ${etNumber(forest.value, 1)} ${UNIT} ehk ${smiShareOf(forest.value)} %, ${restText}.`;
+  return smiStructuredDocument({
+    id: `smi-${SMI_2025_YEAR}-land-categories`,
+    title: `SMI ${SMI_2025_YEAR}: Eesti üldpindala jaotus maakategooriate järgi`,
+    summary,
+    content: `${summary} Metsamaast ${etNumber(SMI_2025_FOREST_WITH_TREES, 1)} ${UNIT} ehk ${smiShareOf(SMI_2025_FOREST_WITH_TREES)} % Eesti pindalast oli metsaga kaetud (puistud). Üldpindala hõlmab ka Peipsi ja Võrtsjärve.`,
+    locator: `SMI ${SMI_2025_YEAR} tulemuste töövihik, tööleht 1: Eesti üldpindala jaotus maakategooriate järgi.`,
+    topics: ["metsasus", "maakasutus", "osakaal", "metsamaa", String(SMI_2025_YEAR)],
+  });
+}
+
+export function validatedSmiLandCategoryDocument(query, document, now = Date.now()) {
+  if (!landUseShareIntent(query) || !smiLandCategoriesValid() || !document) return null;
+  const expected = smiLandCategoryDocument();
+  return document.id === expected.id && document.url === expected.url
+    && document.retrieval === expected.retrieval
+    && sourceEvidenceEligibility(document, { now }).eligible === true
+    && document.summary === expected.summary && document.content === expected.content
+    && document._contentHash === expected._contentHash ? document : null;
+}
+
+function smiShareChart() {
+  return {
+    kind: "share",
+    title: `Eesti pindala jagunemine maakategooriate järgi ${SMI_2025_YEAR}`,
+    unit: UNIT,
+    series: [{
+      id: `smi-${SMI_2025_YEAR}-land-categories`,
+      label: `Maakategooriad ${SMI_2025_YEAR}`,
+      points: SMI_2025_LAND_CATEGORIES.map((part, index) => ({
+        x: index + 1,
+        y: part.value,
+        label: part.label,
+        ...(part.code === "metsamaa" ? { emphasis: true } : {}),
+      })),
+    }],
+    citation: 1,
+    caption: `Keskkonnaagentuur, SMI ${SMI_2025_YEAR} tabel 1: Eesti üldpindala jaotus maakategooriate järgi (koos Peipsi ja Võrtsjärvega). Metsamaast ${etNumber(SMI_2025_FOREST_WITH_TREES, 1)} tuhat ha on metsaga kaetud.`,
+  };
+}
+
 export function landUseShareChart(query, documents = [], options = {}) {
   const now = Number.isFinite(Number(options.now)) ? Number(options.now) : Date.now();
   if (!landUseShareIntent(query)) return null;
+  if (smiLandCategoriesValid() && smiWorkbookInResults(documents)) {
+    const smi = (documents || []).find((document) => validatedSmiLandCategoryDocument(query, document, now));
+    return { source: smiTablesSource(options.draftSources) || smi || smiLandCategoryDocument(), chart: smiShareChart() };
+  }
   const source = (documents || []).find((document) => validatedLandUseShareProjection(query, document, now));
   if (!source) return null;
   return { source, chart: chartFromProjection(source._landUseShare) };
@@ -244,6 +317,6 @@ export function landUseShareChart(query, documents = [], options = {}) {
 export function withLandUseShareChart(draft, query, documents = [], options = {}) {
   if (!draft || typeof draft !== "object" || !draft.answer || draft.chart) return draft;
   if (draft.evidence?.answerable === false) return draft;
-  const context = landUseShareChart(query, documents, options);
+  const context = landUseShareChart(query, documents, { ...options, draftSources: draft.sources });
   return context ? attachChartToDraft(draft, context.source, context.chart) : draft;
 }
