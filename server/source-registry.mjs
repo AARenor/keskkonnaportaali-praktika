@@ -21,7 +21,7 @@ const ROUTE_CLASS_IDS = Object.freeze({
     "forest-spatial-data", "official-cadastre-wfs", "official-forest-register-wfs", "latest-published-hydrology",
     "eelis-emajogi-public-watercourse", "eelis-natura-site", "statistics-water-abstraction-2024",
     "statistics-wastewater-bht7-2024", "statistics-hazardous-waste-2024", "statistics-total-waste-recovery",
-    "climate-station-daily-mean",
+    "climate-station-daily-mean", "groundwater-overview",
   ]),
   official_spatial_or_register: new Set([
     "environment-register", "official-geoserver", "waste-facilities-map", "well-register",
@@ -44,7 +44,7 @@ const ROUTE_CLASS_IDS = Object.freeze({
   official_indicator_or_report: new Set([
     "climate-atlas", "water-monitoring", "radiation-monitoring", "soil-monitoring-results",
     "precipitation-change", "greenhouse-gas-inventory", "municipal-waste-recycling", "municipal-waste-recycling-page",
-    "groundwater-status", "marine-strategy-status", "bathing-water-quality",
+    "groundwater-overview", "groundwater-status", "marine-strategy-status", "bathing-water-quality",
     "groundwater-pesticide-monitoring", "wildlife-status-2025", "electric-vehicle-lifecycle",
     "baltic-sea-litter", "ida-viru-groundwater",
     "statistics-water-abstraction-2024", "statistics-wastewater-bht7-2024", "statistics-hazardous-waste-2024",

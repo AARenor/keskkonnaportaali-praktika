@@ -2023,6 +2023,9 @@ export function isSafeEllipticalFollowUp(value) {
   const bounded = normalized.split(" ").length <= 12;
   if (!bounded) return false;
   return new RegExp(`^(?:aga\\s+)?(?:mida|mis)\\s+${pronoun}\\s+(?:tähendab|näitab)$`, "u").test(normalized)
+    || /^(?:aga\s+)?(?:mida|mis)\s+(?:need|nende)\s+(?:andmed|andmestikud)\s+(?:t[aä]hendavad|n[aä]itavad)$/u.test(normalized)
+    || /^(?:aga\s+)?(?:millised?|mis)\s+(?:andmed|andmestikud)\s+(?:on\s+)?(?:k[aä]ttesaadavad|olemas)$/u.test(normalized)
+    || /^(?:aga\s+)?kust\s+(?:neid|need|nende)\s+(?:andmeid|andmed|andmestikke|andmestikud)\s+(?:n[aä]eb|leiab)$/u.test(normalized)
     || new RegExp(`^(?:aga\\s+)?kui\\s+suur\\s+${pronoun}\\s+(?:on|oli)$`, "u").test(normalized)
     || new RegExp(`^(?:aga\\s+)?kuidas\\s+${pronoun}\\s+(?:arvutatakse|hinnatakse|mõõdetakse|võrreldakse|saadi)$`, "u").test(normalized)
     || new RegExp(`^(?:aga\\s+)?kas\\s+${pronoun}\\s+(?:on|oli|kehtib|muutus|suurenes|vähenes|kasvas)$`, "u").test(normalized)

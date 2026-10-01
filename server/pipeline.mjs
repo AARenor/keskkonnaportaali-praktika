@@ -42,6 +42,7 @@ import {
   canonicalizePublicSearchQuery,
   composeScopeResponse,
   composeSearchResponse,
+  composeTopicDataOverviewResponse,
   composeWasteFacilitiesNavigationResponse,
   forestryIntentServiceDocumentIds,
   hasCompleteSentenceEnding,
@@ -55,7 +56,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v53-smi-first-charts";
+export const SEARCH_RESPONSE_REVISION = "answer-v54-smi-charts-topic-data";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
@@ -1378,6 +1379,9 @@ async function searchWithinBudget(cleanQuery, {
     now: startedAt,
   }) || composeWasteFacilitiesNavigationResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
+  }) || composeTopicDataOverviewResponse(retrievalQuery, searchResults?.items, {
+    total: searchResults?.total,
+    publicQuery: cleanQuery,
   });
   const structuredIndicatorDraft = draftMatchesListingAndFilters(
     structuredIndicatorCandidate,
@@ -1560,6 +1564,9 @@ export function searchTimeoutFallback(cleanQuery, {
     now: startedAt,
   }) || composeWasteFacilitiesNavigationResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
+  }) || composeTopicDataOverviewResponse(assessmentQuery, searchResults?.items, {
+    total: searchResults?.total,
+    publicQuery: cleanQuery,
   });
   const structuredIndicator = draftMatchesListingAndFilters(
     structuredCandidate,

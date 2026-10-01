@@ -660,6 +660,32 @@ const SEARCH_DOCUMENTS = [
       "Keskkonnaameti juhend selgitab kaitstaval alal, sealhulgas püsielupaigas, ehitamise piiranguid, hoone rajamise või renoveerimise eelneva nõusoleku vajadust ning seost Natura hindamisega.",
   },
   {
+    id: "groundwater-overview",
+    title: "Põhjavee andmed Eestis",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Ametlik ülevaade ja seireandmed",
+    published: "10.09.2026",
+    url: "https://keskkonnaportaal.ee/et/teemad/vesi/pohjavesi",
+    tags: ["põhjavesi", "põhjaveebilanss", "põhjaveekogum", "seire", "KESE", "2025"],
+    summary:
+      "Keskkonnaportaali 10.09.2026 uuendatud põhjavee ülevaate järgi oli 2025. aasta põhjaveevõtt 689 662 m³ ööpäevas ehk 23% suurem kui 2024. aastal, peamiselt kaevandustest ja karjääridest ära juhitud vee tõttu. 2020. aasta seisundihinnangus oli 31 põhjaveekogumist 23 heas ja 8 halvas seisundis; iga-aastased seireandmed ning aruanded on kättesaadavad KESEst.",
+    content:
+      "Ametlik ülevaade eristab põhjaveevaru ja -bilansi, põhjaveekogumite keemilise ja koguselise seisundi ning riikliku põhjaveeseire andmed. Põhjaveeseiret tehakse koguselise, keemilise ja nitraaditundliku ala seirena; seireandmed ja aastaaruanded on kättesaadavad Keskkonnaseire Infosüsteemist KESE.",
+    locator: "Jaotised „Põhjaveevaru ja -bilanss”, „Põhjaveekogumite seisund” ning „Põhjaveekogumite ja nitraaditundliku ala seire”.",
+    evidencePolicy: "versioned",
+    delivery: "catalog-only",
+    routeClasses: ["official_data_or_api", "official_indicator_or_report"],
+    freshness: {
+      class: "reviewed-overview-extract",
+      basis: "reviewed-at",
+      maxAgeMs: 31 * 24 * 60 * 60 * 1_000,
+      requiresSourceTimestamp: true,
+    },
+    _answerEvidenceEligible: true,
+    _evidenceVersion: "groundwater-overview-reviewed-2026-10-01",
+    _evidenceStatusAt: "2026-10-01T00:00:00.000Z",
+  },
+  {
     id: "groundwater-status",
     title: "Põhjavee seisund",
     organization: "Keskkonnaportaal",
@@ -1355,6 +1381,14 @@ const STOP_WORDS = new Set([
   "kohta",
   "korraga",
   "vaata",
+  "naitab",
+  "naitavad",
+  "tahendab",
+  "tahendavad",
+  "kattesaadavad",
+  "olemas",
+  "naeb",
+  "leiab",
   "mis",
   "kuidas",
   "kas",
@@ -6699,6 +6733,23 @@ function rootIsDomain(root) {
   });
 }
 
+function isTopicDataOverviewQuery(query, roots = queryTerms(query)) {
+  const text = normalize(query);
+  if (!/\b(?:andm(?:ed|eid|ete\w*)|andmestik\w*|seireandm\w*|avaandm\w*)\b/u.test(text)) return false;
+  return roots.some((root) => rootIsDomain(root)
+    && !["andmed", "data", "metaandmed", "api", "statistika"].includes(root));
+}
+
+function isBroadTopicDataOverviewQuery(query, roots = queryTerms(query)) {
+  if (!isTopicDataOverviewQuery(query, roots) || /\b(?:19|20)\d{2}\b/u.test(normalize(query))) return false;
+  const dataRoots = new Set(["andmed", "data", "metaandmed", "api", "statistika"]);
+  const domainRoots = roots.filter((root) => rootIsDomain(root)
+    && !ADMIN_CONTEXT_ROOTS.has(root) && !dataRoots.has(root));
+  const modifiers = roots.filter((root) => !rootIsDomain(root)
+    && !ADMIN_CONTEXT_ROOTS.has(root) && !dataRoots.has(root));
+  return domainRoots.length === 1 && modifiers.length === 0;
+}
+
 function clarificationFor(root) {
   if (["vesi", "jarv", "jogi", "meri", "pohjavesi"].includes(root)) {
     return "Palun lisa veekogu nimi või registrikood, soovitud näitaja ning aasta või ajavahemik.";
@@ -6754,7 +6805,9 @@ export function analyzePublicSearchQuery(query, options = {}) {
     && !historical)
     || (roots.includes("jaaolud") && !historical);
   if (liveWaterIntent) routeClasses.add("official_live_water");
-  const explicitDataIntent = roots.some((root) => ["api", "avaandmed", "metaandmed", "allalaadimine", "pxweb"].includes(root));
+  const explicitDataIntent = roots.some((root) => ["api", "avaandmed", "metaandmed", "allalaadimine", "pxweb"].includes(root))
+    || (isTopicDataOverviewQuery(cleanQuery, roots)
+      && !roots.some((root) => ["register", "kataster", "kinnistu", "pusielupaik", "puurkaev", "jaatmekaitluskoht"].includes(root)));
   const statisticalDataIntent = roots.includes("statistika")
     && !roots.some((root) => ["mets", "metsaandmed", "metsaregister"].includes(root));
   if (explicitDataIntent || statisticalDataIntent) {
@@ -7166,7 +7219,8 @@ export function assessSearchQuery(query, options = {}) {
   const waterContextOnly = ["vesi", "jarv"].includes(topic) && nonContextRoots.length === 0;
   // A named felling type (sanitaarraie, lageraie) is a specific subject, not bare "raie".
   const namesFellingType = topic === "raie" && /\b\p{L}{3,}rai(?:e|u)\p{L}*/u.test(normalized);
-  if (!isStatisticsWaterAbstractionQuery(cleanQuery)
+  if (!isTopicDataOverviewQuery(cleanQuery, roots)
+    && !isStatisticsWaterAbstractionQuery(cleanQuery)
     && !namesFellingType
     && AMBIGUOUS_ROOTS.has(topic) && (roots.length <= 1 || waterContextOnly)) {
     return {
@@ -7272,7 +7326,8 @@ export function assessEvidence(query, documents = []) {
   const terms = queryTerms(query);
   const evidenceDomainTerms = terms.filter((term) => rootIsDomain(term)
     && !ADMIN_CONTEXT_ROOTS.has(term));
-  const broadGenericIntent = terms.filter((term) => !ADMIN_CONTEXT_ROOTS.has(term)).length === 1
+  const broadGenericIntent = !isTopicDataOverviewQuery(query, terms)
+    && terms.filter((term) => !ADMIN_CONTEXT_ROOTS.has(term)).length === 1
     && evidenceDomainTerms.length === 1
     && AMBIGUOUS_ROOTS.has(evidenceDomainTerms[0]);
   const requiredDomainTerms = terms.filter((term) => rootIsDomain(term)
@@ -7495,12 +7550,13 @@ function withReviewedCatalogueEvidence(document, { forceRouteOnly = false } = {}
 }
 
 function reviewedNavigationCitationSource(source, citation) {
+  const reviewedAt = source._evidenceStatusAt || CATALOGUE_REVIEWED_AT;
   const reviewed = {
     ...source,
     evidencePolicy: "versioned",
     _answerEvidenceEligible: true,
-    _evidenceStatusAt: CATALOGUE_REVIEWED_AT,
-    freshness: {
+    _evidenceStatusAt: reviewedAt,
+    freshness: source.freshness?.basis === "reviewed-at" ? source.freshness : {
       class: "reviewed-navigation-procedure",
       basis: "reviewed-at",
       maxAgeMs: CATALOGUE_REVIEW_MAX_AGE_MS,
@@ -7511,7 +7567,7 @@ function reviewedNavigationCitationSource(source, citation) {
     ...reviewed,
     citation,
     evidenceExcerpt: source.summary,
-    _evidenceVersion: reviewedCatalogueEvidenceVersion(reviewed),
+    _evidenceVersion: source._evidenceVersion || reviewedCatalogueEvidenceVersion(reviewed),
   };
 }
 
@@ -7543,8 +7599,22 @@ export function officialServiceCatalogueDocuments() {
 
 export function directDirectoryDocumentIds(query) {
   const text = normalize(query);
+  const roots = queryTerms(query);
   const preferred = [];
   if (forestEvidenceIntent(query)?.kind === "forest-overview") preferred.push("metsainfo-hetkeseis");
+  if (isBroadTopicDataOverviewQuery(query, roots)) {
+    if (roots.includes("pohjavesi")) preferred.push("groundwater-overview");
+    else if (/\bpinnave\w*/u.test(text) || roots.some((root) => ["vesi", "jarv", "jogi", "meri", "laanemeri"].includes(root))) preferred.push("water-monitoring");
+    else if (roots.some((root) => ["ohk", "ohukvaliteet"].includes(root))) preferred.push("air-quality-live");
+    else if (roots.includes("kliima")) preferred.push("official-data-services");
+    else if (roots.includes("jaat")) preferred.push("waste-reporting-data");
+    else if (roots.some((root) => ["mets", "metsaandmed", "metsaregister"].includes(root))) preferred.push("metsainfo-hetkeseis");
+    else if (roots.includes("muld")) preferred.push("soil-monitoring-results");
+    else if (roots.includes("kiirgus")) preferred.push("radiation-monitoring");
+    else if (roots.includes("uluk")) preferred.push("wildlife-status-2025");
+    else if (roots.some((root) => ["elurikkus", "loodus", "looduskaitse"].includes(root))) preferred.push("biodiversity");
+    else if (roots.includes("seire")) preferred.push("kese-monitoring");
+  }
   if (/\bkeskkonnaseir\w*\b[\s\S]{0,60}\b(?:andmekog|andmestik)\w*\b/u.test(text)) {
     preferred.push("kese-monitoring");
   }
@@ -7709,6 +7779,59 @@ export function composeWasteFacilitiesNavigationResponse(query, documents = [], 
     clarification: null,
     evidence: {
       kind: "official-navigation-routing",
+      documentIds: [source.id],
+    },
+  };
+}
+
+// A reviewed service card may summarize broad national topic data and where it
+// lives, but never infer a live value or a fact about a specific object.
+export function composeTopicDataOverviewResponse(query, documents = [], options = {}) {
+  const canonicalInput = canonicalizePublicSearchQuery(query);
+  if (!canonicalInput.ok || !isBroadTopicDataOverviewQuery(canonicalInput.query)) return null;
+  const preferredIds = directDirectoryDocumentIds(canonicalInput.query);
+  const visible = Array.isArray(documents) ? documents : [];
+  const witness = preferredIds.flatMap((id) => visible.filter((document) => (
+    document?.id === id
+    && document.sourceTier === "official"
+  )))[0];
+  if (!witness) return null;
+  const source = [
+    ...SEARCH_DOCUMENTS,
+    ...ADDITIONAL_OFFICIAL_SERVICE_DOCUMENTS,
+    ...OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS,
+    ...ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS,
+  ]
+    .find((document) => document.id === witness.id && document.url === witness.url);
+  if (!source || (witness._answerEvidenceEligible !== false && witness.summary !== source.summary)) return null;
+
+  const citedSource = reviewedNavigationCitationSource({
+    ...source,
+    tags: [...(source.tags || [])].slice(0, 5),
+  }, 1);
+  const publicInput = canonicalizePublicSearchQuery(options.publicQuery || canonicalInput.query);
+  return {
+    query: publicInput.ok ? publicInput.query : canonicalInput.query,
+    total: Number.isFinite(options.total) ? options.total : 1,
+    generatedAt: new Date().toISOString(),
+    answer: {
+      eyebrow: "Ametlik andmeteenus",
+      title: source.title,
+      intro: source.summary,
+      introCitations: [1],
+      parts: [],
+      note: [
+        source.answer,
+        "Teenusekirjeldus ei tõenda üksikut mõõtetulemust ega registriobjekti hetkeseisu.",
+      ].filter(Boolean).join(" "),
+    },
+    sources: [citedSource],
+    related: relatedQueries(canonicalInput.query, [source]),
+    clarification: null,
+    evidence: {
+      kind: witness._answerEvidenceEligible === false
+        ? "official-navigation-routing"
+        : "official-data-overview",
       documentIds: [source.id],
     },
   };
