@@ -148,6 +148,25 @@ test("a named Metsaregister overview ranks the exact register ahead of generic f
   assert.ok(ranked.findIndex((document) => document.id === "forest-overview") > 0);
 });
 
+test("a bare forest overview leads with the current portal overview", () => {
+  const directory = officialServiceCatalogueDocuments();
+  const overview = directory.find((document) => document.id === "metsainfo-hetkeseis");
+  const hydratedOverview = {
+    ...overview,
+    summary: "Metsateatiste, RMK metsade ja inventeerimisandmete koondvaade.",
+    content: "Metsateatiste, RMK metsade ja inventeerimisandmete koondvaade. ".repeat(100),
+    topics: [],
+    tags: [],
+    retrieval: "approved-page-hydration",
+    _forestryIntentKinds: undefined,
+    _relevance: 16,
+  };
+  const ranked = rankPublicSearchCandidates("mets", [hydratedOverview, ...directory], {
+    intentDocuments: directory,
+  });
+  assert.equal(ranked[0]?.id, "metsainfo-hetkeseis");
+});
+
 test("generic directory intents promote the directly requested service in production ranking", () => {
   const services = officialServiceCatalogueDocuments();
   const cases = [

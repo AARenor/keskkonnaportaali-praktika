@@ -7544,6 +7544,7 @@ export function officialServiceCatalogueDocuments() {
 export function directDirectoryDocumentIds(query) {
   const text = normalize(query);
   const preferred = [];
+  if (forestEvidenceIntent(query)?.kind === "forest-overview") preferred.push("metsainfo-hetkeseis");
   if (/\bkeskkonnaseir\w*\b[\s\S]{0,60}\b(?:andmekog|andmestik)\w*\b/u.test(text)) {
     preferred.push("kese-monitoring");
   }
