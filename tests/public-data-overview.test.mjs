@@ -74,6 +74,25 @@ test("broad official data-overview queries return cited current-source answers",
   }
 });
 
+test("a hydrated official overview remains bound by its visible id and exact URL", async () => {
+  const query = "Metsa andmed Eestis";
+  const listing = listingFor(query);
+  listing.items = listing.items.map((item) => item.id === "metsainfo-hetkeseis"
+    ? { ...item, summary: "Live-hüdratsiooniga uuendatud lehekatkend." }
+    : item);
+  const startedAt = Date.now();
+  const response = await searchEnvironmentLive(query, {
+    startedAt,
+    deadlineAt: startedAt + 3_000,
+    searchResults: listing,
+    useCache: false,
+    generateAnswer: async () => ({ answer: null, status: "not-applicable", provider: "test" }),
+  });
+
+  assert.equal(response.sources[0]?.id, "metsainfo-hetkeseis");
+  assert.deepEqual(response.answer?.introCitations, [1]);
+});
+
 test("safe data follow-ups inherit the environmental subject without admitting suffixes", async () => {
   const root = "Põhjavesi andmed Eestis";
   for (const question of [

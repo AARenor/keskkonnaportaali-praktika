@@ -7803,7 +7803,7 @@ export function composeTopicDataOverviewResponse(query, documents = [], options 
     ...ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS,
   ]
     .find((document) => document.id === witness.id && document.url === witness.url);
-  if (!source || (witness._answerEvidenceEligible !== false && witness.summary !== source.summary)) return null;
+  if (!source) return null;
 
   const citedSource = reviewedNavigationCitationSource({
     ...source,
