@@ -77,6 +77,7 @@ import { cadastreSourceDocuments, composeCadastreAnswer } from "../server/cadast
 import {
   assessEvidence,
   assessSearchQuery,
+  composeOfficialServiceNavigationResponse,
   composeWasteFacilitiesNavigationResponse,
   composeScopeResponse,
   composeSearchResponse,
@@ -5188,6 +5189,88 @@ test("the production pipeline routes each current-water intent to its matching l
   }
 });
 
+test("a reviewed route-only service returns cited navigation instead of a no-evidence claim", async () => {
+  const query = "kust vaadata suplusvee kvaliteeti";
+  const source = officialServiceCatalogueDocuments()
+    .find((document) => document.id === "bathing-water-quality");
+  assert.ok(source);
+  assert.equal(source._answerEvidenceEligible, false);
+  let modelCalls = 0;
+  const startedAt = Date.now();
+  const result = await searchEnvironmentLive(query, {
+    startedAt,
+    deadlineAt: startedAt + 2_000,
+    useCache: false,
+    searchResults: { total: 1, items: [source] },
+    async generateAnswer() {
+      modelCalls += 1;
+      throw new Error("navigation response must not reach a model");
+    },
+  });
+  assert.equal(modelCalls, 0);
+  assert.equal(result.sources[0]?.id, "bathing-water-quality");
+  assert.deepEqual(result.answer.introCitations, [1]);
+  assert.match(result.answer.intro, /Terviseameti[\s\S]*suplusvee kvaliteedi/u);
+  assert.doesNotMatch(result.answer.intro, /Täpset ja piisavalt asjakohast ametlikku tõendit ei leitud/u);
+});
+
+test("reviewed service navigation requires an exact official catalogue identity", () => {
+  const query = "kust vaadata suplusvee kvaliteeti";
+  const source = officialServiceCatalogueDocuments()
+    .find((document) => document.id === "bathing-water-quality");
+  assert.ok(source);
+  const valid = composeOfficialServiceNavigationResponse(query, [source]);
+  assert.equal(valid?.sources[0]?.id, source.id);
+  assert.equal(valid?.sources[0]?.url, source.url);
+
+  for (const witness of [
+    { ...source, id: "forged-service-id" },
+    { ...source, url: "https://example.invalid/forged" },
+    { ...source, sourceTier: "supplementary" },
+    { ...source, _answerEvidenceEligible: true },
+  ]) assert.equal(composeOfficialServiceNavigationResponse(query, [witness]), null);
+
+  const forgedProse = composeOfficialServiceNavigationResponse(query, [{
+    ...source,
+    summary: "UNREVIEWED ALIAS PROSE",
+    content: "MALICIOUS INDEX BODY",
+  }]);
+  assert.ok(forgedProse);
+  assert.equal(forgedProse.sources[0].evidenceExcerpt, source.summary);
+  assert.doesNotMatch(JSON.stringify(forgedProse), /UNREVIEWED|MALICIOUS/u);
+});
+
+test("related official results are not described as if no evidence was found", async () => {
+  const query = "Kust saan keskkonnaandmeid tasuta alla laadida?";
+  const source = officialServiceCatalogueDocuments()
+    .find((document) => document.id === "open-data-downloader");
+  assert.ok(source);
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    signal: new AbortController().signal,
+    searchResults: { total: 1, items: [source] },
+  });
+  assert.equal(draft.evidence.answerable, false);
+  assert.equal(draft.sources[0]?.id, "open-data-downloader");
+  assert.match(draft.answer.intro, /Leidsin küsimusega seotud ametlikke/u);
+  assert.doesNotMatch(draft.answer.intro, /Täpset ja piisavalt asjakohast ametlikku tõendit ei leitud/u);
+});
+
+test("search copy distinguishes related official results from a true zero result", () => {
+  const source = officialServiceCatalogueDocuments()
+    .find((document) => document.id === "open-data-downloader");
+  const related = composeSearchResponse("täpsustamata andmepäring", [source], {
+    answerable: false,
+  });
+  assert.match(related.answer.intro, /nähtavad tõendilõigud ei kata/u);
+  assert.doesNotMatch(related.answer.intro, /ametlikku tõendit ei leitud/u);
+
+  const empty = composeSearchResponse("täpsustamata andmepäring", [], {
+    answerable: false,
+  });
+  assert.match(empty.answer.intro, /ametlikku tõendit ei leitud/u);
+});
+
 test("current evidence fallback selects the observed age direction, not a nearby side metric", () => {
   const extract = directEvidenceExtract("Kas meie metsad muutuvad nooremaks?", {
     summary: "Metsamaa kogupindala püsib 2,3 miljoni hektari tasemel.",
@@ -6111,7 +6194,7 @@ test("persisted search identifiers use a secret HMAC instead of a reversible pla
 });
 
 test("answer cache revision follows ranked membership, order, metadata and content", () => {
-  assert.equal(SEARCH_RESPONSE_REVISION, "answer-v56-official-knowledge");
+  assert.equal(SEARCH_RESPONSE_REVISION, "answer-v57-evidence-recovery");
   const first = {
     items: [{
       id: "reviewed-guidance",

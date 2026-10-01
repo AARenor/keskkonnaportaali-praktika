@@ -953,7 +953,7 @@ const INTENTS = {
       ["kaitseal"],
       ["vöönd", "sihtkaitsevöönd", "piiranguvöönd"],
       ["erinevad keelud", "sõltub", "kaitse-eeskiri"],
-      ["registreeritud", "registreerimine", "läbi viidud raietööde kohta andmed puuduvad", "käsitsi üle"],
+      ["ei tõenda", "registreeritud", "registreerimine", "läbi viidud raietööde kohta andmed puuduvad", "käsitsi üle"],
     ],
     minimumSupportingDocuments: 3,
   },

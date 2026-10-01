@@ -33,6 +33,8 @@ import {
   isReviewedPublicOrganizationProtectedBuildingContactQuery,
   normalize,
   officialServiceCatalogueDocuments,
+  passageContainsEvidenceDisclaimer,
+  passageDisclaimsEvidence,
   queryRootVariants,
   queryTerms,
   russianKeywordRoots,
@@ -404,18 +406,6 @@ const AUXILIARY_QUERY_ROOTS = new Set([
   "viljandi", "rakvere", "voru", "kuressaare", "haapsalu", "johvi",
 ]);
 
-function evidenceSourceText(document = {}) {
-  return [
-    document.title,
-    document.summary,
-    document.excerpt,
-    document.content,
-    document.answer,
-    ...(document.tags || []),
-    ...(document.topics || []),
-  ].filter(Boolean).join("\n");
-}
-
 function evidenceSourcePassages(document = {}) {
   const seen = new Set();
   // Prefer full text over a search-engine excerpt. The latter can begin in
@@ -431,6 +421,11 @@ function evidenceSourcePassages(document = {}) {
       seen.add(key);
       return true;
     });
+}
+
+function claimBearingEvidenceSourcePassages(document = {}) {
+  return evidenceSourcePassages(document)
+    .filter((passage) => !passageDisclaimsEvidence(passage));
 }
 
 function forestAreaPassageEvidence(passage = "") {
@@ -504,7 +499,7 @@ function areaMeasurementKey(value = "") {
 }
 
 function forestAreaEvidence(document) {
-  const matches = evidenceSourcePassages(document)
+  const matches = claimBearingEvidenceSourcePassages(document)
     .map((passage, index) => ({ passage, index, ...forestAreaPassageEvidence(passage) }))
     .filter((candidate) => candidate.score > 0)
     .sort((left, right) => right.score - left.score || left.index - right.index);
@@ -529,7 +524,7 @@ function forestAreaEvidence(document) {
 }
 
 function forestAreaOnlyEvidence(document) {
-  const matches = evidenceSourcePassages(document)
+  const matches = claimBearingEvidenceSourcePassages(document)
     .map((passage, index) => ({ passage, index, ...forestAreaPassageEvidence(passage) }))
     .filter((candidate) => candidate.satisfies)
     // A composite area-and-method answer must not inherit a neighboring stock
@@ -546,7 +541,7 @@ function forestAreaOnlyEvidence(document) {
 }
 
 function forestMeasurementMethodEvidence(document) {
-  const matches = evidenceSourcePassages(document)
+  const matches = claimBearingEvidenceSourcePassages(document)
     .map((passage, index) => {
       const text = normalize(passage);
       const hasSmi = /\b(?:smi|statistiline\s+metsainvent\w*)\b/u.test(text);
@@ -578,7 +573,7 @@ function forestMeasurementMethodEvidence(document) {
 }
 
 function forestDepletionEvidence(document) {
-  const passages = evidenceSourcePassages(document);
+  const passages = claimBearingEvidenceSourcePassages(document);
   const statusPassage = passages.find((passage) => {
     const text = normalize(passage);
     const hasForestStock = /\b(?:kasvava\s+metsa\s+tagavara|metsa\s+tagavara|metsavaru)\w*/u.test(text);
@@ -619,7 +614,8 @@ function forestDepletionEvidence(document) {
 }
 
 function forestDataSourcesEvidence(document) {
-  const text = evidenceSourceText(document);
+  const passages = claimBearingEvidenceSourcePassages(document);
+  const text = passages.join("\n");
   const hasSmi = /\b(?:smi|statistilise\s+metsainvent\w*)/iu.test(text);
   const hasRegister = /\bmetsaregis\w*|metsaressursi\s+arvestuse\s+riiklik/iu.test(text);
   const hasData = /\b(?:metsa|metsandus|metsainventeerimis)andm\w*|inventeerimisandm\w*/iu.test(text);
@@ -627,7 +623,6 @@ function forestDataSourcesEvidence(document) {
   const hasRegisterRole = /\b(?:kinnistu\w*|metsaeraldis\w*|eraldis\w*|inventeerimisandm\w*|registrisse\s+koond|metsateatis\w*)/iu.test(text);
   const hasMultipleSources = /\b(?:mitmel\s+viisil|eri(?:nevate)?\s+andmeallik\w*|eri\s+allik\w*|metsaandmed\s+on\s+(?:mitme|eri))/iu.test(text);
   const accessOnlyContext = /\b(?:juurdep[aä]äsupiirang\w*|koordinaat\w*|kährik\w*|kaitstud\s+(?:liik|objekt)|salastatud\w*)/iu.test(text);
-  const passages = evidenceSourcePassages(document);
   const smiPassage = passages.find((passage) => /\b(?:smi|statistilise\s+metsainvent\w*)/iu.test(passage)
     && /\b(?:valikuuring\w*|proovitükk\w*|statistilis\w*|üleriigil\w*|metsade\s+seisund)/iu.test(passage))
     || passages.find((passage) => /\b(?:smi|statistilise\s+metsainvent\w*)/iu.test(passage));
@@ -660,8 +655,15 @@ function genericForestryEvidence(intent, document) {
   const normalizedGroups = groups.map((group) => (group || []).map(normalize).filter(Boolean));
   const passageMatches = passages.map((passage) => {
     const text = normalize(passage);
+    const disclaimerOnly = passageDisclaimsEvidence(passage);
     const matchedGroupIndexes = normalizedGroups
-      .map((alternatives, index) => alternatives.some((alternative) => text.includes(alternative)) ? index : -1)
+      .map((alternatives, index) => {
+        const requiresDisclaimer = alternatives.some((alternative) => passageContainsEvidenceDisclaimer(alternative));
+        return (!disclaimerOnly || requiresDisclaimer)
+          && alternatives.some((alternative) => text.includes(alternative))
+          ? index
+          : -1;
+      })
       .filter((index) => index >= 0);
     return { passage, matchedGroupIndexes };
   });

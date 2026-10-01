@@ -7306,7 +7306,23 @@ function evidencePassages(document) {
 }
 
 function passageMatchesTerms(passage, terms) {
-  return terms.filter((term) => textHasQueryRoot(passage, term));
+  const passageRoots = new Set(queryTerms(passage));
+  return terms.filter((term) => passageRoots.has(term) || textHasQueryRoot(passage, term));
+}
+
+const EVIDENCE_DISCLAIMER_PATTERN = /\bei\s+(?:(?:saa|pruugi)\s+)?(?:toenda|kinnita|kirjelda|naita|asenda)\b/u;
+
+export function passageContainsEvidenceDisclaimer(passage) {
+  return EVIDENCE_DISCLAIMER_PATTERN.test(normalize(passage));
+}
+
+export function passageDisclaimsEvidence(passage) {
+  const text = normalize(passage);
+  const disclaimerIndex = text.search(EVIDENCE_DISCLAIMER_PATTERN);
+  if (disclaimerIndex < 0) return false;
+  const affirmativePrefix = text.slice(0, disclaimerIndex);
+  return !/\b(?:on|oli|olid|kehtib|kehtivad|tahendab|moodustab|moodustas|tuleb|saab|annab|kasutab|koondab|kirjeldab|naitab|valis|avaldati|ulatub|kasvas|kahanes)\b/u
+    .test(affirmativePrefix);
 }
 
 function documentCanDirectlyAnswerQuery(query, document) {
@@ -7363,6 +7379,7 @@ export function assessEvidence(query, documents = []) {
       : Math.ceil(passageTerms.length * 0.75);
     const directPassage = evidencePassages(document).some((passage) => {
       const passageText = normalize(passage);
+      if (passageDisclaimsEvidence(passage)) return false;
       const passageMatches = passageMatchesTerms(passage, terms);
       const requiredMatches = passageMatches.filter((term) => passageTerms.includes(term));
       return years.every((year) => passageText.includes(year))
@@ -7677,6 +7694,7 @@ export function composeSearchResponse(query, rankedDocuments, options = {}) {
     .slice(0, limit)
     .map((document, index) => ({ ...document, citation: index + 1 }));
   const directEvidence = options.answerable !== false && chosen.length > 0;
+  const hasRelevantResults = options.hasRelevantResults === true || chosen.length > 0;
   const title = cleanQuery
     ? `${cleanQuery.charAt(0).toLocaleUpperCase("et")}${cleanQuery.slice(1)}`
     : "Täpsusta keskkonnaandmete küsimust";
@@ -7686,11 +7704,15 @@ export function composeSearchResponse(query, rankedDocuments, options = {}) {
     total: Number.isFinite(options.total) ? options.total : ranked.length,
     generatedAt: new Date().toISOString(),
     answer: {
-      eyebrow: directEvidence ? "Kontrollitud allikaotsing" : "Vajan täpsustust",
+      eyebrow: directEvidence
+        ? "Kontrollitud allikaotsing"
+        : hasRelevantResults ? "Ametlikud tulemused leitud" : "Vajan täpsustust",
       title,
       intro: directEvidence
         ? "Leidsin küsimusega seotud ametlikud allikad, kuid usaldusväärset koondvastust ei õnnestunud praegu koostada. Ava allikad või proovi hetke pärast uuesti."
-        : "Täpset ja piisavalt asjakohast ametlikku tõendit ei leitud. Ma ei asenda puuduvat tõendit üldteadmise ega juhusliku artikliga.",
+        : hasRelevantResults
+          ? "Leidsin küsimusega seotud ametlikke tulemusi, kuid nende nähtavad tõendilõigud ei kata küsimust piisavalt täpselt. Ava tulemused või täpsusta objekti, näitajat, piirkonda või aastat."
+          : "Täpset ja piisavalt asjakohast ametlikku tõendit ei leitud. Ma ei asenda puuduvat tõendit üldteadmise ega juhusliku artikliga.",
       introCitations: [],
       parts: [],
       note: "",
@@ -7806,6 +7828,10 @@ export function composeTopicDataOverviewResponse(query, documents = [], options 
   if (!canonicalInput.ok || !isBroadTopicDataOverviewQuery(canonicalInput.query)) return null;
   const preferredIds = directDirectoryDocumentIds(canonicalInput.query);
   const visible = Array.isArray(documents) ? documents : [];
+  // This intentionally does not require claim-level passage coverage: the
+  // narrow classifier accepts only a broad topic + "andmed" overview without
+  // a year or modifier. Exact id+URL binding below permits only the reviewed
+  // catalogue summary and never a live value or object-specific claim.
   const witness = preferredIds.flatMap((id) => visible.filter((document) => (
     document?.id === id
     && document.sourceTier === "official"
@@ -7847,6 +7873,55 @@ export function composeTopicDataOverviewResponse(query, documents = [], options 
       kind: witness._answerEvidenceEligible === false
         ? "official-navigation-routing"
         : "official-data-overview",
+      documentIds: [source.id],
+    },
+  };
+}
+
+// A reviewed route card may safely tell the user where an official service
+// lives even when its changing contents cannot support a current factual
+// claim. The immutable catalogue extract, never live alias prose, is cited.
+export function composeOfficialServiceNavigationResponse(query, documents = [], options = {}) {
+  const canonicalInput = canonicalizePublicSearchQuery(query);
+  if (!canonicalInput.ok || forestEvidenceIntent(canonicalInput.query)) return null;
+  const cleanQuery = canonicalInput.query;
+  const catalogue = [...SEARCH_DOCUMENTS, ...ADDITIONAL_OFFICIAL_SERVICE_DOCUMENTS];
+  const visible = Array.isArray(documents) ? documents : [];
+  const source = visible.flatMap((witness) => {
+    if (witness?.sourceTier !== "official" || witness._answerEvidenceEligible !== false) return [];
+    const reviewed = catalogue.find((candidate) => (
+      candidate.id === witness.id && candidate.url === witness.url
+    ));
+    if (!reviewed) return [];
+    const quality = assessEvidence(cleanQuery, [{
+      ...reviewed,
+      score: scoreDocument(reviewed, cleanQuery),
+    }]);
+    return quality.strong ? [reviewed] : [];
+  })[0];
+  if (!source) return null;
+
+  const citedSource = reviewedNavigationCitationSource({
+    ...source,
+    tags: [...(source.tags || [])].slice(0, 5),
+  }, 1);
+  return {
+    query: cleanQuery,
+    total: Number.isFinite(options.total) ? options.total : 1,
+    generatedAt: new Date().toISOString(),
+    answer: {
+      eyebrow: "Ametlik teenus",
+      title: source.title,
+      intro: source.summary,
+      introCitations: [1],
+      parts: [],
+      note: "Teenusekirjeldus juhatab ametliku vaate juurde, kuid ei kinnita üksikut mõõtetulemust ega registriobjekti hetkeseisu.",
+    },
+    sources: [citedSource],
+    related: relatedQueries(cleanQuery, [source]),
+    clarification: null,
+    evidence: {
+      kind: "official-navigation-routing",
       documentIds: [source.id],
     },
   };

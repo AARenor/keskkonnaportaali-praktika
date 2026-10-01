@@ -781,6 +781,24 @@ test("forestry answer planning rejects access-control noise and prefers the newe
   assert.equal(selectAnswerEvidence(areaQuery, areaRanked)?.directDocumentId, "forest-stock-stable");
 });
 
+test("disclaimer-only passages cannot satisfy lexical or forestry evidence planning", () => {
+  const query = "Mis vahe on SMI ja metsaandmed?";
+  const source = official({
+    id: "smi-metsaregister",
+    title: "SMI ja Metsaregister",
+    summary: "SMI proovitükid ja Metsaregistri kinnistuandmed ei tõenda nende andmeallikate metoodilist erinevust.",
+    content: "SMI valikuuringu proovitükid ja Metsaregistri kinnistu inventeerimisandmed ei tõenda, kuidas metsaandmete allikaid tuleb võrrelda.",
+    topics: ["mets", "metsaandmed", "SMI", "Metsaregister"],
+  });
+  const ranked = rankSearchCandidates(query, [source], { now: NOW })
+    .map((document) => ({ ...document, score: document._ranking.score }));
+  assert.equal(assessEvidence(query, ranked).strong, false);
+  const plan = selectAnswerEvidence(query, ranked);
+  assert.equal(plan?.strong, false);
+  assert.equal(plan?.directDocumentId, null);
+  assert.deepEqual(plan?.supportingDocumentIds, []);
+});
+
 test("public forestry comparison ranking keeps the official source above a supplementary broad match", () => {
   const now = Date.parse("2026-08-19T12:00:00Z");
   const services = officialServiceCatalogueDocuments();
@@ -1071,6 +1089,17 @@ test("an inflected lifecycle phrase remains answerable from the EV lifecycle sou
   const ranked = rankSearchCandidates(query, [source], { now: NOW })
     .map((document) => ({ ...document, score: document._ranking.score }));
   assert.equal(assessEvidence(query, ranked).strong, true);
+});
+
+test("passage evidence uses the same Estonian roots as document ranking", () => {
+  const query = "Mida tähendab kaevanduse korrastamine?";
+  const source = officialServiceCatalogueDocuments()
+    .find((document) => document.id === "mined-land-restoration");
+  const ranked = rankSearchCandidates(query, [source], { now: NOW })
+    .map((document) => ({ ...document, score: document._ranking.score }));
+  const quality = assessEvidence(query, ranked);
+  assert.equal(quality.strong, true);
+  assert.equal(quality.directDocumentId, "mined-land-restoration");
 });
 
 test("the precipitation indicator directly covers the climate-impact question", () => {

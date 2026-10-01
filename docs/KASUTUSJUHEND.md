@@ -38,4 +38,4 @@ Diagramm kuvatakse ainult siis, kui server sai sama vastuse jaoks valideeritud a
 
 ## Kui täpset tõendit ei leitud
 
-Teade „täpset ja piisavalt asjakohast ametlikku tõendit ei leitud” ei tähenda, et nähtust ei ole. Täpsusta näitajat, piirkonda või aastat. Teenuse tõrke korral ei asenda rakendus puuduvat tõendit vana arvu ega üldteadmisega.
+Kui sobivad ametlikud tulemused on olemas, kuid nende nähtavad tõendilõigud ei kata küsimust piisavalt täpselt, ütleb otsing seda eraldi ning jätab tulemused avamiseks alles. Täpsusta siis objekti, näitajat, piirkonda või aastat. Teade „täpset ja piisavalt asjakohast ametlikku tõendit ei leitud” kuvatakse ainult siis, kui ka sobivat ametlikku tulemust ei leitud. Teenuse tõrke korral ei asenda rakendus puuduvat tõendit vana arvu ega üldteadmisega.

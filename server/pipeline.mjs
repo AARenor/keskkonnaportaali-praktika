@@ -40,6 +40,7 @@ import {
   assessEvidence,
   assessSearchQuery,
   canonicalizePublicSearchQuery,
+  composeOfficialServiceNavigationResponse,
   composeScopeResponse,
   composeSearchResponse,
   composeTopicDataOverviewResponse,
@@ -56,7 +57,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v56-official-knowledge";
+export const SEARCH_RESPONSE_REVISION = "answer-v57-evidence-recovery";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
@@ -1165,6 +1166,7 @@ export async function createPortalDraft(query, {
     : 0;
   const draft = composeSearchResponse(query, answerDocuments, {
     answerable: Boolean(forestBalance) || quality.strong,
+    hasRelevantResults: Boolean(listing?.items?.length),
     clarification: forestBalance || quality.strong
       ? null
       : plannedEvidence?.reason === "national-area-method-evidence-required"
@@ -1385,6 +1387,8 @@ async function searchWithinBudget(cleanQuery, {
   }) || composeTopicDataOverviewResponse(retrievalQuery, searchResults?.items, {
     total: searchResults?.total,
     publicQuery: cleanQuery,
+  }) || composeOfficialServiceNavigationResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
   });
   const structuredIndicatorDraft = draftMatchesListingAndFilters(
     structuredIndicatorCandidate,
@@ -1402,6 +1406,7 @@ async function searchWithinBudget(cleanQuery, {
       );
       draft = composeSearchResponse(cleanQuery, filteredDocuments, {
         answerable: false,
+        hasRelevantResults: Boolean(searchResults?.items?.length),
         clarification: defaultFilters
           ? "Selle küsimuse jaoks vajalikku reaalaja- või registriallikat ei leitud nähtavast tulemusehulgast. Täpsusta päringut või proovi uuesti."
           : "Valitud filtrid välistavad selle küsimuse jaoks vajaliku reaalaja- või registriallika. Lähtesta filter või vali sobiv ametlik sisutüüp.",
@@ -1431,6 +1436,7 @@ async function searchWithinBudget(cleanQuery, {
     );
     draft = composeSearchResponse(cleanQuery, filteredDocuments, {
       answerable: false,
+      hasRelevantResults: Boolean(searchResults?.items?.length),
       clarification: "Valitud filtrid välistavad vastuse jaoks vajaliku tõendi või see puudub nähtavast tulemusehulgast. Lähtesta filter või täpsusta päringut.",
       evidenceKind: "filtered-source-exclusion",
       limit: 6,
@@ -1570,6 +1576,8 @@ export function searchTimeoutFallback(cleanQuery, {
   }) || composeTopicDataOverviewResponse(assessmentQuery, searchResults?.items, {
     total: searchResults?.total,
     publicQuery: cleanQuery,
+  }) || composeOfficialServiceNavigationResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
   });
   const structuredIndicator = draftMatchesListingAndFilters(
     structuredCandidate,
@@ -1589,6 +1597,7 @@ export function searchTimeoutFallback(cleanQuery, {
     );
     return publicResponse(composeSearchResponse(cleanQuery, visible, {
       answerable: false,
+      hasRelevantResults: Boolean(searchResults?.items?.length),
       clarification: "Valitud filtrid välistavad selle küsimuse jaoks vajaliku reaalaja- või registriallika või see puudub nähtavast tulemusehulgast. Lähtesta filter või täpsusta päringut.",
       evidenceKind: "filtered-scope-exclusion",
       limit: 6,
