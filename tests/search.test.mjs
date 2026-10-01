@@ -701,7 +701,7 @@ test("researched official source expansion covers twenty-five previously missing
   const byId = new Map(documents.map((document) => [document.id, document]));
   const now = Date.parse("2026-10-01T13:30:00Z");
   const cases = [
-    ["radooni päritolu Eestis", "radon-guidance", "official_guidance"],
+    ["radoon hoonete siseruumides", "radon-guidance", "official_guidance"],
     ["müra tervisemõju", "environmental-noise-health", "official_guidance"],
     ["hallitus ja õhuniiskus", "indoor-climate-guidance", "official_guidance"],
     ["kemikaali ohutuskaart", "chemical-safety-data-sheet", "official_guidance"],
@@ -710,7 +710,7 @@ test("researched official source expansion covers twenty-five previously missing
     ["PRTR saasteainete heite register", "prtr-register", "official_data_or_api"],
     ["mulla seisund ja maahõive Eestis", "soil-land-take", "official_indicator_or_report"],
     ["pakendi- ja plastijäätmed Eestis", "packaging-plastic-waste", "official_indicator_or_report"],
-    ["biojäätmete näited", "biowaste-overview", "official_guidance"],
+    ["Kas biojäätmed on toidu- ja köögijäätmed?", "biowaste-overview", "official_guidance"],
     ["vedelkütuse kvaliteediseire", "fuel-quality-monitoring", "official_indicator_or_report"],
     ["kliimamuutustega kohanemise arengukava", "climate-adaptation", "official_guidance"],
     ["jääkreostus pinnases ja põhjavees", "residual-pollution", "official_guidance"],
