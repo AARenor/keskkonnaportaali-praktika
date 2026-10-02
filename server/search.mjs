@@ -1756,8 +1756,9 @@ export function normalize(value = "") {
 }
 
 export function splitTextPassages(value = "") {
+  // A semicolon in a parenthetical alias is not a new claim (SMI; ingl NFI).
   return String(value || "")
-    .split(/(?:\n+|(?<=[.!?])\s+(?=[„“”"']*(?:\p{Lu}|\p{N}))|\s*[…;•]\s*)/u)
+    .split(/(?:\n+|(?<=[.!?])\s+(?=[„“”"']*(?:\p{Lu}|\p{N}))|\s*(?:[…•]|;(?![^()]*\))|(?<!\([^()]*);)\s*)/u)
     .map((passage) => passage.trim())
     .filter(Boolean);
 }

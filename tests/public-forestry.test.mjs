@@ -160,6 +160,27 @@ function assertNumericClaimsHaveVisibleWitnesses(draft, query) {
   }
 }
 
+test("explicit generic forest overview uses the visible multi-source synthesis", async () => {
+  const directory = officialServiceCatalogueDocuments();
+  for (const query of ["metsa ülevaade", "Eesti metsa ülevaade", "ülevaade metsast"]) {
+    assert.equal(forestEvidenceIntent(query)?.kind, "forest-overview", query);
+    const visible = rankPublicSearchCandidates(query, directory, { intentDocuments: directory }).slice(0, 12);
+    assert.equal(selectAnswerEvidence(query, visible)?.strong, true, query);
+    const draft = await createPortalDraft(query, {
+      deadlineAt: Date.now(),
+      searchResults: { total: visible.length, items: visible },
+    });
+    assert.equal(draft.answer.title, "Eesti metsa ei kirjelda üksainus number", query);
+    assert.ok(draft.sources.length >= 3, query);
+    assert.ok(draft.sources.some((source) => source.url.endsWith("/keskkonnaulevaade-mets")), query);
+    assert.doesNotMatch(answerText(draft), /Jaga|2019\. aastal koostatud ülevaade/u, query);
+    assertNumericClaimsHaveVisibleWitnesses(draft, query);
+  }
+  for (const query of ["ülevaade", "metsa ülevaade 2019", "Rootsi metsa ülevaade", "metsa kahjustuste ülevaade"]) {
+    assert.notEqual(forestEvidenceIntent(query)?.kind, "forest-overview", query);
+  }
+});
+
 test("reported forestry, wildlife and legal questions route to claim-specific official evidence", async () => {
   const directory = officialServiceCatalogueDocuments();
   for (const [query, expectedIntent, expectedAnswer] of REPORTED_FORESTRY_WILDLIFE_CASES) {

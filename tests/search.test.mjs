@@ -15,6 +15,7 @@ import {
   queryTerms,
   russianKeywordRoots,
   searchEnvironment,
+  splitTextPassages,
 } from "../server/search.mjs";
 import {
   isCurrentWeatherObservationQuery,
@@ -26,6 +27,17 @@ import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
 test("normalize handles Estonian diacritics", () => {
   assert.equal(normalize("ÕHUKVALITEET ja jäätmed"), "ohukvaliteet ja jaatmed");
   assert.equal(normalize("38%"), "38 protsent");
+});
+
+test("passages preserve parenthetical SMI aliases but separate independent semicolon clauses", () => {
+  const method = "Statistiline metsainventuur (SMI; ingl National Forest Inventory, NFI) on valikuuring, mille raames mõõdetakse üleriigiliselt proovitükke.";
+  assert.deepEqual(splitTextPassages(method), [method]);
+  assert.deepEqual(splitTextPassages("SMI mõõdab proovitükke; Metsaregister sisaldab inventeerimisandmeid."), [
+    "SMI mõõdab proovitükke",
+    "Metsaregister sisaldab inventeerimisandmeid.",
+  ]);
+  assert.deepEqual(splitTextPassages("Esimene väide; Teine väide)"), ["Esimene väide", "Teine väide)"]);
+  assert.deepEqual(splitTextPassages("(Esimene väide; Teine väide"), ["(Esimene väide", "Teine väide"]);
 });
 
 test("public query canonicalization rejects compatibility expansion before assessment", () => {

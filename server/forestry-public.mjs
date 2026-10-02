@@ -1443,12 +1443,12 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
       minimumSupportingDocuments: 1,
     };
   }
-  // Bare generic forest overview (nt "mets"): ukski spetsiifiline naitaja,
+  // Generic forest overview (nt "mets", "metsa ülevaade"): ukski spetsiifiline naitaja,
   // meetod, kaitse, raie ega muu kavatsus eespool ei sobinud. Tagasta
-  // mitme allika süntees loobumise asemel. Piiratud ainult palja
+  // mitme allika süntees loobumise asemel. Piiratud ainult täpse
   // üldpäringuga, et sega- ("kala mets õhk") ja täpsustatud päringud
   // ("Mis on metsaregister?") säilitaksid oma marsruudi.
-  if (hasForest && /^(?:eesti\s+)?mets(?:ad)?(?:\s+eestis)?$/u.test(text)) {
+  if (hasForest && /^(?:(?:eesti\s+)?mets(?:ad)?(?:\s+eestis)?|(?:eesti\s+)?metsa\s+ulevaade|ulevaade\s+metsast)$/u.test(text)) {
     return resolved("forest-overview");
   }
   return null;
