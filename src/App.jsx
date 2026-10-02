@@ -1304,7 +1304,7 @@ function Footer({ compact = false }) {
   if (compact) {
     return (
       <footer className="site-footer site-footer--compact">
-        <div className="shell"><span>Keskkonnaportaali praktikaprojekt</span><span>Kontrolli olulist infot algallikast</span></div>
+        <div className="shell"><span>Keskkonnaportaali praktikaprojekt</span><a href="/docs">Juhendid</a><span>Kontrolli olulist infot algallikast</span></div>
         <div className="shell"><PrivacyDisclosure /></div>
       </footer>
     );
@@ -1313,7 +1313,7 @@ function Footer({ compact = false }) {
     <footer className="site-footer">
       <div className="shell footer-main">
         <div><img src="/assets/logo-desktop.svg" alt="Keskkonnaportaal" /><p>Praktikaprojekt, mis demonstreerib täiustatud allikapõhist otsingut ja Terrapointi integratsiooni.</p></div>
-        <div><h2>Portaal</h2><a href={`${SOURCE}/et/portaalist`}>Portaalist</a><a href={`${SOURCE}/et/kontakt`}>Kontakt</a><a href={`${SOURCE}/et/abi`}>Abi</a></div>
+        <div><h2>Portaal</h2><a href={`${SOURCE}/et/portaalist`}>Portaalist</a><a href={`${SOURCE}/et/kontakt`}>Kontakt</a><a href={`${SOURCE}/et/abi`}>Abi</a><a href="/docs">Juhendid</a></div>
         <div><h2>Andmed</h2><a href="https://register.keskkonnaportaal.ee/register">Andmed ja kaart</a><a href={`${SOURCE}/et/avaandmed`}>Avaandmed</a><a href="https://terrapoint.ee/">Terrapoint</a></div>
         <div><h2>Jälgi</h2><div className="socials"><a aria-label="Facebook" href="https://www.facebook.com/Keskkonnaagentuur"><Facebook /></a><a aria-label="Instagram" href="https://www.instagram.com/keskkonnaagentuur/"><Instagram /></a><a aria-label="YouTube" href="https://www.youtube.com/channel/UCyAMWZVg2a7GNIX2m__pvhA"><Youtube /></a></div></div>
       </div>

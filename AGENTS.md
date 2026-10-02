@@ -18,6 +18,8 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 
 ## Durable product decisions
 
+- Public documentation lives at `/docs`, with separate Estonian guides at `/docs/kasutajale` and `/docs/arendajale`. Document verified prototype behaviour and mark receiving-portal CMS/SSO/ingress/operations decisions as unimplemented; never imply the Keskkonnaportaal integration is already complete. Keep guide content versioned in `src/docs/content.jsx` and update it with contract changes.
+
 - Metsastatistika vastuste põhiallikad on SMI, puidubilanss ja aastaraamat „Mets“; hoia vastuse mõisted ja neutraalne sõnastus algallikatele lähedal. Eelista siiski küsimusele otseselt vastavat allikat: üraski juhendit ei asenda SMI kogumahu tabel. Lühike teemasõna ja käändevorm peavad jõudma samasse tõendipõhisesse otsingusse kui pikk küsimus; säilita konkreetne subjekt, mitte ainult üldteema „mets“ või „seire“.
 - Avalehe visuaalne lähtepunkt on Keskkonnaportaali praegune avaleht: selle kontrollitud pildid, andmeväravad, päevakajalised lood ja sündmused. Säilita praktikaversiooni märge ja esimese mobiilivaate otsing. Avalehe sisukoopia on kuupäevaga snapshot, mitte reaalajas uudisvoo lubadus.
 

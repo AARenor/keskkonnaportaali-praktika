@@ -1,16 +1,28 @@
 # Keskkonnaportaali praktika
 
-Keskkonnaportaali visuaalsel keelel põhinev praktikaprojekt, mille kaks põhiosa on:
+Keskkonnaportaali visuaalsel keelel põhinev praktikaprojekt, mille põhiosad on:
 
-- vastus-enne-allikaid otsing, kus OpenAI Agents SDK manager käivitab mitme allika korral järjest nii Luna relevantsus- kui ka tõendikriitiku ainult sama päringu värskel, filtreeritud ja järjestatud ametlikul tõendipakil ning lisab nummerdatud viited;
-- PostgreSQL-i korpus koos portaali sitemapilehtede, otsingukaartide ja valitud täistekstidega; tulemusi täiendavad päringu ajal ametlikud otsinguliidesed, skeemi-, aja- ja ühikukontrolliga Ilmateenistuse vaatlus- ja prognoosi-XML, täpse jaama ja näitajaga Keskkonnaagentuuri hüdroloogia ning 25 kureeritud jaama ajaloolised `DTA08` kliimaandmed, EELISe fikseeritud Emajõe avaliku vooluveekogu WFS-kirje ja kuue nimega Natura loodusala täpsed registrikirjed ning Statistikaameti KK048 veevõtu, KK25 BHT7, KK068 ohtlike jäätmete ja KK610 kogu jäätmete taaskasutamise JSON-stat2 päringud;
+- vastus-enne-allikaid otsing, kus vastuse koostamine ja tõendikontroll kasutavad sama päringu värsket, filtreeritud ja järjestatud tõendipakki ning lisavad nummerdatud viited;
+- PostgreSQL-i korpus koos portaali sitemapilehtede, otsingukaartide ja valitud täistekstidega; tulemusi täiendavad ametlikud otsinguliidesed, kontrollitud ilma-, hüdroloogia- ja kliimaandmed ning valitud EELISe registrikirjed. Statistikaamet on avalikust allikavalikust välistatud;
 - allika-, sisutüübi-, aasta- ja järjestusfiltrid ning kuni neli iga kord uue tõendiotsingu tegevat viidatud jätkuküsimust;
-- metsaküsimustele (metsamaa pindala, tagavara, metsasus, raiemaht, lageraie) Statistikaameti KK51/MM03 SMI aegread koos viidatud diagrammiga: mitme aasta küsimus vastatakse reast endast, ühe väärtuse küsimus säilitab tekstivastuse ja saab viimase kümne aasta kontekstidiagrammi;
-- metsa osakaalu küsimusele („kui suur osa Eestist on mets”) Statistikaameti KK07 maakasutuse jaotus sektordiagrammina;
-- raie osakaalu küsimusele („kui suur osa raiest on lageraie”) MM03 raieliikide jaotus sektordiagrammina;
+- toetatud metsaküsimustele Keskkonnaagentuuri kontrollitud esmased SMI töövihiku aegread koos viidatud diagrammiga; sobiva esmase andmerea puudumisel diagrammi ei kuvata;
+- metsa osakaalu küsimusele („kui suur osa Eestist on mets”) SMI 2025 maakategooriate jaotus sektordiagrammina;
+- raie osakaalu küsimusele („kui suur osa raiest on lageraie”) SMI raieliikide jaotus sektordiagrammina;
 - portaali sees töötav kogu `terrapoint.ee` rakendus, mis on üldotsingust täielikult eraldatud.
 
 Avalik keskkond: [praktika.arleserver.cfd](https://praktika.arleserver.cfd)
+
+## Avalikud juhendid
+
+- [Juhendite ülevaade](https://praktika.arleserver.cfd/docs)
+- [Tavakasutaja juhend](https://praktika.arleserver.cfd/docs/kasutajale): otsing, filtrid, viited, diagrammid, jätkuküsimused ja privaatsus.
+- [Arendaja integratsioonijuhend](https://praktika.arleserver.cfd/docs/arendajale): API leping, sama päritolu ühendamine keskkonnaportaal.ee süsteemiga, voogedastus, seadistus ja üleandmise kontrollnimekiri.
+
+Juhendite versioonitud sisu: [src/docs/content.jsx](./src/docs/content.jsx).
+Need kirjeldavad praegust praktikaversiooni, mitte juba tehtud CMS-i või SSO
+integratsiooni. Vanemad arhitektuuri- ja QA-dokumendid sisaldavad ajaloolisi
+teostus- ja teenusekirjeldusi; jooksva integratsiooni jaoks alusta avalikust
+arendajajuhendist ning kontrolli lähtekoodi ja tegelikku käituskeskkonda.
 
 Arhitektuur, turve, piirangud ja kontrollnimekiri on kirjeldatud failis [PROJEKT.md](./PROJEKT.md). Korduvkäivitatavad tootmise tõendid ja docs-to-code kaart on failis [acceptance-evidence.md](./acceptance-evidence.md). Otsingu andmevoo ja Luna teenuse privaatsuspiir on failis [PRIVAATSUS.md](./PRIVAATSUS.md). Portaali ja uue otsingu uurimus asub failis [docs/ARHITEKTUUR.md](./docs/ARHITEKTUUR.md), ametlike API-de register failis [docs/ALLIKAD.md](./docs/ALLIKAD.md) ning visuaalse regressiooni tõendid failis [design-qa.md](./design-qa.md).
 

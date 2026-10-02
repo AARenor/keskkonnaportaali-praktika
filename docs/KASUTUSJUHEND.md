@@ -1,12 +1,21 @@
 # Keskkonnaportaali otsingu kasutusjuhend
 
-Uuendatud: 01.10.2026
+Uuendatud: 02.10.2026
+
+Täielik sirvitav juhend koos peatükilinkidega:
+[praktika.arleserver.cfd/docs/kasutajale](https://praktika.arleserver.cfd/docs/kasutajale).
+Alljärgnev on lühike repositooriumi kiirjuhend; avaliku juhendi sisu asub
+failis [src/docs/content.jsx](../src/docs/content.jsx).
 
 ## Küsimuse esitamine
 
-Kirjuta üks võimalikult konkreetne eestikeelne küsimus. Kui otsid arvu, lisa võimalusel näitaja, piirkond ja aasta, näiteks „Kui suur oli Eesti metsamaa pindala 2025. aastal?”. Otsing on praegu eestikeelne; vene- ja ingliskeelne päring ei anna vaikimisi eestikeelset vastust.
+Kirjuta üks võimalikult konkreetne eestikeelne küsimus. Kui otsid arvu, lisa võimalusel näitaja, piirkond ja aasta, näiteks „Kui suur oli Eesti metsamaa pindala 2025. aastal?”. Otsing on praegu eestikeelne; vene- ja ingliskeelse sisupäringu asemel võib tulla eestikeelne palve küsimus eesti keeles kirjutada.
 
 Ära sisesta otsingusse saladusi ega tundlikke isikuandmeid. Eraisiku nime ja kinnistu seost otsing ei koosta. Kinnistu avalike metsaandmete jaoks kasuta katastritunnust või ametlikku Metsaportaali.
+
+Soovituste saamiseks saadetakse 2–80 märgi pikkune sisestatud tekst serverile
+juba kirjutamise ajal. Otsinguaadress `/otsi` ei taasta küsimust jagatud lingist
+ega pärast uuesti laadimist; küsimused püsivad ainult avatud lehe mälus.
 
 ## Kuidas vastust lugeda
 
