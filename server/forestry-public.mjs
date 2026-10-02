@@ -60,7 +60,7 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     locator: "Aastaraamatu otstarve, iga-aastane koostamine ja avaliku väljaannete loendi uusim kirje.",
     _publishedAt: "2026-08-17",
     _catalogueReviewedAt: "2026-10-01T00:00:00.000Z",
-    _forestryIntentKinds: ["forest-publication-cycle"],
+    _forestryIntentKinds: ["forest-publication-cycle", "forest-yearbook-definition"],
   },
   {
     id: "lulucf-definition",
@@ -420,6 +420,11 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
 ];
 
 const INTENTS = {
+  "forest-yearbook-definition": {
+    serviceDocumentIds: ["forest-yearbook-overview"],
+    discoveryQueries: ["metsa aastaraamatud Aastaraamat Mets 2023"],
+    evidenceGroups: [["aastaraamat"], ["statistiline kokkuvõte"], ["Eesti metsadest", "metsandusest"]],
+  },
   "bark-beetle-monitoring": {
     serviceDocumentIds: ["bark-beetle-monitoring-2026"],
     discoveryQueries: ["kuuse-kooreüraski seire tulemused 2026 feromoonpüünised"],
@@ -1118,6 +1123,7 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
   ], true) || (multilingualForestry && /\bforested\b/u.test(text)) || hasSmi || hasStem(tokens, ["rmk"]);
 
   if (/\bpuidubilans\w*\b/u.test(text)) return resolved("wood-balance-definition");
+  if (/^(?:(?:mis\s+on|palun\s+selgita)\s+)?(?:metsa\s+aastaraamat\w*|metsaaastaraamat\w*)$/u.test(text)) return resolved("forest-yearbook-definition");
   if (/\blulucf\b/u.test(text)) return resolved("lulucf-definition");
   if (/\betak\b/u.test(text)) return resolved("etak-definition");
   if ((hasSmi || /\bstatistiline\s+metsainventuur\w*\b/u.test(text))
@@ -1125,11 +1131,13 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
     && /\b(?:millal|avalda\w*|ilmub|ilmuma|ajakava\w*|graafik\w*)\b/u.test(text)) {
     return resolved("forest-publication-cycle");
   }
-  if (/\b(?:kuuse\s*)?kooreurask\w*\b/u.test(text)
+  if ((/\b(?:(?:kuuse\s*)?koore)?urask\w*\b/u.test(text) || /\bferomoonpuunis\w*\b/u.test(text))
     && /\b(?:andm\w*|seire\w*|tulemus\w*|püünis\w*)\b/u.test(text)) {
     return resolved("bark-beetle-monitoring");
   }
-  if (/^(?:kuuse\s*)?kooreurask\w*$/u.test(text)) return resolved("bark-beetle-damage");
+  if (/^feromoonpuunis\w*$/u.test(text)) return resolved("bark-beetle-monitoring");
+  if (/^puunispu\w*$/u.test(text)) return resolved("bark-beetle-guidance");
+  if (/^(?:(?:kuuse\s*)?koore)?urask\w*$/u.test(text)) return resolved("bark-beetle-damage");
   if (hasIncrement
     && /\b(?:kogujuurdekasv\w*|kogu\s+juurdekasv\w*)\b/u.test(text)
     && /\bnetojuurdekasv\w*\b/u.test(text)
@@ -1186,15 +1194,17 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
       && /\b(?:jaht\w*|kutt\w*|kuti\w*)\b/u.test(text))) {
     return resolved("bird-hunting-season");
   }
-  if (hasSmi && (/^(?:mis|mida)\s+(?:on|tahendab)\s+smi$/u.test(text)
+  if (hasSmi && (/^(?:(?:mis|mida)\s+(?:on|tahendab)\s+)?smi$/u.test(text)
     || /^mis\s+on\s+statistiline\s+metsainventuur(?:\s+ehk\s+smi)?$/u.test(text))) {
     return resolved("smi-definition");
   }
-  if (/\b(?:kuuse\s*)?kooreurask\w*\b/u.test(text)
+  if (/^statistiline\s+metsainventuur$/u.test(text)) return resolved("smi-definition");
+  if (/\b(?:(?:kuuse\s*)?koore)?urask\w*\b/u.test(text)
     && /\b(?:tund\w*|ara\s+tund\w*|torj\w*|valdi\w*|hoid\w*)\b/u.test(text)) {
     return resolved("bark-beetle-guidance");
   }
-  if (/\b(?:kuuse\s*)?kooreurask\w*\b/u.test(text)
+  if (/\b(?:(?:kuuse\s*)?koore)?urask\w*\b/u.test(text)
+    && !/\b(?:kliim\w*|soojen\w*)\b/u.test(text)
     && /\b(?:mis\s+on|kahjust\w*|kuusik\w*|kuiv\w*)\b/u.test(text)) {
     return resolved("bark-beetle-damage");
   }

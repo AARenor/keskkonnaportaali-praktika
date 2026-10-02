@@ -30,7 +30,9 @@ export function forestrySourceClass(document = {}) {
   if (document.sourceTier === "supplementary") return "supplementary";
   const text = normalizedSourceText(document);
   if (/\beurostat\b/u.test(text)) return "eurostat";
-  if (/\b(?:aastaraamat mets|metsa aastaraamat|metsaaastaraamat)\b/u.test(text)) return "forest-yearbook";
+  if (/\b(?:aastaraamat\s+[„"“]?mets|metsa aastaraamat\p{L}*|metsaaastaraamat\p{L}*)\b/u.test(text)
+    || /^mets\s*20\d{2}(?:\.pdf)?$/u.test(normalizedSourceText({ title: document.title }))
+    || /\/mets(?:%20|\s)*20\d{2}\.pdf(?:[?#]|$)/iu.test(String(document.url || ""))) return "forest-yearbook";
   if (/\bpuidubilanss\b/u.test(text)) return "wood-balance";
   if (/\b(?:smi|statistiline metsainventuur|statistilise metsainventuuri)\b/u.test(text)) return "smi";
   if (/\bkliimaministeerium\b/u.test(text)) return "climate-ministry";

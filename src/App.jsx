@@ -165,10 +165,10 @@ const portalTiles = [
     href: `${SOURCE}/et/teemad/keskkonnahoidliku-arengu-andmevarav`,
   },
   {
-    label: "Kliimapoliitika andmevärav",
+    label: "Metsastatistika",
     kicker: "Vaata täpsemalt!",
-    image: "/assets/tile-climate.jpg",
-    href: `${SOURCE}/et/teemad/kliimapoliitika-andmevarav`,
+    image: "/assets/portal-forest-statistics.jpg",
+    href: `${SOURCE}/et/teemad/mets/metsastatistika-sh-smi`,
   },
   {
     label: "Jäätmeinfosüsteem PISTRIK",
@@ -186,82 +186,98 @@ const portalTiles = [
 
 const currentCards = [
   {
-    title: "Uuendatud ülevaade tuuleenergia planeeringutest (august 2026)",
-    image: "/assets/featured-wind.jpg",
-    tags: ["Uuringud ja aruanded", "Energeetika"],
-    meta: "Andis välja Keskkonnaagentuur",
-    excerpt: "Ülevaade koondab värske info võrguga ühendatud tuuleparkide ja planeeringute kohta.",
-    href: `${SOURCE}/et/uuendatud-ulevaade-tuuleenergia-planeeringutest-august-2026`,
+    title: "Uuring kogu Eesti toidutarneahelas tekkivate toidujäätmete ja toidukao kohta",
+    image: "/assets/portal-food-waste.jpg",
+    tags: ["Uuringud ja aruanded", "Jäätmed"],
+    meta: "Andis välja Keskkonnainvesteeringute Keskus",
+    excerpt: "Toidujäätmete uuring annab ülevaate Eestis tekkivate toidujäätmete ja toidukao tekkest aastatel 2024–2025.",
+    href: `${SOURCE}/et/uuring-kogu-eesti-toidutarneahelas-tekkivate-toidujaatmete-ja-toidukao-kohta`,
   },
   {
-    title: "Ulukite arvukus ja küttimine",
-    image: "/assets/featured-bear.png",
-    tags: ["Väljaanded ja ülevaated", "Ulukid"],
-    meta: "Andis välja Keskkonnaagentuur",
-    excerpt: "2026. aasta aruanne koondab ulukiasurkondade seisundi ja küttimissoovitused.",
-    href: `${SOURCE}/et/ulukite-arvukus-ja-kuttimine`,
+    title: "Kaardirakendusse lisandus hüvitusalade ja maapõue info",
+    image: "/assets/portal-minerals.png",
+    tags: ["Andmed", "Looduskaitse", "Maavarad"],
+    meta: "Keskkonnaportaal",
+    excerpt: "Veebikaardil on kättesaadavad hüvitusalade kaardikiht ja Eesti Geoloogiateenistuse maavarade registri kaardikihid.",
+    href: `${SOURCE}/et/uudised/kaardirakendusse-lisandus-huvitusalade-ja-maapoue-info`,
   },
 ];
 
 const news = [
   {
-    title: "Mullaseire 2025: uuritud muldade seisund on hea, kuid muutused vajavad tähelepanu",
-    image: "/assets/news-soil.jpg",
-    tag: "Muld ja maahõive",
-    date: "13.08.2026",
-    href: "https://www.keskkonnaagentuur.ee/uudised/keskkonnaportaalis-ja-blogis-mullaseire-2025-uuritud-muldade-seisund-hea-kuid-moned",
+    title: "Oktoober kutsub märkama Euroopa Liidu ökomärgist",
+    image: "/assets/portal-news-ecolabel.png",
+    tag: "Kestlikkus",
+    publisher: "Keskkonnaagentuur",
+    date: "01.10.2026",
+    href: "https://www.keskkonnaagentuur.ee/uudised/oktoober-kutsub-markama-euroopa-liidu-okomargist",
   },
   {
-    title: "Enne linnujahti veendu palun reeglites",
-    image: "/assets/news-birds.jpg",
-    tag: "Looduskaitse",
-    date: "12.08.2026",
-    href: "https://www.keskkonnaamet.ee/uudised/enne-linnujahti-veendu-palun-reeglites",
+    title: "KIK kutsub loodushariduse edendajaid ja õpetajaid keskkonnahariduse konverentsile",
+    image: "/assets/portal-news-education.png",
+    tag: "Keskkonnaharidus",
+    publisher: "Keskkonnainvesteeringute Keskus",
+    date: "30.09.2026",
+    href: "https://www.kik.ee/et/uudised/kik-kutsub-loodushariduse-edendajaid-ja-opetajaid-keskkonnahariduse-konverentsile",
   },
   {
-    title: "Blogis: Kui palju ja millist metsa Eestis on?",
-    image: "/assets/news-forest.jpg",
-    tag: "Mets",
-    date: "12.08.2026",
-    href: "https://www.keskkonnaagentuur.ee/uudised/blogis-kui-palju-ja-millist-metsa-eestis",
+    title: "Blogis: Eestis on nüüd kokku 11 WMO poolt tunnustatud sajandi jaama",
+    image: "/assets/portal-news-kasari.png",
+    tag: "Vesi",
+    publisher: "Keskkonnaagentuur",
+    date: "28.09.2026",
+    href: "https://www.keskkonnaagentuur.ee/uudised/blogis-eestis-nuud-kokku-11-wmo-poolt-tunnustatud-sajandi-jaama",
   },
   {
-    title: "Blogis: Juuli oli normist jahedam ning tõi rohkelt sademeid",
-    image: "/assets/news-weather.png",
+    title: "Uuenenud Keskkonnaagentuuri ilmaäpis ILM+ nüüd ka radarite lühiennustus ja täpsemad ilmahoiatused",
+    image: "/assets/portal-news-weather.jpg",
     tag: "Ilm ja kliima",
-    date: "03.08.2026",
-    href: "https://www.keskkonnaagentuur.ee/uudised/blogis-juuli-oli-normist-jahedam-ning-toi-rohkelt-sademeid-0",
+    publisher: "Keskkonnaagentuur",
+    date: "25.09.2026",
+    href: "https://www.keskkonnaagentuur.ee/uudised/uuenenud-keskkonnaagentuuri-ilmaapis-ilm-nuud-ka-radarite-luhiennustus-ja-tapsemad",
   },
 ];
 
 const events = [
   {
-    day: "17",
-    month: "august",
-    type: "notice",
-    title: "Väätsa prügila laienduse KMH aruande avalik arutelu",
-    excerpt: "Avalik arutelu toimub kell 17.00 RAGN-SELLS AS Väätsa jäätmekäitluskeskuses.",
-  },
-  {
-    day: "24",
-    month: "august",
-    type: "notice",
-    title: "Põltsamaa jõe Ao (II) paisjärvest eraldamise ehitusprojekti KMH arutelu",
-    excerpt: "Avalik arutelu toimub kell 18.00 Rakke Kultuurikeskuse väikeses saalis.",
-  },
-  {
-    day: "27",
-    month: "august",
+    day: "08",
+    month: "oktoober",
     type: "event",
-    title: "Loomaaia loenguõhtu. Urmas Tartes",
-    excerpt: "Inspireeriv loenguõhtu, kus jagatakse teadmisi, kogemusi ja loodusfotosid.",
+    title: "Loomaaia loenguõhtu. Hendrik Relve",
+    excerpt: "Tallinna loomaaed kutsub loenguõhtule, kus jagatakse teadmisi, kogemusi ja loodusfotosid.",
+    href: "https://tallinnzoo.ee/events/loomaaia-loenguohtu-hendrik-relve/",
   },
   {
-    day: "28",
-    month: "august",
-    type: "day",
-    title: "Läänemere päev",
-    excerpt: "Iga-aastane pidupäev mere auks ja võimalus tutvuda Läänemere loodusega.",
+    day: "14",
+    month: "oktoober",
+    type: "event",
+    title: "Vestlusõhtu karudest ja nende ruumikasutusest",
+    excerpt: "Eesti Loodus ja Eesti looduseuurijate selts kutsuvad vestlusõhtule karude ruumikasutusest.",
+    href: "https://www.facebook.com/events/1620473682825571",
+  },
+  {
+    day: "15",
+    month: "oktoober",
+    type: "event",
+    title: "Teadmussiirde doktorantuuri foorum",
+    excerpt: "Foorum toob kokku ettevõtted, avaliku sektori asutused, erialaliidud ja ülikoolid.",
+    href: "https://etag.ee/sundmus/teadmussiirde-doktorantuuri-foorum/",
+  },
+  {
+    day: "15",
+    month: "oktoober",
+    type: "event",
+    title: "Harrastusteaduse võimalused koolis",
+    excerpt: "Koolidele sobivaid algatusi tutvustavad Eesti Ornitoloogiaühing, Keskkonnaagentuur ja Tallinna Ülikool.",
+    href: "https://miks.ee/opilasele/sundmused/harrastusteaduse-voimalused-koolis/",
+  },
+  {
+    day: "16",
+    month: "oktoober",
+    type: "event",
+    title: "Teaduskonverents „Kuidas läheb Eesti lindudel?“",
+    excerpt: "Konverents keskendub Eesti lindude käekäigule ja teadusandmetele.",
+    href: "https://www.facebook.com/events/1140222478958912/",
   },
 ];
 
@@ -517,7 +533,7 @@ function Header({ compact = false, onRevealSearch }) {
           </div>
           <div className="quick-tools">
             <span><CalendarDays size={15} /> {formatDate()}</span>
-            <span><CloudSun size={17} /> 19 … 26 °C</span>
+            <span><CloudSun size={17} /> Ilm täna</span>
             <a href={`${SOURCE}/et/ligip%C3%A4%C3%A4setavus`}><CircleHelp size={15} /> Ligipääsetavus</a>
             <button type="button"><Link2 size={15} /> Lingid <ChevronDown size={13} /></button>
             <button type="button">ET <ChevronDown size={13} /></button>
@@ -683,7 +699,7 @@ function CurrentContent() {
             <div>
               <span className="tag">{item.tag}</span>
               <ExternalAnchor href={item.href}><h3>{item.title} <ExternalLink size={13} /></h3></ExternalAnchor>
-              <p>Keskkonnaagentuur <span aria-hidden="true">|</span> {item.date}</p>
+              <p>{item.publisher} <span aria-hidden="true">|</span> {item.date}</p>
             </div>
           </article>
         ))}
@@ -736,7 +752,7 @@ function EventsSection() {
             <article className={`event-card event-card--${event.type}`} key={`${event.day}-${event.title}`}>
               <div className="event-date"><strong>{event.day}</strong><span>{event.month}</span></div>
               <div className="event-body"><h3>{event.title}</h3><p>{event.excerpt}</p></div>
-              <ExternalAnchor href="https://kotkas.envir.ee/kmh/index?tab=PUBLICATION">Loe lisa <ExternalLink size={13} /></ExternalAnchor>
+              <ExternalAnchor href={event.href}>Loe lisa <ExternalLink size={13} /></ExternalAnchor>
             </article>
           ))}
         </div>
@@ -749,14 +765,11 @@ function EventsSection() {
       <aside className="month-card">
         <SectionHeading>Kuu sündmus</SectionHeading>
         <div className="month-card__body">
-          <span className="tag">Ringmajandus</span>
-          <h3>RING 2026 – Ringsus kui konkurentsieelis</h3>
-          <div className="month-card__visual">
-            <Globe2 size={44} />
-            <span>08. september<br />Kultuurikatel, Tallinn</span>
-          </div>
-          <p>Foorum toob kokku ettevõtted, eksperdid ja avaliku sektori, et jagada ringmajanduse praktilisi lahendusi.</p>
-          <ExternalAnchor className="text-link" href="https://kik.ee/et/ringmajanduse-foorum">Lisainfo ja registreerumine <ChevronRight size={17} /></ExternalAnchor>
+          <h3>Euroopa Liidu ökomärgise teadlikkuse suurendamise tegevused 2026</h3>
+          <img className="month-card__image" src="/assets/portal-ecolabel.png" alt="ELi ökomärgis – usaldusväärne valik" loading="lazy" />
+          <p className="meta">01.–30. oktoober 2026</p>
+          <p>Oktoober on Euroopa Liidu ökomärgise kuu. ELi ökomärgis aitab üles leida tooted, mis on paremad nii loodusele kui ka meie tervisele.</p>
+          <ExternalAnchor className="text-link" href={`${SOURCE}/et/events/euroopa-liidu-okomargise-teadlikkuse-suurendamise-tegevused-2026`}>Loe edasi <ChevronRight size={17} /></ExternalAnchor>
         </div>
       </aside>
     </section>

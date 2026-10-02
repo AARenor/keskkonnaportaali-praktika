@@ -18,6 +18,9 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 
 ## Durable product decisions
 
+- Metsastatistika vastuste põhiallikad on SMI, puidubilanss ja aastaraamat „Mets“; hoia vastuse mõisted ja neutraalne sõnastus algallikatele lähedal. Eelista siiski küsimusele otseselt vastavat allikat: üraski juhendit ei asenda SMI kogumahu tabel. Lühike teemasõna ja käändevorm peavad jõudma samasse tõendipõhisesse otsingusse kui pikk küsimus; säilita konkreetne subjekt, mitte ainult üldteema „mets“ või „seire“.
+- Avalehe visuaalne lähtepunkt on Keskkonnaportaali praegune avaleht: selle kontrollitud pildid, andmeväravad, päevakajalised lood ja sündmused. Säilita praktikaversiooni märge ja esimese mobiilivaate otsing. Avalehe sisukoopia on kuupäevaga snapshot, mitte reaalajas uudisvoo lubadus.
+
 - Public search excludes Statistikaamet as a publisher, including results, citations and charts. Historical PXWeb adapters may remain as schema-test fixtures, not as public fallback evidence. Use primary Keskkonnaagentuur SMI workbook series and cuts-by-type splits where reviewed data exists; otherwise omit the chart instead of switching publisher. General forest-land stock means workbook table 25, not stand stock in table 28. Source colors repeat in inline numbered citations and a compact legend; newest-source labels compare known page update dates only, never data years, sitemap timestamps or retrieval times. Explicit publishers survive portal hosting (including Eesti Keskkonnauuringute Keskus).
 
 - Forest answers are Estonia-only. A word the geography classifier cannot place (RMK, a verb, an invented name) keeps the Estonia default; only reviewed counties, municipalities and named foreign countries change the scope. The private-person classifier keeps its stricter reading (`forPrivacyCheck`), where an unplaced word is still an unnamed region, so answer routing never changes privacy outcomes.

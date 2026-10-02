@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { specialistSubjectVariants } from "./topic-keywords.mjs";
 import { boundedChart, validPublicChart } from "./answer-chart.mjs";
 import { withForestContextChart } from "./forest-series.mjs";
 import { composeHarvestShareResponse } from "./harvest-share.mjs";
@@ -57,7 +58,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v64-complete-forest-overview-passages";
+export const SEARCH_RESPONSE_REVISION = "answer-v65-topic-keywords-primary-wording";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
@@ -176,6 +177,7 @@ function passageDirectness(query, passage) {
 }
 
 export function directEvidenceExtract(query, document, plannedEvidence = null) {
+  const subjects = queryTerms(query).filter((root) => specialistSubjectVariants(root));
   const stablePublicationText = (value) => {
     const published = /^\d{2}\.\d{2}\.\d{4}$/u.test(String(document?.published || "").trim())
       ? String(document.published).trim()
@@ -199,7 +201,8 @@ export function directEvidenceExtract(query, document, plannedEvidence = null) {
       const joined = [extract, passage].filter(Boolean).join(" ");
       return joined.length <= 520 ? joined : extract;
     }, "");
-  if (plannedExtract && hasCompleteSentenceEnding(plannedExtract)) return plannedExtract;
+  if (plannedExtract && hasCompleteSentenceEnding(plannedExtract)
+    && subjects.every((root) => textHasQueryRoot(plannedExtract, root))) return plannedExtract;
   const preferred = new Set(plannedPassages.map((value) => normalize(value)));
   const passages = [document?.summary, document?.content]
     .filter(Boolean)
@@ -207,6 +210,7 @@ export function directEvidenceExtract(query, document, plannedEvidence = null) {
     .map(sanitizeLlmEvidenceText)
     .map(stablePublicationText)
     .map((value) => value.replace(/\s+/gu, " ").trim())
+    .filter((value) => subjects.every((root) => textHasQueryRoot(value, root)))
     .filter((value) => value.length >= 35 && value.length <= 520 && hasCompleteSentenceEnding(value));
   return passages
     .map((passage, index) => ({

@@ -1797,7 +1797,7 @@ test("forest depletion answer uses only its visible evidence roles and never cit
   });
   const systemPrompt = request.body.input[0].content[0].text;
   assert.match(systemPrompt, /praegused andmed ei toeta peatse kadumise järeldust/iu);
-  assert.match(systemPrompt, /Sünteesi vastus oma sõnadega/iu);
+  assert.match(systemPrompt, /Hoia vastuse sõnastus algallikate lähedal/iu);
   assert.match(systemPrompt, /nii neid arve toetavat statistikaallikat kui ka tervikpilti toetavat seisundiallikat/iu);
   assert.match(systemPrompt, /Ignoreeri matkaradu, ronimist/iu);
 
@@ -6222,7 +6222,7 @@ test("persisted search identifiers use a secret HMAC instead of a reversible pla
 });
 
 test("answer cache revision follows ranked membership, order, metadata and content", () => {
-  assert.equal(SEARCH_RESPONSE_REVISION, "answer-v64-complete-forest-overview-passages");
+  assert.equal(SEARCH_RESPONSE_REVISION, "answer-v65-topic-keywords-primary-wording");
   const first = {
     items: [{
       id: "reviewed-guidance",

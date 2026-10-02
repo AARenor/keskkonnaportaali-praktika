@@ -77,6 +77,27 @@ test("portal article extraction separates navigation and source metadata from cl
   assert.match(page.content, /niineosast[\s\S]*Seotud juhendmaterjal/u);
 });
 
+test("news without its own body cannot hydrate related cards or comment UI as factual evidence", () => {
+  const related = `<section class="card-column-front"><h2>Samal teemal</h2><article class="kem-news--kem-content-page-block"><div class="field--name-field-kem-introduction">Kõrvalartikli pikk väide metsamaa, lindude ja kaitsealade kohta.</div></article></section>`;
+  const comments = `<div class="card-item__info-wrap">Kommenteeri või avalda arvamust<div class="form-wrap"><form id="comment-form">Lisa kommentaar</form></div></div>`;
+  const empty = extractReadablePage(`<main><h1>Juurepess</h1><article class="kem-news--full"><div class="card-item__info-wrapper">Keskkonnaagentuur | 15.01.2025</div>${comments}${related}<section class="rating-card-section">Palun hinnake</section></article></main>`, "https://keskkonnaportaal.ee/et/uudised/juurepess");
+  assert.equal(empty.content, "");
+  const own = "Juurepess kahjustab puude juuri. Käesolev väide pärineb artikli enda tekstist.";
+  const article = extractReadablePage(`<main><h1>Juurepess</h1><article class="kem-news--full"><div class="field--name-body">${own}</div>${comments}${related}</article></main>`, "https://keskkonnaportaal.ee/et/uudised/juurepess");
+  assert.equal(article.content, own);
+});
+
+test("old news scaffold bodies stay route-only until clean hydration replaces them", () => {
+  const row = { id: 123, title: "Juurepess", source_key: "official-page-hydration", canonical_url: "https://keskkonnaportaal.ee/et/uudised/juurepess", source_tier: "official", content_hash: "a".repeat(64), fetched_at: new Date().toISOString(), metadata: { hydrated: true, source_kind: "official-page-hydration" }, content: "Kommenteeri või avalda arvamust Lisa kommentaar Samal teemal Vaata kõiki Kõrvalartikli väide metsamaa ja liikide kohta.", summary: "Kommenteeri või avalda arvamust" };
+  const item = publicSearchItem(row, true);
+  assert.equal(item._answerEvidenceEligible, false);
+  assert.equal(item.evidencePolicy, "route-only");
+  assert.equal(item.content, "");
+  assert.equal(item.summary, "");
+  const clean = publicSearchItem({ ...row, summary: "Juurepess kahjustab puude juuri.", content: "Juurepess kahjustab puude juuri. See puu tervisliku seisundi selgitus pärineb artikli enda tekstist." }, true);
+  assert.equal(clean._answerEvidenceEligible, true);
+});
+
 test("public corpus source exposes only explicit page update provenance, never sitemap or fetch time", () => {
   const row = { id: 1, source_key: "official-page-hydration", canonical_url: "https://keskkonnaportaal.ee/et/puidubilanss", title: "Puidubilanss", published_label: "15.12.2021", source_tier: "official", fetched_at: "2026-10-02T12:00:00Z", modified_at: "2026-10-02T10:00:00Z", metadata: { source_updated_at: "2026-10-01" } };
   assert.equal(publicSearchItem(row).updated, "01.10.2026");

@@ -367,14 +367,14 @@ h3 {
 .hero {
   position: relative;
   height: 515px;
-  background: url("/assets/hero.jpg") center 56% / cover no-repeat;
+  background: url("/assets/portal-hero-2026.jpg") center 50% / cover no-repeat;
   color: #fff;
 }
 
 .hero__shade {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(9, 35, 51, 0.58), rgba(11, 39, 49, 0.62));
+  background: rgba(26, 43, 39, 0.48);
 }
 
 .hero__content {
@@ -1017,19 +1017,10 @@ h3 {
   line-height: 1.16;
 }
 
-.month-card__visual {
-  display: flex;
-  min-height: 145px;
-  align-items: center;
-  justify-content: center;
-  gap: 18px;
-  margin-bottom: 19px;
-  padding: 20px;
-  background: #edf0c9;
-  color: #3d6955;
-  font-family: "Roboto Local", Roboto, sans-serif;
-  font-weight: 600;
-  line-height: 1.4;
+.month-card__image {
+  width: 100%;
+  height: auto;
+  margin-bottom: 14px;
 }
 
 .month-card__body p {
@@ -3095,7 +3086,8 @@ h3 {
   }
 
   .hero__practice {
-    display: none;
+    display: inline-flex;
+    top: 12px;
   }
 
   .hero h1 {

@@ -1,0 +1,11 @@
+# Ühine teemasubjekt otsingus
+
+`server/topic-keywords.mjs` on väike kontrollitud kitsaste subjekti-aliaste sõnastik. `server/search.mjs` kasutab seda päringu ulatuse, juurte, dokumendisisu ja asjakohasuse lugemisel; `server/corpus.mjs` kasutab sama sõnastikku DB eelpäringus. Ühe subjekti käändevormid ja liitsõnad moodustavad SQL-is ühe OR-rühma; erinevad küsitud subjektid jäävad AND-rühmadeks. Lauselist varianti ei panda SQL-lexeemiks.
+
+Ürask/üraski/üraskite/kooreürask/kuusekooreürask ei kao üldsõna „seire” või „mets” sisse. Üraskite seire suunab ametlikule seirele; tõrje ja püünispuud juhendile. Kliimamõju küsimus, kus ürask on üks mitmest ohutegurist, säilitab laiema predikaadi. Samamoodi jäävad eraldi feromoonpüünised, juurepess, samblikud, samblad, toidukadu, toidujäätmed ja SMI; metsaaastaraamat saab tegeliku väljaande intent'i.
+
+See ei ole uus otsingumootor ega privaatse/avaldamata tõendi erand. Tulemused on endiselt asjakohasuse järgi järjestatud ja olemasolevate filtritega; AI tõendid tulevad samast nähtavast filtreeritud hulgast. SMI, puidubilanss ja aastaraamat „Mets” täpsustavad võrreldava metsastatistika allikajärjestust, kuid küsimusele vastav juhend või seire jääb ettepoole kõrvalteemalist kogumahu tabelit. Aastaraamatu PDF-i tegelik „Mets 2023” pealkiri tuntakse ära, ka siis, kui sõna „aastaraamat” URL-is puudub.
+
+Vastuse juhis hoiab algallika mõisted, neutraalse sõnastuse, ühikud, aastad ja ebakindluse. Pikad kopeeritud tekstid ja parafraasi esitamine otsetsitaadina pole lubatud. Kasutatakse ainult kaasa antud tõendit, mitte mudeli oletusi ega vana ette kirjutatud vastust. Mudelirikke väljavõte peab samuti sisaldama küsitud kitsast subjekti: püünispuude küsimusele ei piisa üldisest üraski bioloogia lausest, isegi kui mõlemad on samas juhendis.
+
+Regressioonid: `tests/topic-keywords.test.mjs`; puuduva või saastunud artiklikeha kaitsed: `tests/corpus.test.mjs`; avalehe snapshot: `tests/portal-refresh.test.mjs`. Võõrkeele-, geograafia-, privaatsus-, süstimis- ja Statistikaameti piiranguid ei nõrgendatud.

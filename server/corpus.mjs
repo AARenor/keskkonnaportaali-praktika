@@ -12,6 +12,7 @@ import {
 } from "./public-https.mjs";
 import { createFairSearchAdmission } from "./request-budget.mjs";
 import { canonicalizePublicSearchQuery, minimizePublicProviderQuery } from "./search.mjs";
+import { specialistSubjectRoot, specialistSubjectVariants } from "./topic-keywords.mjs";
 
 const PORTAL_BASE = "https://keskkonnaportaal.ee";
 const PORTAL_SEARCH = `${PORTAL_BASE}/et/search`;
@@ -243,6 +244,8 @@ export function normalizeCorpusQuery(value = "") {
 }
 
 function corpusTermRoot(term) {
+  const subject = specialistSubjectRoot(term);
+  if (subject) return subject;
   if (/^kasvuhoonegaas/iu.test(term)) return "kasvuhoonegaas";
   if (/^mets/iu.test(term)) return "mets";
   if (/^(?:rai|raie|raium|raiemaht)/iu.test(term)) return "rai";
@@ -290,6 +293,10 @@ export function corpusRankingTerms(value = "") {
 }
 
 function corpusTermVariants(term) {
+  const subjectVariants = specialistSubjectVariants(term);
+  // SQL lexemes cannot contain spaces. Phrase alternatives remain available
+  // to passage ranking; here the reviewed token stems form one OR group.
+  if (subjectVariants) return subjectVariants.filter((variant) => !variant.includes(" "));
   if (term === "noor") return [term, "vanus"];
   if (term === "vanus") return [term, "noor", "vana"];
   if (term === "muut") return [term, "trend"];
@@ -750,8 +757,13 @@ export function extractReadablePage(html, url) {
   const publishedAt = parsePortalDate(dates.match(/Avaldatud:\s*(\d{2}\.\d{2}\.\d{4})/iu)?.[1]);
   const updatedAt = parsePortalDate(dates.match(/Uuendatud:\s*(\d{2}\.\d{2}\.\d{4})/iu)?.[1]);
   const organization = boundedText(root.find(".publication-date-author .card-item__author a").first().text(), 200);
+  // News can contain only a link to an external original. Comment controls
+  // and nested related-news cards are not the missing article's evidence.
+  root.find("#comment-form").closest(".card-item__info-wrap").remove();
+  root.find(".card-column-front,.kem-news--kem-content-page-block,.rating-card-section,.form-wrap,.kem-news__field-kem-topic,.card-item__info-wrapper").remove();
   root.find("script,style,noscript,svg,nav,header,footer,form,.breadcrumb,.pager,.eu-cookie-compliance-banner,.share_socials,.publication-date-author,.card-item__label--type,.kem-page__field-kem-topic").remove();
   const title = boundedText(root.find("h1").first().text() || $("title").text(), 500);
+  root.find("h1").remove();
   const focused = root.find([
     ".field--name-body",
     ".field--name-field-kem-introduction",
@@ -759,7 +771,8 @@ export function extractReadablePage(html, url) {
     ".layout-content",
     "article",
   ].join(","));
-  const content = boundedText((focused.length ? focused : root).text(), 80_000);
+  const topLevel = focused.filter((_, element) => !$(element).parents().is(focused));
+  const content = boundedText((topLevel.length ? topLevel : root).text(), 80_000);
   return { title: title || placeholderTitle(url), content, publishedAt, updatedAt, organization };
 }
 
@@ -2080,7 +2093,12 @@ export function publicSearchItem(row, includeContent = false) {
   // evidence until a later successful hydration replaces it atomically.
   const successfullyRefreshed = fetchedAt && (hydrationMetadata.hydration_attempted_at === undefined
     || (attemptedAt && Date.parse(attemptedAt) < Date.parse(fetchedAt)));
+  // Old parser versions admitted share/comment controls and related-card
+  // text. Keep the URL discoverable, but never rank or cite that scaffold as
+  // the page's own claims while awaiting a clean refresh.
+  const containsPageScaffold = /^(?:Jaga\s)|Kommenteeri või avalda arvamust|Muud sündmused\s+Vaata kõiki/u.test(String(row.content || ""));
   const isValidatedPageHydration = row.source_key === "official-page-hydration"
+    && !containsPageScaffold
     && successfullyRefreshed
     && hydrationMetadata.hydrated === true
     && hydrationMetadata.source_kind === "official-page-hydration"
@@ -2090,7 +2108,7 @@ export function publicSearchItem(row, includeContent = false) {
     id: `corpus-${row.id}`,
     title: row.title,
     url: row.canonical_url,
-    summary: row.summary || boundedText(row.content, 500),
+    summary: containsPageScaffold ? "" : (row.summary || boundedText(row.content, 500)),
     organization: row.organization || (row.source_tier === "supplementary" ? "Vikipeedia" : "Keskkonnaportaal"),
     type: row.category || "Veebileht",
     published: formatPublished(row),
@@ -2122,7 +2140,7 @@ export function publicSearchItem(row, includeContent = false) {
     }),
   };
   if (includeContent) {
-    item.content = boundedText(row.content, 15_000);
+    item.content = containsPageScaffold ? "" : boundedText(row.content, 15_000);
     item._contentHash = row.content_hash || "";
   }
   return item;

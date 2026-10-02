@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { specialistSubjectRoot, specialistSubjectVariants } from "./topic-keywords.mjs";
 import { cadastreSourceDocuments } from "./cadastre.mjs";
 import {
   ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS,
@@ -2089,6 +2090,10 @@ function textHasTallinnLocation(value) {
 }
 
 function topicRoot(word) {
+  // Keep reviewed specialist subjects intact through scope, query expansion
+  // and document ranking. A generic "mets"/"seire" match is not an ürask hit.
+  const subject = specialistSubjectRoot(word);
+  if (subject) return subject;
   // Two high-frequency one-character portal/topic misspellings are kept
   // deliberately narrow; broader fuzzy matching would admit unrelated words.
   // English mappings below are inert in Estonian-only mode (see
@@ -2728,6 +2733,8 @@ export function queryTerms(query) {
 }
 
 export function queryRootVariants(root) {
+  const subjectVariants = specialistSubjectVariants(root);
+  if (subjectVariants) return subjectVariants;
   if (root === "mets") return ["mets", "forest", "woodland"];
   if (root === "kala") return ["kala", "kalast", "fish"];
   if (root === "ranne") return ["ranne", "rände", "migration"];
@@ -2883,6 +2890,7 @@ export function textHasQueryRoot(value, root) {
 }
 
 const DOMAIN_ROOTS = new Set([
+  "urask", "feromoon", "puunispuu", "juurepess", "samblik", "sammal", "toidukadu", "toidujaatmed", "smi",
   "mets", "raie", "juurdekasv", "metsaandmed", "metsaregister", "kliima", "ilm", "prognoos", "hoiatus", "temperatuur", "sademed", "tuul",
   "vesi", "veevott", "jarv", "jogi", "meri", "laanemeri", "pohjavesi", "puurkaev", "jaaolud", "ohk", "ohukvaliteet", "saaste", "heide", "kasvuhoonegaas",
   "jaat", "jaatmekaitluskoht", "prugi", "rehv", "polet", "ringmajandus", "ringlussevott", "loodus", "looduskaitse", "elurikkus", "elupaik",
@@ -2938,6 +2946,8 @@ const AMBIGUOUS_ROOTS = new Set([
   "meri", "kaevandus", "pohjavesi", "sademed",
 ]);
 const DOMAIN_FAMILY_BY_ROOT = new Map([
+  ["urask", "forest"], ["feromoon", "forest"], ["puunispuu", "forest"], ["juurepess", "forest"], ["smi", "forest"],
+  ["samblik", "nature"], ["sammal", "nature"], ["toidukadu", "waste"], ["toidujaatmed", "waste"],
   ["mets", "forest"], ["raie", "forest"], ["juurdekasv", "forest"], ["metsaregister", "forest"],
   ["kliima", "climate"], ["ilm", "weather"], ["temperatuur", "weather"], ["sademed", "weather"],
   ["vesi", "water"], ["jarv", "water"], ["jogi", "water"], ["meri", "water"], ["laanemeri", "water"],
