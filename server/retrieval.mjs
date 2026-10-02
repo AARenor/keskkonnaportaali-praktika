@@ -716,7 +716,9 @@ function beetlePassageMatchesYear(passage, year) {
     const text = normalize(sentence);
     return yearPattern.test(text) && !identifierPattern.test(text)
       && /\b(?:seir\w*|andm\w*|tulemus\w*|puunis\w*)\b/u.test(text)
+      && /\b(?:alates|seisuga|loendat\w*|puut\w*|seirati|registreerit\w*|moodet\w*|tuvastat\w*|leiti|kogut\w*|arv\w*|keskmis\w*|andmestik\w*)\b/u.test(text)
       && !passageDisclaimsEvidence(sentence)
+      && !/\b(?:tutvuda\s+siin|vaata\s+siit|leiab\s+siit|link\w*)\b/u.test(text)
       && !/\bei\s+(?:esita\w*|sisald\w*|ole\w*|kajasta\w*|leidu\w*|teht\w*)\b/u.test(text);
   });
 }
@@ -780,6 +782,7 @@ export function selectAnswerEvidence(query, documents = []) {
     return {
       kind: intent.kind,
       strong: false,
+      requiresStrictScopeEvidence: hasBeetleSubject,
       evidenceGroups: intent.evidenceGroups.map((group) => [...group]),
       directDocumentId: null,
       passages: [],
@@ -878,6 +881,7 @@ export function selectAnswerEvidence(query, documents = []) {
     const candidates = (documents || [])
       .map((document, index) => ({ document, index, ...genericForestryEvidence(intent, document) }))
       .filter((candidate) => candidate.score > 0
+        && (!candidate.document.dataYear || beetleYears.every((year) => year === String(candidate.document.dataYear)))
         && beetleYears.every((year) => candidate.passages.some((passage) => beetlePassageMatchesYear(passage, year))))
       .sort((left, right) => right.score - left.score || left.index - right.index);
     const requiredGroupCount = intent.evidenceGroups?.length || 0;
@@ -911,6 +915,7 @@ export function selectAnswerEvidence(query, documents = []) {
       kind: intent.kind,
       strong,
       evidenceGroups: intent.evidenceGroups.map((group) => [...group]),
+      requiresStrictScopeEvidence: beetleYears.length > 0,
       directDocumentId: direct?.document?.id || null,
       passages: direct?.passages || [],
       supportingDocumentIds: supporting.map((candidate) => candidate.document.id),

@@ -58,7 +58,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v66-topic-subject-scope-evidence";
+export const SEARCH_RESPONSE_REVISION = "answer-v67-topic-scope-fallback-evidence";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
@@ -1133,7 +1133,7 @@ export async function createPortalDraft(query, {
       answerIntent: plannedEvidence.kind,
       supportingDocumentIds: plannedEvidence.supportingDocumentIds,
     }
-    : plannedEvidence?.kind === "forest-area-method"
+    : plannedEvidence?.kind === "forest-area-method" || plannedEvidence?.requiresStrictScopeEvidence
       ? {
         ...conventionalQuality,
         strong: false,
@@ -1147,7 +1147,9 @@ export async function createPortalDraft(query, {
     && !plannedEvidence.strong
     ? new Set(forestryIntentServiceDocumentIds(retrievalQuery))
     : null;
-  const plannedAnswerDocuments = compositeRequiredIds
+  const plannedAnswerDocuments = plannedEvidence?.requiresStrictScopeEvidence && !plannedEvidence.strong
+    ? []
+    : compositeRequiredIds
     ? allPlannedAnswerDocuments.filter((document) => compositeRequiredIds.has(document?.id))
     : allPlannedAnswerDocuments;
   const compositeNavigationDocuments = plannedEvidence?.kind === "forest-area-method"

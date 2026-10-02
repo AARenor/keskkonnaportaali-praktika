@@ -429,7 +429,7 @@ const INTENTS = {
     serviceDocumentIds: ["bark-beetle-monitoring-2026"],
     discoveryQueries: ["kuuse-kooreüraski seire tulemused 2026 feromoonpüünised"],
     evidenceGroups: [
-      ["feromoonpüünist"],
+      ["feromoonpüünist", "seirepüünist"],
       ["nädalate lõikes"],
       ["2. september 2026", "2. septembril 2026"],
       ["Keskkonnaagentuur koostöös RMK-ga"],

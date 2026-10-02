@@ -5,7 +5,7 @@ import { rankSearchCandidates, selectAnswerEvidence } from "../server/retrieval.
 import { buildLlmRequest } from "../server/llm.mjs";
 import { forestrySourceClass } from "../server/forestry-source-policy.mjs";
 import { buildPrefixTsQuery, corpusRankingTerms } from "../server/corpus.mjs";
-import { directEvidenceExtract } from "../server/pipeline.mjs";
+import { createPortalDraft, directEvidenceExtract } from "../server/pipeline.mjs";
 
 test("bark-beetle forms preserve the subject instead of rejecting it or searching generic monitoring", () => {
   for (const q of ["ürask", "üraski", "üraskid", "üraskite", "kooreürask", "kuuse-kooreürask", "kuusekooreüraski"]) {
@@ -19,6 +19,19 @@ test("bark-beetle forms preserve the subject instead of rejecting it or searchin
   assert.equal(forestEvidenceIntent("üraskite seire")?.kind, "bark-beetle-monitoring");
   assert.equal(forestEvidenceIntent("üraski tõrje")?.kind, "bark-beetle-guidance");
   assert.equal(forestEvidenceIntent("Kuidas mõjutavad üraskid, põlengud ja kuivus puistuid muutuvas kliimas?")?.kind, "climate-impact");
+});
+
+test("a link to another year's report cannot authorize a scoped beetle answer through lexical fallback", async () => {
+  const catalogue = officialServiceCatalogueDocuments().map(d => d.id === "bark-beetle-monitoring-2026" ? {
+    ...d, content: `${d.content} 2025. aasta kuuse-kooreüraskite seire tulemustega saab lähemalt tutvuda SIIN.`,
+  } : d);
+  for (const q of ["üraskite seire2025", "üraskite seire 2025", "üraskite seire Tartumaal", "üraskite seire Rootsis"]) {
+    const items = rankSearchCandidates(q, catalogue);
+    assert.notEqual(selectAnswerEvidence(q, items)?.strong, true, q);
+    const draft = await createPortalDraft(q, {deadlineAt:Date.now(),searchResults:{total:items.length,items}});
+    assert.equal(draft.sources.length, 0, q);
+    assert.equal(draft.evidence?.answerable, false, q);
+  }
 });
 
 test("reviewed specialist subjects remain distinct from a broad forest or nature keyword", () => {
@@ -117,5 +130,12 @@ test("short beetle aliases cannot borrow national monitoring evidence for anothe
     const wrongYear = "üraskite seire 2025";
     assert.notEqual(selectAnswerEvidence(wrongYear, rankSearchCandidates(wrongYear, noisy))?.strong, true, extra);
     assert.equal(selectAnswerEvidence(q, rankSearchCandidates(q, noisy))?.strong, true, extra);
+  }
+  for (const route of ["leiad siit", "leiduvad siin", "saab vaadata siit"]) {
+    const routed = catalogue.map(d => d.id === "bark-beetle-monitoring-2026" ? {...d,summary:`2025. aasta feromoonpüüniste nädalate lõikes esitatud seire tulemused ${route}.`} : d);
+    const wrongYear="üraskite seire 2025";
+    assert.notEqual(selectAnswerEvidence(wrongYear,rankSearchCandidates(wrongYear,routed))?.strong,true,route);
+    const labelled = catalogue.map(d => d.id === "bark-beetle-monitoring-2026" ? {...d,summary:`2025. aasta feromoonpüüniste nädalate lõikes seireandmestik ja keskmised arvud ${route}.`} : d);
+    assert.notEqual(selectAnswerEvidence(wrongYear,rankSearchCandidates(wrongYear,labelled))?.strong,true,`${route}: data-year identity`);
   }
 });
