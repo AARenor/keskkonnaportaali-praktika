@@ -50,6 +50,7 @@ import {
 } from "./source-registry.mjs";
 import {
   classifyForestryGeographyScope,
+  isReviewedEstonianCountyIdentity,
   requestsUnsupportedForestAreaBreakdown,
   requestsUnsupportedForestAreaTimeSeries,
   requestsUnsupportedForestAreaUnit,
@@ -705,6 +706,21 @@ function genericForestryEvidence(intent, document) {
   };
 }
 
+function beetlePassageMatchesYear(passage, year) {
+  // A year attached to the query word still constrains the observation. In
+  // evidence it must be a whole year in a factual monitoring/data sentence,
+  // not part of a site ID or an explicit statement that the data is absent.
+  const yearPattern = new RegExp(`(?<!\\d)${year}(?!\\d)`, "u");
+  const identifierPattern = new RegExp(`\\b(?:kood\\w*|tunnus\\w*|id)(?:\\s+\\w+){0,2}\\s*[:=]?\\s*${year}(?!\\d)`, "u");
+  return String(passage || "").split(/[!?]\s+|(?<!\d)\.\s+|\.\s+(?=\p{Lu}|(?:19|20)\d{2})/u).some((sentence) => {
+    const text = normalize(sentence);
+    return yearPattern.test(text) && !identifierPattern.test(text)
+      && /\b(?:seir\w*|andm\w*|tulemus\w*|puunis\w*)\b/u.test(text)
+      && !passageDisclaimsEvidence(sentence)
+      && !/\bei\s+(?:esita\w*|sisald\w*|ole\w*|kajasta\w*|leidu\w*|teht\w*)\b/u.test(text);
+  });
+}
+
 function intentEvidenceForDocument(intent, document) {
   if (intent?.kind === "forest-area") return forestAreaEvidence(document);
   if (intent?.kind === "forest-depletion") return forestDepletionEvidence(document);
@@ -722,6 +738,11 @@ export function selectAnswerEvidence(query, documents = []) {
   if (containsPrivatePersonLookup(query)) return null;
   const intent = forestEvidenceIntent(query);
   if (!intent) return null;
+  const hasBeetleSubject = queryTerms(query).some((root) => ["urask", "feromoon", "puunispuu"].includes(root));
+  const beetleYears = hasBeetleSubject ? normalize(query).match(/(?<!\d)(?:19|20)\d{2}(?!\d)/gu) || [] : [];
+  const beetleCountyCase = hasBeetleSubject && normalize(query).split(/\s+/u).some((word) =>
+    /maa(?:le|lt|l|s|st|ga)$/u.test(word)
+      && isReviewedEstonianCountyIdentity(word.replace(/(?:le|lt|st|ga|l|s)$/u, "")));
   const numericForestAreaIntent = ["forest-area", "forest-covered-area", "forest-area-method"]
     .includes(intent.kind);
   const geographyScope = classifyForestryGeographyScope(query);
@@ -736,7 +757,7 @@ export function selectAnswerEvidence(query, documents = []) {
     "unknown-locality",
     "estonian-region",
     "foreign-or-other-region",
-  ].includes(geographyScope.kind);
+  ].includes(geographyScope.kind) || beetleCountyCase;
   // Defense in depth: routing should mark every local/regional request as
   // query-bound, but evidence selection independently recomputes geography.
   // Thus a future routing regression still cannot bind Estonia-wide SMI prose
@@ -856,7 +877,8 @@ export function selectAnswerEvidence(query, documents = []) {
   if (!["forest-area", "forest-covered-area", "forest-depletion", "forest-data-sources"].includes(intent.kind)) {
     const candidates = (documents || [])
       .map((document, index) => ({ document, index, ...genericForestryEvidence(intent, document) }))
-      .filter((candidate) => candidate.score > 0)
+      .filter((candidate) => candidate.score > 0
+        && beetleYears.every((year) => candidate.passages.some((passage) => beetlePassageMatchesYear(passage, year))))
       .sort((left, right) => right.score - left.score || left.index - right.index);
     const requiredGroupCount = intent.evidenceGroups?.length || 0;
     const uncovered = new Set(Array.from({ length: requiredGroupCount }, (_value, index) => index));

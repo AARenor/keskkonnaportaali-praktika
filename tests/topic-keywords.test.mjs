@@ -104,3 +104,18 @@ test("trap-tree answers require an actual trap-tree passage, not just general be
   assert.equal(plan?.strong, true);
   assert.match(plan.passages.join(" "), /püünispu/u);
 });
+
+test("short beetle aliases cannot borrow national monitoring evidence for another year or country", () => {
+  const catalogue = officialServiceCatalogueDocuments();
+  for (const q of ["üraskite seire 2025", "üraskite seire2025", "üraskite seire Rootsis", "üraski tõrje Rootsis", "üraskite seire Tartumaal"]) {
+    assert.notEqual(selectAnswerEvidence(q, rankSearchCandidates(q, catalogue))?.strong, true, q);
+  }
+  const q = "üraskite seire 2026";
+  assert.equal(selectAnswerEvidence(q, rankSearchCandidates(q, catalogue))?.strong, true);
+  for (const extra of ["seirepunkti kood 120250", "2025. aasta andmeid sellel lehel ei esitata"]) {
+    const noisy = catalogue.map(d => d.id === "bark-beetle-monitoring-2026" ? { ...d, summary: `${d.summary} ${extra}.` } : d);
+    const wrongYear = "üraskite seire 2025";
+    assert.notEqual(selectAnswerEvidence(wrongYear, rankSearchCandidates(wrongYear, noisy))?.strong, true, extra);
+    assert.equal(selectAnswerEvidence(q, rankSearchCandidates(q, noisy))?.strong, true, extra);
+  }
+});

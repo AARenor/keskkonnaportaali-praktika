@@ -6222,7 +6222,7 @@ test("persisted search identifiers use a secret HMAC instead of a reversible pla
 });
 
 test("answer cache revision follows ranked membership, order, metadata and content", () => {
-  assert.equal(SEARCH_RESPONSE_REVISION, "answer-v65-topic-keywords-primary-wording");
+  assert.equal(SEARCH_RESPONSE_REVISION, "answer-v66-topic-subject-scope-evidence");
   const first = {
     items: [{
       id: "reviewed-guidance",

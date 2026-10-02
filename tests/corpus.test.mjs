@@ -79,12 +79,18 @@ test("portal article extraction separates navigation and source metadata from cl
 
 test("news without its own body cannot hydrate related cards or comment UI as factual evidence", () => {
   const related = `<section class="card-column-front"><h2>Samal teemal</h2><article class="kem-news--kem-content-page-block"><div class="field--name-field-kem-introduction">Kõrvalartikli pikk väide metsamaa, lindude ja kaitsealade kohta.</div></article></section>`;
-  const comments = `<div class="card-item__info-wrap">Kommenteeri või avalda arvamust<div class="form-wrap"><form id="comment-form">Lisa kommentaar</form></div></div>`;
+  const comments = `<div class="card-item__info-wrap"><button class="card-item__button">Kommenteeri või avalda arvamust</button><div class="form-wrap"><form id="comment-form">Lisa kommentaar</form></div></div>`;
   const empty = extractReadablePage(`<main><h1>Juurepess</h1><article class="kem-news--full"><div class="card-item__info-wrapper">Keskkonnaagentuur | 15.01.2025</div>${comments}${related}<section class="rating-card-section">Palun hinnake</section></article></main>`, "https://keskkonnaportaal.ee/et/uudised/juurepess");
   assert.equal(empty.content, "");
   const own = "Juurepess kahjustab puude juuri. Käesolev väide pärineb artikli enda tekstist.";
   const article = extractReadablePage(`<main><h1>Juurepess</h1><article class="kem-news--full"><div class="field--name-body">${own}</div>${comments}${related}</article></main>`, "https://keskkonnaportaal.ee/et/uudised/juurepess");
   assert.equal(article.content, own);
+});
+
+test("comment controls sharing the article wrapper cannot delete the actual rich-text body", () => {
+  const own = "Keskkonnaportaali kaardikiht annab ülevaate vee-ettevõtete teeninduspiirkondadest ja veeteenustest.";
+  const html = `<main><h1>Veeteenused</h1><article><div class="card-item__info-wrap"><div class="field--name-field-kem-rich-text"><p>${own}</p></div><button class="card-item__button">Kommenteeri või avalda arvamust</button><div class="form-wrap"><form id="comment-form">Lisa kommentaar</form></div></div></article></main>`;
+  assert.equal(extractReadablePage(html, "https://keskkonnaportaal.ee/et/uudised/veeteenused").content, own);
 });
 
 test("old news scaffold bodies stay route-only until clean hydration replaces them", () => {

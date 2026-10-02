@@ -759,9 +759,8 @@ export function extractReadablePage(html, url) {
   const organization = boundedText(root.find(".publication-date-author .card-item__author a").first().text(), 200);
   // News can contain only a link to an external original. Comment controls
   // and nested related-news cards are not the missing article's evidence.
-  root.find("#comment-form").closest(".card-item__info-wrap").remove();
   root.find(".card-column-front,.kem-news--kem-content-page-block,.rating-card-section,.form-wrap,.kem-news__field-kem-topic,.card-item__info-wrapper").remove();
-  root.find("script,style,noscript,svg,nav,header,footer,form,.breadcrumb,.pager,.eu-cookie-compliance-banner,.share_socials,.publication-date-author,.card-item__label--type,.kem-page__field-kem-topic").remove();
+  root.find("script,style,noscript,svg,nav,header,footer,form,button,input,select,textarea,.breadcrumb,.pager,.eu-cookie-compliance-banner,.share_socials,.publication-date-author,.card-item__label--type,.kem-page__field-kem-topic").remove();
   const title = boundedText(root.find("h1").first().text() || $("title").text(), 500);
   root.find("h1").remove();
   const focused = root.find([
