@@ -11,6 +11,7 @@ import {
 } from "./forest-series.mjs";
 import { sourceEvidenceEligibility } from "./source-registry.mjs";
 import { STATISTICS_DISSEMINATION_POLICY_URL } from "./statistics.mjs";
+import { smiStructuredDocument } from "./smi-tables.mjs";
 
 // MM03 publishes 1999–2024; the share answer always uses the latest year.
 export const HARVEST_SHARE_LATEST_YEAR = 2024;
@@ -59,6 +60,36 @@ export function harvestShareIntent(query) {
 
 export function isHarvestShareQuery(query) {
   return harvestShareIntent(query) !== null;
+}
+
+// Reviewed workbook sheets 33/34, column AB (2024), all owners. Values keep
+// source precision until presentation; group differences are calculated, not
+// read out of prose or inferred by a model.
+const SMI_HARVEST_GROUPS = {
+  "1": {koguraie: 117.369366081705, uuendusraie: 35.597682261251798, lageraie: 34.033708159268699, hooldusraie: 66.947845156918802, harvendusraie: 25.4644584516499, muu: 14.823838663534801},
+  "3": {koguraie: 12499.5076812387, uuendusraie: 9569.2685631138102, lageraie: 9230.9987311744298, hooldusraie: 2648.12422777251, harvendusraie: 1856.5059799949199, muu: 282.11489035233598},
+};
+
+export function smiHarvestShareDocument(query) {
+  const intent = harvestShareIntent(query);
+  if (!intent) return null;
+  const groups = { ...SMI_HARVEST_GROUPS[intent.measure.code] };
+  const values = [groups.lageraie, groups.uuendusraie - groups.lageraie, groups.harvendusraie, groups.hooldusraie - groups.harvendusraie, groups.muu];
+  const projection = {
+    source: "smi", year: intent.year, measure: {code: intent.measure.code, label: intent.measure.label},
+    unit: intent.measure.unit, total: groups.koguraie, groups,
+    parts: SLICES.map((slice, index) => ({key: slice.key, label: slice.label, value: values[index], share: share(values[index], groups.koguraie)})),
+  };
+  return {
+    ...smiStructuredDocument({
+      id: `harvest-share-smi-${intent.measure.code}-${intent.year}`,
+      title: `SMI: raie${measureWord(intent.measure)} raieliigiti ${intent.year}`,
+      summary: harvestShareStatement(projection), content: harvestShareContent(projection),
+      locator: `SMI 2025 tulemused: tööleht ${intent.measure.code === "1" ? 33 : 34}, veerg AB (2024), kõik omanikud, read 6, 8, 9, 11, 14 ja 15.`,
+      topics: ["raie", "lageraie", "harvendusraie", "osakaal", String(intent.year)],
+    }),
+    dataYear: String(intent.year), _harvestShare: projection,
+  };
 }
 
 export function harvestShareRequest(intent) {
@@ -130,11 +161,12 @@ export function harvestShareStatement(projection) {
   const restText = rest.map((part, index) => (
     `${index === rest.length - 1 ? "ja " : ""}${SLICES.find((item) => item.key === part.key).sentence} ${etNumber(part.value, digits)} ${projection.unit} (${etNumber(part.share, 1)} %)`
   )).join(", ");
-  return `Statistikaameti tabeli ${TABLE_ID} (SMI hinnang) järgi oli ${projection.year}. aastal koguraie ${measureWord(projection.measure)} ${etNumber(projection.total, digits)} ${projection.unit}, millest ${SLICES[0].sentence} ${etNumber(first.value, digits)} ${projection.unit} ehk ${etNumber(first.share, 1)} %, ${restText}.`;
+  const publisher = projection.source === "smi" ? "Keskkonnaagentuuri SMI 2025 tulemuste järgi" : `Statistikaameti tabeli ${TABLE_ID} (SMI hinnang) järgi`;
+  return `${publisher} oli ${projection.year}. aastal koguraie ${measureWord(projection.measure)} ${etNumber(projection.total, digits)} ${projection.unit}, millest ${SLICES[0].sentence} ${etNumber(first.value, digits)} ${projection.unit} ehk ${etNumber(first.share, 1)} %, ${restText}.`;
 }
 
 export function harvestShareContent(projection) {
-  return `${harvestShareStatement(projection)} Näitajad on SMI valikuuringu hinnangud koos suhtelise veaga, mitte raiedokumentide statistika; lageraie on uuendusraie osa ja harvendusraie hooldusraie osa. JSON-stat2 vastuse eksitavat „updated” välja ei kasutata avaldamisaja ega värskuse tõendina.`;
+  return `${harvestShareStatement(projection)} Näitajad on SMI valikuuringu hinnangud koos suhtelise veaga, mitte raiedokumentide statistika; lageraie on uuendusraie osa ja harvendusraie hooldusraie osa.${projection.source === "smi" ? " Raiemaht sisaldab ka surnud puude raiet." : " JSON-stat2 vastuse eksitavat „updated” välja ei kasutata avaldamisaja ega värskuse tõendina."}`;
 }
 
 function parsePayload(intent, payload) {
@@ -221,6 +253,12 @@ export function validatedHarvestShareProjection(query, document, now = Date.now(
   const intent = harvestShareIntent(query);
   const projection = document?._harvestShare;
   if (!intent || !projection || typeof projection !== "object") return null;
+  if (projection.source === "smi") {
+    const expected = smiHarvestShareDocument(query);
+    return expected && sourceEvidenceEligibility(document, {now}).eligible
+      && ["id", "url", "title", "organization", "published", "locator", "retrieval", "summary", "content", "_contentHash"].every((key) => document[key] === expected[key])
+      && JSON.stringify(projection) === JSON.stringify(expected._harvestShare) ? projection : null;
+  }
   const fetchedAt = Date.parse(String(projection.fetchedAt || ""));
   const groups = projection.groups || {};
   const finite = (value) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= intent.measure.max;
@@ -268,7 +306,7 @@ function chartFromProjection(projection, cutType) {
       })),
     }],
     citation: 1,
-    caption: `Statistikaamet, tabel ${TABLE_ID}: metsaraie SMI hinnangul. Lageraie kuulub uuendusraie ja harvendusraie hooldusraie hulka.`,
+    caption: `${projection.source === "smi" ? "Keskkonnaagentuur, SMI 2025 tulemused, tööleht " + (projection.measure.code === "1" ? 33 : 34) : "Statistikaamet, tabel " + TABLE_ID}: metsaraie SMI hinnangul. Lageraie kuulub uuendusraie ja harvendusraie hooldusraie hulka.`,
   };
 }
 
@@ -286,7 +324,7 @@ export function composeHarvestShareResponse(query, documents = [], options = {})
     total: Number(options.total || documents.length || 1),
     generatedAt: new Date(now).toISOString(),
     answer: {
-      eyebrow: `Statistikaameti tabel ${TABLE_ID}`,
+      eyebrow: projection.source === "smi" ? "Keskkonnaagentuuri SMI andmetabel" : `Statistikaameti tabel ${TABLE_ID}`,
       title: `${intent.cutType.name} moodustas ${projection.year}. aastal ${etNumber(groupShare, 1)} % koguraie ${measureGenitive(intent.measure)}`,
       intro: source.summary,
       introCitations: [1],

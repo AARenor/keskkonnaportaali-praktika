@@ -22,6 +22,7 @@ import {
   reviewedEstonianMunicipalityScope,
 } from "./municipalities.mjs";
 import { withOfficialSourceProfile } from "./source-registry.mjs";
+import { publicSourceAllowed } from "./citation-policy.mjs";
 import { isStatisticsWaterAbstractionQuery } from "./statistics.mjs";
 
 export const FOREST_OVERVIEW_URL = "https://www.keskkonnaagentuur.ee/uudised/blogis-kui-palju-ja-millist-metsa-eestis";
@@ -664,7 +665,8 @@ const SEARCH_DOCUMENTS = [
     title: "Põhjavee andmed Eestis",
     organization: "Keskkonnaagentuur / Keskkonnaportaal",
     type: "Ametlik ülevaade ja seireandmed",
-    published: "10.09.2026",
+    published: "29.12.2021",
+    updated: "10.09.2026",
     url: "https://keskkonnaportaal.ee/et/teemad/vesi/pohjavesi",
     tags: ["põhjavesi", "põhjaveebilanss", "põhjaveekogum", "seire", "KESE", "2025"],
     summary:
@@ -1131,6 +1133,51 @@ const SEARCH_DOCUMENTS = [
 const SOURCE_EXPANSION_REVIEWED_AT = "2026-10-01T00:00:00.000Z";
 
 const ADDITIONAL_OFFICIAL_SERVICE_DOCUMENTS = [
+  {
+    id: "wood-balance-2023-report",
+    title: "Puidubilanss 2023 – puiduallikad, kasutamine ja metoodika",
+    organization: "Keskkonnaagentuur",
+    type: "Ametlik aastaaruanne",
+    published: "2025",
+    dataYear: "2023",
+    url: "https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/Puidubilanss%202023.pdf",
+    tags: ["mets", "puit", "puidubilanss", "puiduallikad", "import", "eksport", "tihumeeter", "sortiment", "2023", "metoodika"],
+    summary: "Puidubilansi 2023 kogumaht oli 16 398 000 m³, hõlmates nii Eesti metsamaalt varutud puitu kui ka importi; see ei ole Eesti raiemaht.",
+    content: "Puidubilanss annab ülevaate 2023. aasta puidukasutusest ning esitab sortimendi kaupa puiduallikad ja kasutamise: tööstus, elanikkonna vajadused ja eksport. Puidubilansi kogumaht oli 2023. aastal 16 398 000 m³. Peamised puiduallikad olid raie metsamaalt (11,7 miljonit m³) ja import (3,5 miljonit m³). Bilansi kogumaht ei tähenda seega ainult Eestis raiutud puitu. Võrreldavuse huvides teisendati kogused kuupmeetriteks ehk tihumeetriteks. Muutunud metoodika korral muudeti tagasiulatuvalt ka vanu andmeid. Usaldusväärse statistika puudumisel kasutati kaudseid andmeid või eksperdihinnangut. Topeltarvestuse vältimiseks ei loetud toote puidusisalduseks jäätmeid, mida kasutati muuks tooteks või omaette tootena.",
+    locator: "Sissejuhatus ja metoodika, aruande lk 3–4; 2023. aasta puiduallikad ja koguste teisendamine.",
+    routeClasses: ["official_forestry_evidence", "official_indicator_or_report"],
+    _catalogueReviewedAt: "2026-10-01T00:00:00.000Z",
+  },
+  {
+    id: "groundwater-balance-2025-report",
+    title: "Põhjaveebilansi aruanne 2025 – veevõtt ja arvestuse ulatus",
+    organization: "Keskkonnaagentuur",
+    type: "Ametlik aastaaruanne",
+    published: "2026",
+    dataYear: "2025",
+    url: "https://keskkonnaportaal.ee/sites/default/files/Teemad/VESI/p%C3%B5hjavesi/2025_p%C3%B5hjaveebilansi%20aastaaruanne.pdf",
+    tags: ["põhjavesi", "veevõtt", "põhjaveebilanss", "kaevandusvesi", "mineraalvesi", "joogivesi", "2025"],
+    summary: "2025. aasta põhjaveevõtt oli 689 662 m³ ööpäevas, sh kaevandustest ja karjääridest ärajuhitud põhjavesi 557 264 m³ ööpäevas. Koguvõtt ei ole ainult joogivee tarbimine.",
+    content: "Põhjaveebilansi aruande Lisa 3 kirjeldab 2025. aasta üldist põhjaveekasutust üle Eesti ning sisaldab kaevandustest ja karjääridest väljapumbatud vett ja põhjaveevaru väliseid veevõtte. Põhjaveevõtt oli 2025. aastal 689 662 m³ ööpäevas. Võrreldes eelneva aastaga oli põhjaveevõtt 130 965 m³ ööpäevas ehk 23% suurem. Tabeli 2 järgi oli 2024. aasta Eesti põhjaveevõtt kokku 558 697 m³ ööpäevas, sh kaevandustest ja karjääridest ärajuhitud põhjavesi. Tabeli 2 järgi oli 2023. aasta Eesti põhjaveevõtt kokku 607 781 m³ ööpäevas, sh kaevandustest ja karjääridest ärajuhitud põhjavesi. Tabeli 2 järgi oli 2022. aasta Eesti põhjaveevõtt kokku 649 158 m³ ööpäevas, sh kaevandustest ja karjääridest ärajuhitud põhjavesi. Kasv tuli põhiliselt kaevandustest ja karjääridest ärajuhitud põhjavee arvelt: see oli 557 264 m³ ööpäevas ehk 81% kogu riigi põhjaveevõtust. Joogi-, olme- ja tootmisveena kasutatav põhjavesi oli 132 305 m³ ööpäevas ning mineraalvesi 93 m³ ööpäevas. Aruande eri lisade arvestuse ulatus erineb; koguvõttu ei tohi nimetada ainult joogivee tarbimiseks.",
+    locator: "Lisa 3 kokkuvõte ja tabel 2, aruande lk 7–8; ööpäevased kogused, mitte aastakogused.",
+    routeClasses: ["official_indicator_or_report", "official_data_or_api"],
+    _catalogueReviewedAt: "2026-10-01T00:00:00.000Z",
+  },
+  {
+    id: "groundwater-monitoring-2025-report",
+    title: "Põhjaveekogumite ja nitraaditundliku ala põhjavee seire 2025",
+    organization: "Eesti Keskkonnauuringute Keskus",
+    type: "Riikliku seire aastaaruanne",
+    published: "2026",
+    dataYear: "2025",
+    url: "https://keskkonnaportaal.ee/sites/default/files/Teemad/VESI/p%C3%B5hjavesi/2025%20P%C3%B5hjaveekogumite%20ja%20nitraaditundliku%20ala%20seirearuanne.pdf",
+    tags: ["põhjavesi", "põhjaveeseire", "veetase", "keemiline seisund", "nitraaditundlik ala", "KESE", "2025"],
+    summary: "2025. aasta koguselises põhjaveeseires mõõdeti veetaset 248 seirejaamas ning keemilise seisundi seireks võeti proove 232 seirejaamast; seireandmed esitatakse KESEs.",
+    content: "Eesti Keskkonnauuringute Keskuse 2025. aasta põhjaveekogumite ja nitraaditundliku ala seirearuande järgi mõõdeti põhjaveetaset 248 seirejaamas sagedusega 12–365 korda aastas. Koguselise seire veetaseme andmed esitatakse KESEs ööpäeva keskmise absoluutkõrgusena Balti 1977. aasta kõrgussüsteemis. Põhjaveekogumite keemilise seisundi seireks võeti 2025. aastal veeproove 232 seirejaamast. Nitraaditundliku ala seires eristatakse neli korda aastas tehtavat põhivõrguseiret (53 jaama) ja kord aastas tehtavat tugivõrguseiret (58 jaama). Veetaseme ja keemilise seisundi ajagraafikud esitatakse seirejaamade kaupa. Aruande lisades on veetasemete ja keemiliste analüüside kokkuvõtted. Jaamade arv ei ole põhjaveekogumite hea või halva seisundi arv.",
+    locator: "Seire metoodika ning andmete esitamine, aruande lk 7–9. Teostaja Eesti Keskkonnauuringute Keskus; tellija Kliimaministeerium.",
+    routeClasses: ["official_indicator_or_report", "official_historical_observation"],
+    _catalogueReviewedAt: "2026-10-01T00:00:00.000Z",
+  },
   {
     id: "current-weather-observations",
     title: "Jooksvad ilmavaatlused",
@@ -2510,6 +2557,7 @@ export function queryTerms(query) {
     .filter((word) => (word.length >= 3 || word === "uv") && !STOP_WORDS.has(word) && !/^\d+$/u.test(word))
     .flatMap((word) => {
       if (word.startsWith("keskkonnainfo")) return ["keskkond"];
+      if (word.startsWith("pohjaveevot")) return ["pohjavesi", "veevott"];
       // A named game species stays a term of its own, so a passage about
       // that species outranks the report's general summary.
       const species = WILDLIFE_SPECIES_ROOTS.find(([pattern]) => pattern.test(word));
@@ -2835,7 +2883,7 @@ export function textHasQueryRoot(value, root) {
 
 const DOMAIN_ROOTS = new Set([
   "mets", "raie", "juurdekasv", "metsaandmed", "metsaregister", "kliima", "ilm", "prognoos", "hoiatus", "temperatuur", "sademed", "tuul",
-  "vesi", "jarv", "jogi", "meri", "laanemeri", "pohjavesi", "puurkaev", "jaaolud", "ohk", "ohukvaliteet", "saaste", "heide", "kasvuhoonegaas",
+  "vesi", "veevott", "jarv", "jogi", "meri", "laanemeri", "pohjavesi", "puurkaev", "jaaolud", "ohk", "ohukvaliteet", "saaste", "heide", "kasvuhoonegaas",
   "jaat", "jaatmekaitluskoht", "prugi", "rehv", "polet", "ringmajandus", "ringlussevott", "loodus", "looduskaitse", "elurikkus", "elupaik",
   "kaitseala", "natura", "liik", "seire", "loodusvaatlus", "eutrofeerumine", "keskkond", "keskkonnaportaal", "keskkonnaluba", "menetlus", "piirang", "lubatavus",
   "suplusvesi", "joogivesi", "reovesi", "kohtkaitlus", "pestitsiid", "nitraat", "mereprugi", "rannikuvesi", "asbest", "biojaatmed", "plastijaatmed", "mikroplast",
@@ -7436,6 +7484,14 @@ export function assessSearchQuery(query, options = {}) {
       clarification: clarificationFor("andmed"),
     };
   }
+  if (/^(?:(?:palun|soovin|sooviksin|tahan)\s+)?ulevaad(?:e|et)$/u.test(normalized)) {
+    return {
+      kind: "needs-clarification",
+      topic: "keskkond",
+      reason: "broad-topic",
+      clarification: "Millise Eesti keskkonnateema ülevaadet soovid: mets, vesi, kliima, õhk, jäätmed või elurikkus? Näiteks küsi „metsa ülevaade“ või „põhjavee andmed Eestis“.",
+    };
+  }
   const broadRequest = /^(?:tahan\s+\w+\s+teada|vajan\s+(?:ainult\s+)?kaarti|otsin\s+loataotlust|minu\s+mets)$/u.test(normalized)
     || (/\bsiin\b/u.test(normalized) && roots.some((root) => ["lubatavus", "ehitamine"].includes(root)))
     || (/\b(?:ohk|ohukvaliteet)\b/u.test(normalized)
@@ -7767,7 +7823,28 @@ export function passageDisclaimsEvidence(passage) {
     .test(affirmativePrefix);
 }
 
+const NATIONAL_REPORT_PATHS = new Set([
+  "/et/teemad/vesi/pohjavesi",
+  "/sites/default/files/Teemad/VESI/põhjavesi/2025_põhjaveebilansi aastaaruanne.pdf",
+  "/sites/default/files/Teemad/VESI/põhjavesi/2025 Põhjaveekogumite ja nitraaditundliku ala seirearuanne.pdf",
+  "/sites/default/files/Teemad/Mets/Puidubilanss 2023.pdf",
+]);
+
 function documentCanDirectlyAnswerQuery(query, document) {
+  // These report excerpts contain national totals, not territorial splits.
+  // Place names may be harmless context for a directory route, but must not
+  // turn Estonia's total into a local or another country's measurement.
+  let nationalReport = false;
+  try {
+    const url = new URL(document?.url);
+    nationalReport = /(^|\.)keskkonnaportaal\.ee$/u.test(url.hostname)
+      && NATIONAL_REPORT_PATHS.has(decodeURIComponent(url.pathname).replace(/\/$/u, ""));
+  } catch { /* Invalid URLs cannot establish a national source identity. */ }
+  if (nationalReport) {
+    const namesLocalArea = queryTerms(query).some((term) => ADMIN_CONTEXT_ROOTS.has(term)
+      || isReviewedEstonianCountyIdentity(term) || isReviewedEstonianMunicipalityIdentity(term));
+    if (namesLocalArea || classifyForestryGeographyScope(query).kind === "foreign-or-other-region") return false;
+  }
   // Typed CSV evidence is allowed to answer only through its validator and
   // deterministic composer. If that contract rejects an incomplete temporal
   // intent or impossible observation, the generic lexical fallback must not
@@ -7868,7 +7945,7 @@ const OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     title: "Metsastatistika, sh statistiline metsainventuur (SMI)",
     organization: "Keskkonnaagentuur / Keskkonnaportaal",
     type: "Metoodika",
-    published: "jooksev",
+    published: "02.06.2022",
     updated: "18.08.2026",
     dataYear: "2025",
     dataAsOf: "18.08.2026",
@@ -7877,7 +7954,7 @@ const OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     summary: "SMI on üleriigiliste proovitükkidega valikuuring, mille põhjal koostatakse statistiliste meetoditega kogu Eesti metsade üldistatud hinnang.",
     content: "Statistiline metsainventuur ehk SMI on üleriigiliste proovitükkidega valikuuring. SMI põhjal koostatakse statistiliste meetoditega kogu Eesti metsade üldistatud hinnang ning näitajaga kaasneb statistiline viga. Keskkonnaagentuur koostab SMI põhjal iga-aastase metsade statistilise kokkuvõtte. SMI 2025 tulemused ja ettekanne avaldati seisuga 18. august 2026. SMI tagavara on valimi põhjal arvutatud statistiline hinnang koos veaga, mitte üks kindel vaieldamatu number. SMI sobib riigi metsade seisundi ja muutuste hindamiseks, mitte üksiku kinnistu inventeerimisandmete esitamiseks. Lausmetsakorralduse inventeerimisandmed kirjeldavad mõõdetud kinnistuid ja metsaeraldisi ega kata tingimata sama üldkogumit või ajaseisu. Valimi suurus üksi ei määra hinnangu täpsust: olulised on ka valikukava, proovitükkide esinduslikkus, mõõtmiskvaliteet ja avaldatud veahinnang. Erinevus lausmetsakorralduse registriandmetest ei tõenda iseenesest, et SMI tagavara oleks üle hinnatud; enne tuleb võrrelda üldkogumit, definitsiooni, andmeaastat ja ebakindlust.",
     locator: "SMI kui üleriigiline proovitükkidega valikuuring ning kogu Eesti üldistatud statistiline hinnang koos veahinnanguga.",
-    _publishedAt: "2026-08-18",
+    _publishedAt: "2022-06-02",
     _catalogueReviewedAt: "2026-10-01T00:00:00.000Z",
   },
   {
@@ -7885,7 +7962,9 @@ const OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     title: "SMI 2024: Eesti metsamaa pindala",
     organization: "Keskkonnaagentuur / Keskkonnaportaal",
     type: "Statistika",
-    published: "2024",
+    published: "2025",
+    dataYear: "2024",
+    dataAsOf: "30.07.2025",
     url: "https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI2024/SMI_2024.pdf",
     tags: ["mets", "metsamaa", "SMI", "pindala", "metsasus", "statistika", "tagavara", "juurdekasv", "lageraie", "mänd", "kuusk"],
     summary: "SMI 2024 järgi oli metsamaa pindala 2 350,6 tuhat hektarit: 51,84% kogu Eesti pindalast või 54,08%, kui nimetajast jätta välja Peipsi ja Võrtsjärv. Pindalahinnangu suhteline viga oli ±1,2%.",
@@ -7909,20 +7988,22 @@ const OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     title: "Keskkonnaülevaade – mets",
     organization: "Keskkonnaagentuur / Keskkonnaportaal",
     type: "Keskkonnaülevaade",
-    published: "17.06.2026",
+    published: "28.06.2024",
+    updated: "23.09.2026",
     url: "https://keskkonnaportaal.ee/et/keskkonnaulevaade/keskkonnaulevaade-mets",
     tags: ["mets", "metsade seisund", "kahjustused", "elurikkus", "kliimarisk", "trend"],
     summary: "Keskkonnaülevaade käsitleb metsa pindala, tagavara, vanuselist struktuuri, kahjustusi, elurikkust, kaitset ja kliimariski eraldi näitajatena ning eristab metsamaad metsaga kaetud pindalast.",
     content: "Metsa püsimist ja seisundit ei kirjelda üks näitaja. Keskkonnaülevaate järgi moodustas metsamaa 51,8% Eesti pindalast, kuid metsaga kaetud pindala ehk puistute pindala 47,1%; need on eri näitajad. 2024. aasta ruumianalüüsi järgi oli kaitse all 28,4% Eesti metsadest ja rangelt kaitstav 16,8% metsamaast; neid õigusliku kaitse näitajaid ei tohi samastada SMI majanduskategooriatega. Ülevaade käsitleb eraldi metsa pindala, tagavara ja vanuselist struktuuri ning metsade kahjustusi, elurikkust, kaitset ja kliimaga seotud riske. Kliimamuutuse mõjud ei ole ühesuunalised: põuad, soojemad talved, haigustekitajad ja kahjurid võivad juurdekasvu vähendada ning puid kahjustada. Kuuse-kooreüraski kahjustuskollete laienemist hinnati 2019.–2024. aastal ligikaudu 22 500 hektarile. Raiemahu mõju sõltub metsa asukohast, vanusest, koosseisust, elupaikadest, mullast ja veerežiimist, mistõttu väide, et kõik lageraied on alati ühesuguse keskkonnamõjuga, ei ole mõõdetav üksikfakt, ning mõju tuleb hinnata konkreetse ala elupaikade, mulla, veerežiimi ja taastumise järgi, mitte tuletada seda ainult lageraie liigist või ühest pindala- või mahuarvust. Ülevaate järgi on raiemaht viimasel kümnendil püsinud ligikaudu 10–12 miljoni m³ tasemel, kuid pikaajalise võrdluse jaoks tuleb kasutada sama definitsiooni ja metoodikaga aegrida. Viimase aasta hinnang ja viie aasta keskmine ei näita iseenesest, kas praegu raiutakse rohkem kui täpselt 20 aastat tagasi. Vastuseks on vaja sama metoodikaga 20-aastast aegrida.",
     locator: "Metsamaa ja metsaga kaetud pindala, kaitse näitajad, vanuseline struktuur, kliimamõjud, kahjustused, elurikkus ning raiemahu pikaajaline kontekst.",
-    _publishedAt: "2026-06-17",
+    _publishedAt: "2024-06-28",
   },
   {
     id: "metsainfo-hetkeseis",
     title: "Metsainfo hetkeseis",
     organization: "Keskkonnaagentuur / Keskkonnaportaal",
     type: "Andmete koondvaade",
-    published: "07.01.2026",
+    published: "12.02.2024",
+    updated: "07.01.2026",
     url: "https://keskkonnaportaal.ee/et/teemad/mets/metsainfo-hetkeseis",
     tags: ["mets", "metsaandmed", "metsateatis", "metsaregister", "RMK", "inventeerimine"],
     summary: "Koondvaade eristab metsateatisi, RMK hallatavate metsade takseerandmeid ja Metsaregistri inventeerimisandmeid.",
@@ -8051,6 +8132,7 @@ export function officialServiceCatalogueDocuments() {
   // maintained, cited service-directory extracts above or live retrieval.
   const legacyForestryFacts = new Set(["forest-overview", "forest-inventory-publication"]);
   const directory = [...SEARCH_DOCUMENTS, ...ADDITIONAL_OFFICIAL_SERVICE_DOCUMENTS]
+    .filter(publicSourceAllowed)
     .map(({ answer: _answer, tags, ...document }) => withReviewedCatalogueEvidence({
       ...document,
       tags: [...(tags || [])],

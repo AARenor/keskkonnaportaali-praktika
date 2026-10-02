@@ -2,6 +2,8 @@
 
 Tootmise vastuvõtukriteeriumide, andmevoo, marsruutide ja koodikaardi detailne register on failis [`acceptance-evidence.md`](./acceptance-evidence.md). Otsingu andmetöötluse kasutajale suunatud piir on failis [`PRIVAATSUS.md`](./PRIVAATSUS.md).
 
+**Allikapoliitika täiendus 01.10.2026:** Statistikaamet ei osale avalike tulemuste, vastuste ega diagrammide allikavalikus. Allpool kirjeldatud PXWeb-lepingud on säilitatud tehniline ajalugu, mitte avaliku vastuse erand. Toetatud metsamaa, tagavara, raie ja raieliikide diagrammid kasutavad Keskkonnaagentuuri SMI töövihikut. Primaararuannete, mõistete, kuupäevade tähenduse ja katvuse piirangute ajakohane register on [docs/ALLIKAD.md](docs/ALLIKAD.md).
+
 ## Eesmärk
 
 See on Keskkonnaportaali eraldiseisev praktikaversioon aadressil [praktika.arleserver.cfd](https://praktika.arleserver.cfd). Avaleht kasutab Keskkonnaportaali tuttavat visuaalset keelt ja lisab kaks selgelt eraldatud kasutusvoogu:

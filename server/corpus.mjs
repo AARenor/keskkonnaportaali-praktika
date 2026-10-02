@@ -744,7 +744,13 @@ export function parsePortalSitemap(xml) {
 export function extractReadablePage(html, url) {
   const $ = load(String(html || ""));
   const root = $("main").first().length ? $("main").first().clone() : $("body").first().clone();
-  root.find("script,style,noscript,svg,nav,header,footer,form,.breadcrumb,.pager,.eu-cookie-compliance-banner").remove();
+  // Only the publisher's metadata block is a date witness. Dates in article
+  // prose, sitemap lastmod and our fetch clock are not page update dates.
+  const dates = cleanText(root.find(".publication-date-author .card-item__date").first().text());
+  const publishedAt = parsePortalDate(dates.match(/Avaldatud:\s*(\d{2}\.\d{2}\.\d{4})/iu)?.[1]);
+  const updatedAt = parsePortalDate(dates.match(/Uuendatud:\s*(\d{2}\.\d{2}\.\d{4})/iu)?.[1]);
+  const organization = boundedText(root.find(".publication-date-author .card-item__author a").first().text(), 200);
+  root.find("script,style,noscript,svg,nav,header,footer,form,.breadcrumb,.pager,.eu-cookie-compliance-banner,.share_socials,.publication-date-author,.card-item__label--type,.kem-page__field-kem-topic").remove();
   const title = boundedText(root.find("h1").first().text() || $("title").text(), 500);
   const focused = root.find([
     ".field--name-body",
@@ -754,7 +760,7 @@ export function extractReadablePage(html, url) {
     "article",
   ].join(","));
   const content = boundedText((focused.length ? focused : root).text(), 80_000);
-  return { title: title || placeholderTitle(url), content };
+  return { title: title || placeholderTitle(url), content, publishedAt, updatedAt, organization };
 }
 
 export function pageRobotsPolicy(html = "", headerValue = "") {
@@ -1680,7 +1686,7 @@ async function wikipediaDocuments() {
 
 export async function persistHydratedCorpusDocument(
   client,
-  { url, title, content, contentHash, metadata, runId },
+  { url, title, content, contentHash, metadata, runId, publishedAt = null, organization = "" },
   { signal, maximumBytes = CORPUS_MAX_BYTES } = {},
 ) {
   const byteCeiling = Math.max(0, Math.trunc(Number(maximumBytes) || 0));
@@ -1699,13 +1705,16 @@ export async function persistHydratedCorpusDocument(
           content_hash = $4,
           metadata = (metadata - 'robots_noindex') || $5::JSONB,
           metadata_quality = GREATEST(metadata_quality, 3),
+          published_at = COALESCE($7::DATE, published_at),
+          published_label = CASE WHEN $7::DATE IS NOT NULL THEN to_char($7::DATE, 'DD.MM.YYYY') ELSE published_label END,
+          organization = CASE WHEN $8 <> '' THEN $8 ELSE organization END,
           fetched_at = NOW(),
           last_seen_at = NOW(),
           last_seen_run = COALESCE($6::BIGINT, last_seen_run),
           is_available = TRUE
       WHERE canonical_url = $1
       RETURNING id
-    `, [url, title, content, contentHash, metadata, runId]);
+    `, [url, title, content, contentHash, metadata, runId, publishedAt, organization]);
     throwIfCorpusAborted(signal);
     if (!updated.rowCount) {
       await client.query("COMMIT");
@@ -1731,16 +1740,21 @@ export async function persistHydratedCorpusDocument(
   }
 }
 
-async function hydrateUrls(client, urls, runId, { limit = 0, concurrency = 3, delayMs = 100, onProgress } = {}) {
-  const rawCandidates = [...new Set(urls)].filter((url) => {
+export function corpusHydrationCandidates(urls = []) {
+  return [...new Set(urls)].filter((url) => {
     try {
       const parsed = new URL(url);
-      return ["keskkonnaportaal.ee", "www.keskkonnaportaal.ee"].includes(parsed.hostname)
+      return parsed.protocol === "https:" && !parsed.username && !parsed.password && !parsed.port
+        && ["keskkonnaportaal.ee", "www.keskkonnaportaal.ee"].includes(parsed.hostname)
         && !/\.(?:pdf|xlsx?|docx?|zip|csv)$/iu.test(parsed.pathname);
     } catch {
       return false;
     }
   });
+}
+
+async function hydrateUrls(client, urls, runId, { limit = 0, concurrency = 2, delayMs = 2_000, onProgress } = {}) {
+  const rawCandidates = corpusHydrationCandidates(urls);
   const safeLimit = Math.max(0, Number(limit) || 0);
   if (!safeLimit || !rawCandidates.length) return { hydrated: 0, skipped: 0, errors: 0 };
   const prioritized = await client.query(`
@@ -1802,10 +1816,13 @@ async function hydrateUrls(client, urls, runId, { limit = 0, concurrency = 3, de
         url,
         title: extracted.title,
         content: extracted.content,
+        publishedAt: extracted.publishedAt,
+        organization: extracted.organization,
         contentHash: hash(extracted.content),
         metadata: JSON.stringify({
           hydrated: true,
           source_kind: "official-page-hydration",
+          source_updated_at: extracted.updatedAt,
         }),
         runId,
       }));
@@ -1963,6 +1980,7 @@ export async function syncPortalCorpus({
       // immediately improves the user's primary topics, then fills from the
       // wider portal catalogue on larger/manual runs.
       hydrationCandidates.push(...catalogUrls);
+      hydrationCandidates.push(...sitemapDocuments.map((document) => document.url));
 
       if (includeWikipedia) {
         try {
@@ -2053,14 +2071,21 @@ export function publicSearchItem(row, includeContent = false) {
   const hydrationMetadata = row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
     ? row.metadata
     : {};
+  const fetchedAt = row.fetched_at && Number.isFinite(new Date(row.fetched_at).getTime())
+    ? new Date(row.fetched_at).toISOString()
+    : null;
+  const attemptedAt = canonicalIsoTimestamp(hydrationMetadata.hydration_attempted_at);
+  // Failed/skipped hydration records an attempt, not a successfully refreshed
+  // body. Existing syncs set fetched_at at that attempt too: never renew stale
+  // evidence until a later successful hydration replaces it atomically.
+  const successfullyRefreshed = fetchedAt && (hydrationMetadata.hydration_attempted_at === undefined
+    || (attemptedAt && Date.parse(attemptedAt) < Date.parse(fetchedAt)));
   const isValidatedPageHydration = row.source_key === "official-page-hydration"
+    && successfullyRefreshed
     && hydrationMetadata.hydrated === true
     && hydrationMetadata.source_kind === "official-page-hydration"
     && boundedText(row.content, 80_000).length >= 80
     && /^[a-f0-9]{64}$/u.test(String(row.content_hash || ""));
-  const fetchedAt = row.fetched_at && Number.isFinite(new Date(row.fetched_at).getTime())
-    ? new Date(row.fetched_at).toISOString()
-    : null;
   const item = {
     id: `corpus-${row.id}`,
     title: row.title,
@@ -2069,6 +2094,9 @@ export function publicSearchItem(row, includeContent = false) {
     organization: row.organization || (row.source_tier === "supplementary" ? "Vikipeedia" : "Keskkonnaportaal"),
     type: row.category || "Veebileht",
     published: formatPublished(row),
+    ...(canonicalIsoDate(hydrationMetadata.source_updated_at)
+      ? { updated: formatPublished({ published_at: hydrationMetadata.source_updated_at }) }
+      : {}),
     topics: row.topics || [],
     sourceTier: row.source_tier,
     _publishedAt: row.published_at ? new Date(row.published_at).toISOString().slice(0, 10) : null,

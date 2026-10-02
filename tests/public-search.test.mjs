@@ -4200,8 +4200,9 @@ test("claim-specific freshness contracts require basis-specific source provenanc
   ]) {
     const source = catalogue.find((candidate) => candidate.id === id);
     assert.equal(source.evidencePolicy, "versioned", id);
-    assert.match(source._evidenceVersion, /^catalogue-review-2026-09-19:[0-9a-f]{64}$/u, id);
-    assert.equal(sourceEvidenceEligibility(source, { now }).eligible, true, id);
+    const reviewDate = ["forest-law", "nature-conservation-law"].includes(id) ? "2026-10-01" : "2026-09-19";
+    assert.match(source._evidenceVersion, new RegExp(`^catalogue-review-${reviewDate}:[0-9a-f]{64}$`, "u"), id);
+    assert.equal(sourceEvidenceEligibility(source, { now: Date.parse("2026-10-01T12:00:00Z") }).eligible, true, id);
     assert.equal(sourceEvidenceEligibility(source, {
       now: Date.parse("2036-09-19T00:00:00Z"),
     }).eligible, false, id);

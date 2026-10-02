@@ -10,7 +10,7 @@ Dokumendiversioon: 1.0.0
 - Faktivastuse tõend peab tulema samast filtreeritud ja relevantsusjärjestatud tulemusehulgast, mida kasutaja näeb.
 - Maandumis- või navigatsioonileht ei tõenda üksikut arvu. Muutuv väärtus vajab seotud adapterit või päringut otseselt katvat versioonitud lõiku.
 - Otsing jääb vaikimisi eestikeelseks. Geograafia-, privaatsus-, filtri- ja aegumiskontrolle ei nõrgendata uue termini lisamiseks.
-- Uusi Statistikaameti allikaid ei lisata. Olemasolevad kitsad KK51, MM03 ja KK07 diagrammiadapterid säilivad seni, kuni nende testitud leping kehtib.
+- Statistikaamet on avalikest tulemustest, vastustest ja diagrammidest välistatud (`publicSourceAllowed`). Vanad adapterid säilivad skeemikontrolli jaoks, kuid nende arv ei lähe avalikku vastusesse. Toetatud metsaarvud ja raie osakaalud tulevad SMI töövihikust.
 
 ## Metsanduse allikahierarhia
 
@@ -52,9 +52,17 @@ Kindlat kalendripäeva ei eeldata. Kontroll käivitatakse vähemalt kord kuus ni
 
 ## Teadmusväljavõtte uuendamine
 
+HTML-i korpusesünkroon kogub nüüd ka ainult saidikaardis olevaid lehti. Hüdratsiooni vaikeseade on kaks paralleelset päringut ja vähemalt kahesekundiline paus töölise partiide vahel; robots.txt, noindex ja ümbersuunamise piirangud jäävad jõusse. Portaali tulemuste arvu vastuolu katkestab täissünkrooni: seda ei maskeerita eduka täieliku korjena. Korda kontrollitud seemnepäringutega; pooleli jooksnud töö ei anna kogu kataloogi vanade kirjete eemaldamise õigust.
+
+Lehe `.publication-date-author` plokist säilitatakse väljaandja, `Avaldatud` ning `Uuendatud` kuupäev. Andmebaasi `metadata.source_updated_at` tähendab allika avaldatud leheuuendust. `fetched_at` tähendab meie korje aega ja saidikaardi `modified_at` on eraldi tehniline ajamärge; kumbagi ei nimetata avalikus vaates leheuuenduseks. Päev peab olema kalendris olemas. Uus metadata ilmub vanale kirjele alles pärast selle tegelikku uuesti laadimist.
+
+Ebaõnnestunud hüdratsiooni `hydration_attempted_at` ei tõenda edukat värskendamist. Kui katse on sama uus või uuem kui säilitatud sisu korjeaeg, jääb kirje suunavaks tulemuseks, mitte faktivastuse tõendiks; hilisem edukas hüdratsioon võib tõendusõiguse taastada. Avaldamisaasta filter kasutab kuvatud `published` aastat, mitte peidetud uuendamis- või korjekuupäeva.
+
+PDF-ide täissisu automaatne hüdratsioon ei ole selle HTML-korje osa. Kolme uue primaararuande ja olemasoleva aastaraamatu täiendused on käsitsi üle vaadatud, leheküljeviitega kataloogiväljavõtted. Ärge nimetage neid täielikuks PDF-otsinguks.
+
 1. Lisa või muuda dokumenti olemasolevas ametlikus kataloogis; eelista olemasoleva dokumendi täiendamist duplikaadile.
 2. Seo dokument ainult nende `_forestryIntentKinds` väärtustega, mida pealkiri, kokkuvõte või sisu ise katab. Sildid üksi ei anna tõendusõigust.
-3. Lisa `published`, olemasolul `updated`, `_publishedAt`, avalik HTTPS `url` ja kontrollitav `locator`.
+3. Lisa `published`, olemasolul `updated`, avalik HTTPS `url` ja kontrollitav `locator`. `_publishedAt` täpne kuupäev lisatakse ainult siis, kui allikas selle tõendab; pelgale väljaandeaastale ei mõelda avaldamispäeva juurde.
 4. Vii `CATALOGUE_REVIEWED_AT` ja versiooniprefiks edasi ainult pärast kataloogi tegelikku korduskontrolli.
 5. Muuda `SEARCH_RESPONSE_REVISION` järgmisele `answer-vNN-*` väärtusele, kui vastuse liikmesus, järjestus, allikaväli või sisu muutus; see väldib vana vastusecache'i kasutamist. Lukusta uus väärtus `tests/infrastructure.test.mjs` regressiooniga.
 
@@ -64,11 +72,12 @@ Kindlat kalendripäeva ei eeldata. Kontroll käivitatakse vähemalt kord kuus ni
 npm test
 npm run build
 npm run test:sites
-npm run eval:holdout
 npm run eval:blind
 npm run eval:open
 npm run eval:public
 ```
+
+Eraldi ajalooline kontroll `npm run eval:holdout` kasutab külmutatud v1 komplekti ja sisaldab H05 küsimust, mille nõutud allikas on `statistics-pxweb`. Uue välistamispoliitikaga lõpetab see komplekt „unknown source IDs” veaga, mistõttu see ei ole praeguse allikapoliitika läbiv tootmisvärav. Vana ootus jäeti kontrolli ajal muutmata; seda ei tohi raporteerida läbivana ega numbrilist lävendit vähendada. Uue poliitika negatiivsed vastuse-/graafiku- ja filtriproovid on `tests/official-knowledge.test.mjs`, `tests/statistics.test.mjs` ning `tests/retrieval.test.mjs`. Holdout'i edasine muutmine vajab eraldi versioonitud allikapoliitika ülevaatust.
 
 Seejärel tee diff-review, kontrolli ainult kavandatud faile ja saladuste puudumist, commit'i ning push'i `main` harusse. Valmisolek nõuab kahte sõltumatut tootmistõendit: Coolify kirje peab olema olekus `finished` täpselt `origin/main` commit'i SHA-l ning korduvad API- ja brauseriproovid peavad näitama uue versiooni käitumist. Kontrolli desktopi ja 390 px mobiilivaadet, allikalinke, kuupäevi, filtreid, eestikeelsuse piiri ning värske lehe `scrollY === 0` ja iframe'i mitteaktiivsust.
 

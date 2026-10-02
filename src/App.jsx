@@ -27,7 +27,7 @@ import {
   Youtube,
 } from "lucide-react";
 import { safeExternalHref } from "./url-safety.js";
-import { sourceDateMeta, sourceOrganizationLabel } from "./source-label.js";
+import { citationColor, latestSourceUpdates, sourceDateMeta, sourceOrganizationLabel } from "./source-label.js";
 import {
   REVIEWED_SEARCH_SUGGESTIONS,
   shouldFetchRemoteSuggestions,
@@ -821,6 +821,7 @@ function Citation({ number, sources = [] }) {
     <ExternalAnchor
       aria-label={`Allikas ${number}: ${sourceTitle}${safeExternalHref(source?.url) ? " (avaneb uuel vahelehel)" : ""}`}
       className="citation"
+      style={{ "--citation-color": citationColor(number) }}
       href={source?.url}
       title={source
         ? [
@@ -833,6 +834,23 @@ function Citation({ number, sources = [] }) {
     >
       <span>{number}</span><span>{label}</span>
     </ExternalAnchor>
+  );
+}
+
+function SourceLegend({ sources = [] }) {
+  if (!sources.length) return null;
+  const latest = latestSourceUpdates(sources);
+  return (
+    <ul className="source-legend" aria-label="Allikate värvid ja kuupäevad">
+      {sources.map((source) => (
+        <li key={source.citation} style={{ "--citation-color": citationColor(source.citation) }}>
+          <span className="source-legend__number">{source.citation}</span>
+          <span title={source.title}>{citationSourceLabel(source)} <span className="source-legend__date">{sourceDateMeta({ updated: source.updated, published: source.published, dataYear: source.dataYear, dataAsOf: source.dataAsOf })}</span>
+            {latest.includes(source.citation) ? <strong title="Uusim teadaolev lehe muutmise kuupäev nende allikate seas; see ei ole andmeaasta. Teadmata kuupäevaga allikaid ei võrreldud."> · Uusim leheuuendus</strong> : null}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -1151,6 +1169,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
                 ))}
               </div>
               <SourceActions sources={result.sources} />
+              <SourceLegend sources={result.sources} />
               {result.answer.note && !isRedundantAnswerNote(result.answer.note) ? <div className="answer-note"><ShieldCheck size={18} /><p>{result.answer.note}</p></div> : null}
               {result.clarification ? (
                 <div className="answer-clarification">
@@ -1173,6 +1192,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
                             <p key={partIndex}>{part.text}{" "}{(part.citations || []).map((citation) => <Citation key={citation} number={citation} sources={turn.result.sources} />)}</p>
                           ))}
                           <SourceActions sources={turn.result.sources} />
+                          <SourceLegend sources={turn.result.sources} />
                         </div>
                       </section>
                     );

@@ -3,7 +3,7 @@ import { boundedChart, validPublicChart } from "./answer-chart.mjs";
 import { withForestContextChart } from "./forest-series.mjs";
 import { composeHarvestShareResponse } from "./harvest-share.mjs";
 import { withLandUseShareChart } from "./land-use-share.mjs";
-import { officialCitationUrlEligibility } from "./citation-policy.mjs";
+import { officialCitationUrlEligibility, publicSourceAllowed } from "./citation-policy.mjs";
 import { readSearchCache, recordSearch } from "./database.mjs";
 import { answerCadastreQuestion } from "./cadastre.mjs";
 import { composeClimateDailyMeanResponse } from "./climate.mjs";
@@ -57,7 +57,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v58-natural-question-wording";
+export const SEARCH_RESPONSE_REVISION = "answer-v62-official-sources-db-expansion";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
@@ -913,9 +913,9 @@ function attachEvidenceExcerpts(draft, _query, plannedEvidence) {
 export function publicResponse(draft, { now = Date.now() } = {}) {
   const { evidence: _evidence, ...response } = draft;
   const sources = (Array.isArray(response.sources) ? response.sources : [])
-    .filter((source) => officialCitationUrlEligibility(source?.url).eligible)
+    .filter((source) => publicSourceAllowed(source) && officialCitationUrlEligibility(source?.url).eligible)
     .map((source) => {
-      if (source.actionUrl === undefined || officialCitationUrlEligibility(source.actionUrl).eligible) return source;
+      if (source.actionUrl === undefined || (publicSourceAllowed({url: source.actionUrl}) && officialCitationUrlEligibility(source.actionUrl).eligible)) return source;
       const { actionUrl: _actionUrl, actionLabel: _actionLabel, ...safeSource } = source;
       return safeSource;
     });
@@ -1290,8 +1290,8 @@ export function searchListingRevision(listing = {}) {
 
 export function cachedSourcesBelongToListing(cached, listing) {
   if ((cached?.sources || []).some((source) => (
-    !officialCitationUrlEligibility(source?.url).eligible
-    || (source?.actionUrl !== undefined && !officialCitationUrlEligibility(source.actionUrl).eligible)
+    !publicSourceAllowed(source) || !officialCitationUrlEligibility(source?.url).eligible
+    || (source?.actionUrl !== undefined && (!publicSourceAllowed({url: source.actionUrl}) || !officialCitationUrlEligibility(source.actionUrl).eligible))
   ))) return false;
   if (!listing?.items?.length || !cached?.sources?.length) return true;
   const urls = new Set(listing.items.map((item) => canonicalResultUrl(item.url)));

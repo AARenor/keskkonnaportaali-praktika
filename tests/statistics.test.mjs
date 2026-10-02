@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { loadStructuredIndicatorDocuments } from "../server/indicators.mjs";
 import { searchEnvironmentLive, searchTimeoutFallback } from "../server/pipeline.mjs";
-import { rankPublicSearchCandidates } from "../server/retrieval.mjs";
+import { deduplicateResults, rankPublicSearchCandidates } from "../server/retrieval.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
 import {
   composeStatisticsHazardousWasteResponse,
@@ -341,7 +341,7 @@ test("structured loader posts only the fixed KK048 request for the exact intent"
   assert.deepEqual(rejected, []);
 });
 
-test("the timeout pipeline publishes KK048 only from the visible filtered listing", () => {
+test("the timeout pipeline excludes KK048 under the primary-source policy", () => {
   const now = Date.now();
   const query = "Kui suur oli Eesti veevõtt 2024. aastal?";
   const [document] = statisticsWaterAbstractionFromJson(query, statisticsFixture(), {
@@ -352,8 +352,8 @@ test("the timeout pipeline publishes KK048 only from the visible filtered listin
     searchResults: { items: [document], total: 1 },
     filters: {},
   });
-  assert.deepEqual(response.sources.map((source) => source.id), [document.id]);
-  assert.match(response.answer.title, /2024\. aasta Eesti veevõtt 654,301 miljonit m³/u);
+  assert.deepEqual(response.sources, []);
+  assert.doesNotMatch(JSON.stringify(response.answer), /654[ , ]?301/u);
 
   const excluded = searchTimeoutFallback(query, {
     searchResults: { items: [document], total: 1 },
@@ -363,7 +363,7 @@ test("the timeout pipeline publishes KK048 only from the visible filtered listin
   assert.doesNotMatch(excluded.answer.intro, /654 301/u);
 });
 
-test("the production pipeline answers the exact KK048 question from its visible source", async () => {
+test("the production pipeline does not reuse an excluded KK048 number", async () => {
   const now = Date.now();
   const query = "Kui palju vett võeti Eestis 2024?";
   const [document] = statisticsWaterAbstractionFromJson(query, statisticsFixture(), {
@@ -376,10 +376,8 @@ test("the production pipeline answers the exact KK048 question from its visible 
     useCache: false,
     searchResults: { items: [document], total: 1 },
   });
-  assert.equal(response.answer.title, "KK048 järgi oli 2024. aasta Eesti veevõtt 654,301 miljonit m³");
-  assert.deepEqual(response.sources.map((source) => source.id), [document.id]);
-  assert.equal(response.sources[0].url, STATISTICS_WATER_ABSTRACTION_TABLE_URL);
-  assert.doesNotMatch(response.sources[0].url, /\.PX$/u);
+  assert.deepEqual(response.sources, []);
+  assert.doesNotMatch(JSON.stringify(response.answer), /654[ , ]?301/u);
 });
 
 test("KK25 request and adapter bind one exact 2024 national BHT7 total", () => {
@@ -521,7 +519,7 @@ test("structured loader posts only the fixed KK25 request for the exact intent",
   assert.deepEqual(rejected, []);
 });
 
-test("the timeout pipeline publishes KK25 only from the visible filtered listing", () => {
+test("the timeout pipeline excludes KK25 under the primary-source policy", () => {
   const now = Date.now();
   const query = "Kui suur oli Eestis 2024. aastal pinnaveekogudesse juhitud heitvee BHT7 reostuskoormus?";
   const [document] = statisticsWastewaterBht7FromJson(query, bht7Fixture(), { now, fetchedAt: now });
@@ -529,8 +527,8 @@ test("the timeout pipeline publishes KK25 only from the visible filtered listing
     searchResults: { items: [document], total: 1 },
     filters: {},
   });
-  assert.deepEqual(response.sources.map((source) => source.id), [document.id]);
-  assert.match(response.answer.title, /BHT7 reostuskoormus 868 tonni/u);
+  assert.deepEqual(response.sources, []);
+  assert.doesNotMatch(JSON.stringify(response.answer), /868 tonni/u);
 
   const excluded = searchTimeoutFallback(query, {
     searchResults: { items: [document], total: 1 },
@@ -540,7 +538,7 @@ test("the timeout pipeline publishes KK25 only from the visible filtered listing
   assert.doesNotMatch(excluded.answer.intro, /868 tonni/u);
 });
 
-test("the production pipeline answers the exact KK25 question from its visible source", async () => {
+test("the production pipeline does not reuse an excluded KK25 number", async () => {
   const now = Date.now();
   const query = "Mitu tonni bioloogilist hapnikutarvet (BHT7) juhiti 2024. aastal Eestis pinnaveekogudesse?";
   const [document] = statisticsWastewaterBht7FromJson(query, bht7Fixture(), { now, fetchedAt: now });
@@ -550,10 +548,8 @@ test("the production pipeline answers the exact KK25 question from its visible s
     useCache: false,
     searchResults: { items: [document], total: 1 },
   });
-  assert.equal(response.answer.title, "KK25 järgi oli 2024. aasta Eesti heitvee BHT7 reostuskoormus 868 tonni");
-  assert.deepEqual(response.sources.map((source) => source.id), [document.id]);
-  assert.equal(response.sources[0].url, STATISTICS_WASTEWATER_BHT7_TABLE_URL);
-  assert.doesNotMatch(response.sources[0].url, /\.PX$/u);
+  assert.deepEqual(response.sources, []);
+  assert.doesNotMatch(JSON.stringify(response.answer), /868 tonni/u);
 });
 
 test("KK068 request and adapter bind one exact 2024 national hazardous-waste total", () => {
@@ -682,15 +678,15 @@ test("structured loader posts only the fixed KK068 request for the exact intent"
   assert.deepEqual(rejected, []);
 });
 
-test("KK068 timeout and production paths stay bound to the visible exact structured record", async () => {
+test("KK068 timeout and production paths exclude the statistical number without a primary source", async () => {
   const now = Date.now();
   const query = "Kui palju ohtlikke jäätmeid tekkis Eestis 2024. aastal?";
   const [document] = statisticsHazardousWasteFromJson(query, hazardousWasteFixture(), { now, fetchedAt: now });
   const timedOut = searchTimeoutFallback(query, {
     searchResults: { items: [document], total: 1 },
   });
-  assert.deepEqual(timedOut.sources.map((source) => source.id), [document.id]);
-  assert.match(timedOut.answer.title, /1 469 565 tonni ohtlikke jäätmeid/u);
+  assert.deepEqual(timedOut.sources, []);
+  assert.doesNotMatch(JSON.stringify(timedOut.answer), /1 469 565/u);
   const excluded = searchTimeoutFallback(query, {
     searchResults: { items: [document], total: 1 },
     filters: { year: 2023 },
@@ -703,10 +699,8 @@ test("KK068 timeout and production paths stay bound to the visible exact structu
     useCache: false,
     searchResults: { items: [document], total: 1 },
   });
-  assert.equal(response.answer.title, "KK068 järgi tekkis Eestis 2024. aastal 1 469 565 tonni ohtlikke jäätmeid");
-  assert.deepEqual(response.sources.map((source) => source.id), [document.id]);
-  assert.equal(response.sources[0].url, STATISTICS_HAZARDOUS_WASTE_TABLE_URL);
-  assert.doesNotMatch(response.sources[0].url, /\.PX$/u);
+  assert.deepEqual(response.sources, []);
+  assert.doesNotMatch(JSON.stringify(response.answer), /1 469 565/u);
 });
 
 test("an eligible same-URL alias cannot overwrite an adapter-bound Statistics Estonia record", () => {
@@ -730,11 +724,12 @@ test("an eligible same-URL alias cannot overwrite an adapter-bound Statistics Es
     _answerEvidenceEligible: true,
   };
 
-  const ranked = rankPublicSearchCandidates(query, [pageAlias, document], { now });
+  const ranked = deduplicateResults([pageAlias, document]);
   const retained = ranked.find((candidate) => candidate.id === document.id);
   assert.equal(retained?._statisticsWastewaterBht7?.valueTonnes, 868);
   assert.equal(composeStatisticsWastewaterBht7Response(query, ranked, { now })?.evidence.kind,
     "structured-statistics-wastewater-bht7");
+  assert.deepEqual(rankPublicSearchCandidates(query, ranked, { now }), []);
 });
 
 test("KK610 binds an explicit supported year to the national total-waste recovery cell", () => {
@@ -838,7 +833,6 @@ test("structured loader and public pipeline keep KK610 bound to the visible tabl
     searchResults: { items: documents, total: 1 },
     startedAt: NOW,
   });
-  assert.match(response.answer.title, /17 667 652 tonni/u);
-  assert.equal(response.sources[0].url, STATISTICS_TOTAL_WASTE_RECOVERY_TABLE_URL);
-  assert.doesNotMatch(response.sources[0].url, /\.PX$/u);
+  assert.deepEqual(response.sources, []);
+  assert.doesNotMatch(JSON.stringify(response.answer), /17 667 652/u);
 });

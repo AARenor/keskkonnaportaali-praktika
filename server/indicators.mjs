@@ -30,9 +30,7 @@ import {
   smiLandCategoryDocument,
 } from "./land-use-share.mjs";
 import {
-  harvestShareFromJson,
-  harvestShareIntent,
-  harvestShareRequest,
+  smiHarvestShareDocument,
   isHarvestShareQuery,
 } from "./harvest-share.mjs";
 import { sourceEvidenceEligibility } from "./source-registry.mjs";
@@ -1918,22 +1916,8 @@ export async function loadStructuredIndicatorDocuments(query, options = {}) {
     }
   }
   if (isHarvestShareQuery(query)) {
-    try {
-      const fetchPxwebDataset = options.fetchPxwebDataset || fetchOfficialPxwebDataset;
-      const result = await fetchPxwebDataset(FOREST_SERIES_MM03_API_URL, harvestShareRequest(harvestShareIntent(query)), {
-        timeoutMs,
-        signal: options.signal,
-        maximumBytes: 32_000,
-      });
-      documents.push(...harvestShareFromJson(query, result.body, {
-        fetchedAt: result.fetchedAt,
-        stale: result.stale,
-        now: options.now,
-      }));
-    } catch (error) {
-      if (options.signal?.aborted || error?.name === "AbortError") throw error;
-      // The reviewed felling pages remain visible without the split.
-    }
+    const primary = smiHarvestShareDocument(query);
+    if (primary) documents.push(primary);
   }
   const forestSeriesQuery = (isForestSeriesQuery(query) || isForestContextSeriesQuery(query))
     && !isForestHarvestBalanceQuery(query) && !isHarvestShareQuery(query);

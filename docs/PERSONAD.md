@@ -31,6 +31,7 @@ Personad kirjeldavad peamisi kasutusolukordi, mitte päris inimeste profiile. Ne
 - **Vajab:** allika, andmeaasta, definitsiooni, üldkogumi, ühiku, metoodika ja vea eristamist.
 - **Risk:** üks värskem, kuid teise tähendusega näitaja võib otsesest allikast ekslikult ettepoole sattuda.
 - **Vastuse ootus:** relevantsus on esmane; võrreldavad allikad järjestatakse metsanduse allikahierarhia järgi ning piirangud öeldakse vastuses välja.
+- **Võrdlusnäide:** 466,242 miljonit m³ metsamaa tagavara ja 462,238 miljonit m³ puistute tagavara on eri näitajad sama SMI töövihiku eri tabelites. Uusima leheuuenduse märge ei muuda vanema perioodi andmeid uueks.
 
 ## IT-haldur
 

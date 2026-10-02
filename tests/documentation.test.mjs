@@ -32,7 +32,7 @@ test("IT guide locks the source hierarchy and all three annual forestry workflow
   for (const source of ["SMI", "Aastaraamat „Mets“", "Puidubilanss"]) {
     assert.match(guide, new RegExp(`### ${source.replace(/[„“]/gu, ".")}[\\s\\S]*Kontroll[\\s\\S]*Uuenda[\\s\\S]*Testi`, "iu"), source);
   }
-  assert.match(guide, /uusi Statistikaameti allikaid ei lisata/iu);
+  assert.match(guide, /Statistikaamet on avalikest tulemustest, vastustest ja diagrammidest välistatud/iu);
   assert.match(guide, /npm test[\s\S]*npm run build[\s\S]*npm run test:sites/u);
 });
 

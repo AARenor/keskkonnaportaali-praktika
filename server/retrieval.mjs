@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { publicSourceAllowed } from "./citation-policy.mjs";
 import { isClimateDailyMeanQuery } from "./climate.mjs";
 import { isEelisEmajogiPublicWatercourseQuery, isEelisNaturaSiteQuery } from "./eelis.mjs";
 import {
@@ -17,7 +18,7 @@ import {
 import { resolveForestSeriesIntent, validatedForestSeriesProjection } from "./forest-series.mjs";
 import { forestrySourcePreference } from "./forestry-source-policy.mjs";
 import { harvestShareIntent, validatedHarvestShareProjection } from "./harvest-share.mjs";
-import { landUseShareIntent, validatedLandUseShareProjection } from "./land-use-share.mjs";
+import { landUseShareIntent, validatedLandUseShareProjection, validatedSmiLandCategoryDocument } from "./land-use-share.mjs";
 import {
   analyzePublicSearchQuery,
   assessSearchQuery,
@@ -1043,6 +1044,8 @@ function ageIntentScore(document, roots, now) {
 }
 
 function liveServiceIntentScore(query, roots, document, analysis = analyzePublicSearchQuery(query)) {
+  if (["veetase", "water level"].includes(analysis.normalized)
+    && document.id === "current-hydrology-observations") return 60;
   if (analysis.candidateRouteClasses.includes("official_live_weather")
     && ["weather-forecast", "weather-warnings", "current-weather-observations"].includes(document.id)) {
     return 60;
@@ -1381,11 +1384,12 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
 }
 
 function documentYear(document) {
-  const timestamp = resultPublishedAt(document);
+  const timestamp = resultPublishedAt({ published: document?.published });
   return timestamp === null ? null : new Date(timestamp).getUTCFullYear();
 }
 
 export function resultMatchesFilters(document, rawFilters = {}) {
+  if (!publicSourceAllowed(document)) return false;
   const filters = normalizeSearchFilters(rawFilters);
   if (filters.source === "trusted" && !["official", "reviewed"].includes(document.sourceTier)) return false;
   if (!["all", "trusted"].includes(filters.source) && document.sourceTier !== filters.source) return false;
@@ -1395,6 +1399,7 @@ export function resultMatchesFilters(document, rawFilters = {}) {
 }
 
 export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date.now(), analysis = analyzePublicSearchQuery(query)) {
+  if (!publicSourceAllowed(document)) return { score: -Infinity, eligible: false };
   const prepared = {
     ...document,
     tags: document.tags || document.topics || [],
@@ -1686,6 +1691,7 @@ function isTypedChartCandidate(query, document, now) {
   return Boolean(
     (document?._forestSeries && validatedForestSeriesProjection(query, document, now))
     || (document?._landUseShare && validatedLandUseShareProjection(query, document, now))
+    || validatedSmiLandCategoryDocument(query, document, now)
     || (document?._harvestShare && validatedHarvestShareProjection(query, document, now)),
   );
 }
@@ -1720,7 +1726,7 @@ export function rankPublicSearchCandidates(query, documents = [], {
       [...intentDocuments, ...documents],
     ),
     Number.isFinite(Number(rankingOptions.now)) ? Number(rankingOptions.now) : Date.now(),
-  );
+  ).filter(publicSourceAllowed);
 }
 
 export function deduplicateResults(documents = []) {

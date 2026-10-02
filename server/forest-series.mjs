@@ -386,6 +386,14 @@ export function smiForestSeriesDocument(query) {
   const intent = resolveForestSeriesIntent(query);
   if (!intent) return null;
   const descriptor = seriesDescriptor(intent);
+  if (intent.table === "KK51" && descriptor.indicatorCode === "10") {
+    // Sheet 25 covers all forest land, not only stands (sheet 28). Until a
+    // separately reviewed stand-stock series exists, omit that chart rather
+    // than relabel the forest-land quantity as stand stock.
+    if (/\bpuistu\w*/u.test(normalize(query))) return null;
+    descriptor.seriesLabel = "Metsamaa kasvava metsa tagavara";
+    descriptor.sentenceLabel = "metsamaa kasvava metsa tagavara";
+  }
   const points = smiSeriesPoints(intent.table, descriptor.indicatorCode, intent.years);
   if (!points || points.length < MIN_WINDOW_YEARS
     || !points.every((point) => validPoint(point, descriptor.max))) return null;

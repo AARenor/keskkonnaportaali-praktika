@@ -32,6 +32,57 @@ import {
   summarizeUrlOccurrences,
 } from "../server/corpus.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
+import * as corpus from "../server/corpus.mjs";
+
+test("full corpus hydration includes sitemap-only pages but excludes files and external hosts", () => {
+  assert.equal(typeof corpus.corpusHydrationCandidates, "function");
+  assert.deepEqual(corpus.corpusHydrationCandidates([
+    "https://keskkonnaportaal.ee/et/mets",
+    "https://keskkonnaportaal.ee/et/mets",
+    "https://keskkonnaportaal.ee/et/sitemap-only-seire",
+    "https://keskkonnaportaal.ee/sites/default/files/aruanne.pdf",
+    "https://keskkonnaportaal.ee/sites/default/files/andmed.xlsx",
+    "https://example.test/leht",
+    "http://keskkonnaportaal.ee/et/mets",
+    "https://user:password@keskkonnaportaal.ee/et/mets",
+  ]), ["https://keskkonnaportaal.ee/et/mets", "https://keskkonnaportaal.ee/et/sitemap-only-seire"]);
+});
+
+test("portal hydration preserves source dates and publisher without treating retrieval or prose dates as updates", () => {
+  const page = extractReadablePage(`<main><h1>Puidubilanss</h1>
+    <div class="publication-date-author"><span class="card-item__author">Andis välja <a>Keskkonnaagentuur</a></span>
+    <span class="card-item__date">Avaldatud: 15.12.2021 / Uuendatud: 01.10.2026</span></div>
+    <article><p>Puiduallikad ja kasutamine 2023. aastal.</p></article></main>`, "https://keskkonnaportaal.ee/et/puidubilanss");
+  assert.equal(page.publishedAt, "2021-12-15");
+  assert.equal(page.updatedAt, "2026-10-01");
+  assert.equal(page.organization, "Keskkonnaagentuur");
+  const missing = extractReadablePage(`<main><h1>Seire</h1><article><p>Aruanne uuendatud: 31.02.2026. Üritus 01.10.2026.</p></article></main>`, "https://keskkonnaportaal.ee/et/seire");
+  assert.equal(missing.updatedAt, null);
+  assert.equal(missing.publishedAt, null);
+});
+
+test("portal article extraction separates navigation and source metadata from claim passages", () => {
+  const page = extractReadablePage(`<main><article><h1>Kuuse-kooreürask</h1>
+    <div class="share_socials"><span>Jaga</span></div>
+    <span class="card-item__label--type">Publikatsioonid</span>
+    <div class="kem-page__field-kem-topic">Keskkonnaseire Mets</div>
+    <div class="publication-date-author"><span class="card-item__author">Andis välja <a>Kliimaministeerium</a></span>
+      <span class="card-item__date">Avaldatud: 19.04.2024 / Uuendatud: 27.05.2025</span></div>
+    <p>Kuuse-kooreürask toitub koore niineosast ja põhjustab kuuskede kuivamist.</p>
+    <p>Seotud juhendmaterjal: kahjustuse tuvastamine.</p></article></main>`, "https://keskkonnaportaal.ee/et/urask");
+  assert.equal(page.organization, "Kliimaministeerium");
+  assert.equal(page.publishedAt, "2024-04-19");
+  assert.equal(page.updatedAt, "2025-05-27");
+  assert.doesNotMatch(page.content, /Jaga|Publikatsioonid|Keskkonnaseire|Andis välja|Avaldatud|Uuendatud/u);
+  assert.match(page.content, /niineosast[\s\S]*Seotud juhendmaterjal/u);
+});
+
+test("public corpus source exposes only explicit page update provenance, never sitemap or fetch time", () => {
+  const row = { id: 1, source_key: "official-page-hydration", canonical_url: "https://keskkonnaportaal.ee/et/puidubilanss", title: "Puidubilanss", published_label: "15.12.2021", source_tier: "official", fetched_at: "2026-10-02T12:00:00Z", modified_at: "2026-10-02T10:00:00Z", metadata: { source_updated_at: "2026-10-01" } };
+  assert.equal(publicSearchItem(row).updated, "01.10.2026");
+  assert.equal(publicSearchItem({ ...row, metadata: {} }).updated, undefined);
+  assert.equal(publicSearchItem({ ...row, metadata: { source_updated_at: "2026-02-31" } }).updated, undefined);
+});
 
 function mockCorpusHttpsRequest(responses, calls = []) {
   return (url, options, callback) => {
@@ -394,6 +445,7 @@ test("only an atomically validated corpus hydration row becomes answer evidence"
     { ...base, source_key: "official-live-search" },
     { ...base, source_key: "official-page-hydration", metadata: { hydrated: true } },
     { ...base, source_key: "official-page-hydration", content_hash: "invalid", metadata: { hydrated: true, source_kind: "official-page-hydration" } },
+    ...[base.fetched_at,"2026-08-21T12:00:00Z","invalid"].map((attempt) => ({...base,source_key:"official-page-hydration",metadata:{hydrated:true,source_kind:"official-page-hydration",hydration_attempted_at:attempt}})),
   ]) {
     const item = publicSearchItem(row, true);
     assert.equal(item.evidencePolicy, "route-only");
@@ -413,6 +465,9 @@ test("only an atomically validated corpus hydration row becomes answer evidence"
   assert.equal(sourceEvidenceEligibility(item, {
     now: Date.parse("2026-08-21T12:00:00Z"),
   }).eligible, true);
+
+  const recovered = publicSearchItem({...base,source_key:"official-page-hydration",metadata:{hydrated:true,source_kind:"official-page-hydration",hydration_attempted_at:"2026-08-19T12:00:00Z"}},true);
+  assert.equal(sourceEvidenceEligibility(recovered,{now:Date.parse("2026-08-21T12:00:00Z")}).eligible,true);
 
   const stale = publicSearchItem({
     ...base,

@@ -223,7 +223,7 @@ test("the share chart prefers Keskkonnaagentuur's SMI split over KK07 and reuses
 test("the land-use document fetched for a share question stays within the first visible results", async () => {
   const { rankPublicSearchCandidates } = await import("../server/retrieval.mjs");
   const query = "Kui suur osa Eestist on mets?";
-  const [shareDocument] = landUseShareFromJson(query, await fixture(), { now: NOW, fetchedAt: NOW });
+  const shareDocument = smiLandCategoryDocument(query);
   const topics = ["metsamaa pindala", "metsasus maakonniti", "SMI 2024 tulemused", "SMI 2025 tulemused", "metsaga kaetud ala", "puistute pindala", "riigimets ja erametsa osa", "metsade tagavara", "metsa vanuseline struktuur", "mets ja kliima"];
   const portalPages = topics.map((topic, index) => ({
     id: `portal-${index}`,

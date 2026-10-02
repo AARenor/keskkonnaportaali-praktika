@@ -44,6 +44,17 @@ export const OFFICIAL_CITATION_ORIGIN_VALUES = Object.freeze([
 export const OFFICIAL_CITATION_ORIGINS = new Set(OFFICIAL_CITATION_ORIGIN_VALUES);
 const UTF8_ENCODER = new TextEncoder();
 
+// Transport validation and historical adapter fixtures remain independent of
+// the current public publisher-selection policy.
+export function publicSourceAllowed(document = {}) {
+  if (/\bStatistikaamet\b/iu.test(String(document?.organization || "").trim())) return false;
+  try {
+    return !/(^|\.)stat\.ee$/iu.test(new URL(String(document?.url || "")).hostname);
+  } catch {
+    return true; // Citation boundaries independently reject invalid URLs.
+  }
+}
+
 export function officialCitationUrlEligibility(value) {
   if (typeof value !== "string" || value.length === 0 || UTF8_ENCODER.encode(value).byteLength > 2_000) {
     return { eligible: false, reason: "invalid-url-length" };

@@ -408,16 +408,13 @@ test("structured loader uses Keskkonnaagentuur's SMI workbook first and skips St
 
 test("the pipeline answers a forest series question from its visible source and abstains without it", async () => {
   const query = "Metsamaa pindala 2015–2025";
-  const [document] = forestSeriesFromJson(query, await fixture("pxweb-kk51-metsamaa-pindala-2015-2025.json"), {
-    now: NOW,
-    fetchedAt: NOW,
-  });
+  const document = smiForestSeriesDocument(query);
   const fallback = searchTimeoutFallback(query, {
     searchResults: { items: [document], total: 1 },
     filters: {},
     startedAt: NOW,
   });
-  assert.equal(fallback.answer.eyebrow, "Statistikaameti tabel KK51");
+  assert.equal(fallback.answer.eyebrow, "Keskkonnaagentuur, SMI 2025");
   assert.equal(fallback.chart.citation, 1);
   assert.deepEqual(fallback.sources.map((source) => source.id), [document.id]);
 
@@ -434,9 +431,9 @@ test("the pipeline answers a forest series question from its visible source and 
     useCache: false,
     searchResults: { items: [document], total: 1 },
   });
-  assert.equal(live.answer.eyebrow, "Statistikaameti tabel KK51");
+  assert.equal(live.answer.eyebrow, "Keskkonnaagentuur, SMI 2025");
   assert.equal(live.chart.series[0].points.length, 11);
-  assert.equal(live.sources[0].url, FOREST_SERIES_KK51_TABLE_URL);
+  assert.equal(live.sources[0].url, SMI_2025_TABLES_URL);
 
   const without = searchTimeoutFallback(query, { searchResults: { items: [], total: 0 }, filters: {}, startedAt: NOW });
   assert.equal(without.chart, undefined);
@@ -468,10 +465,7 @@ test("harvest-vs-growth questions defer to the Eurostat balance adapter and neve
 
 test("a forest series document survives public ranking for its own query", async () => {
   const query = "lageraie pindala 2015–2024";
-  const [document] = forestSeriesFromJson(query, await fixture("pxweb-mm03-lageraie-pindala-2015-2024.json"), {
-    now: NOW,
-    fetchedAt: NOW,
-  });
+  const document = smiForestSeriesDocument(query);
   const page = {
     id: "portal-lageraie",
     title: "Lageraie",
@@ -697,7 +691,7 @@ test("the live pipeline keeps the portal answer and adds the context chart under
   assert.equal(citedSource.url, FOREST_SERIES_KK51_TABLE_URL);
 });
 
-test("a series fetched for the question stays within the first visible results even when portal pages outscore it", () => {
+test("an excluded Statistics Estonia series cannot enter the visible results even for its own question", () => {
   const query = "Kui suur osa Eestist on mets?";
   const [seriesDocument] = forestSeriesFromJson(query, kk51Fixture({
     dimension: {
@@ -719,7 +713,7 @@ test("a series fetched for the question stays within the first visible results e
   }));
   const ranked = rankPublicSearchCandidates(query, [...portalPages, seriesDocument], { now: NOW });
   const position = ranked.findIndex((candidate) => candidate.id === seriesDocument.id);
-  assert.ok(position >= 0 && position <= 5, `series ranked at ${position}`);
+  assert.equal(position, -1);
   assert.notEqual(ranked[0].id, seriesDocument.id, "the best portal page keeps the lead");
   const unrelated = rankPublicSearchCandidates("Kui palju vett võeti Eestis 2024?", [...portalPages, seriesDocument], { now: NOW });
   assert.ok(unrelated.findIndex((candidate) => candidate.id === seriesDocument.id) > 5 || unrelated.every((c) => c.id !== seriesDocument.id));
@@ -760,10 +754,7 @@ test("the live follow-up path answers the widened period from the series with a 
   const rootQuery = "mitu ha metsa on eestis";
   const question = "näita 2000-2025";
   const retrievalQuery = contextualRetrievalQuery(rootQuery, question, []);
-  const [seriesDocument] = forestSeriesFromJson(retrievalQuery, kk51Fixture({}, { years: WIDE_YEARS, values: WIDE_VALUES }), {
-    now: NOW,
-    fetchedAt: NOW,
-  });
+  const seriesDocument = smiForestSeriesDocument(retrievalQuery);
   assert.ok(seriesDocument);
   assert.equal(seriesDocument._forestSeries.points.length, 26);
   const live = await searchEnvironmentLive(question, {
@@ -775,7 +766,7 @@ test("the live follow-up path answers the widened period from the series with a 
     useCache: false,
     searchResults: { items: [seriesDocument], total: 1 },
   });
-  assert.equal(live.answer.eyebrow, "Statistikaameti tabel KK51");
+  assert.equal(live.answer.eyebrow, "Keskkonnaagentuur, SMI 2025");
   assert.match(live.answer.title, /^Metsamaa pindala 2000–2025/u);
   assert.equal(live.chart.series[0].points.length, 26);
   assert.equal(live.chart.citation, 1);

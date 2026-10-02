@@ -120,7 +120,7 @@ test("the harvest share answer states the share and carries a sector chart with 
   assert.equal(composeHarvestShareResponse("Kui suur on lageraie pindala?", documents, { now: NOW }), null);
 });
 
-test("the loader fetches only the cut-type split for a share question and the pipeline prefers it to the series", async () => {
+test("the loader uses primary SMI without PXWeb and the pipeline keeps its chart", async () => {
   const query = "Kui suur osa raiest on eestis lageraie";
   const urls = [];
   const documents = await loadStructuredIndicatorDocuments(query, {
@@ -132,12 +132,12 @@ test("the loader fetches only the cut-type split for a share question and the pi
       return { body: await fixture(), fetchedAt: FETCHED_AT, stale: false };
     },
   });
-  assert.deepEqual(urls, ["Aasta/Raie liik/Näitaja"]);
-  assert.deepEqual(documents.map((document) => document.id), ["harvest-share-mm03-1-2024"]);
+  assert.deepEqual(urls, []);
+  assert.deepEqual(documents.map((document) => document.id), ["harvest-share-smi-1-2024"]);
 
-  const [document] = harvestShareFromJson(query, await fixture(), { now: NOW, fetchedAt: NOW });
+  const [document] = documents;
   const fallback = searchTimeoutFallback(query, { searchResults: { items: [document], total: 1 }, filters: {}, startedAt: NOW });
-  assert.equal(fallback.answer.eyebrow, "Statistikaameti tabel MM03");
+  assert.equal(fallback.answer.eyebrow, "Keskkonnaagentuuri SMI andmetabel");
   assert.equal(fallback.chart.kind, "share");
   const live = await searchEnvironmentLive(query, { startedAt: NOW, deadlineAt: NOW + 1_000, useCache: false, searchResults: { items: [document], total: 1 } });
   assert.equal(live.chart.kind, "share");

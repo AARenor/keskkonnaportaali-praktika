@@ -228,7 +228,7 @@ function chartFor(citation) {
 
 test("publicResponse keeps a valid chart, remaps its citation and drops an invalid one", () => {
   const uncited = source({ id: "uncited", citation: 1, url: "https://keskkonnaportaal.ee/et/uncited" });
-  const cited = source({ id: "cited", citation: 2, url: "https://andmed.stat.ee/et/stat/majandus__metsamajandus/MM03" });
+  const cited = source({ id: "cited", citation: 2, url: "https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI%20tulemused%202025/SMI%202025%20tulemused.xlsx" });
   const draft = {
     ...citedDraft([uncited, cited]),
     answer: { ...citedDraft([]).answer, introCitations: [2] },

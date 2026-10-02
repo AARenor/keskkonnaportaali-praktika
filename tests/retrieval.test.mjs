@@ -51,6 +51,17 @@ import { climateJogevaDailyMeanFromJson } from "../server/climate.mjs";
 
 const NOW = Date.parse("2026-08-17T12:00:00Z");
 
+test("year filters match the displayed publication year, not hidden update metadata", () => {
+  const source = {url:"https://keskkonnaportaal.ee/et/topic",sourceTier:"official",published:"02.06.2022",updated:"18.08.2026",_publishedAt:"2026-08-18"};
+  assert.equal(resultMatchesFilters(source,{year:2026}),false);
+  assert.equal(resultMatchesFilters(source,{year:2022}),true);
+  assert.equal(resultMatchesFilters({...source,published:"jooksev"},{year:2026}),false);
+  const smi = officialServiceCatalogueDocuments().find((item) => item.id === "smi");
+  assert.equal(smi.published,"02.06.2022");
+  assert.equal(resultMatchesFilters(smi,{year:2026}),false);
+  assert.equal(resultMatchesFilters(smi,{year:2022}),true);
+});
+
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -399,7 +410,7 @@ test("the exact named Natura record outranks generic spatial and protected-area 
   assert.ok(ranked.findIndex((document) => document.id === "environment-register") > 0);
 });
 
-test("the exact KK048 water-abstraction statistic outranks generic water routes", () => {
+test("the exact KK048 statistic is excluded from public ranking", () => {
   const now = Date.parse("2026-08-22T00:20:00Z");
   const query = "Kui suur oli Eesti veevõtt 2024. aastal?";
   const body = JSON.stringify({
@@ -425,11 +436,9 @@ test("the exact KK048 water-abstraction statistic outranks generic water routes"
     fetchedAt: now - 30_000,
   });
   const ranked = rankSearchCandidates(query, [typed, ...officialServiceCatalogueDocuments()], { now });
-  assert.equal(ranked[0]?.id, "statistics-water-abstraction-2024");
-  assert.equal(
-    rankSearchCandidates(query, officialServiceCatalogueDocuments(), { now })[0]?.id,
-    "statistics-pxweb",
-  );
+  assert.ok(typed);
+  assert.equal(ranked.some((document) => document.id === typed.id), false);
+  assert.equal(officialServiceCatalogueDocuments().some((document) => document.id === "statistics-pxweb"), false);
 });
 
 test("the exact Jõgeva daily climate record outranks generic historical-weather routes", () => {
@@ -462,7 +471,7 @@ test("the exact Jõgeva daily climate record outranks generic historical-weather
   assert.equal(ranked.some((document) => document.id === "weather-forecast"), false);
 });
 
-test("the exact KK25 BHT7 statistic outranks generic water and PXWeb routes", () => {
+test("the exact KK25 statistic is excluded from public ranking", () => {
   const now = Date.parse("2026-08-22T00:20:00Z");
   const query = "Mitu tonni bioloogilist hapnikutarvet (BHT7) juhiti 2024. aastal Eestis pinnaveekogudesse?";
   const body = JSON.stringify({
@@ -488,15 +497,12 @@ test("the exact KK25 BHT7 statistic outranks generic water and PXWeb routes", ()
   });
   const ranked = rankSearchCandidates(query, [typed, ...officialServiceCatalogueDocuments()], { now });
 
-  assert.equal(ranked[0]?.id, "statistics-wastewater-bht7-2024");
-  assert.equal(
-    rankSearchCandidates(query, officialServiceCatalogueDocuments(), { now })[0]?.id,
-    "statistics-pxweb",
-  );
+  assert.ok(typed);
+  assert.equal(ranked.some((document) => document.id === typed.id), false);
   assert.equal(ranked.some((document) => document.id === "current-hydrology-observations"), false);
 });
 
-test("the exact KK068 hazardous-waste total outranks articles and generic waste routes", () => {
+test("the exact KK068 statistic is excluded from public ranking", () => {
   const now = Date.parse("2026-08-22T00:20:00Z");
   const query = "Kui palju ohtlikke jäätmeid tekkis Eestis 2024. aastal?";
   const body = JSON.stringify({
@@ -521,16 +527,15 @@ test("the exact KK068 hazardous-waste total outranks articles and generic waste 
     fetchedAt: now - 30_000,
   });
   const ranked = rankSearchCandidates(query, [typed, ...officialServiceCatalogueDocuments()], { now });
-  assert.equal(ranked[0]?.id, "statistics-hazardous-waste-2024");
-  assert.equal(rankSearchCandidates(query, officialServiceCatalogueDocuments(), { now })[0]?.id,
-    "statistics-pxweb");
+  assert.ok(typed);
+  assert.equal(ranked.some((document) => document.id === typed.id), false);
   for (const genericId of ["waste-reporting-data", "municipal-waste-recycling-page"]) {
     const genericIndex = ranked.findIndex((document) => document.id === genericId);
-    assert.ok(genericIndex === -1 || genericIndex > 0);
+    assert.ok(genericIndex === -1 || ranked[genericIndex].url.startsWith("https://keskkonnaportaal.ee/"));
   }
 });
 
-test("the exact KK610 total-waste recovery cell outranks rates and generic waste routes", () => {
+test("the exact KK610 statistic is excluded from public ranking", () => {
   const now = Date.parse("2026-08-22T00:20:00Z");
   const query = "Kui palju jäätmeid taaskasutati Eestis 2024. aastal?";
   const body = JSON.stringify({
@@ -552,10 +557,9 @@ test("the exact KK610 total-waste recovery cell outranks rates and generic waste
   });
   const [typed] = statisticsTotalWasteRecoveryFromJson(query, body, { now, fetchedAt: now - 30_000 });
   const ranked = rankSearchCandidates(query, [typed, ...officialServiceCatalogueDocuments()], { now });
-  assert.equal(ranked[0]?.id, "statistics-total-waste-recovery");
-  assert.ok(ranked.findIndex((document) => document.id === "statistics-pxweb") > 0);
-  const ratePageIndex = ranked.findIndex((document) => document.id === "municipal-waste-recycling-page");
-  assert.ok(ratePageIndex === -1 || ratePageIndex > 0);
+  assert.ok(typed);
+  assert.equal(ranked.some((document) => document.id === typed.id), false);
+  assert.equal(ranked.findIndex((document) => document.id === "statistics-pxweb"), -1);
 });
 
 test("service intents outrank articles that match only a place or the word API", () => {

@@ -1941,7 +1941,7 @@ h3 {
   align-items: center;
   gap: 4px;
   margin: 0 2px;
-  border: 1px solid #bcdce8;
+  border: 1px solid var(--citation-color, #bcdce8);
   border-radius: 999px;
   padding: 2px 7px 2px 4px;
   background: #eef8fc;
@@ -1965,8 +1965,8 @@ h3 {
   height: 16px;
   place-items: center;
   border-radius: 50%;
-  background: #d4edf6;
-  color: #003b66;
+  background: var(--citation-color, #d4edf6);
+  color: #fff;
   flex: 0 0 auto;
 }
 
@@ -1991,6 +1991,36 @@ h3 {
   color: #315f73;
   font-size: 0.82rem;
 }
+
+.source-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 16px 0;
+  padding: 0;
+  list-style: none;
+  color: #435568;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.source-legend li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.source-legend__number {
+  flex: 0 0 18px;
+  text-align: center;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--citation-color);
+}
+
+.source-legend__date { font-weight: 400; }
 
 .answer-note {
   max-width: 780px;

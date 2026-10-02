@@ -8,13 +8,60 @@ See register kirjeldab, millised allikad on otsingu päringuteel aktiivsed, mill
 
 Võrreldava relevantsuse ja väitekatvuse korral rakendub järjestus **SMI → metsaaastaraamat → puidubilanss → Keskkonnaportaal/Keskkonnaagentuur → Kliimaministeerium → täiendavad ametlikud allikad → Eurostat → taustallikad**. Relevantsus jääb esmaseks: hierarhia ei tõsta SMI dokumenti ette, kui see kasutaja küsimust ei kata. Ühine runtime-poliitika on failis `server/forestry-source-policy.mjs`.
 
-01.10.2026 laiendus ei lisanud ühtki uut Statistikaameti allikat. Olemasolevad KK51, MM03 ja KK07 adapterid jäid muutmata kitsaste diagrammilepingutena.
+01.10.2026 täiendav laiendus välistab Statistikaameti avalike tulemuste, vastuste ja diagrammide allikavalikust. Ajaloolised adapterid ja nende skeemitestid jäävad alles, kuid nad ei anna avalikus vastuses tõendusõigust. Metsamaa, tagavara, raie ja raieliikide jaotuse toetatud diagrammid kasutavad Keskkonnaagentuuri SMI 2025 töövihikut; puuduva primaarse arvurea korral diagrammi ei näidata. Eurostat jääb täiendavaks allikaks.
 
-## Aktiivsed päringutee allikad
+## Kontrollitud primaararuanded (01.10.2026)
+
+Riigi Teataja kontroll 01.10.2026: **Metsaseadus** jõustunud sõnastusega 01.07.2026, kehtivuse lõpp 31.12.2032 (RT I, 12.05.2026, 20); **Looduskaitseseadus** jõustunud sõnastusega 01.09.2026, hetkel kehtiv (RT I, 09.07.2026, 47); **Metsa majandamise eeskiri** jõustunud sõnastusega 16.06.2025, hetkel kehtiv (RT I, 13.06.2025, 14). Brauseriga kontrolliti sõnastuse metadata välju ning männi 90–120 aasta raievanuseid, sanitaarraie 30% täiuse alampiiri, § 29 lõike 11 pindalapiire ja § 41 lõike 14 üldist 20 tihumeetri erandit. Viimasel on eraldi riigikaitseline erand (§ 41 lg 14¹), mida ei tohi laiendada tavalisele kinnistule. Need kuupäevad on sõnastuse kehtivus, mitte leheuuendused.
+
+| Allikas | Väljaanne / andmeperiood | Kontrollitud ulatus |
+|---|---|---|
+| [Puidubilanss 2023](https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/Puidubilanss%202023.pdf) | Tiitellehel Tallinn 2025; andmed 2023 | Lk 3–4: puiduallikad, import, eksport, teisendamine tihumeetriteks ja tagasiulatuvad metoodikaparandused. 16 398 000 m³ kogumaht ei ole Eesti raiemaht. |
+| [Põhjaveebilansi aruanne 2025](https://keskkonnaportaal.ee/sites/default/files/Teemad/VESI/p%C3%B5hjavesi/2025_p%C3%B5hjaveebilansi%20aastaaruanne.pdf) | Tallinn 2026; andmed 2025 | Lk 7–8, Lisa 3 ja tabel 2: 689 662 m³ **ööpäevas**, sh kaevandustest ja karjääridest ärajuhitud vesi. Ei ole aastakogus ega ainult joogivee tarbimine. |
+| [Põhjaveekogumite ja nitraaditundliku ala seire 2025](https://keskkonnaportaal.ee/sites/default/files/Teemad/VESI/p%C3%B5hjavesi/2025%20P%C3%B5hjaveekogumite%20ja%20nitraaditundliku%20ala%20seirearuanne.pdf) | Eesti Keskkonnauuringute Keskus; Tallinn 2026; andmed 2025 | Lk 7–9: 248 veetaseme ja 232 keemilise seire jaama; KESE, proovivõtusagedus ja kõrgussüsteem. Jaamade arv ei ole põhjaveekogumite seisundite arv. |
+| [Aastaraamat Mets 2023](https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/Mets%202023.pdf) | Autoriõigus 2025; peatüki SMI arvutusseis 09.09.2024 | Lk 17–18: valikuuring, registri katvus, metoodika ümberarvutused ja uued majanduskategooriate nimetused. Sama URL-i olemasolevat kirjet täiendati, duplikaati ei loodud. |
+| [SMI 2024 tabelid](https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI2024/SMI_2024.pdf) | Andmeaasta 2024; dokumendis näidatud tabelite seis 30.07.2025 | Olemasoleva väljaande metadata kontroll: väljaandeaasta on 2025, mitte pealkirja andmeaasta 2024. Üleslaadimise täpset päeva ei eeldata. Vanad arvud jäävad selle väljaande juurde; uusima töövihiku tagasiulatuvalt ümber arvutatud väärtusi ei liideta vana väljaande tabelitega. |
+| [Kuuse-kooreüraski juhend metsaomanikule](https://keskkonnaportaal.ee/et/kuuse-kooreurask-kuidas-teda-tunda-ja-ara-hoida-juhend-metsaomanikule) | Avaldatud 19.04.2024; uuendatud 27.05.2025 | Leht nimetab väljaandjaks Kliimaministeeriumi ja koostajaks Keskkonnaministeeriumi; portaali majutus ei muuda väljaandjat. Ürask toitub koore niineosast; rohelisest võrast üksi ei piisa kahjustuse välistamiseks. |
+
+Need on leheküljeviitega üle vaadatud väljavõtted, mitte automaatselt indekseeritud PDF-ide kogu sisu. Väljavõttele kehtib 31-päevane kordusülevaatuse piir. Faili enda avaldamisaastat ei asendata seda linkiva lehe uuendamiskuupäevaga. Puidubilansi maandumislehe tegelik uuendamiskuupäev kontrolli ajal oli **01.10.2026**.
+
+## Metsanduse mõisted ja seosed
+
+Terminoloogiline alus: aastaraamatu „Mets 2023” eestikeelsed ja ingliskeelsed peatüki- ning tabelipealkirjad; majanduskategooriate täpsed määratlused lk 18. Ingliskeelsed vasted selgitavad terminoloogiat, mitte ei lülita sisse ingliskeelset otsingut.
+
+| Mõiste / lühend | Tähendus või allika vaste | Oluline eristus |
+|---|---|---|
+| SMI | Statistiline metsainventuur; valikuuring | Üleriigiline hinnang, mitte iga eraldise täielik inventuur; arvestada valimiveaga. |
+| Metsaregister | Metsaressursi arvestuse riiklik register | Lausinventeerimise andmete katvus ja vanus erinevad SMI-st. |
+| Metsavarud | *Forest resources* | Laiem peatükk, mitte üks tagavaranumber. |
+| Metsamaa | *Forest land* | Eristada puistute pindalast. |
+| Kasvava metsa tagavara | *Growing stock* | Maht, mitte pindala või aastane juurdekasv. SMI tabel 25: kogu metsamaa tagavara; tabel 28: puistute tagavara. |
+| Hektaritagavara | Tagavara hektari kohta, m³/ha | Kontrollida, millise pindala kohta keskmine arvutati. |
+| Enamuspuuliik | *Dominant tree species* | Pindala jaotus enamuspuuliigi järgi ei ole sama mis iga puuliigi puidumaht. |
+| Majandatav mets | *Managed forest* / *forest available for wood supply* | Majanduspiiranguga ja majanduspiiranguta mets kokku. Ei võrdu ainult piiranguteta metsaga. |
+| Majanduspiiranguta mets | Varem „tulundusmets” või „majandusmets” | Majandatakse üldiste metsaseaduse nõuete järgi. |
+| Majanduspiiranguga mets | Varem „kaitsemets” | Majandamine on piiratud, mitte tervikuna keelatud. |
+| Mittemajandatav mets | Varem „range kaitse all olev mets” | Kogu majandustegevus keelatud; ei kuulu majandatava metsa hulka. |
+| Juurdekasv ja suremus | *Increment and mortality* | Kordusmõõtmiste periood erineb tabeli viimasest mõõtmisaastast; mudel- ja mõõtmishinnangut ei samastata. |
+| Raie pindala ja raiemaht | Hektarid versus kuupmeetrid | „Kui suur osa raiest?” kasutab pindala; „raiemahust?” kasutab mahtu. |
+| Lageraie / uuendusraie | Lageraie on uuendusraie osa | Rühma ja selle alamliiki ei liideta teist korda kokku. |
+| Harvendusraie / hooldusraie | Harvendusraie on hooldusraie osa | Diagrammi ülejäänud hooldusraie saadakse rühma ja alamliigi vahena. |
+| Tihumeeter | m³ puidu mahu arvestuses | Puidubilanss teisendab erinevad tooteühikud tihumeetriteks; teisenduskoefitsiendid ei ole universaalsed. |
+| Puidubilanss | Puiduallikate ja kasutamise arvestus | Sisaldab importi ning eri kasutusi; kogubilanss ei võrdu kohaliku raiemahuga. |
+| LULUCF | Maakasutus, maakasutuse muutus ja metsandus | Kasvuhoonegaaside arvestus; maakategooria ei pruugi kattuda muu metsadefinitsiooniga. |
+| ETAK | Eesti topograafia andmekogu | Ruumiandmestiku kõlvikud, mitte SMI valikuuring. |
+
+SMI 2025 töövihiku kontroll näitas olulist mõistevahet: 2025. aasta metsamaa kasvava metsa tagavara on tabelis 25 ligikaudu 466,242 miljonit m³; puistute tagavara tabelis 28 ligikaudu 462,238 miljonit m³. Need on **eri näitajad**, mitte sama arvu konkureerivad hinnangud. Üldise metsamaa tagavara diagramm kasutab nüüd tabelit 25.
+
+Diagrammi pealkiri ja legend nimetavad tabeli 25 näitajat metsamaa kasvava metsa tagavaraks, mitte puistute üldvaruks. Kui küsimus nimetab selgelt puistute tagavara, ei asendata puuduvat eraldi valideeritud aegrida tabeli 25 metsamaa arvudega.
+
+## Päringutee allikad ja säilitatud adapterilepingud
+
+**Allikapoliitika 01.10.2026:** järgmise tabeli Statistikaameti read dokumenteerivad üksnes säilitatud tehnilisi adapterilepinguid ja ajaloolisi kontrolle. Nende väljavõtteid ei kasutata avalikus tulemuses, vastuses ega diagrammis. Toetatud metsadiagrammid kasutavad primaarset SMI töövihikut. Teiste näitajate puhul ei anna olemasolev PXWeb-skeemitest vastamisõigust.
 
 | Allikas | Väljaandja | Ligipääs | Kasutus ja piirang | Puhver | Eval-kate |
 |---|---|---|---|---|---|
-| PostgreSQL-i sisukorpus | Keskkonnaportaal ja viidatud avalikud allikad | 8407 algset sitemapilehte, 6057 otsingukaarti, valitud täistekstid ja auditi-snapshot'id | Lai tulemuste loend ning sama loendi ametlike AI-tõendite leidmine; vana snapshot'i järjekord ei asenda relevantsusjärjestust | Püsiv korpus, 24 h sünkroniseerimispoliitika; enne portaali lugemist jõustatakse live `robots.txt` | Parseri-, robots-, deduplikatsiooni-, filtri-, relevantsus- ja avaliku lepingu testid |
+| PostgreSQL-i sisukorpus | Keskkonnaportaal ja viidatud avalikud allikad | Saidikaardi- ja otsingukataloogi kirjed, valitud HTML-täistekstid ning auditi-snapshot'id; 01.10.2026 sünkrooni sitemap'is 8466 URL-i | Lai tulemuste loend ning sama loendi ametlike AI-tõendite leidmine; URL-i leidmine ei tõenda täisteksti olemasolu ega kogu portaali katvust; vana snapshot'i järjekord ei asenda relevantsusjärjestust | Püsiv korpus, 24 h sünkroniseerimispoliitika; enne portaali lugemist jõustatakse live `robots.txt` | Parseri-, robots-, deduplikatsiooni-, filtri-, relevantsus- ja avaliku lepingu testid |
 | Kureeritud eestikeelne Vikipeedia | Wikimedia kogukond | MediaWiki Action API, kaheksa valitud mõisteartiklit | Ainult täiendav mõistetaust; ei tõenda üksinda ametlikku arvu, õigust ega hetkeolukorda | PostgreSQL-i korpus | Allikatase välistab selle ametliku tõendi rollist |
 | Keskkonnaportaali otsing | Keskkonnaagentuur | `https://keskkonnaportaal.ee/et/search?search_api_fulltext=...` | Dokumenteerimata HTML-discovery. Tulemuste HTML-i ei renderdata; server eraldab ainult pealkirja, puhta teksti, URL-i ja metaandmed | 5 min, stale-if-error kuni 24 h | Keskkonnateema positiivsed juhud; teemaväline ja null-vastete negatiivsed juhud |
 | Valitsusportaali ühine otsing | Keskkonnaamet, Keskkonnaagentuur, Kliimaministeerium | `https://search.service.eu-live.vportal.ee/v1/search/{index}`; indeksid `keskkonnaamet`, `keskkonnaagentuur`, `kliimamin` | Ametlike veebide täistekstiotsing. Päring kasutab `sort_by=score`, eesti keelt, kuni kuut vastet saidi kohta ja vajadusel kuni kolme intent-laiendust. Sisend on tõend, mitte mudelijuhis. Teenus jättis kontrolli ajal TLS-i vahesertifikaadi saatmata; rakendus lisab Let’s Encrypti ametliku avaliku YR1/YR2 ahela, kuid ei lülita sertifikaadikontrolli välja. Coolify IPv4-only võrgus sunnitakse selle hosti ühendus IPv4-le, et Node ei jääks töötut IPv6 ühendust ootama | 5 min, stale-if-error kuni 24 h | Jäätmete põletamine, Tallinna õhk, metsa vanusetrend, tuleviku raiemaht, load, vesi ja negatiivsed teemavälised juhud |
@@ -63,7 +110,7 @@ Versioonitud metsakorpus sisaldab 16 algallikat ja 21 vastusedokumenti ning sell
 
 ## Kontrollitud kataloogi- ja suunamisallikad
 
-Runtime'i kataloogis on 144 kirjet. Need aitavad valida õige ametliku teenuse ja on nõrga võrguolukorra korral kasutajale suunavad allikad, kuid ei muutu automaatselt konkreetse arvu või õigusliku järelduse tõendiks. 01.10.2026 ametlik allikainventuur hõlmas 8463 Keskkonnaportaali sitemap'i URL-i ning eraldi kontrollitud metsanduse primaarallikaid; varasemad ja lisatud lehed lukustatakse realistliku avaliku eval-maatriksi, FAQ/väärarusaamade, sõnastusvariantide ja teemaliste peibutusallikate vastu.
+Runtime'i kataloogis on 146 kirjet. Need aitavad valida õige ametliku teenuse ja on nõrga võrguolukorra korral kasutajale suunavad allikad, kuid ei muutu automaatselt konkreetse arvu või õigusliku järelduse tõendiks. 01.10.2026 ametlik allikainventuur hõlmas 8466 Keskkonnaportaali sitemap'i URL-i ning eraldi kontrollitud metsanduse primaarallikaid; varasemad ja lisatud lehed lukustatakse realistliku avaliku eval-maatriksi, FAQ/väärarusaamade, sõnastusvariantide ja teemaliste peibutusallikate vastu.
 
 Kataloogi allikaprofiil (`server/source-registry.mjs`) määrab eraldi marsruudiklassi, tarneviisi, värskusklassi ja tõendipoliitika. Need väljad ei lähe avalikku API-sse, kuid takistavad teenuse maandumislehte muutumast seal peituva väärtuse tõendiks.
 
@@ -116,7 +163,7 @@ Teine uurimisring lisas 25 otseselt kontrollitud ametlikku püsilehte. Kõik kas
 | Ilm ja hoiatused | KAIA ning Ilm+ | Prognoosid, hoiatused, radar, meteoroloogia, hüdroloogia, tuleoht ja mudeltooted | Ajatundlik ilmapäring ei lähe artikli-AI-le; kasutaja suunatakse reaalaja teenusesse |
 | Õhukvaliteet | `https://ohuseire.ee/` | Jaama- ja saasteainepõhised ajakohased mõõtetulemused | Reaalaja allika suunamine; hetkeseisu ei tuletata vanast artiklist |
 | Ruumiandmed | `https://gsavalik.envir.ee/geoserver` | EELISe ja Metsaregistri WMS/WFS, sh GeoJSON. Tundlikud liigikihid ei ole avalikud | Katastri/metsa adapter ja Emajõe üksiku avaliku vooluveekogu kihi adapter on aktiivsed; nimega Natura kirjed tulevad eraldi `f_rahvalad` teenusest ning muud kihid vajavad eraldi evalle |
-| Ametlik statistika | `https://andmed.stat.ee/api/v1/et/stat` | PXWeb API, sh keskkonna, energia, transpordi ja jäätmete tabelid | KK048 kogu Eesti 2024. aasta veevõtu, KK25 sama aasta BHT7 heitvee, KK068 ohtlike jäätmete tekke ja KK610 ühe aasta 2002–2024 kogu jäätmete taaskasutamise koondlahtritel on aktiivsed seotud JSON-stat2 adapterid; muud arvvastused vajavad eraldi tabeli, mõõtme, ühiku ja perioodi adapterit; KK51 metsavaru ja MM03 metsaraie aegread ning KK07 maakasutuse jaotus on aktiivsed metsaküsimustele ning tagastavad koos vastusega diagrammi (aegrida või sektordiagramm) |
+| Ajalooline PXWeb-adapter | `https://andmed.stat.ee/api/v1/et/stat` | Skeemi- ja ühikuvalideerimise testid säilivad | Statistikaamet on avalikust allikavalikust välistatud. Toetatud metsadiagrammid tulevad primaarsest SMI töövihikust; teiste näitajate puhul ei mõelda asendusarvu välja. |
 | Load ja menetlused | KOTKAS | Keskkonnaload, KMH/KSH ja aruandlus | Menetluse ametliku seisu algallikas; otsing leiab juhendi või menetluse viite |
 | Vee seisund | KESE, VEKA, KOTKAS ja Keskkonnaagentuuri veeleht | Eristab mõõtmise, veekogumi seisundihinnangu ja kasutusandmed | Otsing nõuab veekogu/näitaja/aasta täpsustust |
 | Puurkaevud | [Keskkonnaameti loa- ja projektijuhend](https://keskkonnaamet.ee/keskkonnakasutus-kiirgus/vesi/salv-puurkaevud-ja-heitvesi) ning [Keskkonnaportaali register](https://register.keskkonnaportaal.ee/register/search?objectType=DRIVEN_WELL&status=kinnitatud) | 21.07.2026 uuendatud juhend kinnitab uue puurkaevu projekti-, ehitusloa- ja kasutusloanõuded; EELISe register annab objekti registri- ja geoloogilised andmed | Õigusliku küsimuse viide avab väidet kandva juhendi ja eraldi toimingulink registri. Üldjuhend ei tõenda, kas kinnistul juba oleva konkreetse puurkaevu vajalikud load on olemas; ebatäpne olemasoleva kaevu küsimus jääb faktivastuseta |
