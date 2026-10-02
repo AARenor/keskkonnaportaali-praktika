@@ -156,7 +156,7 @@ function SeriesChart({ chart, citation = null }) {
               });
             }
             const last = series.points.at(-1);
-            let labelY = yFor(last.y) + 4;
+            let labelY = Math.max(MARGIN.top, yFor(last.y) - 10);
             if (endLabelYs.some((used) => Math.abs(used - labelY) < 14)) labelY = null;
             else endLabelYs.push(labelY);
             return (
@@ -188,7 +188,7 @@ function SeriesChart({ chart, citation = null }) {
                   </g>
                 ))}
                 {labelY !== null ? (
-                  <text className="answer-chart__value" x={xFor(last.x) + 9} y={labelY}>{formatChartValue(last.y, digits)}</text>
+                  <text className="answer-chart__value" textAnchor="end" x={xFor(last.x) - 9} y={labelY}>{formatChartValue(last.y, digits)}</text>
                 ) : null}
               </g>
             );
