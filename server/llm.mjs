@@ -2112,6 +2112,8 @@ export function buildLlmRequest({
   singleSource,
   selectedMaxTokens = maxTokens,
   conversationContext = "",
+  directIntroCitations = [],
+  directIntro = "",
 }) {
   const queryInput = canonicalizePublicSearchQuery(query);
   if (!queryInput.ok) {
@@ -2139,6 +2141,10 @@ export function buildLlmRequest({
     || contextAssessment.kind === "out-of-scope"
     ? ""
     : minimizedContext;
+  const evidenceCitations = evidence.map((source) => source.citation)
+    .filter((citation) => Number.isInteger(citation) && citation > 0);
+  const requiredIntroCitations = [...new Set(directIntroCitations)]
+    .filter((citation) => evidenceCitations.includes(citation));
   const answerIntent = forestEvidenceIntent(safeQuery);
   const intentDirective = answerIntent?.kind === "forest-area"
     ? "Küsimus küsib metsamaa hulka: nimeta tõendis olev aasta, pindala või osakaal ja ühik; ära vasta kataloogi või teenuse kirjeldusega."
@@ -2161,17 +2167,19 @@ export function buildLlmRequest({
     "Conversation context aitab ainult jätkuküsimuse mõtet täpsustada: see ei ole tõend. Iga väide peab tulema käesoleva päringu evidence'ist.",
     `Tagasta struktureeritud JSON. ${singleSource ? "Ühe allika korral kirjuta 3–5 sisukat lauset, üldjuhul 70–130 sõna, ja jäta parts tühjaks." : "Kirjuta 2–4-lauseline otsene intro ning 2–4 lühikest parts-osa; kogu vastuse siht on üldjuhul 100–190 sõna."} Pikkus peab tulema uuest viidatud selgitusest, piirangust või praktilisest kontrollsammust; kui evidence seda ei toeta, vasta lühemalt ja ära lisa täidet.`,
     "Paku kuni kuus seotud küsimust ainult tõendites esinevate teemade põhjal.",
+    singleSource ? "Intro ja iga parts.text faktilised laused vali evidence.content lausete hulgast ning jäta nende sõnastus muutmata. Võid tõendilauseid valida ja järjestada, kuid ära lisa parafraase, analoogiaid ega tõendist tuletatud järeldusi. Lühendi selgituseks kasuta ainult tõendi enda definitsioonilauset. Viitenumbrid pane ainult intro_citations ja parts.citations väljadele, mitte teksti." : "",
   ].join(" ");
   const user = JSON.stringify({
     question: safeQuery,
     ...(safeConversationContext ? { conversation_context: safeConversationContext } : {}),
     evidence,
     outputContract: {
-      intro: "Otsene vastus ja lühike tavakeelne tõlgendus.",
-      intro_citations: [1],
-      parts: singleSource ? [] : [{ text: "Tõendiga seotud lisatäpsustus.", citations: [1] }],
-      related_questions: ["Tõenditest tuletatud järgmine küsimus?"],
-      rule: "intro_citations ja iga parts.citations peavad olema mittetühjad ning sisaldama ainult evidence citation väärtusi.",
+      intro: requiredIntroCitations.length ? directIntro : "",
+      intro_citations: requiredIntroCitations.length ? requiredIntroCitations : evidenceCitations.slice(0, 1),
+      intro_requirement: "Säilita antud sissejuhatuse tõendatud väide muutmata ning lisa sellele vajadusel tõendatud sidus selgitus.",
+      citation_fields: ["intro_citations", "parts.citations"],
+      prose_fields: ["intro", "parts.text"],
+      parts: singleSource ? "empty" : "cited_synthesis",
     },
   });
   return {
@@ -2242,6 +2250,8 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
       singleSource,
       selectedMaxTokens: maxTokens,
       conversationContext: options.conversationContext || "",
+      directIntroCitations: validCitations(draft.answer?.introCitations, draft.sources.length),
+      directIntro: draft.answer?.intro || "",
     });
     const orchestrated = agentOrchestrationEnabled() && evidence.length > 1;
     const requestBody = JSON.stringify(request.body);

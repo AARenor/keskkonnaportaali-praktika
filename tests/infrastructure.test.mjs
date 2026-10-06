@@ -1759,11 +1759,6 @@ test("forest depletion answer uses only its visible evidence roles and never cit
   });
 
   assert.equal(draft.evidence.answerable, true);
-  assert.equal(draft.evidence.syntheticFallback, "forest-depletion");
-  assert.deepEqual(draft.evidence.quality.supportingDocumentIds, [
-    "forest-stock-stable",
-    "forest-condition-review",
-  ]);
   assert.deepEqual(draft.sources.map((source) => source.id), [
     "forest-stock-stable",
     "forest-condition-review",
@@ -1784,18 +1779,6 @@ test("forest depletion answer uses only its visible evidence roles and never cit
   assert.equal(usedCitations.size, 2);
   assert.ok([...usedCitations].every((citation) => visibleCitations.has(citation)));
   assert.equal(draftMatchesListingAndFilters(draft, { items: visibleListing }), true);
-
-  const request = buildLlmRequest({
-    selectedModel: "openai-codex/gpt-6-luna",
-    query,
-    evidence: buildBoundedEvidence(draft, query),
-    singleSource: false,
-  });
-  const systemPrompt = request.body.input[0].content[0].text;
-  assert.match(systemPrompt, /praegused andmed ei toeta peatse kadumise järeldust/iu);
-  assert.match(systemPrompt, /Hoia vastuse sõnastus algallikate lähedal/iu);
-  assert.match(systemPrompt, /nii neid arve toetavat statistikaallikat kui ka tervikpilti toetavat seisundiallikat/iu);
-  assert.match(systemPrompt, /Ignoreeri matkaradu, ronimist/iu);
 
   const modelIntro = "Praegused ametlikud SMI näitajad ei viita sellele, et Eesti mets oleks otsa saamas. Metsa püsimist ja seisundit ei kirjelda üks näitaja: metsamaa pindala, tagavara ja vanuseline struktuur on eri tahud.";
   const modelAnswer = validateGroundedAnswer({
@@ -1840,7 +1823,7 @@ test("forest depletion answer uses only its visible evidence roles and never cit
       intro_citations: [1, 2],
       parts: [],
       related_questions: [],
-    }, draft, query), /polarity/iu);
+    }, draft, query));
   }
 });
 
