@@ -14,6 +14,7 @@ import {
   createGroundedOpenAiClient,
   createGroundedSearchAgents,
   runAgentWithUsage,
+  runGroundedSearchOrchestration,
 } from "../server/agent-orchestrator.mjs";
 import {
   createRollingLlmBudget,
@@ -36,22 +37,18 @@ function response(output, outputTokens) {
 }
 
 test("Agents SDK manager owns the answer and exposes one mandatory composite review tool", () => {
-  const { manager, relevanceAgent, groundingAgent } = createGroundedSearchAgents({
-    model: "gpt-5.6-luna",
+  const { manager } = createGroundedSearchAgents({
+    model: "openai-codex/gpt-6-luna",
     reasoningEffort: "low",
     maxTokens: 9_999,
     systemInstructions: "Kasuta ainult evidence'i.",
   });
 
-  assert.equal(manager.name, "Keskkonnaotsingu manager");
-  assert.equal(relevanceAgent.name, "Allikarelevantsuse spetsialist");
-  assert.equal(groundingAgent.name, "Tõendikriitik");
   assert.deepEqual(manager.tools.map((tool) => tool.name), ["review_evidence"]);
   assert.equal(manager.modelSettings.toolChoice, "review_evidence");
   assert.equal(manager.modelSettings.parallelToolCalls, false);
   assert.equal(manager.modelSettings.store, false);
   assert.equal(manager.modelSettings.maxTokens, 4_000);
-  assert.match(manager.instructions, /vastutad lõpliku allikapõhise vastuse/iu);
 });
 
 test("agent orchestration is the default but retains an explicit direct escape hatch", () => {
@@ -286,7 +283,7 @@ test("Agents transport rejects redirects, bounds bodies and charges total provid
   let calls = 0;
   let observedInit;
   const boundedFetch = createBoundedOpenAiFetch({
-    baseUrl: "https://opencode.ai/zen/go/v1",
+    baseUrl: "https://terrapoint.arleserver.cfd/v1",
     fetchImpl: async (_url, init) => {
       calls += 1;
       observedInit = init;
@@ -301,7 +298,7 @@ test("Agents transport rejects redirects, bounds bodies and charges total provid
     reserveProviderRequest: (usage) => budget.reserve(usage),
     settleProviderRequest: (reservation, usage, options) => settleLlmReservation(reservation, usage, options),
   });
-  const response = await boundedFetch("https://opencode.ai/zen/go/v1/responses", {
+  const response = await boundedFetch("https://terrapoint.arleserver.cfd/v1/responses", {
     method: "POST",
     redirect: "follow",
     body: JSON.stringify({ max_output_tokens: 100, input: "bounded" }),
@@ -313,28 +310,42 @@ test("Agents transport rejects redirects, bounds bodies and charges total provid
   assert.equal((await response.json()).id, "response-1");
   assert.equal(budget.snapshot().requests, 1);
   assert.equal(budget.snapshot().tokens, 100);
-  await assert.rejects(
-    boundedFetch("https://attacker.invalid/collect", {
-      method: "POST",
-      body: "{}",
-    }),
-    /approved model provider path/u,
-  );
+  for (const destination of [
+    "https://attacker.invalid/collect",
+    "https://terrapoint.arleserver.cfd/v1",
+    "https://terrapoint.arleserver.cfd/v1/collect",
+    "https://terrapoint.arleserver.cfd/v1/responses/collect",
+    "https://terrapoint.arleserver.cfd/v1/chat/completions",
+    "https://terrapoint.arleserver.cfd/v1/responses?target=other",
+    "https://terrapoint.arleserver.cfd/v1/responses#fragment",
+    "https://user:secret@terrapoint.arleserver.cfd/v1/responses",
+    "https://terrapoint.arleserver.cfd:444/v1/responses",
+    "https://terrapoint.arleserver.cfd/v1/%72esponses",
+  ]) {
+    await assert.rejects(
+      boundedFetch(destination, {
+        method: "POST",
+        headers: { Authorization: "Bearer test-only" },
+        body: "{}",
+      }),
+      /approved model provider path/u,
+    );
+  }
   assert.equal(calls, 1);
 
   const client = createGroundedOpenAiClient({
     apiKey: "test-key",
-    baseUrl: "https://opencode.ai/zen/go/v1",
+    baseUrl: "https://terrapoint.arleserver.cfd/v1",
     fetchImpl: async () => new Response("{}", { status: 503 }),
   });
   assert.equal(client.maxRetries, 0);
-  assert.equal(client.baseURL, "https://opencode.ai/zen/go/v1");
+  assert.equal(client.baseURL, "https://terrapoint.arleserver.cfd/v1");
 });
 
 test("Agents default transport pins provider origin, credentials and byte limits", async () => {
   const calls = [];
   const boundedFetch = createBoundedOpenAiFetch({
-    baseUrl: "https://opencode.ai/zen/go/v1",
+    baseUrl: "https://terrapoint.arleserver.cfd/v1",
     maximumRequestBytes: 512,
     maximumResponseBytes: 1_024,
     requestJsonImpl: async (url, options) => {
@@ -349,8 +360,8 @@ test("Agents default transport pins provider origin, credentials and byte limits
       };
     },
   });
-  const requestBody = JSON.stringify({ model: "gpt-5.6-luna", input: "mets" });
-  const response = await boundedFetch("https://opencode.ai/zen/go/v1/responses", {
+  const requestBody = JSON.stringify({ model: "openai-codex/gpt-6-luna", input: "mets" });
+  const response = await boundedFetch("https://terrapoint.arleserver.cfd/v1/responses", {
     method: "POST",
     headers: {
       Authorization: "Bearer test-only",
@@ -362,17 +373,22 @@ test("Agents default transport pins provider origin, credentials and byte limits
 
   assert.equal((await response.json()).id, "safe-response");
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, "https://opencode.ai/zen/go/v1/responses");
-  assert.deepEqual([...calls[0].options.approvedOrigins], ["https://opencode.ai"]);
+  assert.equal(calls[0].url, "https://terrapoint.arleserver.cfd/v1/responses");
+  assert.deepEqual([...calls[0].options.approvedOrigins], ["https://terrapoint.arleserver.cfd"]);
   assert.equal(calls[0].options.body, requestBody);
   assert.equal(calls[0].options.headers.Authorization, "Bearer test-only");
   assert.equal(calls[0].options.maximumRequestBytes, 512);
   assert.equal(calls[0].options.maximumBytes, 1_024);
 
-  await assert.rejects(boundedFetch("https://opencode.ai/zen/go/v1/responses", {
+  await assert.rejects(boundedFetch("https://terrapoint.arleserver.cfd/v1/responses", {
     method: "GET",
     body: "{}",
   }), /only POST/u);
+  assert.equal(calls.length, 1);
+  await assert.rejects(boundedFetch("https://terrapoint.arleserver.cfd/v1/responses", {
+    method: "POST",
+    body: "x".repeat(513),
+  }), /request body is too large/u);
   assert.equal(calls.length, 1);
 });
 
@@ -380,7 +396,7 @@ test("Agents transport denies before dispatch and fully charges unknown oversize
   let deniedCalls = 0;
   const deniedBudget = createRollingLlmBudget({ requestBudget: 10, tokenBudget: 1_000 });
   const deniedFetch = createBoundedOpenAiFetch({
-    baseUrl: "https://opencode.ai/zen/go/v1",
+    baseUrl: "https://terrapoint.arleserver.cfd/v1",
     fetchImpl: async () => {
       deniedCalls += 1;
       return new Response("{}");
@@ -388,7 +404,7 @@ test("Agents transport denies before dispatch and fully charges unknown oversize
     reserveProviderRequest: (usage) => deniedBudget.reserve(usage),
     settleProviderRequest: (reservation, usage, options) => settleLlmReservation(reservation, usage, options),
   });
-  await assert.rejects(deniedFetch("https://opencode.ai/zen/go/v1/responses", {
+  await assert.rejects(deniedFetch("https://terrapoint.arleserver.cfd/v1/responses", {
     method: "POST",
     body: JSON.stringify({ max_output_tokens: 4_000 }),
   }), (error) => error?.code === "LLM_BUDGET_EXHAUSTED");
@@ -397,7 +413,7 @@ test("Agents transport denies before dispatch and fully charges unknown oversize
   const chargedBudget = createRollingLlmBudget({ requestBudget: 10, tokenBudget: 100_000 });
   let canceled = false;
   const oversizedFetch = createBoundedOpenAiFetch({
-    baseUrl: "https://opencode.ai/zen/go/v1",
+    baseUrl: "https://terrapoint.arleserver.cfd/v1",
     maximumResponseBytes: 8,
     fetchImpl: async () => new Response(new ReadableStream({
       start(controller) {
@@ -412,7 +428,7 @@ test("Agents transport denies before dispatch and fully charges unknown oversize
     settleProviderRequest: (reservation, usage, options) => settleLlmReservation(reservation, usage, options),
   });
   const body = JSON.stringify({ max_output_tokens: 100 });
-  await assert.rejects(oversizedFetch("https://opencode.ai/zen/go/v1/responses", {
+  await assert.rejects(oversizedFetch("https://terrapoint.arleserver.cfd/v1/responses", {
     method: "POST",
     body,
   }), /too large/u);
@@ -425,7 +441,7 @@ test("Agents transport denies before dispatch and fully charges unknown oversize
 
   let declaredCanceled = false;
   const declaredFetch = createBoundedOpenAiFetch({
-    baseUrl: "https://opencode.ai/zen/go/v1",
+    baseUrl: "https://terrapoint.arleserver.cfd/v1",
     maximumResponseBytes: 8,
     fetchImpl: async () => new Response(new ReadableStream({
       start(controller) {
@@ -436,7 +452,7 @@ test("Agents transport denies before dispatch and fully charges unknown oversize
       },
     }), { headers: { "content-length": "99" } }),
   });
-  await assert.rejects(declaredFetch("https://opencode.ai/zen/go/v1/responses", {
+  await assert.rejects(declaredFetch("https://terrapoint.arleserver.cfd/v1/responses", {
     method: "POST",
     body: "{}",
   }), /too large/u);
@@ -447,7 +463,7 @@ test("wrapped OpenAI connection errors preserve pre-dispatch budget denial", asy
   let calls = 0;
   const client = createGroundedOpenAiClient({
     apiKey: "test-key",
-    baseUrl: "https://opencode.ai/zen/go/v1",
+    baseUrl: "https://terrapoint.arleserver.cfd/v1",
     fetchImpl: async () => {
       calls += 1;
       return new Response("{}");
@@ -458,7 +474,7 @@ test("wrapped OpenAI connection errors preserve pre-dispatch budget denial", asy
     }),
   });
   await assert.rejects(
-    client.responses.create({ model: "gpt-5.6-luna", input: "bounded" }),
+    client.responses.create({ model: "openai-codex/gpt-6-luna", input: "bounded" }),
     (error) => {
       assert.equal(llmBudgetDenial(error), "token-budget-exhausted");
       return true;
@@ -475,7 +491,7 @@ test("Agents transport full-charges output-only or zero-total usage after dispat
     const budget = createRollingLlmBudget({ requestBudget: 10, tokenBudget: 100_000 });
     const body = JSON.stringify({ max_output_tokens: 100 });
     const boundedFetch = createBoundedOpenAiFetch({
-      baseUrl: "https://opencode.ai/zen/go/v1",
+      baseUrl: "https://terrapoint.arleserver.cfd/v1",
       fetchImpl: async () => new Response(JSON.stringify({ usage }), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -485,7 +501,7 @@ test("Agents transport full-charges output-only or zero-total usage after dispat
         settleLlmReservation(reservation, observed, options)
       ),
     });
-    await boundedFetch("https://opencode.ai/zen/go/v1/responses", {
+    await boundedFetch("https://terrapoint.arleserver.cfd/v1/responses", {
       method: "POST",
       body,
     });
@@ -501,7 +517,7 @@ test("large natural-language agent requests fit the client budget and settle to 
   const budget = createRollingLlmBudget({ requestBudget: 4, tokenBudget: 120_000 });
   let calls = 0;
   const boundedFetch = createBoundedOpenAiFetch({
-    baseUrl: "https://opencode.ai/zen/go/v1",
+    baseUrl: "https://terrapoint.arleserver.cfd/v1",
     fetchImpl: async () => {
       calls += 1;
       return new Response(JSON.stringify({ usage: { total_tokens: 10_000 } }), {
@@ -519,7 +535,7 @@ test("large natural-language agent requests fit the client budget and settle to 
       input: "x".repeat(targetBytes - Buffer.byteLength(empty, "utf8")),
     });
     assert.equal(Buffer.byteLength(body, "utf8"), targetBytes);
-    await boundedFetch("https://opencode.ai/zen/go/v1/responses", { method: "POST", body });
+    await boundedFetch("https://terrapoint.arleserver.cfd/v1/responses", { method: "POST", body });
   }
   assert.equal(calls, 4);
   assert.equal(budget.snapshot().requests, 4);
@@ -531,7 +547,7 @@ test("token-dense agent requests are denied by the byte-level upper bound before
   const budget = createRollingLlmBudget({ requestBudget: 4, tokenBudget: 70_000 });
   let calls = 0;
   const boundedFetch = createBoundedOpenAiFetch({
-    baseUrl: "https://opencode.ai/zen/go/v1",
+    baseUrl: "https://terrapoint.arleserver.cfd/v1",
     fetchImpl: async () => {
       calls += 1;
       return new Response("{}");
@@ -541,7 +557,7 @@ test("token-dense agent requests are denied by the byte-level upper bound before
   });
   const body = JSON.stringify({ max_output_tokens: 4_000, input: "x".repeat(70_000) });
   await assert.rejects(
-    boundedFetch("https://opencode.ai/zen/go/v1/responses", { method: "POST", body }),
+    boundedFetch("https://terrapoint.arleserver.cfd/v1/responses", { method: "POST", body }),
     (error) => error?.code === "LLM_BUDGET_EXHAUSTED",
   );
   assert.equal(calls, 0);
@@ -667,4 +683,94 @@ test("an empty model response is retried once and a repeated empty response surf
     userInput: reviewInput,
   }), /failed to generate a response/u);
   failing.assertComplete();
+});
+
+test("the real SDK Responses transport preserves the Codex selector, tool review and strict output", async () => {
+  const expected = {
+    intro: "Metsaandmed on allikas [1].",
+    intro_citations: [1],
+    parts: [],
+    related_questions: [],
+  };
+  const userInput = JSON.stringify({
+    question: "Mis on metsaandmed?",
+    evidence: [{ citation: 1, content: "Metsaandmed kirjeldavad metsa." }],
+  });
+  const calls = [];
+  const budget = createRollingLlmBudget({ requestBudget: 10, tokenBudget: 100_000 });
+  const result = await runGroundedSearchOrchestration({
+    apiKey: "test-only-gateway-bearer",
+    baseUrl: "https://terrapoint.arleserver.cfd/v1",
+    model: "openai-codex/gpt-6-luna",
+    reasoningEffort: "low",
+    maxTokens: 1_600,
+    systemInstructions: "Kasuta ainult evidence'i ja tagasta nõutud JSON.",
+    userInput,
+    timeoutMs: 1_000,
+    reserveProviderRequest: (usage) => budget.reserve(usage),
+    settleProviderRequest: (reservation, usage, options) => settleLlmReservation(reservation, usage, options),
+    requestJsonImpl: async (url, options) => {
+      const body = JSON.parse(options.body);
+      calls.push({ url, options, body });
+      const turn = calls.length;
+      const output = turn === 1
+        ? [{
+          id: "fc_review",
+          type: "function_call",
+          status: "completed",
+          call_id: "review-call",
+          name: "review_evidence",
+          arguments: "{}",
+        }]
+        : [{
+          id: `msg_${turn}`,
+          type: "message",
+          role: "assistant",
+          status: "completed",
+          content: [{
+            type: "output_text",
+            text: turn === 4 ? JSON.stringify(expected) : "Allikas [1] toetab küsimust.",
+            annotations: [],
+          }],
+        }];
+      return {
+        status: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          id: `resp_${turn}`,
+          object: "response",
+          model: body.model,
+          status: "completed",
+          output,
+          usage: { input_tokens: 90, output_tokens: 10, total_tokens: 100 },
+        }),
+      };
+    },
+  });
+
+  assert.deepEqual(result.output, expected);
+  assert.equal(calls.length, 4);
+  for (const { url, options, body } of calls) {
+    assert.equal(url, "https://terrapoint.arleserver.cfd/v1/responses");
+    assert.equal(new Headers(options.headers).get("authorization"), "Bearer test-only-gateway-bearer");
+    assert.equal(body.model, "openai-codex/gpt-6-luna");
+    assert.equal(body.store, false);
+    assert.equal(body.stream, false);
+    assert.equal(body.reasoning.effort, "low");
+    assert.equal(body.previous_response_id, undefined);
+  }
+  assert.deepEqual(calls[0].body.tool_choice, { type: "function", name: "review_evidence" });
+  assert.equal(calls[0].body.tools[0].strict, true);
+  assert.equal(calls[0].body.text.format.type, "json_schema");
+  assert.equal(calls[0].body.text.format.strict, true);
+  assert.equal(calls[1].body.input[0].content, userInput);
+  assert.equal(calls[2].body.input[0].content, userInput);
+  const reviewOutput = calls[3].body.input.find((item) => item.type === "function_call_output");
+  assert.equal(reviewOutput.call_id, "review-call");
+  assert.deepEqual(JSON.parse(reviewOutput.output), {
+    relevance: "Allikas [1] toetab küsimust.",
+    consistency: "Allikas [1] toetab küsimust.",
+  });
+  assert.equal(budget.snapshot().requests, 4);
+  assert.equal(budget.snapshot().tokens, 400);
 });

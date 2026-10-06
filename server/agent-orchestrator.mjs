@@ -1,7 +1,7 @@
 import { Agent, OpenAIProvider, RunContext, Runner, tool } from "@openai/agents";
 import OpenAI from "openai";
 import { z } from "zod";
-import { validateLlmProviderUrl } from "./provider-policy.mjs";
+import { LLM_GATEWAY_MODEL, validateLlmProviderUrl } from "./provider-policy.mjs";
 import {
   AGENT_MANAGER_MAX_TURNS,
   AGENT_SPECIALIST_MAX_TOKENS,
@@ -30,13 +30,13 @@ export const GROUNDED_AGENT_OUTPUT = z.object({
 }).strict();
 
 function boundedReasoningEffort(value = "low") {
-  return ["none", "minimal", "low", "medium", "high", "xhigh", "max"].includes(value)
+  return ["none", "minimal", "low", "medium", "high", "xhigh"].includes(value)
     ? value
     : "low";
 }
 
 export function createGroundedSearchAgents({
-  model = "muse-spark-1.3-contributor-free",
+  model = LLM_GATEWAY_MODEL,
   reasoningEffort = "low",
   maxTokens = 3_200,
   systemInstructions = "",
@@ -175,13 +175,12 @@ function providerRequestUrl(value, baseUrl) {
   const raw = typeof Request !== "undefined" && value instanceof Request ? value.url : value;
   const target = new URL(String(raw || ""));
   const base = new URL(validateLlmProviderUrl(baseUrl));
-  const basePath = base.pathname.replace(/\/+$/u, "");
   if (target.origin !== base.origin
     || target.username
     || target.password
     || target.search
     || target.hash
-    || (target.pathname !== basePath && !target.pathname.startsWith(`${basePath}/`))) {
+    || target.pathname !== `${base.pathname}/responses`) {
     throw new Error("Agents SDK request left the approved model provider path");
   }
   return target;
@@ -301,7 +300,7 @@ export function createGroundedOpenAiClient({
   return new OpenAI({
     apiKey,
     baseURL: approvedBaseUrl,
-    timeout: Math.max(500, Math.min(Number(timeoutMs) || 10_000, 30_000)),
+    timeout: Math.max(500, Math.min(Number(timeoutMs) || 10_000, 15_000)),
     maxRetries: 0,
     fetch: createBoundedOpenAiFetch({
       baseUrl: approvedBaseUrl,
@@ -454,6 +453,7 @@ export async function runGroundedSearchOrchestration({
   const provider = new OpenAIProvider({
     openAIClient,
     useResponses: true,
+    useResponsesWebSocket: false,
   });
   const runner = new Runner({
     modelProvider: provider,
@@ -472,7 +472,7 @@ export async function runGroundedSearchOrchestration({
   const controller = new AbortController();
   const timer = setTimeout(
     () => controller.abort(),
-    Math.max(500, Math.min(Number(timeoutMs) || 10_000, 30_000)),
+    Math.max(500, Math.min(Number(timeoutMs) || 10_000, 15_000)),
   );
   const runSignal = signal && typeof AbortSignal.any === "function"
     ? AbortSignal.any([signal, controller.signal])

@@ -1288,13 +1288,13 @@ function PrivacyDisclosure() {
     <details className="footer-privacy" id="otsingu-privaatsus">
       <summary>Otsingu ja AI-vastuse privaatsus</summary>
       <p>
-        Vastuse koostamiseks saadetakse OpenCode Go Luna teenusele otsingu tekst, kuni kümme päringu järgi valitud avaliku allika väljavõtet (kokku kuni 36 000 märki) ja jätkuküsimuse korral kuni 1 400 märki varasemate küsimuste konteksti. IP-aadressi, küpsiseid ega kogu andmekogu mudelile ei saadeta. Praktikaportaal ei säilita toorpäringut oma otsingu- või vahemälutabelis. Ära sisesta otsingusse tundlikke isikuandmeid.
+        Vastuse koostamiseks töötleb OpenAI GPT-6-Luna autenditud serveripoolse Codex gateway kaudu otsingu teksti, kuni kümmet päringu järgi valitud avaliku allika väljavõtet (kokku kuni 36 000 märki) ja jätkuküsimuse korral kuni 1 400 märki varasemate küsimuste konteksti. IP-aadressi, küpsiseid, brauseri mandaate, serverisaladusi ega kogu andmekogu mudeli sisendile ei lisata. Praktikaportaal ei säilita toorpäringut oma otsingu- või vahemälutabelis. Ära sisesta otsingusse tundlikke isikuandmeid.
       </p>
       <p>
-        OpenCode'i mudelipõhise privaatsustabeli järgi ei kasutata Luna sisendit mudeli treenimiseks; väärkasutuse jälgimise logid võivad säilida kuni 30 päeva. <ExternalAnchor href="https://opencode.ai/docs/go/#privacy">Vaata teenusepakkuja tingimusi</ExternalAnchor>.
+        OpenAI Codex sisselogimine ja autentimine jäävad serveri auth brokerisse ning gateway'sse, mitte brauserisse. Teenusepakkuja ja gateway logimise, säilitamise ning mudelitreeningu tingimused tuleb enne ametlikku kasutuselevõttu eraldi kinnitada. <ExternalAnchor href="https://openai.com/policies/privacy-policy/">Vaata OpenAI privaatsustingimusi</ExternalAnchor>.
       </p>
       <p>
-        Mudelipäring kasutab seadet <code>store: false</code>, mis piirab Responses API oleku talletamist, kuid ei lülita välja teenusepakkuja väärkasutuse jälgimise logi. See logi võib sisaldada teenusele saadetud küsimust ja vastust. Teenusepakkuja tingimused võivad muutuda ning tuleb enne ametlikku kasutuselevõttu uuesti üle kontrollida.
+        Mudelipäring kasutab seadet <code>store: false</code> ja Agents SDK tracing on keelatud. Need piiravad rakendusepoolset Responses API oleku ja trace'i talletamist, kuid ei tõenda teenusepakkuja ega gateway logimise puudumist. Välise teenuse logid võivad sisaldada saadetud küsimust ja vastust; tingimused tuleb kehtiva konto ja gateway poliitika alusel üle kontrollida.
       </p>
     </details>
   );

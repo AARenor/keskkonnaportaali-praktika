@@ -28,65 +28,24 @@ import {
   settleLlmReservation,
 } from "./llm-budget.mjs";
 import { sourceEvidenceEligibility } from "./source-registry.mjs";
-import { validateLlmProviderUrl } from "./provider-policy.mjs";
+import { LLM_GATEWAY_BASE_URL, LLM_GATEWAY_MODEL, validateLlmProviderUrl } from "./provider-policy.mjs";
 import { requestApprovedPublicHttpsJsonPost } from "./public-https.mjs";
 import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs";
 
-const configuredBaseUrl = String(process.env.LLM_BASE_URL || "https://opencode.ai/zen/v1").replace(/\/+$/, "");
-const configuredModel = String(process.env.LLM_MODEL || "muse-spark-1.3-contributor-free");
-// Existing Coolify installs used the exhausted free endpoint. Migrate that exact
-// legacy pair in-process so a code deploy cannot silently keep serving degraded
-// snippet fallbacks; all other explicit operator choices remain authoritative.
-export function resolveLlmTarget(base, selectedModel) {
-  const legacyFreeConfiguration = base === "https://opencode.ai/zen/v1"
-    && selectedModel === "deepseek-v4-flash-free";
-  return legacyFreeConfiguration
-    ? { baseUrl: "https://opencode.ai/zen/go/v1", model: "deepseek-v4-flash" }
-    : { baseUrl: base, model: selectedModel };
-}
-const resolvedLlmTarget = resolveLlmTarget(configuredBaseUrl, configuredModel);
-const baseUrl = validateLlmProviderUrl(resolvedLlmTarget.baseUrl);
+const baseUrl = validateLlmProviderUrl(process.env.LLM_BASE_URL || LLM_GATEWAY_BASE_URL);
 const LLM_PROVIDER_ORIGINS = new Set([new URL(baseUrl).origin]);
-const model = resolvedLlmTarget.model;
+const model = String(process.env.LLM_MODEL || LLM_GATEWAY_MODEL);
 // Read the credential only after the destination has passed the startup
 // invariant, so an invalid deployment can never attach it to a request.
-const apiKey = String(process.env.OPENCODE_GO_API_KEY || process.env.OPENCODE_ZEN_API_KEY || process.env.LLM_API_KEY || "");
-export function resolveLlmFallback(base, primaryModel, value) {
-  const configured = String(value ?? "").trim().toLocaleLowerCase("en");
-  if (["false", "none", "off"].includes(configured)) return "";
-  if (configured && /^[a-z0-9._-]{1,80}$/u.test(configured)) return configured;
-  if (primaryModel === "gpt-5.6-luna" || String(primaryModel || "").startsWith("muse-spark")) return "";
-  return base === "https://opencode.ai/zen/go/v1" && primaryModel === "deepseek-v4-flash"
-    ? "mimo-v2.5"
-    : "";
+const apiKey = String(process.env.LLM_API_KEY || "");
+export function resolveLlmTimeout(value = process.env.LLM_TIMEOUT_MS) {
+  return Math.max(500, Math.min(Number(value) || 14_500, 15_000));
 }
-const fallbackModel = resolveLlmFallback(baseUrl, model, process.env.LLM_FALLBACK_MODEL);
-export function resolveLlmAttempts(primaryModel, secondaryModel, budgetMs) {
-  if (secondaryModel && secondaryModel !== primaryModel) {
-    return budgetMs < 13_000 ? [secondaryModel] : [primaryModel, secondaryModel];
-  }
-  // Give a single primary-model generation the whole remaining request budget. Two
-  // identical attempts used to split a ~12 s production window into two
-  // ~6 s calls, so both could time out even though one uninterrupted call
-  // consistently completes inside the overall 15 s search deadline.
-  return [primaryModel];
+const timeoutMs = resolveLlmTimeout();
+export function resolveMaxTokens(value = process.env.LLM_MAX_TOKENS) {
+  return Math.max(1_000, Math.min(Number(value) || 3_200, 3_200));
 }
-export function resolveLlmTimeout(selectedModel, value) {
-  const slowModel = selectedModel === "deepseek-v4-flash" || selectedModel === "gpt-5.6-luna"
-    || String(selectedModel || "").startsWith("muse-spark");
-  const minimum = slowModel ? 12_000 : 3_000;
-  const fallback = slowModel ? 14_500 : 9_500;
-  return Math.max(minimum, Math.min(Number(value) || fallback, 15_000));
-}
-const timeoutMs = resolveLlmTimeout(model, process.env.LLM_TIMEOUT_MS);
-export function resolveMaxTokens(selectedModel, value) {
-  const minimum = ["deepseek-v4-flash", "gpt-5.6-luna"].includes(selectedModel)
-    || String(selectedModel || "").startsWith("muse-spark") ? 1_000 : 256;
-  const fallback = selectedModel === "gpt-5.6-luna"
-    || String(selectedModel || "").startsWith("muse-spark") ? 3_200 : 1_000;
-  return Math.max(minimum, Math.min(Number(value) || fallback, 3_200));
-}
-const maxTokens = resolveMaxTokens(model, process.env.LLM_MAX_TOKENS);
+const maxTokens = resolveMaxTokens();
 const llmRollingLimits = resolveLlmRollingBudget();
 const llmRollingBudget = createRollingLlmBudget(llmRollingLimits);
 const llmClientLimits = resolveLlmClientBudget();
@@ -105,26 +64,13 @@ const reasoningEffort = ["none", "low", "medium"].includes(String(process.env.LL
   : "low";
 const circuitBreakMs = Math.max(60_000, Math.min(Number(process.env.LLM_CIRCUIT_BREAK_MS) || 15 * 60_000, 60 * 60_000));
 export function resolveLlmConcurrency(value = process.env.LLM_MAX_CONCURRENCY) {
-  // The shared Go provider is consistently reliable with two parallel Luna
-  // requests; four simultaneous generations time out together under load.
-  // Additional searches still return the evidence-bound deterministic draft.
+  // Keep provider work bounded; excess searches use the current-evidence draft.
   return Math.max(1, Math.min(Number(value) || 2, 8));
 }
 const maxConcurrentRequests = resolveLlmConcurrency();
 let circuitOpenUntil = 0;
 let consecutiveTimeouts = 0;
 let activeRequests = 0;
-
-export function resolveLlmApiStyle(selectedModel, value = process.env.LLM_API_STYLE) {
-  const configured = String(value || "").trim().toLocaleLowerCase("en");
-  if (["responses", "chat-completions"].includes(configured)) return configured;
-  // OpenCode Zen serves GPT and Muse Spark families via the Responses API;
-  // all other Zen/Go models default to OpenAI-compatible chat-completions.
-  const name = String(selectedModel || "");
-  return name.startsWith("gpt-") || name.startsWith("muse-spark") || name.startsWith("muse-")
-    ? "responses"
-    : "chat-completions";
-}
 
 const GROUNDED_RESPONSE_SCHEMA = {
   type: "object",
@@ -2228,54 +2174,36 @@ export function buildLlmRequest({
       rule: "intro_citations ja iga parts.citations peavad olema mittetühjad ning sisaldama ainult evidence citation väärtusi.",
     },
   });
-  const apiStyle = resolveLlmApiStyle(selectedModel);
-  if (apiStyle === "responses") {
-    return {
-      apiStyle,
-      endpoint: "/responses",
-      body: {
-        model: selectedModel,
-        input: [
-          { role: "system", content: [{ type: "input_text", text: system }] },
-          { role: "user", content: [{ type: "input_text", text: user }] },
-        ],
-        reasoning: { effort: reasoningEffort },
-        text: {
-          verbosity: "medium",
-          format: {
-            type: "json_schema",
-            name: "grounded_environment_answer",
-            strict: true,
-            schema: GROUNDED_RESPONSE_SCHEMA,
-          },
+  return {
+    apiStyle: "responses",
+    endpoint: "/responses",
+    body: {
+      model: selectedModel,
+      input: [
+        { role: "system", content: [{ type: "input_text", text: system }] },
+        { role: "user", content: [{ type: "input_text", text: user }] },
+      ],
+      reasoning: { effort: reasoningEffort },
+      text: {
+        verbosity: "medium",
+        format: {
+          type: "json_schema",
+          name: "grounded_environment_answer",
+          strict: true,
+          schema: GROUNDED_RESPONSE_SCHEMA,
         },
-        max_output_tokens: selectedMaxTokens,
-        store: false,
       },
-    };
-  }
-  const body = {
-    model: selectedModel,
-    store: false,
-    temperature: 0,
-    max_tokens: selectedMaxTokens,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: user },
-    ],
+      max_output_tokens: selectedMaxTokens,
+      store: false,
+      stream: false,
+    },
   };
-  if (selectedModel.startsWith("deepseek-") || selectedModel.startsWith("muse-spark")) body.reasoning_effort = reasoningEffort;
-  return { apiStyle, endpoint: "/chat/completions", body };
 }
 
-export function extractLlmText(payload, apiStyle) {
-  if (apiStyle === "responses") {
-    return payload?.output_text
-      || payload?.output?.flatMap((item) => item?.content || []).find((item) => item?.type === "output_text")?.text
-      || "";
-  }
-  return payload?.choices?.[0]?.message?.content || "";
+export function extractLlmText(payload) {
+  return payload?.output_text
+    || payload?.output?.flatMap((item) => item?.content || []).find((item) => item?.type === "output_text")?.text
+    || "";
 }
 
 export function extractLlmBudgetUsage(payload, apiStyle) {
@@ -2304,79 +2232,69 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
     const evidence = buildBoundedEvidence(draft, query);
     const singleSource = evidence.length === 1;
     const requestTimeoutMs = Math.max(250, Math.min(Number(options.timeoutMs) || timeoutMs, timeoutMs));
-    const attemptModels = resolveLlmAttempts(model, fallbackModel, requestTimeoutMs);
-    const startedAt = Date.now();
-    const errors = [];
-    let budgetDenial = null;
-
-    for (const [index, selectedModel] of attemptModels.entries()) {
-      const remaining = requestTimeoutMs - (Date.now() - startedAt);
-      if (remaining < 500 || options.signal?.aborted) break;
-      const hasNextAttempt = index < attemptModels.length - 1;
-      const attemptTimeout = hasNextAttempt
-        ? Math.min(7_000, Math.max(2_500, remaining - 6_000))
-        : remaining;
-      const selectedMaxTokens = resolveMaxTokens(selectedModel, process.env.LLM_MAX_TOKENS);
-      const request = buildLlmRequest({
-        selectedModel,
-        query,
-        evidence,
-        singleSource,
-        selectedMaxTokens,
-        conversationContext: options.conversationContext || "",
-      });
-      const orchestrated = agentOrchestrationEnabled() && evidence.length > 1 && request.apiStyle === "responses";
-      const requestBody = JSON.stringify(request.body);
-      let reservation = null;
-      if (!orchestrated) {
-        reservation = llmScopedBudget.reserve(clientScopeKey, estimatedLlmBudgetUsage({
-          orchestrated: false,
-          maxTokens: selectedMaxTokens,
-          inputBytes: Buffer.byteLength(requestBody, "utf8"),
-        }));
-        if (!reservation.ok) {
-          budgetDenial = reservation.reason;
-          break;
-        }
+    if (requestTimeoutMs < 500 || options.signal?.aborted) {
+      return { answer: null, status: "degraded", provider: "deterministic-current-evidence", error: "LLM request budget was exhausted" };
+    }
+    const request = buildLlmRequest({
+      selectedModel: model,
+      query,
+      evidence,
+      singleSource,
+      selectedMaxTokens: maxTokens,
+      conversationContext: options.conversationContext || "",
+    });
+    const orchestrated = agentOrchestrationEnabled() && evidence.length > 1;
+    const requestBody = JSON.stringify(request.body);
+    let reservation = null;
+    if (!orchestrated) {
+      reservation = llmScopedBudget.reserve(clientScopeKey, estimatedLlmBudgetUsage({
+        orchestrated: false,
+        maxTokens,
+        inputBytes: Buffer.byteLength(requestBody, "utf8"),
+      }));
+      if (!reservation.ok) {
+        return {
+          answer: null,
+          status: "budget-exhausted",
+          provider: "deterministic-current-evidence",
+          error: reservation.reason,
+        };
       }
+    }
 
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), attemptTimeout);
-      const signal = options.signal && typeof AbortSignal.any === "function"
-        ? AbortSignal.any([controller.signal, options.signal])
-        : controller.signal;
-      let observedUsage;
-      let providerRequestDispatched = false;
-      try {
-        if (orchestrated) {
-          const systemInstructions = request.body.input?.[0]?.content?.[0]?.text || "";
-          const userInput = request.body.input?.[1]?.content?.[0]?.text || "";
-          const agentRun = await runGroundedSearchOrchestration({
-            apiKey,
-            baseUrl,
-            model: selectedModel,
-            reasoningEffort,
-            maxTokens: selectedMaxTokens,
-            systemInstructions,
-            userInput,
-            signal,
-            timeoutMs: attemptTimeout,
-            onUsage: (usage) => {
-              observedUsage = usage;
-            },
-            reserveProviderRequest: (usage) => llmScopedBudget.reserve(clientScopeKey, usage),
-            settleProviderRequest: (providerReservation, usage, settleOptions) => (
-              settleLlmReservation(providerReservation, usage, settleOptions)
-            ),
-          });
-          observedUsage = agentRun.usage;
-          const agentPayload = agentRun.output;
-          const parsed = typeof agentPayload === "string" ? parseLlmJson(agentPayload) : agentPayload;
-          const answer = validateGroundedAnswer(parsed, draft, query);
-          const related = validateRelatedQuestions(parsed, draft, query);
-          consecutiveTimeouts = 0;
-          return { answer, related, status: "ready", provider: `openai-agents/${selectedModel}` };
-        }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
+    const signal = options.signal && typeof AbortSignal.any === "function"
+      ? AbortSignal.any([controller.signal, options.signal])
+      : controller.signal;
+    let observedUsage;
+    let providerRequestDispatched = false;
+    try {
+      let parsed;
+      if (orchestrated) {
+        const systemInstructions = request.body.input[0].content[0].text;
+        const userInput = request.body.input[1].content[0].text;
+        const agentRun = await runGroundedSearchOrchestration({
+          apiKey,
+          baseUrl,
+          model,
+          reasoningEffort,
+          maxTokens,
+          systemInstructions,
+          userInput,
+          signal,
+          timeoutMs: requestTimeoutMs,
+          onUsage: (usage) => {
+            observedUsage = usage;
+          },
+          reserveProviderRequest: (usage) => llmScopedBudget.reserve(clientScopeKey, usage),
+          settleProviderRequest: (providerReservation, usage, settleOptions) => (
+            settleLlmReservation(providerReservation, usage, settleOptions)
+          ),
+        });
+        observedUsage = agentRun.usage;
+        parsed = typeof agentRun.output === "string" ? parseLlmJson(agentRun.output) : agentRun.output;
+      } else {
         providerRequestDispatched = true;
         const response = await requestApprovedPublicHttpsJsonPost(`${baseUrl}${request.endpoint}`, {
           approvedOrigins: LLM_PROVIDER_ORIGINS,
@@ -2392,9 +2310,8 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
         } catch {
           payload = null;
         }
+        observedUsage = extractLlmBudgetUsage(payload, request.apiStyle);
         if (response.status < 200 || response.status >= 300) {
-          const errorPayload = payload || {};
-          observedUsage = extractLlmBudgetUsage(errorPayload, request.apiStyle);
           const responseError = new Error(`LLM returned ${response.status}`);
           responseError.status = response.status;
           throw responseError;
@@ -2402,55 +2319,40 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
         if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
           throw new Error("LLM response returned invalid JSON");
         }
-        observedUsage = extractLlmBudgetUsage(payload, request.apiStyle);
-        const parsed = parseLlmJson(extractLlmText(payload, request.apiStyle));
-        const answer = validateGroundedAnswer(parsed, draft, query);
-        const related = validateRelatedQuestions(parsed, draft, query);
-        consecutiveTimeouts = 0;
-        return { answer, related, status: "ready", provider: `opencode-zen/${selectedModel}` };
-      } catch (error) {
-        error.locallyTimedOut = error.name === "AbortError"
-          && controller.signal.aborted
-          && !options.signal?.aborted;
-        errors.push(error);
-        const denial = llmBudgetDenial(error);
-        if (denial) {
-          budgetDenial = denial;
-          break;
-        }
-        const nextModel = attemptModels[index + 1];
-        if (nextModel === selectedModel && [400, 401, 403, 404, 429].includes(error.status)) break;
-      } finally {
-        if (reservation) {
-          settleLlmReservation(reservation, observedUsage, {
-            chargeUnknown: providerRequestDispatched,
-          });
-        }
-        clearTimeout(timer);
+        parsed = parseLlmJson(extractLlmText(payload));
       }
-    }
-
-    if (budgetDenial) {
-      return {
-        answer: null,
-        status: "budget-exhausted",
-        provider: "deterministic-current-evidence",
-        error: budgetDenial,
-      };
-    }
-    const finalError = errors.at(-1) || new Error("LLM request budget was exhausted");
-    if (errors.some((error) => error.status === 429)) {
-      circuitOpenUntil = Date.now() + circuitBreakMs;
-    } else if (errors.some((error) => error.locallyTimedOut) && !options.signal?.aborted) {
-      consecutiveTimeouts += 1;
-      if (consecutiveTimeouts >= 3) {
-        circuitOpenUntil = Date.now() + 60_000;
-        consecutiveTimeouts = 0;
-      }
-    } else if (finalError.name !== "AbortError") {
+      const answer = validateGroundedAnswer(parsed, draft, query);
+      const related = validateRelatedQuestions(parsed, draft, query);
       consecutiveTimeouts = 0;
+      return { answer, related, status: "ready", provider: `${orchestrated ? "openai-agents" : "codex-gateway"}/${model}` };
+    } catch (error) {
+      const denial = llmBudgetDenial(error);
+      if (denial) {
+        return { answer: null, status: "budget-exhausted", provider: "deterministic-current-evidence", error: denial };
+      }
+      const locallyTimedOut = error.name === "AbortError"
+        && controller.signal.aborted
+        && !options.signal?.aborted;
+      if (error.status === 429) {
+        circuitOpenUntil = Date.now() + circuitBreakMs;
+      } else if (locallyTimedOut) {
+        consecutiveTimeouts += 1;
+        if (consecutiveTimeouts >= 3) {
+          circuitOpenUntil = Date.now() + 60_000;
+          consecutiveTimeouts = 0;
+        }
+      } else if (error.name !== "AbortError") {
+        consecutiveTimeouts = 0;
+      }
+      return { answer: null, status: "degraded", provider: "deterministic-current-evidence", error: error.message };
+    } finally {
+      if (reservation) {
+        settleLlmReservation(reservation, observedUsage, {
+          chargeUnknown: providerRequestDispatched,
+        });
+      }
+      clearTimeout(timer);
     }
-    return { answer: null, status: "degraded", provider: "deterministic-current-evidence", error: finalError.message };
   } finally {
     activeRequests = Math.max(0, activeRequests - 1);
   }
@@ -2460,9 +2362,8 @@ export function llmConfiguration() {
   return {
     enabled: Boolean(apiKey),
     provider: apiKey
-      ? `${agentOrchestrationEnabled() ? "openai-agents" : "opencode-zen"}/${model}`
+      ? `${agentOrchestrationEnabled() ? "openai-agents" : "codex-gateway"}/${model}`
       : "deterministic-current-evidence",
-    fallback: apiKey && fallbackModel ? `opencode-zen/${fallbackModel}` : null,
     circuitOpen: Date.now() < circuitOpenUntil,
     rollingBudget: llmRollingBudget.snapshot(),
   };

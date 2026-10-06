@@ -47,6 +47,29 @@ npm run sync:corpus -- --hydrate-limit=1000 --seed-queries=mets
 
 Tervisekontroll: `GET /api/health`.
 
+### Tausta-AI ja juurutus
+
+06.10.2026 seadistuse cutover kasutab olemasolevat autenditud Codex gateway'd:
+`LLM_BASE_URL=https://terrapoint.arleserver.cfd/v1`,
+`LLM_MODEL=openai-codex/gpt-6-luna`, `LLM_REASONING_EFFORT=low` ja
+`LLM_TIMEOUT_MS=14500`, `LLM_ORCHESTRATION=direct`. Otsene mudelikõne hoiab
+alles viite- ja tõendikontrollid ning mahub senisesse 15-sekundilisse eelarvesse;
+neljakutseline `agents` režiim ületas live-kontrollis ajapiiri.
+Transport on alati Responses API; teist varumudelit ei kasutata.
+`LLM_API_KEY` saab ainult serveri runtime-keskkonnas
+gateway bearer'i; `.env.example` ei sisalda võtit. Võtmeta lokaalse käivituse
+jaoks määra `LLM_ENABLED=false`. OpenAI Codex sisselogimine jääb hosti OMP
+auth brokerisse ja gateway'sse: OAuth-i ei kopeerita rakendusse ega brauserisse.
+Mudel töötleb OpenAI teenuses piiratud avalikku küsimust ja valitud tõendeid;
+gateway nime jagamine Terrapointiga ei anna mudelile Terrapointi andmeid.
+Allika-, viite-, privaatsus- ja eelarvekontrollid jäävad samaks ning mudelitõrke
+korral säilib deterministlik allikapõhine vastus, mitte teine mudel.
+
+Tootmine kasutab Coolify **Dockerfile** build pack'i, mitte Compose'i runtime'i.
+Runtime-muutujad tuleb seetõttu muuta ka Coolifys enne `main` push'i käivitatavat
+redeploy'd. Täpne käituskeskkonna ja exact-SHA kontrolli kord:
+[IT-halduri juhend](./docs/IT-HOOLDUS.md#codex-gateway-ja-coolify-runtime).
+
 ## Kontroll
 
 ```bash

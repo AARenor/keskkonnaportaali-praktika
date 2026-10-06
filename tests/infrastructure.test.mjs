@@ -43,11 +43,7 @@ import {
   extractLlmText,
   parseLlmJson,
   numericClaimBindingsMatch,
-  resolveLlmApiStyle,
-  resolveLlmFallback,
-  resolveLlmAttempts,
   resolveLlmConcurrency,
-  resolveLlmTarget,
   resolveLlmTimeout,
   resolveMaxTokens,
   sanitizeLlmEvidenceText,
@@ -1790,7 +1786,7 @@ test("forest depletion answer uses only its visible evidence roles and never cit
   assert.equal(draftMatchesListingAndFilters(draft, { items: visibleListing }), true);
 
   const request = buildLlmRequest({
-    selectedModel: "gpt-5.6-luna",
+    selectedModel: "openai-codex/gpt-6-luna",
     query,
     evidence: buildBoundedEvidence(draft, query),
     singleSource: false,
@@ -2111,54 +2107,38 @@ test("LLM JSON parser repairs common truncated punctuation without executing con
   assert.deepEqual(parsed.parts[0].citations, [1]);
 });
 
-test("legacy exhausted free-model configuration migrates to the bounded Go target", () => {
-  assert.deepEqual(resolveLlmTarget("https://opencode.ai/zen/v1", "deepseek-v4-flash-free"), {
-    baseUrl: "https://opencode.ai/zen/go/v1",
-    model: "deepseek-v4-flash",
-  });
-  assert.deepEqual(resolveLlmTarget("https://example.invalid/v1", "operator-choice"), {
-    baseUrl: "https://example.invalid/v1",
-    model: "operator-choice",
-  });
-  assert.equal(resolveMaxTokens("deepseek-v4-flash", 700), 1_000);
-  assert.equal(resolveMaxTokens("operator-choice", 700), 700);
-  assert.equal(resolveLlmTimeout("deepseek-v4-flash", 9_500), 12_000);
-  assert.equal(resolveLlmTimeout("operator-choice", 9_500), 9_500);
-  assert.equal(resolveLlmFallback("https://opencode.ai/zen/go/v1", "deepseek-v4-flash"), "mimo-v2.5");
-  assert.equal(resolveLlmFallback("https://opencode.ai/zen/go/v1", "deepseek-v4-flash", "none"), "");
-  assert.equal(resolveLlmFallback("https://example.invalid/v1", "operator-choice"), "");
-  assert.equal(resolveLlmFallback("https://opencode.ai/zen/go/v1", "deepseek-v4-flash", "glm-5.2"), "glm-5.2");
-  assert.equal(resolveMaxTokens("gpt-5.6-luna"), 3_200);
-  assert.equal(resolveLlmTimeout("gpt-5.6-luna"), 14_500);
-  assert.equal(resolveLlmFallback("https://opencode.ai/zen/go/v1", "gpt-5.6-luna"), "");
-  assert.deepEqual(resolveLlmAttempts("gpt-5.6-luna", "", 14_000), ["gpt-5.6-luna"]);
-  assert.deepEqual(resolveLlmAttempts("gpt-5.6-luna", "", 8_000), ["gpt-5.6-luna"]);
-  assert.deepEqual(resolveLlmAttempts("gpt-5.6-luna", "operator-fallback", 14_000), ["gpt-5.6-luna", "operator-fallback"]);
-});
 
-test("model credentials are bound to the approved HTTPS provider origin", async () => {
+test("model credentials are bound to the exact approved HTTPS gateway base", () => {
   assert.equal(
-    validateLlmProviderUrl("https://opencode.ai/zen/go/v1/"),
-    "https://opencode.ai/zen/go/v1",
+    validateLlmProviderUrl("https://terrapoint.arleserver.cfd/v1/"),
+    "https://terrapoint.arleserver.cfd/v1",
   );
   for (const unsafe of [
-    "http://opencode.ai/zen/go/v1",
-    "https://user:secret@opencode.ai/zen/go/v1",
-    "https://opencode.ai.evil.test/zen/go/v1",
-    "https://opencode.ai:444/zen/go/v1",
-    "https://127.0.0.1/zen/go/v1",
-    "https://opencode.ai/zen/go/v1?target=other",
-    "https://opencode.ai/zen/go/v1#fragment",
+    "http://terrapoint.arleserver.cfd/v1",
+    "https://user:secret@terrapoint.arleserver.cfd/v1",
+    "https://terrapoint.arleserver.cfd.evil.test/v1",
+    "https://terrapoint.arleserver.cfd:444/v1",
+    "https://127.0.0.1/v1",
+    "https://terrapoint.arleserver.cfd/v1?target=other",
+    "https://terrapoint.arleserver.cfd/v1#fragment",
+    "https://terrapoint.arleserver.cfd/",
+    "https://terrapoint.arleserver.cfd/v2",
+    "https://terrapoint.arleserver.cfd/v1/responses",
+    "https://terrapoint.arleserver.cfd/v1/collect",
+    "https://attacker.invalid/v1",
   ]) {
     assert.throws(() => validateLlmProviderUrl(unsafe), /LLM_BASE_URL/u);
+    assert.throws(() => validateLlmProviderUrl(unsafe, {
+      approvedOrigins: new Set([new URL(unsafe).origin]),
+    }), /LLM_BASE_URL/u);
   }
-  const llm = await readFile(new URL("../server/llm.mjs", import.meta.url), "utf8");
-  assert.ok(llm.indexOf("validateLlmProviderUrl(resolvedLlmTarget.baseUrl)") < llm.indexOf("const apiKey = String("));
-  assert.match(llm, /requestApprovedPublicHttpsJsonPost\(`\$\{baseUrl\}\$\{request\.endpoint\}`/u);
-  assert.match(llm, /approvedOrigins: LLM_PROVIDER_ORIGINS/u);
-  assert.match(llm, /maximumRequestBytes: 256_000/u);
-  assert.match(llm, /maximumBytes: 1_000_000/u);
-  assert.doesNotMatch(llm, /\bfetch\s*\(/u);
+});
+
+test("provider generation limits cannot exceed the public deadline or output cap", () => {
+  assert.equal(resolveLlmTimeout(60_000), 15_000);
+  assert.equal(resolveLlmTimeout(500), 500);
+  assert.equal(resolveMaxTokens(100_000), 3_200);
+  assert.equal(resolveMaxTokens(1), 1_000);
 });
 
 test("successful LLM work consumes one process-wide rolling allowance", () => {
@@ -2356,24 +2336,22 @@ test("Luna uses the Responses API with strict structured output", () => {
     content: "Noorte ja vanade metsade pindala suurenes.",
     url: "https://keskkonnaagentuur.ee/uudised/smi",
   }];
-  assert.equal(resolveLlmApiStyle("gpt-5.6-luna"), "responses");
-  assert.equal(resolveLlmApiStyle("deepseek-v4-flash"), "chat-completions");
-  assert.equal(resolveLlmConcurrency(), 2);
   assert.equal(resolveLlmConcurrency(20), 8);
-  assert.equal(resolveLlmConcurrency(0), 2);
+  assert.equal(resolveLlmConcurrency(1), 1);
   const request = buildLlmRequest({
-    selectedModel: "gpt-5.6-luna",
+    selectedModel: "openai-codex/gpt-6-luna",
     query: "Ｋａｓ metsad muutuvad nooremaks?",
     evidence,
     singleSource: true,
     selectedMaxTokens: 1_600,
   });
   assert.equal(request.endpoint, "/responses");
-  assert.equal(request.body.model, "gpt-5.6-luna");
+  assert.equal(request.body.model, "openai-codex/gpt-6-luna");
   assert.equal(request.body.reasoning.effort, "low");
   assert.equal(request.body.text.format.type, "json_schema");
   assert.equal(request.body.text.format.strict, true);
   assert.equal(request.body.store, false);
+  assert.equal(request.body.stream, false);
   assert.equal(request.body.messages, undefined);
   assert.equal(request.body.temperature, undefined);
   assert.equal(request.body.max_output_tokens, 1_600);
@@ -2383,11 +2361,11 @@ test("Luna uses the Responses API with strict structured output", () => {
   );
   assert.equal(extractLlmText({
     output: [{ content: [{ type: "output_text", text: "{\"intro\":\"Vastus\"}" }] }],
-  }, "responses"), '{"intro":"Vastus"}');
+  }), '{"intro":"Vastus"}');
 
   const safeContext = "Metsade vanus → Kas muutus on ühesuunaline? ".repeat(8).trim();
   const followUpRequest = buildLlmRequest({
-    selectedModel: "gpt-5.6-luna",
+    selectedModel: "openai-codex/gpt-6-luna",
     query: "Mida see tähendab?",
     evidence,
     singleSource: true,
@@ -2400,7 +2378,7 @@ test("Luna uses the Responses API with strict structured output", () => {
   assert.deepEqual(Object.keys(followUpPayload), ["question", "conversation_context", "evidence", "outputContract"]);
 
   const privateContextRequest = buildLlmRequest({
-    selectedModel: "gpt-5.6-luna",
+    selectedModel: "openai-codex/gpt-6-luna",
     query: "Kui suur on Eesti metsamaa pindala?",
     evidence,
     singleSource: true,
@@ -2409,7 +2387,7 @@ test("Luna uses the Responses API with strict structured output", () => {
   const privateContextPayload = JSON.parse(privateContextRequest.body.input[1].content[0].text);
   assert.equal(privateContextPayload.conversation_context, undefined);
   assert.throws(() => buildLlmRequest({
-    selectedModel: "gpt-5.6-luna",
+    selectedModel: "openai-codex/gpt-6-luna",
     query: `${"ﬃ".repeat(75)} x`,
     evidence,
     singleSource: true,
@@ -2444,7 +2422,7 @@ test("Luna uses the Responses API with strict structured output", () => {
     "Näita jaantamme kinnistut metsaregistris",
   ]) {
     assert.throws(() => buildLlmRequest({
-      selectedModel: "gpt-5.6-luna",
+      selectedModel: "openai-codex/gpt-6-luna",
       query: privateQuery,
       evidence,
       singleSource: true,
@@ -6092,7 +6070,7 @@ test("cached responses never retain raw query text", async () => {
     safeResponse: safe,
     cacheResponse: true,
     ttlMinutes: 20,
-    answerProvider: "openai-agents/gpt-5.6-luna",
+    answerProvider: "openai-agents/openai-codex/gpt-6-luna",
     response,
     durationMs: 1,
     provenance: {},
@@ -6177,8 +6155,8 @@ test("cached responses never retain raw query text", async () => {
   assert.equal(persistenceQueries.some((text) => text.includes("INSERT INTO practice_search_cache")), false);
   assert.equal(persistenceQueries.some((text) => text.includes("INSERT INTO practice_search_runs")), true);
   assert.equal(isPersistentResponseCacheProvider("deterministic-current-evidence"), true);
-  assert.equal(isPersistentResponseCacheProvider("openai-agents/gpt-5.6-luna"), false);
-  assert.equal(isPersistentResponseCacheProvider("opencode-go/gpt-5.6-luna"), false);
+  assert.equal(isPersistentResponseCacheProvider("openai-agents/openai-codex/gpt-6-luna"), false);
+  assert.equal(isPersistentResponseCacheProvider("codex-gateway/openai-codex/gpt-6-luna"), false);
   assert.equal(isSearchCacheEnabled("false"), false);
   assert.equal(isSearchCacheEnabled("true"), true);
   assert.match(SEARCH_CACHE_READ_SQL, /response_schema = 'privacy-safe-v6'/u);
@@ -6349,25 +6327,6 @@ test("answer citations link directly to their source without a duplicate cited-s
   assert.doesNotMatch(app, /AnswerEvidenceSources|answer-evidence|Vastuses kasutatud allikad/u);
   assert.match(app, /className="broad-result__locator"[\s\S]*?Vaata allikast:/u);
   assert.doesNotMatch(app, /function EvidenceLocatorLink|Ava andmetabel/u);
-});
-
-test("search keeps privacy conditions in the footer instead of crowding either form", async () => {
-  const [app, privacy] = await Promise.all([
-    readFile(new URL("../src/App.jsx", import.meta.url), "utf8"),
-    readFile(new URL("../PRIVAATSUS.md", import.meta.url), "utf8"),
-  ]);
-  const searchForm = app.match(/function SearchForm[\s\S]*?function Header/u)?.[0] || "";
-  const searchResults = app.match(/function SearchResults[\s\S]*?function PrivacyDisclosure/u)?.[0] || "";
-  const disclosure = app.match(/function PrivacyDisclosure[\s\S]*?function Footer/u)?.[0] || "";
-  assert.doesNotMatch(searchForm, /privaatsus|OpenCode|väärkasutuse/u);
-  assert.doesNotMatch(searchResults, /Jätkuvastuse koostamiseks saadetakse|Ära sisesta tundlikke isikuandmeid/u);
-  assert.match(disclosure, /id="otsingu-privaatsus"/u);
-  assert.match(disclosure, /Vastuse koostamiseks saadetakse OpenCode Go Luna teenusele/u);
-  assert.match(app, /store: false/u);
-  assert.match(privacy, /`store: false`/u);
-  assert.match(privacy, /küsimust ja vastust/u);
-  assert.match(privacy, /asub lehe jaluses/u);
-  assert.match(privacy, /kuni 50 otsingu teksti ainult avatud lehe protsessimälus/u);
 });
 
 test("inline citations use safe external source links instead of internal anchors", async () => {

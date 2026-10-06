@@ -1,8 +1,8 @@
 # IT-halduri hooldusjuhend
 
-Uuendatud: 01.10.2026
+Uuendatud: 06.10.2026
 
-Dokumendiversioon: 1.0.0
+Dokumendiversioon: 1.1.0
 
 ## Püsivad lepingud
 
@@ -66,6 +66,67 @@ PDF-ide täissisu automaatne hüdratsioon ei ole selle HTML-korje osa. Kolme uue
 4. Vii `CATALOGUE_REVIEWED_AT` ja versiooniprefiks edasi ainult pärast kataloogi tegelikku korduskontrolli.
 5. Muuda `SEARCH_RESPONSE_REVISION` järgmisele `answer-vNN-*` väärtusele, kui vastuse liikmesus, järjestus, allikaväli või sisu muutus; see väldib vana vastusecache'i kasutamist. Lukusta uus väärtus `tests/infrastructure.test.mjs` regressiooniga.
 
+## Codex gateway ja Coolify runtime
+
+Tausta-AI kasutab olemasolevat hosti OMP auth brokerit ja autenditud Codex
+gateway'd. OpenAI Codex OAuth jääb hosti; ära kopeeri seda rakendusse.
+Rakenduse `LLM_API_KEY` on ainult gateway bearer ja runtime-saladus, mitte
+OpenAI OAuth ega Coolify haldustoken. Seda ei lisata build-argumentidesse,
+brauserikoodi, reposse ega logidesse.
+
+Coolify rakenduse UUID on `asdyidu5wvjx54d0b09t9rhw`, sisemine app ID `12`.
+See kasutab **Dockerfile** build pack'i ja porti `3000`; `compose.yaml` on
+eraldi lokaalse stack'i leping ega määra selle tootmisrakenduse runtime'i.
+
+1. Määra Coolify selle rakenduse runtime-keskkonnas turvaliselt `LLM_API_KEY`
+   gateway bearer'iga, `LLM_BASE_URL=https://terrapoint.arleserver.cfd/v1`,
+   `LLM_MODEL=openai-codex/gpt-6-luna`,
+   `LLM_ORCHESTRATION=direct`, `LLM_ENABLED=true`, `LLM_REASONING_EFFORT=low`
+   ja `LLM_TIMEOUT_MS=14500`. Hoia olemasolevad concurrency-, tokeni-,
+   eelarve-, proxy-, andmebaasi- ja privaatsuspiirid alles.
+   Eemalda `OPENCODE_GO_API_KEY`, `OPENCODE_ZEN_API_KEY`, `LLM_API_STYLE`
+   ja `LLM_FALLBACK_MODEL` runtime'ist: neid enam ei kasutata.
+   Ära väljasta võtme väärtust seadistuse või konteineri kontrollimisel.
+2. Salvesta runtime enne uue koodi juurutamist. `.github/workflows/deploy.yml`
+   käivitub `main` push'il ning teeb GitHub Actionsi `COOLIFY_API_TOKEN`
+   saladusega `POST https://coolify.arleserver.cfd/api/v1/applications/asdyidu5wvjx54d0b09t9rhw/start`
+   ja tühja JSON-kehaga `{}`. Vajadusel kasuta sama rakenduse Coolify Redeploy
+   tegevust; paljas juba töötava konteineri restart ei lisa muudetud keskkonda.
+3. Jälgi Coolify deployment'i kuni `finished` olekuni täpsel lükatud commit'i
+   SHA-l. Kinnita uue konteineri revisjon ja health, `/api/health` revision,
+   `/build.json` ning API `X-App-Build` kooskõla. Aktiivne konteiner enne
+   06.10.2026 cutover'it oli `asdyidu5wvjx54d0b09t9rhw-132024278705`;
+   rolling deploy loob uue nime, nii et vana nime ei tohi püsivalt eeldada.
+4. Kontrolli päris brauseri same-origin otsingut ja vähemalt üht piisava
+   avaliku tõendiga AI-vastust. Avalik health ei tõenda mudeli tööd ega avalda
+   teenusepakkujat. Gateway Responses marsruut on `/v1/responses`; autentitud
+   kontroll ja mudeli identiteedi kinnitus toimuvad ainult serveri poolel ilma
+   bearer'i, OAuth-i või küsimuse sisu logimata. Mudelitõrge või täis eelarve
+   peab jätma alles viidatud deterministliku vastuse, mitte teise varumudeli.
+   Tootmine kasutab olemasolevat otsest mudeliteed: nelja järjestikuse
+   mudelikutsena töötav `agents` režiim ületas 06.10.2026 live-kontrollides
+   14,5-sekundilise ajapiiri. Otsene Luna vastus koos serveri viite- ja
+   tõendikontrolliga valmis 6,9 sekundiga. Ära lülita `agents` režiimi sisse
+   enne selle tervikvoo tõendatud mahtumist senisesse otsingueelarvesse.
+
+OpenAI ja gateway logimise, säilitamise ning konto andmetöötlustingimused tuleb
+enne ametlikku kasutuselevõttu kinnitada eraldi; `store: false` ja keelatud SDK
+tracing ei tõenda teenusepoolse logimise puudumist. Täpne andmepiir:
+[PRIVAATSUS.md](../PRIVAATSUS.md).
+
+### Proxy aadressi muutumine
+
+Pärast `coolify-proxy` taasloomist kontrolli selle tegelikku siseneva võrgu
+aadressi ning uuenda `TRUSTED_PROXY_CIDRS` ainult selle täpse `/32` (IPv4) või
+`/128` (IPv6) aadressiga. Ära laienda usaldust kogu Docker alamvõrgule ega
+nõrgenda `Origin` või `Sec-Fetch-Site` kontrolle. 06.10.2026 tõrke ajal oli
+runtime'is vana `172.19.0.11/32`, kuid tegelik proxy oli `172.19.0.17`;
+parandus on juurutatud täpse `172.19.0.17/32` usalduse ja uue runtime'iga. See
+aadress ei ole püsiv leping: kontrolli seda iga proxy taasloomise järel.
+Avalik avaleht ja health võivad töötada ajal, mil päris brauseri otsing ning
+soovitused saavad 403. Seetõttu kontrolli pärast muudatust mõlemat endpoint'i
+päris sama päritolu brauseripäistega ning kinnita, et võõras päritolu jääb keelatuks.
+
 ## Kontroll ja tootmisse viimine
 
 ```bash
@@ -86,3 +147,4 @@ Seejärel tee diff-review, kontrolli ainult kavandatud faile ja saladuste puudum
 | Versioon | Kuupäev | Muudatus |
 |---|---|---|
 | 1.0.0 | 01.10.2026 | Allikahierarhia, korjereeglid ning SMI, aastaraamatu ja puidubilansi hooldusprotsess. |
+| 1.1.0 | 06.10.2026 | Autenditud Codex gateway, GPT-6-Luna, serveripoolne bearer ning Coolify runtime'i ja exact-SHA redeploy kord. |
