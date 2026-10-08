@@ -14,4 +14,4 @@ jobs:
           -H "Authorization: Bearer ${{ secrets.COOLIFY_API_TOKEN }}"
           -H "Content-Type: application/json"
           -d '{}'
-          "https://coolify.arleserver.cfd/api/v1/applications/asdyidu5wvjx54d0b09t9rhw/start"
+          "https://coolify.arle.top/api/v1/applications/asdyidu5wvjx54d0b09t9rhw/start"

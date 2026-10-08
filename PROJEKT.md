@@ -6,7 +6,7 @@ Tootmise vastuvõtukriteeriumide, andmevoo, marsruutide ja koodikaardi detailne 
 
 ## Eesmärk
 
-See on Keskkonnaportaali eraldiseisev praktikaversioon aadressil [praktika.arleserver.cfd](https://praktika.arleserver.cfd). Avaleht kasutab Keskkonnaportaali tuttavat visuaalset keelt ja lisab kaks selgelt eraldatud kasutusvoogu:
+See on Keskkonnaportaali eraldiseisev praktikaversioon aadressil [praktika.arle.top](https://praktika.arle.top). Avaleht kasutab Keskkonnaportaali tuttavat visuaalset keelt ja lisab kaks selgelt eraldatud kasutusvoogu:
 
 1. **Allikapõhine küsimus-vastus otsing.** Kasutaja saab vastuse esmalt, iga väite juures on nummerdatud viited ning vastuse järel ametlikud algallikad.
 2. **Terrapointi täisrakendus.** Avalehe eraldi jaotises töötab `terrapoint.ee` iframe. Terrapoint ei osale üldotsingu vastuste koostamises ega ilmu selle allikatesse.
@@ -46,7 +46,7 @@ Projekt on märgitud praktikaprojektiks ja saadab `noindex` juhise. See ei ole K
 | Andmebaas | Eraldatud PostgreSQL | Korpus ja hübriidotsing, versioonitud vastusepuhver ning privaatsust hoidev tehniline sündmuslogi |
 | Terrapoint | Eraldi iframe | Kogu Terrapointi UI, kaart ja sealsed avalikud integratsioonid; üldotsingust lahus |
 | Pakendamine | Dockerfile + Compose | Mitte-root image; Compose'is read-only veebikonteiner ja eraldatud PostgreSQL |
-| Deploy | Coolify | Docker-build, tervisekontroll, HTTPS ja `praktika.arleserver.cfd` |
+| Deploy | Coolify | Docker-build, tervisekontroll, HTTPS ja `praktika.arle.top` |
 
 ### Miks Redis ei ole praegu lisatud?
 
@@ -201,15 +201,15 @@ Vaikimisi käivituvad veebirakendus ja PostgreSQL. Eksperimentaalse Qdranti kont
 - build pack: **Dockerfile**;
 - sisemine port: `3000`;
 - Coolify konteineri readiness health check: `/api/health/container-readiness` iga sekundi järel, timeout 2 s ja kolm järjestikust ebaõnnestumist; avalik minimaalne olek jääb `/api/health`. Kolme katse aken väldib ühe lühikese event-loop'i viivituse tõttu ainsa terve backendi eemaldamist, kuid viiesekundiline shutdown-drain jätab rolling deploy'l endiselt aega vana konteiner enne sulgemist marsruudist eemaldada;
-- domeen: `https://praktika.arleserver.cfd`;
-- `PUBLIC_ORIGIN=https://praktika.arleserver.cfd`;
+- domeen: `https://praktika.arle.top`;
+- `PUBLIC_ORIGIN=https://praktika.arle.top`;
 - `PROXY_MODE=trusted`; tootmises ei käivitu server määramata režiimi või täpse `PUBLIC_ORIGIN`-ita ning `trusted` režiim nõuab lisaks täpset proxy-ahelat;
 - `TRUSTED_PROXY_CIDRS` sisaldab täpselt tegeliku Traefiku ja päriselt ahelas oleva edge-proxy CIDR-e; `trusted` režiim tühja loendiga ja kõiki võrke usaldav `0.0.0.0/0` või `::/0` keelatakse;
 - `IPV6_CLIENT_PREFIX_BITS=64` koondab ühe IPv6 võrgu privacy-aadressid samaks rate-limit-, admission- ja LLM-kvoodi identiteediks; kui edge annab kliendile /56 või /48 delegatsiooni, tuleb väärtus vastavaks seada, `/128` jätab aadressid eraldi;
 - avaliku transpordi vaikelaed `MAX_HTTP_CONNECTIONS=256`, `MAX_ACTIVE_PUBLIC_RESPONSES=224`, `MAX_ACTIVE_GENERAL_RESPONSES=192`, kliendipõhised aktiivvastuse laed 16/12 ning `PUBLIC_RESPONSE_IDLE_TIMEOUT_MS=20000` ja `PUBLIC_RESPONSE_ABSOLUTE_TIMEOUT_MS=60000`;
 - projektile eraldatud `DATABASE_URL`;
 - serverisaladus `LLM_API_KEY`: ainult autenditud Codex gateway bearer; OpenAI Codex OAuth jääb hosti OMP auth brokerisse ja gateway'sse;
-- `LLM_MODEL=openai-codex/gpt-6-luna`, `LLM_ORCHESTRATION=direct`, `LLM_BASE_URL=https://terrapoint.arleserver.cfd/v1`, `LLM_REASONING_EFFORT=low` ja `LLM_TIMEOUT_MS=14500`; transport on alati Responses API ja teist varumudelit ei kasutata;
+- `LLM_MODEL=openai-codex/gpt-6-luna`, `LLM_ORCHESTRATION=direct`, `LLM_BASE_URL=https://terrapoint.arle.top/v1`, `LLM_REASONING_EFFORT=low` ja `LLM_TIMEOUT_MS=14500`; transport on alati Responses API ja teist varumudelit ei kasutata;
 - `LLM_ENABLED=true|false`, `SEARCH_CACHE_ENABLED=true|false`, anonüümse püsistuse laed `SEARCH_CACHE_MAX_ROWS=5000` ja `SEARCH_RUN_MAX_ROWS=50000`, piiratud hoolduspartii `SEARCH_RETENTION_BATCH_SIZE=250`, protsessiülene libiseva akna mudelieelarve `LLM_BUDGET_WINDOW_MS`, `LLM_ROLLING_REQUEST_BUDGET` ja `LLM_ROLLING_TOKEN_BUDGET` ning sama akna kliendipõhine õiglane osa `LLM_CLIENT_REQUEST_BUDGET`/`LLM_CLIENT_TOKEN_BUDGET`;
 - vähemalt 32 juhusliku baidiga kanoonilises Base64/Base64URL vormis sõltumatu runtime-saladus `SEARCH_HASH_SECRET` (nt `openssl rand -base64 48`); püsiva andmebaasi korral keeldub server puuduva, madala mitmekesisusega või andmebaasiparooliga kattuva võtmega käivitumast;
 - `CORPUS_SYNC_ON_START=true`, `CORPUS_SYNC_INTERVAL_HOURS=24`, `CORPUS_SEED_QUERIES=mets` ja progressiivse täistekstipartii `CORPUS_STARTUP_HYDRATE_LIMIT=200`.
@@ -226,7 +226,7 @@ Avaliku timeout-ahela kontroll 18.08.2026: rakendus piirab progressiivse otsingu
 - Päringu pikkus, URL-id, allikate hostid, response size ja redirect'id valideeritakse serveris. Kõik suured upstream-vastused läbivad enne JSON-i või teksti parsimist voogedastava baitpiiri; Terrapointi ja ametlike integratsioonide protsessivahemäludel on lisaks ühine bait-eelarve.
 - Autocomplete'il on eraldi kliendikvoot, kahe töökoha, kliendi aktiivpiiri ja kliendipõhise ringmeetodil piiratud järjekorraga upstream-värav, sama päringu koondamine ning viimase katkestanud kliendi järel tühistatav fetch. Portaali tõrke korral kuvatakse ainult päringu juurtega täielikult kattuvaid, läbi vaadatud metsa- või struktureeritud keskkonnaandmete näiteküsimusi; semantiline kõrvalvaste ei täida nimekirja teise valdkonna soovitustega. Korpuse avalik statistikarada kasutab eraldi 20 päringu/minuti kvooti, kliendipõhist HTTP-admission'it ja 60-sekundilist koondatud snapshot'i. Tegeliku andmebaasitöö jaoks on teine kahe töökoha piir: selle lease vabastatakse alles loader'i tegelikul lõppemisel, ka siis, kui HTTP-klient on juba lahkunud või draiver eirab katkestust. Nii ei saa katkestatud päringud PostgreSQL-i ühenduste reservi nähtamatult monopoliseerida.
 - Päringuaegne ametlike URL-ide püsindekseerimine läbib ühe kirjutajaga, 500 URL-i ja 50-kirjelise partii ülempiiriga protsessiülest järjekorda. Sama kanoniseeritud URL koondatakse, õnnestunud kirjutus summutatakse 15 minutiks, sulgemine tühistab aktiivse transaktsiooni ning `official-live-search` kirje peidetakse vaikimisi 7 ja kustutatakse 14 päeva järel, kui seda uuesti ei avastata.
-- Gateway bearer seotakse enne selle lugemist täpselt `https://terrapoint.arleserver.cfd/v1` HTTPS-alusega; mandaati, porti, päringuparameetrit, fragmenti või teist alust sisaldav URL peatab käivituse. Responses marsruut on `/v1/responses`. Terrapointi ja live-grounding auditi väljuvad päringud kontrollivad iga ümbersuunamist, tegelikku DNS/IP-aadressi ja voogedastatud baitide ülempiiri.
+- Gateway bearer seotakse enne selle lugemist täpselt `https://terrapoint.arle.top/v1` HTTPS-alusega; mandaati, porti, päringuparameetrit, fragmenti või teist alust sisaldav URL peatab käivituse. Responses marsruut on `/v1/responses`. Terrapointi ja live-grounding auditi väljuvad päringud kontrollivad iga ümbersuunamist, tegelikku DNS/IP-aadressi ja voogedastatud baitide ülempiiri.
 - Avalik `/api/health` on minimaalne ega paljasta teenuseid või pakkujaid.
 - LLM-võti ei jõua brauserisse; mudel saab ainult avaliku küsimuse ja valitud avalikud tõendid.
 - Luna töötleb OpenAI teenuses autenditud Codex gateway kaudu piiratud küsimust ja avalikke tõendeid. Mudel ega valikulised Agents SDK agendid ei näe rohkem kui küsimust, kuni kümne järjestatud avaliku allika päringupõhiselt valitud väljavõtteid (kokku kuni 36 000 märki), väljundskeemi ja jätkuvoorus kuni 1 400 märki varasemate küsimuste konteksti; kasutaja IP-d, küpsiseid, brauseri mandaate, serverisaladusi, andmebaasilogi ega kogu korpust sinna ei lisata. Kõigil mudelikõnedel on `store: false` ja SDK tracing on keelatud. Need seaded ei tõenda OpenAI ega gateway säilitus- või treeningutingimusi; kehtiva konto ning gateway tingimused tuleb eraldi kinnitada. Gateway ei anna mudelile Terrapointi andmeid. Täpne tehniline andmepiir on failis [PRIVAATSUS.md](PRIVAATSUS.md).
@@ -252,12 +252,12 @@ npm run test:sites
 docker compose config
 npm run eval:holdout
 npm run eval:blind
-npm run eval:live -- --base-url=https://praktika.arleserver.cfd
-npm run audit:filters -- --base-url=https://praktika.arleserver.cfd
-npm run audit:followups -- --base-url=https://praktika.arleserver.cfd
-npm run audit:grounding -- --base-url=https://praktika.arleserver.cfd
-npm run audit:load -- --base-url=https://praktika.arleserver.cfd
-npm run audit:load-results -- --base-url=https://praktika.arleserver.cfd
+npm run eval:live -- --base-url=https://praktika.arle.top
+npm run audit:filters -- --base-url=https://praktika.arle.top
+npm run audit:followups -- --base-url=https://praktika.arle.top
+npm run audit:grounding -- --base-url=https://praktika.arle.top
+npm run audit:load -- --base-url=https://praktika.arle.top
+npm run audit:load-results -- --base-url=https://praktika.arle.top
 ```
 
 `audit:load-results` kontrollib eraldi tulemuste endpoint'i jagatud koormuspiiri ja

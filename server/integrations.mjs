@@ -452,7 +452,7 @@ async function fetchCached(url, {
       headers: {
         Accept: accept || "text/html,application/xhtml+xml",
         "Accept-Encoding": "identity",
-        "User-Agent": "Keskkonnaportaali-praktika/3.0 (+https://praktika.arleserver.cfd)",
+        "User-Agent": "Keskkonnaportaali-praktika/3.0 (+https://praktika.arle.top)",
         ...requestHeaders,
       },
       signal,
@@ -785,7 +785,7 @@ export async function fetchVportalJson(url, origin, {
       headers: {
         Accept: "application/json",
         Origin: origin,
-        "User-Agent": "Keskkonnaportaali-praktika/4.0 (+https://praktika.arleserver.cfd)",
+        "User-Agent": "Keskkonnaportaali-praktika/4.0 (+https://praktika.arle.top)",
       },
       signal,
       maximumBytes: MAX_UPSTREAM_BYTES,

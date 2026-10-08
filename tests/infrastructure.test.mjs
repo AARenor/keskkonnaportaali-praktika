@@ -2093,21 +2093,21 @@ test("LLM JSON parser repairs common truncated punctuation without executing con
 
 test("model credentials are bound to the exact approved HTTPS gateway base", () => {
   assert.equal(
-    validateLlmProviderUrl("https://terrapoint.arleserver.cfd/v1/"),
-    "https://terrapoint.arleserver.cfd/v1",
+    validateLlmProviderUrl("https://terrapoint.arle.top/v1/"),
+    "https://terrapoint.arle.top/v1",
   );
   for (const unsafe of [
-    "http://terrapoint.arleserver.cfd/v1",
-    "https://user:secret@terrapoint.arleserver.cfd/v1",
-    "https://terrapoint.arleserver.cfd.evil.test/v1",
-    "https://terrapoint.arleserver.cfd:444/v1",
+    "http://terrapoint.arle.top/v1",
+    "https://user:secret@terrapoint.arle.top/v1",
+    "https://terrapoint.arle.top.evil.test/v1",
+    "https://terrapoint.arle.top:444/v1",
     "https://127.0.0.1/v1",
-    "https://terrapoint.arleserver.cfd/v1?target=other",
-    "https://terrapoint.arleserver.cfd/v1#fragment",
-    "https://terrapoint.arleserver.cfd/",
-    "https://terrapoint.arleserver.cfd/v2",
-    "https://terrapoint.arleserver.cfd/v1/responses",
-    "https://terrapoint.arleserver.cfd/v1/collect",
+    "https://terrapoint.arle.top/v1?target=other",
+    "https://terrapoint.arle.top/v1#fragment",
+    "https://terrapoint.arle.top/",
+    "https://terrapoint.arle.top/v2",
+    "https://terrapoint.arle.top/v1/responses",
+    "https://terrapoint.arle.top/v1/collect",
     "https://attacker.invalid/v1",
   ]) {
     assert.throws(() => validateLlmProviderUrl(unsafe), /LLM_BASE_URL/u);

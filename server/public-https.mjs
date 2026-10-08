@@ -311,7 +311,7 @@ export async function requestApprovedPublicHttpsJsonPost(value, {
       "Accept-Encoding": "identity",
       "Content-Type": "application/json",
       "Content-Length": String(requestBytes),
-      "User-Agent": "Keskkonnaportaali-praktika/4.0 (+https://praktika.arleserver.cfd)",
+      "User-Agent": "Keskkonnaportaali-praktika/4.0 (+https://praktika.arle.top)",
     },
     signal,
     maximumBytes: byteLimit,

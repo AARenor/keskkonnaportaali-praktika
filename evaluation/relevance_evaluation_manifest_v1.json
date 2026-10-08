@@ -42,7 +42,7 @@
       "runs": [
         {
           "revision": "9c615908de67ab1844bb7afb8ec0a6d66834e796",
-          "command": "npm run eval:holdout -- --base-url=https://praktika.arleserver.cfd",
+          "command": "npm run eval:holdout -- --base-url=https://praktika.arle.top",
           "evaluatedAt": "2026-08-18T18:55:18.865Z",
           "datasetSha256AtRun": "4cf69a01005817a135f69890a70070fb9f4bb21e45675abec3b9b39c3b7898c7",
           "queriesSha256AtRun": "5b526b3f59cbaac38309f6823b1624ebc087e7dccf2edebc50135da007f8fb5e",
@@ -84,7 +84,7 @@
       "runs": [
         {
           "revision": "9c615908de67ab1844bb7afb8ec0a6d66834e796",
-          "command": "npm run eval:blind -- --base-url=https://praktika.arleserver.cfd --interval-ms=3200",
+          "command": "npm run eval:blind -- --base-url=https://praktika.arle.top --interval-ms=3200",
           "evaluatedAt": "2026-08-18T18:51:30.401Z",
           "datasetSha256AtRun": "ea40bd339d5f0ba2f4176c747063b84387bd86278c1852ad4166298ff6593f40",
           "queriesSha256AtRun": "2430f4b94a969d686c1edb5e7b681efb5f3d5209dc887411d530eed4abcab28e",

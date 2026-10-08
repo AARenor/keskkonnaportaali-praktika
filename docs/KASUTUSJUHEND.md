@@ -3,7 +3,7 @@
 Uuendatud: 02.10.2026
 
 Täielik sirvitav juhend koos peatükilinkidega:
-[praktika.arleserver.cfd/docs/kasutajale](https://praktika.arleserver.cfd/docs/kasutajale).
+[praktika.arle.top/docs/kasutajale](https://praktika.arle.top/docs/kasutajale).
 Alljärgnev on lühike repositooriumi kiirjuhend; avaliku juhendi sisu asub
 failis [src/docs/content.jsx](../src/docs/content.jsx).
 

@@ -1494,7 +1494,7 @@ export async function fetchCorpusText(url, {
         headers: {
           Accept: accept,
           "Accept-Encoding": "identity",
-          "User-Agent": "Keskkonnaportaali-praktika-corpus/1.0 (+https://praktika.arleserver.cfd)",
+          "User-Agent": "Keskkonnaportaali-praktika-corpus/1.0 (+https://praktika.arle.top)",
         },
         signal: controller.signal,
         maximumBytes: byteLimit,

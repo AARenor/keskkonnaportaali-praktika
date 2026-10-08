@@ -179,7 +179,7 @@ export const developerGuide = {
         <p>POST-päringud peavad kasutama <code>Content-Type: application/json</code>. JSON-keha ülempiir on 32 KiB, tihendatud keha ei toetata. Küsimus <code>q</code> on nõutav ning pärast normaliseerimist kuni 180 märki. Kasuta <code>page</code> vahemikus 1–500 ja <code>page_size</code> vahemikus 1–50; vaikimisi 1 ja 12.</p>
         <p>Otsingu ja soovituste GET-alias'e ei ole. Küsimus tuleb JSON-kehast; lehekülge ja filtreid saab anda ka päringuparameetrites, kuid lihtsama ja üheselt mõistetava integratsiooni jaoks hoia need kõik kehas.</p>
         <Code>{`curl --fail-with-body --max-time 20 \\
-  -X POST 'https://praktika.arleserver.cfd/api/search' \\
+  -X POST 'https://praktika.arle.top/api/search' \\
   -H 'Content-Type: application/json' \\
   --data '{"q":"mets","page":1,"page_size":12,"filters":{"source":"all","category":"","year":null,"sort":"relevance"}}'`}</Code>
         <p>See on serveri või käsurea näide, mitte luba brauseri ristpäritolu päringuks. Ära lisa küsimust URL-i päringuparameetriks ega logi seda tavapärasesse ligipääsulogi.</p>
@@ -316,7 +316,7 @@ LLM_ENABLED=false SEARCH_CACHE_ENABLED=false npm start`}</Code>
               <tr><td><code>DATABASE_SSL_MODE</code></td><td>Kaugandmebaasi jaoks <code>verify-full</code> ja vajadusel <code>DATABASE_SSL_CA</code>. Krüpteerimata ühendus on lubatud ainult kontrollitud lokaalsele või selgelt lubatud hostile.</td></tr>
               <tr><td><code>LLM_ENABLED</code></td><td>Vastuse koostamise teenuse kasutamine. Väärtus <code>false</code> keelab selle.</td></tr>
               <tr><td><code>LLM_API_KEY</code></td><td>Ainult serveri runtime-saladus: autenditud Codex gateway bearer. OpenAI Codex OAuth jääb hosti OMP auth brokerisse ja gateway'sse; seda ei kopeerita rakendusse. Võtit ei anta API tarbijale ega brauserile.</td></tr>
-              <tr><td><code>LLM_BASE_URL</code>, <code>LLM_MODEL</code></td><td><code>https://terrapoint.arleserver.cfd/v1</code> ja <code>openai-codex/gpt-6-luna</code>. Transport on alati Responses API, teist varumudelit ei kasutata; reasoning on <code>low</code> ja <code>LLM_TIMEOUT_MS=14500</code>.</td></tr>
+              <tr><td><code>LLM_BASE_URL</code>, <code>LLM_MODEL</code></td><td><code>https://terrapoint.arle.top/v1</code> ja <code>openai-codex/gpt-6-luna</code>. Transport on alati Responses API, teist varumudelit ei kasutata; reasoning on <code>low</code> ja <code>LLM_TIMEOUT_MS=14500</code>.</td></tr>
               <tr><td><code>SEARCH_CACHE_ENABLED</code></td><td>Püsiva vastusevahemälu kasutamine; <code>false</code> keelab selle.</td></tr>
               <tr><td><code>MULTILINGUAL_SEARCH_ENABLED</code></td><td>Vaikimisi keelatud. Ära lülita ametlikus üleandmises sisse ilma eraldi keelekvaliteedi kontrollita.</td></tr>
               <tr><td><code>APP_REVISION</code></td><td>Juurutatud koodi commit'i identifikaator tervisekontrollis; erineb kliendi build'i identifikaatorist.</td></tr>
@@ -324,7 +324,7 @@ LLM_ENABLED=false SEARCH_CACHE_ENABLED=false npm start`}</Code>
           </table>
         </div>
         <p>Päritolu kontroll kasutab muu hulgas <code>Origin</code> ja <code>Sec-Fetch-Site</code> päiseid. Hoia need puhverserveris alles. Serveritevaheline klient võib brauseripäised puududa lasta, kuid peab endiselt saatma JSON-meediatüübi; see ei anna talle autentitud kasutaja rolli.</p>
-        <p>Vastuse koostamise <code>LLM_BASE_URL</code> ei ole suvalise teenuse URL-i seadistus: praegune poliitika lubab ainult täpset gateway alust <code>https://terrapoint.arleserver.cfd/v1</code>. Responses marsruut on <code>/v1/responses</code>. Teenuse või mudeli vahetamine vajab eraldi turva-, privaatsus- ja vastusekvaliteedi kontrolli. Coolify Dockerfile-runtime'i muutujad tuleb seadistada eraldi; Compose'i muutmine ei muuda tootmise keskkonda.</p>
+        <p>Vastuse koostamise <code>LLM_BASE_URL</code> ei ole suvalise teenuse URL-i seadistus: praegune poliitika lubab ainult täpset gateway alust <code>https://terrapoint.arle.top/v1</code>. Responses marsruut on <code>/v1/responses</code>. Teenuse või mudeli vahetamine vajab eraldi turva-, privaatsus- ja vastusekvaliteedi kontrolli. Coolify Dockerfile-runtime'i muutujad tuleb seadistada eraldi; Compose'i muutmine ei muuda tootmise keskkonda.</p>
         <p><code>trusted</code> režiimis on <code>TRUSTED_PROXY_CIDRS</code> kohustuslik; kogu internetti hõlmav CIDR ei ole lubatud. Avalik päritolu peab kasutama HTTPS-i, välja arvatud sõnaselge loopback-arenduskeskkond. Ka brauseri <code>same-site</code> päring lükatakse tagasi, kui see ei ole sama päritolu.</p>
         <p>Ära kasuta pimesi <code>trust proxy=true</code>. Valesti usaldatud edastuspäis võib rikkuda kliendiaadressi, päringupiirid või HTTPS-suunamise. Valideeri seadistus oma tegeliku proxy-topoloogia peal, mitte ainult arendusmasinas.</p>
         <p>Kui relee koondab kõik külastajad üheks kliendiaadressiks, jagavad nad ka otsingu- ja koormuskvoote. Vaikimisi arvestatakse IPv6 kliente /64 prefiksi järgi. Säilita õige kliendi identiteet ainult usaldatud päiseahela kaudu.</p>
@@ -362,8 +362,8 @@ LLM_ENABLED=false SEARCH_CACHE_ENABLED=false npm start`}</Code>
         <Code>{`npm test
 npm run build
 npm run test:sites
-npm run eval:live -- --base-url=https://praktika.arleserver.cfd
-npm run audit:filters -- --base-url=https://praktika.arleserver.cfd`}</Code>
+npm run eval:live -- --base-url=https://praktika.arle.top
+npm run audit:filters -- --base-url=https://praktika.arle.top`}</Code>
         <p>Viimased kaks käsku kontrollivad praktikakeskkonda. Vastuvõtutestis asenda päritolu kokkulepitud testkeskkonnaga; ära koorma ametlikku tootmist ilma kontrollitud testiaknata. <code>npm test</code> lülitab mitmekeelse testikihi sisse, kuid <CodeLink path="tests/estonian-only.test.mjs">vaikerežiimi test</CodeLink> kontrollib eraldi eestikeelset tootmispiiri.</p>
         <p>Need on esimese väljaande üleandmiskriteeriumid, mitte garantii iga välise allika katkematu töö kohta. Täienda integratsioonilepingut vastuvõtva meeskonna tegelike otsuste ja testitulemustega.</p>
       </>,

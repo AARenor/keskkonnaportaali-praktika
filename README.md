@@ -10,13 +10,13 @@ Keskkonnaportaali visuaalsel keelel põhinev praktikaprojekt, mille põhiosad on
 - raie osakaalu küsimusele („kui suur osa raiest on lageraie”) SMI raieliikide jaotus sektordiagrammina;
 - portaali sees töötav kogu `terrapoint.ee` rakendus, mis on üldotsingust täielikult eraldatud.
 
-Avalik keskkond: [praktika.arleserver.cfd](https://praktika.arleserver.cfd)
+Avalik keskkond: [praktika.arle.top](https://praktika.arle.top)
 
 ## Avalikud juhendid
 
-- [Juhendite ülevaade](https://praktika.arleserver.cfd/docs)
-- [Tavakasutaja juhend](https://praktika.arleserver.cfd/docs/kasutajale): otsing, filtrid, viited, diagrammid, jätkuküsimused ja privaatsus.
-- [Arendaja integratsioonijuhend](https://praktika.arleserver.cfd/docs/arendajale): API leping, sama päritolu ühendamine keskkonnaportaal.ee süsteemiga, voogedastus, seadistus ja üleandmise kontrollnimekiri.
+- [Juhendite ülevaade](https://praktika.arle.top/docs)
+- [Tavakasutaja juhend](https://praktika.arle.top/docs/kasutajale): otsing, filtrid, viited, diagrammid, jätkuküsimused ja privaatsus.
+- [Arendaja integratsioonijuhend](https://praktika.arle.top/docs/arendajale): API leping, sama päritolu ühendamine keskkonnaportaal.ee süsteemiga, voogedastus, seadistus ja üleandmise kontrollnimekiri.
 
 Juhendite versioonitud sisu: [src/docs/content.jsx](./src/docs/content.jsx).
 Need kirjeldavad praegust praktikaversiooni, mitte juba tehtud CMS-i või SSO
@@ -50,7 +50,7 @@ Tervisekontroll: `GET /api/health`.
 ### Tausta-AI ja juurutus
 
 06.10.2026 seadistuse cutover kasutab olemasolevat autenditud Codex gateway'd:
-`LLM_BASE_URL=https://terrapoint.arleserver.cfd/v1`,
+`LLM_BASE_URL=https://terrapoint.arle.top/v1`,
 `LLM_MODEL=openai-codex/gpt-6-luna`, `LLM_REASONING_EFFORT=low` ja
 `LLM_TIMEOUT_MS=14500`, `LLM_ORCHESTRATION=direct`. Otsene mudelikõne hoiab
 alles viite- ja tõendikontrollid ning mahub senisesse 15-sekundilisse eelarvesse;
@@ -81,8 +81,8 @@ npm run eval:holdout
 npm run eval:blind
 npm run eval:open
 npm run eval:public
-npm run eval:live -- --base-url=https://praktika.arleserver.cfd
-npm run audit:filters -- --base-url=https://praktika.arleserver.cfd
+npm run eval:live -- --base-url=https://praktika.arle.top
+npm run audit:filters -- --base-url=https://praktika.arle.top
 ```
 
 `eval:public` kontrollib 147 käsitsi koostatud realistlikku eestikeelset

@@ -61,13 +61,13 @@ Kontrollid:
 
 - `npm test` kontrollib kõigi 59 juhtumi intenti ja 24 qrel'i deterministlikku esikohta;
 - `npm run eval:public` kontrollib 147 realistliku arendusjuhu käitumist ning õige ametliku allikaklassi top-1/top-5 asetust;
-- `npm run eval:live -- --base-url=https://praktika.arleserver.cfd` kontrollib samu 24 esikohta tootmises ning lisaks vastuse, viidete, filtrite, lehitsemise, privaatsusväljade ja terviklausete avalikku lepingut;
-- `npm run audit:grounding -- --base-url=https://praktika.arleserver.cfd` kontrollib kümmet esinduslikku maandatud vastust ja kümmet adversariaalset loobumist, viidatud URL-ide HTTP 200 olekut ning väidete sõna- ja arvutuge;
-- `npm run eval:holdout -- --base-url=https://praktika.arleserver.cfd` kontrollib 40 lukustatud päringu relevantsust nii kataloogi kui ka päris ühendotsingu vastu; valiku ja ajaloolise baseline'i tõenduspiir on kirjas masinloetavas manifestis;
-- `npm run eval:blind -- --base-url=https://praktika.arleserver.cfd` kontrollib kümmet käände-, kirjavea-, asukoha- ja mitme intentiga regressioonipäringut. Seda komplekti ei esitata sõltumatult eelregistreeritud pimehindamisena;
-- `npm run audit:filters -- --base-url=https://praktika.arleserver.cfd` kontrollib allika-, kategooria-, aasta-, järjestuse- ja kombineeritud filtrimaatriksit;
-- `npm run audit:followups -- --base-url=https://praktika.arleserver.cfd` teeb ühe juurpäringu ja kolm järjestikust jätkuküsimust, hoides sama filtrit ning kontrollides igal voorul allikate liikmelisust ja viitenumbreid;
-- `npm run audit:load -- --base-url=https://praktika.arleserver.cfd` kontrollib 20 samaaegset kasutajat ja 21. päringu 429 backpressure'i.
+- `npm run eval:live -- --base-url=https://praktika.arle.top` kontrollib samu 24 esikohta tootmises ning lisaks vastuse, viidete, filtrite, lehitsemise, privaatsusväljade ja terviklausete avalikku lepingut;
+- `npm run audit:grounding -- --base-url=https://praktika.arle.top` kontrollib kümmet esinduslikku maandatud vastust ja kümmet adversariaalset loobumist, viidatud URL-ide HTTP 200 olekut ning väidete sõna- ja arvutuge;
+- `npm run eval:holdout -- --base-url=https://praktika.arle.top` kontrollib 40 lukustatud päringu relevantsust nii kataloogi kui ka päris ühendotsingu vastu; valiku ja ajaloolise baseline'i tõenduspiir on kirjas masinloetavas manifestis;
+- `npm run eval:blind -- --base-url=https://praktika.arle.top` kontrollib kümmet käände-, kirjavea-, asukoha- ja mitme intentiga regressioonipäringut. Seda komplekti ei esitata sõltumatult eelregistreeritud pimehindamisena;
+- `npm run audit:filters -- --base-url=https://praktika.arle.top` kontrollib allika-, kategooria-, aasta-, järjestuse- ja kombineeritud filtrimaatriksit;
+- `npm run audit:followups -- --base-url=https://praktika.arle.top` teeb ühe juurpäringu ja kolm järjestikust jätkuküsimust, hoides sama filtrit ning kontrollides igal voorul allikate liikmelisust ja viitenumbreid;
+- `npm run audit:load -- --base-url=https://praktika.arle.top` kontrollib 20 samaaegset kasutajat ja 21. päringu 429 backpressure'i.
 
 ## Mõõdetud tootmistulemus 18.08.2026
 

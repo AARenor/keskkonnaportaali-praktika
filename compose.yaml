@@ -26,7 +26,7 @@ services:
       DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-12}
       DATABASE_QUERY_TIMEOUT_MS: ${DATABASE_QUERY_TIMEOUT_MS:-4000}
       LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_BASE_URL: ${LLM_BASE_URL:-https://terrapoint.arleserver.cfd/v1}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://terrapoint.arle.top/v1}
       LLM_MODEL: ${LLM_MODEL:-openai-codex/gpt-6-luna}
       LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-14500}
       LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-3200}

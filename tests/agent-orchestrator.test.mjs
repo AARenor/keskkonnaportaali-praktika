@@ -283,7 +283,7 @@ test("Agents transport rejects redirects, bounds bodies and charges total provid
   let calls = 0;
   let observedInit;
   const boundedFetch = createBoundedOpenAiFetch({
-    baseUrl: "https://terrapoint.arleserver.cfd/v1",
+    baseUrl: "https://terrapoint.arle.top/v1",
     fetchImpl: async (_url, init) => {
       calls += 1;
       observedInit = init;
@@ -298,7 +298,7 @@ test("Agents transport rejects redirects, bounds bodies and charges total provid
     reserveProviderRequest: (usage) => budget.reserve(usage),
     settleProviderRequest: (reservation, usage, options) => settleLlmReservation(reservation, usage, options),
   });
-  const response = await boundedFetch("https://terrapoint.arleserver.cfd/v1/responses", {
+  const response = await boundedFetch("https://terrapoint.arle.top/v1/responses", {
     method: "POST",
     redirect: "follow",
     body: JSON.stringify({ max_output_tokens: 100, input: "bounded" }),
@@ -312,15 +312,15 @@ test("Agents transport rejects redirects, bounds bodies and charges total provid
   assert.equal(budget.snapshot().tokens, 100);
   for (const destination of [
     "https://attacker.invalid/collect",
-    "https://terrapoint.arleserver.cfd/v1",
-    "https://terrapoint.arleserver.cfd/v1/collect",
-    "https://terrapoint.arleserver.cfd/v1/responses/collect",
-    "https://terrapoint.arleserver.cfd/v1/chat/completions",
-    "https://terrapoint.arleserver.cfd/v1/responses?target=other",
-    "https://terrapoint.arleserver.cfd/v1/responses#fragment",
-    "https://user:secret@terrapoint.arleserver.cfd/v1/responses",
-    "https://terrapoint.arleserver.cfd:444/v1/responses",
-    "https://terrapoint.arleserver.cfd/v1/%72esponses",
+    "https://terrapoint.arle.top/v1",
+    "https://terrapoint.arle.top/v1/collect",
+    "https://terrapoint.arle.top/v1/responses/collect",
+    "https://terrapoint.arle.top/v1/chat/completions",
+    "https://terrapoint.arle.top/v1/responses?target=other",
+    "https://terrapoint.arle.top/v1/responses#fragment",
+    "https://user:secret@terrapoint.arle.top/v1/responses",
+    "https://terrapoint.arle.top:444/v1/responses",
+    "https://terrapoint.arle.top/v1/%72esponses",
   ]) {
     await assert.rejects(
       boundedFetch(destination, {
@@ -335,17 +335,17 @@ test("Agents transport rejects redirects, bounds bodies and charges total provid
 
   const client = createGroundedOpenAiClient({
     apiKey: "test-key",
-    baseUrl: "https://terrapoint.arleserver.cfd/v1",
+    baseUrl: "https://terrapoint.arle.top/v1",
     fetchImpl: async () => new Response("{}", { status: 503 }),
   });
   assert.equal(client.maxRetries, 0);
-  assert.equal(client.baseURL, "https://terrapoint.arleserver.cfd/v1");
+  assert.equal(client.baseURL, "https://terrapoint.arle.top/v1");
 });
 
 test("Agents default transport pins provider origin, credentials and byte limits", async () => {
   const calls = [];
   const boundedFetch = createBoundedOpenAiFetch({
-    baseUrl: "https://terrapoint.arleserver.cfd/v1",
+    baseUrl: "https://terrapoint.arle.top/v1",
     maximumRequestBytes: 512,
     maximumResponseBytes: 1_024,
     requestJsonImpl: async (url, options) => {
@@ -361,7 +361,7 @@ test("Agents default transport pins provider origin, credentials and byte limits
     },
   });
   const requestBody = JSON.stringify({ model: "openai-codex/gpt-6-luna", input: "mets" });
-  const response = await boundedFetch("https://terrapoint.arleserver.cfd/v1/responses", {
+  const response = await boundedFetch("https://terrapoint.arle.top/v1/responses", {
     method: "POST",
     headers: {
       Authorization: "Bearer test-only",
@@ -373,19 +373,19 @@ test("Agents default transport pins provider origin, credentials and byte limits
 
   assert.equal((await response.json()).id, "safe-response");
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, "https://terrapoint.arleserver.cfd/v1/responses");
-  assert.deepEqual([...calls[0].options.approvedOrigins], ["https://terrapoint.arleserver.cfd"]);
+  assert.equal(calls[0].url, "https://terrapoint.arle.top/v1/responses");
+  assert.deepEqual([...calls[0].options.approvedOrigins], ["https://terrapoint.arle.top"]);
   assert.equal(calls[0].options.body, requestBody);
   assert.equal(calls[0].options.headers.Authorization, "Bearer test-only");
   assert.equal(calls[0].options.maximumRequestBytes, 512);
   assert.equal(calls[0].options.maximumBytes, 1_024);
 
-  await assert.rejects(boundedFetch("https://terrapoint.arleserver.cfd/v1/responses", {
+  await assert.rejects(boundedFetch("https://terrapoint.arle.top/v1/responses", {
     method: "GET",
     body: "{}",
   }), /only POST/u);
   assert.equal(calls.length, 1);
-  await assert.rejects(boundedFetch("https://terrapoint.arleserver.cfd/v1/responses", {
+  await assert.rejects(boundedFetch("https://terrapoint.arle.top/v1/responses", {
     method: "POST",
     body: "x".repeat(513),
   }), /request body is too large/u);
@@ -396,7 +396,7 @@ test("Agents transport denies before dispatch and fully charges unknown oversize
   let deniedCalls = 0;
   const deniedBudget = createRollingLlmBudget({ requestBudget: 10, tokenBudget: 1_000 });
   const deniedFetch = createBoundedOpenAiFetch({
-    baseUrl: "https://terrapoint.arleserver.cfd/v1",
+    baseUrl: "https://terrapoint.arle.top/v1",
     fetchImpl: async () => {
       deniedCalls += 1;
       return new Response("{}");
@@ -404,7 +404,7 @@ test("Agents transport denies before dispatch and fully charges unknown oversize
     reserveProviderRequest: (usage) => deniedBudget.reserve(usage),
     settleProviderRequest: (reservation, usage, options) => settleLlmReservation(reservation, usage, options),
   });
-  await assert.rejects(deniedFetch("https://terrapoint.arleserver.cfd/v1/responses", {
+  await assert.rejects(deniedFetch("https://terrapoint.arle.top/v1/responses", {
     method: "POST",
     body: JSON.stringify({ max_output_tokens: 4_000 }),
   }), (error) => error?.code === "LLM_BUDGET_EXHAUSTED");
@@ -413,7 +413,7 @@ test("Agents transport denies before dispatch and fully charges unknown oversize
   const chargedBudget = createRollingLlmBudget({ requestBudget: 10, tokenBudget: 100_000 });
   let canceled = false;
   const oversizedFetch = createBoundedOpenAiFetch({
-    baseUrl: "https://terrapoint.arleserver.cfd/v1",
+    baseUrl: "https://terrapoint.arle.top/v1",
     maximumResponseBytes: 8,
     fetchImpl: async () => new Response(new ReadableStream({
       start(controller) {
@@ -428,7 +428,7 @@ test("Agents transport denies before dispatch and fully charges unknown oversize
     settleProviderRequest: (reservation, usage, options) => settleLlmReservation(reservation, usage, options),
   });
   const body = JSON.stringify({ max_output_tokens: 100 });
-  await assert.rejects(oversizedFetch("https://terrapoint.arleserver.cfd/v1/responses", {
+  await assert.rejects(oversizedFetch("https://terrapoint.arle.top/v1/responses", {
     method: "POST",
     body,
   }), /too large/u);
@@ -441,7 +441,7 @@ test("Agents transport denies before dispatch and fully charges unknown oversize
 
   let declaredCanceled = false;
   const declaredFetch = createBoundedOpenAiFetch({
-    baseUrl: "https://terrapoint.arleserver.cfd/v1",
+    baseUrl: "https://terrapoint.arle.top/v1",
     maximumResponseBytes: 8,
     fetchImpl: async () => new Response(new ReadableStream({
       start(controller) {
@@ -452,7 +452,7 @@ test("Agents transport denies before dispatch and fully charges unknown oversize
       },
     }), { headers: { "content-length": "99" } }),
   });
-  await assert.rejects(declaredFetch("https://terrapoint.arleserver.cfd/v1/responses", {
+  await assert.rejects(declaredFetch("https://terrapoint.arle.top/v1/responses", {
     method: "POST",
     body: "{}",
   }), /too large/u);
@@ -463,7 +463,7 @@ test("wrapped OpenAI connection errors preserve pre-dispatch budget denial", asy
   let calls = 0;
   const client = createGroundedOpenAiClient({
     apiKey: "test-key",
-    baseUrl: "https://terrapoint.arleserver.cfd/v1",
+    baseUrl: "https://terrapoint.arle.top/v1",
     fetchImpl: async () => {
       calls += 1;
       return new Response("{}");
@@ -491,7 +491,7 @@ test("Agents transport full-charges output-only or zero-total usage after dispat
     const budget = createRollingLlmBudget({ requestBudget: 10, tokenBudget: 100_000 });
     const body = JSON.stringify({ max_output_tokens: 100 });
     const boundedFetch = createBoundedOpenAiFetch({
-      baseUrl: "https://terrapoint.arleserver.cfd/v1",
+      baseUrl: "https://terrapoint.arle.top/v1",
       fetchImpl: async () => new Response(JSON.stringify({ usage }), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -501,7 +501,7 @@ test("Agents transport full-charges output-only or zero-total usage after dispat
         settleLlmReservation(reservation, observed, options)
       ),
     });
-    await boundedFetch("https://terrapoint.arleserver.cfd/v1/responses", {
+    await boundedFetch("https://terrapoint.arle.top/v1/responses", {
       method: "POST",
       body,
     });
@@ -517,7 +517,7 @@ test("large natural-language agent requests fit the client budget and settle to 
   const budget = createRollingLlmBudget({ requestBudget: 4, tokenBudget: 120_000 });
   let calls = 0;
   const boundedFetch = createBoundedOpenAiFetch({
-    baseUrl: "https://terrapoint.arleserver.cfd/v1",
+    baseUrl: "https://terrapoint.arle.top/v1",
     fetchImpl: async () => {
       calls += 1;
       return new Response(JSON.stringify({ usage: { total_tokens: 10_000 } }), {
@@ -535,7 +535,7 @@ test("large natural-language agent requests fit the client budget and settle to 
       input: "x".repeat(targetBytes - Buffer.byteLength(empty, "utf8")),
     });
     assert.equal(Buffer.byteLength(body, "utf8"), targetBytes);
-    await boundedFetch("https://terrapoint.arleserver.cfd/v1/responses", { method: "POST", body });
+    await boundedFetch("https://terrapoint.arle.top/v1/responses", { method: "POST", body });
   }
   assert.equal(calls, 4);
   assert.equal(budget.snapshot().requests, 4);
@@ -547,7 +547,7 @@ test("token-dense agent requests are denied by the byte-level upper bound before
   const budget = createRollingLlmBudget({ requestBudget: 4, tokenBudget: 70_000 });
   let calls = 0;
   const boundedFetch = createBoundedOpenAiFetch({
-    baseUrl: "https://terrapoint.arleserver.cfd/v1",
+    baseUrl: "https://terrapoint.arle.top/v1",
     fetchImpl: async () => {
       calls += 1;
       return new Response("{}");
@@ -557,7 +557,7 @@ test("token-dense agent requests are denied by the byte-level upper bound before
   });
   const body = JSON.stringify({ max_output_tokens: 4_000, input: "x".repeat(70_000) });
   await assert.rejects(
-    boundedFetch("https://terrapoint.arleserver.cfd/v1/responses", { method: "POST", body }),
+    boundedFetch("https://terrapoint.arle.top/v1/responses", { method: "POST", body }),
     (error) => error?.code === "LLM_BUDGET_EXHAUSTED",
   );
   assert.equal(calls, 0);
@@ -700,7 +700,7 @@ test("the real SDK Responses transport preserves the Codex selector, tool review
   const budget = createRollingLlmBudget({ requestBudget: 10, tokenBudget: 100_000 });
   const result = await runGroundedSearchOrchestration({
     apiKey: "test-only-gateway-bearer",
-    baseUrl: "https://terrapoint.arleserver.cfd/v1",
+    baseUrl: "https://terrapoint.arle.top/v1",
     model: "openai-codex/gpt-6-luna",
     reasoningEffort: "low",
     maxTokens: 1_600,
@@ -751,7 +751,7 @@ test("the real SDK Responses transport preserves the Codex selector, tool review
   assert.deepEqual(result.output, expected);
   assert.equal(calls.length, 4);
   for (const { url, options, body } of calls) {
-    assert.equal(url, "https://terrapoint.arleserver.cfd/v1/responses");
+    assert.equal(url, "https://terrapoint.arle.top/v1/responses");
     assert.equal(new Headers(options.headers).get("authorization"), "Bearer test-only-gateway-bearer");
     assert.equal(body.model, "openai-codex/gpt-6-luna");
     assert.equal(body.store, false);

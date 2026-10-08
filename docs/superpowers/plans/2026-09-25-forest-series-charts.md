@@ -2240,19 +2240,19 @@ Follow the existing procedure in `AGENTS.md`/`PROJEKT.md` (Coolify API with the 
 ```bash
 for q in "lageraie pindala 2015–2024" "Metsamaa pindala viimase kümne aasta jooksul" "raiemaht 20 aastat tagasi võrreldes praegusega" "Mida see viimase 5 aasta jooksul tähendab? Kas raiemaht ületab juurdekasvu?" "Metsamaa pindala 2024" "mets"; do
   printf '%s => ' "$q"
-  curl -sS -X POST https://praktika.arleserver.cfd/api/search -H "Content-Type: application/json" -d "{\"q\":\"$q\"}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const r=JSON.parse(s);console.log(r.answer.eyebrow,"|",r.chart?`${r.chart.kind}:${r.chart.series.length}x${r.chart.series[0].points.length}`:"no-chart");})'
+  curl -sS -X POST https://praktika.arle.top/api/search -H "Content-Type: application/json" -d "{\"q\":\"$q\"}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const r=JSON.parse(s);console.log(r.answer.eyebrow,"|",r.chart?`${r.chart.kind}:${r.chart.series.length}x${r.chart.series[0].points.length}`:"no-chart");})'
 done
 ```
 Expected: first three → `Statistikaameti tabel …` with `line:1x10`, `line:1x10`, `line:1x21`; the Eurostat follow-up → `bar:2x…`; `Metsamaa pindala 2024` and `mets` → `no-chart`. Run twice (cold and cached) and confirm the cached run still has the chart.
 
 - [ ] **Step 4: Browser pass on production**
 
-Open https://praktika.arleserver.cfd in the built-in browser, search `Lageraie pindala 2015–2024`, verify the chart, tooltip, keyboard focus and citation link on desktop and at the 390 px preset; confirm `scrollY === 0` on fresh load.
+Open https://praktika.arle.top in the built-in browser, search `Lageraie pindala 2015–2024`, verify the chart, tooltip, keyboard focus and citation link on desktop and at the 390 px preset; confirm `scrollY === 0` on fresh load.
 
 - [ ] **Step 5: Run the live evals that exist**
 
 ```bash
-npm run eval:live -- --base-url=https://praktika.arleserver.cfd
-npm run audit:filters -- --base-url=https://praktika.arleserver.cfd
+npm run eval:live -- --base-url=https://praktika.arle.top
+npm run audit:filters -- --base-url=https://praktika.arle.top
 ```
 Expected: no regressions versus the last recorded run in `acceptance-evidence.md`. Append the probe outputs and SHA to `acceptance-evidence.md`, commit and push, and re-verify the deploy record for that final SHA.

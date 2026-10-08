@@ -1,4 +1,4 @@
-export const LLM_GATEWAY_BASE_URL = "https://terrapoint.arleserver.cfd/v1";
+export const LLM_GATEWAY_BASE_URL = "https://terrapoint.arle.top/v1";
 export const LLM_GATEWAY_MODEL = "openai-codex/gpt-6-luna";
 
 export function validateLlmProviderUrl(value) {

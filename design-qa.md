@@ -88,7 +88,7 @@ Paarisvõrdluste ja interaktsioonitestide järgi ei jäänud lokaalsesse buildi 
 
 ## Avaliku deploy vastuvõtukontroll
 
-Coolify kaudu juurutatud commit'i `46695ec` kontrolliti 18.08.2026 aadressil `https://praktika.arleserver.cfd` puhaste Chrome'i brauseriseanssidega. Avaliku deploy tulemused:
+Coolify kaudu juurutatud commit'i `46695ec` kontrolliti 18.08.2026 aadressil `https://praktika.arle.top` puhaste Chrome'i brauseriseanssidega. Avaliku deploy tulemused:
 
 - värske 1440 × 1100 desktop-load ja 390 × 844 mobiililaadimine jäid `scrollY === 0` juurde, aktiivne element oli hostdokumendi `BODY`, nähtav oli üks põhiotsing ja horisontaalset overflow'd ei tekkinud;
 - `https://terrapoint.ee/` laadis cross-origin iframe'is päris Terrapointi pealkirja, sisu ja neli sisendit; iframe ei saanud hostdokumendi fookust;

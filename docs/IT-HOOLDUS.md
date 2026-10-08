@@ -79,7 +79,7 @@ See kasutab **Dockerfile** build pack'i ja porti `3000`; `compose.yaml` on
 eraldi lokaalse stack'i leping ega määra selle tootmisrakenduse runtime'i.
 
 1. Määra Coolify selle rakenduse runtime-keskkonnas turvaliselt `LLM_API_KEY`
-   gateway bearer'iga, `LLM_BASE_URL=https://terrapoint.arleserver.cfd/v1`,
+   gateway bearer'iga, `LLM_BASE_URL=https://terrapoint.arle.top/v1`,
    `LLM_MODEL=openai-codex/gpt-6-luna`,
    `LLM_ORCHESTRATION=direct`, `LLM_ENABLED=true`, `LLM_REASONING_EFFORT=low`
    ja `LLM_TIMEOUT_MS=14500`. Hoia olemasolevad concurrency-, tokeni-,
@@ -89,7 +89,7 @@ eraldi lokaalse stack'i leping ega määra selle tootmisrakenduse runtime'i.
    Ära väljasta võtme väärtust seadistuse või konteineri kontrollimisel.
 2. Salvesta runtime enne uue koodi juurutamist. `.github/workflows/deploy.yml`
    käivitub `main` push'il ning teeb GitHub Actionsi `COOLIFY_API_TOKEN`
-   saladusega `POST https://coolify.arleserver.cfd/api/v1/applications/asdyidu5wvjx54d0b09t9rhw/start`
+   saladusega `POST https://coolify.arle.top/api/v1/applications/asdyidu5wvjx54d0b09t9rhw/start`
    ja tühja JSON-kehaga `{}`. Vajadusel kasuta sama rakenduse Coolify Redeploy
    tegevust; paljas juba töötava konteineri restart ei lisa muudetud keskkonda.
 3. Jälgi Coolify deployment'i kuni `finished` olekuni täpsel lükatud commit'i

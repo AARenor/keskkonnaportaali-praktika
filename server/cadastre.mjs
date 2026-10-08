@@ -89,7 +89,7 @@ export async function fetchFeatureCollection(
       approvedOrigins: GEOSERVER_ORIGINS,
       headers: {
         Accept: "application/geo+json,application/json",
-        "User-Agent": "Keskkonnaportaali-praktika/3.0 (+https://praktika.arleserver.cfd)",
+        "User-Agent": "Keskkonnaportaali-praktika/3.0 (+https://praktika.arle.top)",
       },
       signal,
       maximumBytes: MAX_RESPONSE_BYTES,
