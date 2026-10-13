@@ -48,6 +48,7 @@ import {
   composeTopicDataOverviewResponse,
   composeWasteFacilitiesNavigationResponse,
   forestryIntentServiceDocumentIds,
+  rankedSetCoversSubject,
   hasCompleteSentenceEnding,
   normalize,
   queryTerms,
@@ -1143,6 +1144,17 @@ export async function createPortalDraft(query, {
         supportingDocumentIds: [],
       }
     : conventionalQuality;
+
+  // Does the ranked set actually carry the question's subject? This decides
+  // whether the answer may claim to have found "related official results" or
+  // must report that no suitable official evidence exists at all. The visible
+  // listing counts too: it is the set the user can open.
+  const subjectCovered = Boolean(forestBalance)
+    || quality.strong
+    || rankedSetCoversSubject(query, [
+      ...reranked,
+      ...conventionalEvidenceDocumentsFromListing(listing),
+    ]);
   const allPlannedAnswerDocuments = answerEvidenceDocuments(reranked, plannedEvidence, forestBalance);
   const compositeRequiredIds = plannedEvidence?.kind === "forest-area-method"
     && !plannedEvidence.strong
@@ -1173,12 +1185,17 @@ export async function createPortalDraft(query, {
     : 0;
   const draft = composeSearchResponse(query, answerDocuments, {
     answerable: Boolean(forestBalance) || quality.strong,
-    hasRelevantResults: Boolean(listing?.items?.length),
+    // "Seotud ametlikud tulemused" is a claim about the question's subject:
+    // incidental matches on filler words never qualify (see
+    // rankedSetCoversSubject).
+    hasRelevantResults: subjectCovered,
     clarification: forestBalance || quality.strong
       ? null
-      : plannedEvidence?.reason === "national-area-method-evidence-required"
-        ? "Leitud allikad ei kata korraga Eesti metsamaa pindala ja selle statistilist mõõtmismeetodit. Seetõttu ei esita ma osalist arvvastust; ava ametlik ülevaade või proovi uuesti."
-      : "Leitud allikad ei kata küsimust piisavalt täpselt. Lisa konkreetne objekt, näitaja, piirkond või aasta.",
+      : subjectCovered
+        ? plannedEvidence?.reason === "national-area-method-evidence-required"
+          ? "Leitud allikad ei kata korraga Eesti metsamaa pindala ja selle statistilist mõõtmismeetodit. Seetõttu ei esita ma osalist arvvastust; ava ametlik ülevaade või proovi uuesti."
+          : "Leitud allikad ei kata küsimust piisavalt täpselt. Lisa konkreetne objekt, näitaja, piirkond või aasta."
+        : undefined,
     evidenceKind: forestBalance
       ? "structured-forest-balance"
       : quality.strong ? "ranked-search-results" : "insufficient-evidence",

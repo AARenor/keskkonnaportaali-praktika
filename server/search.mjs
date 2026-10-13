@@ -7950,6 +7950,22 @@ export function assessEvidence(query, documents = []) {
   };
 }
 
+// Words that carry no environment subject of their own. A ranked set that
+// matches only these filler words is not "related" to the question, so the
+// answer must not claim to have found related official results for it.
+const GENERIC_QUERY_CONTEXT_TERMS = new Set(["andmed", "keskkond", "seire"]);
+
+// "Leidsin küsimusega seotud ametlikke tulemusi" is a factual claim: the
+// question's own subject has to be present in the ranked set, i.e. at least one
+// specific content term must match. Filler words ("andmed") are excluded
+// because incidental matches on them never make unrelated documents related.
+export function rankedSetCoversSubject(query, documents = []) {
+  const quality = assessEvidence(query, documents);
+  if (!quality.terms.length) return (documents || []).length > 0;
+  return quality.matchedTerms.some((term) => !GENERIC_QUERY_CONTEXT_TERMS.has(term)
+    && !ADMIN_CONTEXT_ROOTS.has(term));
+}
+
 export function relatedQueries(query, sources) {
   const normalizedQuery = normalize(query);
   const direct = Object.entries(RELATED).find(([key]) => normalizedQuery.includes(normalize(key)));
@@ -8243,7 +8259,12 @@ export function composeSearchResponse(query, rankedDocuments, options = {}) {
     .slice(0, limit)
     .map((document, index) => ({ ...document, citation: index + 1 }));
   const directEvidence = options.answerable !== false && chosen.length > 0;
-  const hasRelevantResults = options.hasRelevantResults === true || chosen.length > 0;
+  // An explicit hasRelevantResults is a factual claim about the query's
+  // subject, so it must not be overridden by a non-empty chosen list: any
+  // ranked match is not automatically a *related* result.
+  const hasRelevantResults = options.hasRelevantResults === undefined
+    ? chosen.length > 0
+    : options.hasRelevantResults === true;
   const title = cleanQuery
     ? `${cleanQuery.charAt(0).toLocaleUpperCase("et")}${cleanQuery.slice(1)}`
     : "Täpsusta keskkonnaandmete küsimust";
@@ -8679,6 +8700,9 @@ export function searchEnvironment(query, limit = 6) {
   const quality = assessEvidence(cleanQuery, ranked);
   return composeSearchResponse(cleanQuery, ranked, {
     answerable: quality.strong,
+    // Only a subject-carrying ranked set may be described as related official
+    // results; filler-word matches ("andmed") must not produce that claim.
+    hasRelevantResults: rankedSetCoversSubject(cleanQuery, ranked),
     clarification: quality.strong ? null : "Lisa konkreetne näitaja, objekt, piirkond või ajavahemik.",
     limit,
     quality,

@@ -2099,12 +2099,35 @@ export function isSafeEllipticalFollowUp(value) {
 
 // A follow-up that carries no environment vocabulary of its own still inherits
 // the accepted root's scope, but only while every content token is a neutral
-// elaboration word, an uppercase acronym the conversation defines, a number,
-// or an inflected form of a token the conversation already contains. The
+// elaboration word, a number, a reviewed acronym the conversation defines, or
+// an inflected form of a token the conversation already contains. The
 // conversation root must itself stay inside the environment domain and the
 // follow-up must have failed the direct scope gate only for missing domain
 // vocabulary, so foreign-language, unsafe and private-person questions keep
 // their hard refusals below.
+// Reviewed shorthand a follow-up may use for a subject the conversation has
+// already established. The expansion words must also appear in the context, so
+// an acronym nobody defined ("XYZ") cannot inherit the conversation's scope.
+const CONTEXT_ACRONYM_EXPANSIONS = Object.freeze({
+  kih: ["keskkonnamoju", "hindamist"],
+});
+
+// A follow-up token matches a context token only as one of its inflections:
+// either one word is the beginning of the other ("mõjusid" of "mõju"), or they
+// share a stem clearly longer than a coincidental prefix. Four shared letters
+// are not enough — "piirivalve" must not ride in on "piirangud".
+function contextTokenMatches(token, contextToken) {
+  const followUp = normalize(token);
+  const root = normalize(contextToken);
+  if (!followUp || !root) return false;
+  if (followUp === root) return true;
+  const [shorter, longer] = followUp.length < root.length ? [followUp, root] : [root, followUp];
+  if (shorter.length >= 4 && longer.startsWith(shorter)) return true;
+  let shared = 0;
+  while (shared < shorter.length && followUp[shared] === root[shared]) shared += 1;
+  return shared >= 6;
+}
+
 export function isContextAnchoredFollowUp(question, contextQuery = "") {
   const input = canonicalizePublicSearchQuery(question, { maximumLength: 120 });
   const text = input.ok ? input.query : "";
@@ -2117,16 +2140,25 @@ export function isContextAnchoredFollowUp(question, contextQuery = "") {
   if (contextAssessment.kind === "out-of-scope") return false;
   const assessment = assessSearchQuery(text);
   if (assessment.kind !== "out-of-scope" || assessment.reason !== "outside-environment-domain") return false;
-  const contextTokens = new Set(normalize(context).split(" ").filter(Boolean));
+  // Normalize both sides: the follow-up keeps its diacritics while context
+  // words fold them away, so "mõjusid" must still match "mõju".
+  const contextTokens = normalize(context).split(" ").filter(Boolean);
   const acronymTokens = new Set((String(question).match(/[\p{Lu}]{2,}/gu) || [])
     .map((token) => token.toLocaleLowerCase("et")));
   return text.split(" ").filter(Boolean).every((token) => {
     if (isNeutralElaborationToken(token)) return true;
-    if (acronymTokens.has(token.toLocaleLowerCase("et"))) return true;
     if (/\d/u.test(token)) return true;
-    if (token.length < 4) return false;
-    const stem = token.slice(0, 4);
-    return [...contextTokens].some((root) => root.length >= 4 && root.startsWith(stem));
+    const normalizedToken = normalize(token);
+    const acronym = token.toLocaleLowerCase("et");
+    if (acronymTokens.has(acronym)) {
+      // An acronym counts only when the conversation already uses it, or when
+      // the reviewed expansion's words appear in the context.
+      if (contextTokens.includes(acronym)) return true;
+      const expansion = CONTEXT_ACRONYM_EXPANSIONS[acronym];
+      return Boolean(expansion && expansion.every((word) => contextTokens.includes(word)));
+    }
+    return contextTokens.includes(normalizedToken)
+      || contextTokens.some((root) => contextTokenMatches(normalizedToken, root));
   });
 }
 

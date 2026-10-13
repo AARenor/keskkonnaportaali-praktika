@@ -78,6 +78,9 @@ import {
   composeScopeResponse,
   composeSearchResponse,
   officialServiceCatalogueDocuments,
+  rankDocuments,
+  rankedSetCoversSubject,
+  searchEnvironment,
 } from "../server/search.mjs";
 import {
   getReviewedSearchSuggestions,
@@ -5258,6 +5261,24 @@ test("search copy distinguishes related official results from a true zero result
     answerable: false,
   });
   assert.match(empty.answer.intro, /ametlikku tõendit ei leitud/u);
+});
+
+test("an unrelated subject never claims related official results", () => {
+  // Matching only a filler word ("andmed") is not a related result: the
+  // answer must fall back to the honest zero-evidence copy.
+  const fillerOnly = rankDocuments("Näita mulle Eurobaromeetri andmeid");
+  assert.ok(fillerOnly.length > 0, "ranking still returns incidental matches");
+  assert.equal(rankedSetCoversSubject("Näita mulle Eurobaromeetri andmeid", fillerOnly), false);
+  const response = searchEnvironment("Näita mulle Eurobaromeetri andmeid");
+  assert.match(response.answer.intro, /Täpset ja piisavalt asjakohast ametlikku tõendit ei leitud/u);
+  assert.doesNotMatch(response.answer.intro, /Leidsin küsimusega seotud ametlikke tulemusi/u);
+  assert.equal(response.answer.eyebrow, "Vajan täpsustust");
+
+  // A query whose subject is genuinely present keeps the related-results copy.
+  const assessmentRanked = rankDocuments("Millal tuleb teha keskkonnamõju hindamist");
+  assert.equal(rankedSetCoversSubject("Millal tuleb teha keskkonnamõju hindamist", assessmentRanked), true);
+  const covered = searchEnvironment("Millal tuleb teha keskkonnamõju hindamist");
+  assert.match(covered.answer.intro, /Leidsin küsimusega seotud ametlikke tulemusi/u);
 });
 
 test("current evidence fallback selects the observed age direction, not a nearby side metric", () => {

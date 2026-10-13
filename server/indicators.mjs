@@ -383,13 +383,16 @@ export function currentWeatherObservationFromXml(query, xml, options = {}) {
     measurements: selected.measurements,
   };
   const statement = weatherObservationStatement(projection);
+  // The XML timestamp is the observation time, not a page publication date:
+  // present it as such (sourceDateMeta renders "Andmete seis: …").
+  const observedAtLabel = `${observedAt.slice(0, 10).split("-").reverse().join(".")} ${observedAt.slice(11, 16)} UTC`;
   const content = `${statement}${projection.additionalText ? ` Sama vaatlusaja muud näidud: ${projection.additionalText}.` : ""} Mõõtmine kirjeldab nimetatud ilmajaama, mitte automaatselt kogu linna.`;
   return [{
     id: "current-weather-observations",
     title: "Jooksvad ilmavaatlused",
     organization: "Keskkonnaagentuur / Ilmateenistus",
     type: "Reaalaja seireandmed",
-    published: observedAt.slice(0, 10),
+    dataAsOf: observedAtLabel,
     url: CURRENT_WEATHER_OBSERVATIONS_XML_URL,
     locator: CURRENT_WEATHER_OBSERVATIONS_INFO_URL,
     summary: statement,
@@ -598,7 +601,9 @@ export function nationalWeatherForecastFromXml(query, xml, options = {}) {
     title: "Ilm+ – Eesti ilmaprognoos ja hoiatused",
     organization: "Keskkonnaagentuur / Ilmateenistus",
     type: "Ametlik 96 tunni ilmaprognoos",
-    published: intent.targetDate,
+    // The feed date is the forecast's validity date, not a page publication
+    // date: the answer title and summary carry it, and no publication time is
+    // known for the XML feed.
     url: WEATHER_FORECAST_XML_URL,
     locator: WEATHER_FORECAST_INFO_URL,
     summary: forecastSummary(projection),
@@ -821,12 +826,14 @@ export function latestPublishedHydrologyFromJson(query, json, options = {}) {
   };
   const statement = hydrologyStatement(projection);
   const queryUrl = latestPublishedHydrologyQueryUrl(query, { now });
+  // Hourly observation time, not a page publication date.
+  const observedAtLabel = `${observedAt.slice(0, 10).split("-").reverse().join(".")} ${observedAt.slice(11, 16)} UTC`;
   return [{
     id: "latest-published-hydrology",
     title: "Viimati avaldatud hüdroloogilised tunniandmed",
     organization: "Keskkonnaagentuur",
     type: "Ametlikud hüdroloogilised tunniandmed",
-    published: observedAt.slice(0, 10),
+    dataAsOf: observedAtLabel,
     url: queryUrl,
     locator: hydrologyLocator(intent.station),
     summary: statement,

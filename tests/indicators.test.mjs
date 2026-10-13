@@ -28,6 +28,7 @@ import {
   WEATHER_FORECAST_XML_URL,
 } from "../server/indicators.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
+import { sourceDateMeta } from "../src/source-label.js";
 
 const forestFixture = {
   id: ["freq", "stk_flow", "indic_fo", "unit", "geo", "time"],
@@ -134,6 +135,10 @@ test("current-weather XML adapter binds a fresh measurement to station, time and
   assert.match(document.content, /viimase tunni sademete hulk 0 mm/u);
   assert.equal(document._weatherObservation.measurements.precipitation, 0);
   assert.equal(sourceEvidenceEligibility(document, { now }).eligible, true);
+  // The XML timestamp is the observation time, never a publication date.
+  assert.equal(document.published, undefined);
+  assert.equal(document.dataAsOf, "21.08.2026 22:28 UTC");
+  assert.equal(sourceDateMeta(document), "Andmete seis: 21.08.2026 22:28 UTC · Allikas: Keskkonnaagentuur");
 
   const response = composeCurrentWeatherObservationResponse(query, [document], { now, total: 4 });
   assert.equal(response.answer.title, "Tallinn: õhutemperatuur 14,2 °C");
@@ -274,6 +279,9 @@ test("latest-published hydrology adapter binds an exact station, series, source 
   assert.match(document.summary, /Emajõe Tartu jaamas[\s\S]*veetaseme tunni keskmine 33 cm[\s\S]*andmeaeg 2026-08-20 20:00 UTC/u);
   assert.equal(document._hydrologyObservation.graphZeroEh2000, 29.77);
   assert.equal(sourceEvidenceEligibility(document, { now }).eligible, true);
+  // The published hour is the observation time, not a page publication date.
+  assert.equal(document.published, undefined);
+  assert.equal(document.dataAsOf, "20.08.2026 20:00 UTC");
 
   const response = composeLatestPublishedHydrologyResponse(query, [document], { now });
   assert.equal(response.answer.title, "Emajõgi, Tartu: veetaseme tunni keskmine 33 cm");
