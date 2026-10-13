@@ -51,6 +51,7 @@ export const userGuide = {
           <li><strong>Nummerdatud viide</strong> vastuse tekstis avab vastava algallika uues vahelehes.</li>
           <li><strong>Tulemuse pealkiri</strong> viib allikale. Kirjeldus aitab otsustada, kas allikas vastab sinu küsimusele.</li>
           <li><strong>Allika nimi</strong> näitab info avaldajat. Vastuse viidete värvid ja allikate legend aitavad viiteid kokku viia.</li>
+          <li><strong>Legendi read on lingid:</strong> iga allika number, nimi ja kuupäev avaneb kohe algallikas uuel vahelehel — ka siis, kui vastus ei mahtunud ühtegi viidet intro alla.</li>
           <li><strong>„Andmed:”</strong> näitab andmeaastat; <strong>„Uuendatud:”</strong> lehe teadaolevat muutmisaega ning selle puudumisel <strong>„Avaldatud:”</strong> avaldamisaega.</li>
         </ul>
         <p>„Uusim leheuuendus” tähendab võrdlust teadaolevate lehe uuendamiskuupäevade vahel. See ei tähenda, et kõik selles allikas esitatud andmed oleksid sama aasta kohta.</p>
@@ -78,6 +79,7 @@ export const userGuide = {
       content: <>
         <p>Vastuse juures saad kasutada vormi „Küsi selle vastuse kohta”. Iga jätkuküsimuse jaoks otsitakse allikad uuesti; varasem vastus üksi ei ole uue väite tõend.</p>
         <p>Kirjuta, mida soovid täpsustada, või vali seotud küsimus. Näiteks pärast metsamaa pindala küsimust võid küsida „näita 2000–2025”, kui soovid sama näitaja pikemat aegrida.</p>
+        <p>Jätkuküsimus, mis ise teemat nimetab (näiteks „selgita hindamise etappe” või lühend „KIH”), pärib algse küsimuse teema: otsing ühendab mõlemad ja vastab sama lõime allikaist. Kui jätkuküsimus toob kaasa hoopis teise valdkonna sõna, küsib otsing uuesti täpsemalt — see kaitseb vastust teemavälise sisu eest.</p>
         <p>Ühes vastuse jätkuküsimuste lõimes saab teha kuni neli jätku, iga küsimus kuni 180 märki. Ka „Küsi veel” valiku kasutamine loetakse jätkuks. Kui piir saab täis või alustad teist teemat, esita uus küsimus peamises otsingukastis.</p>
         <p>Jätkuvastus ilmub algse vastuse alla oma viidetega. Allpool olev lai tulemuste loend jääb algse küsimuse loendiks; jätkuvastuse algallikaid kontrolli selle enda nummerdatud viidetest.</p>
       </>,

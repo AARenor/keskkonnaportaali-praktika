@@ -9,6 +9,7 @@ import {
   conversationContext,
   deduplicateResults,
   evidenceDocumentsFromListing,
+  isContextAnchoredFollowUp,
   isSafeEllipticalFollowUp,
   parsePublicSearchFilters,
   publicSearchListing,
@@ -1778,6 +1779,56 @@ test("follow-up retrieval context is bounded and keeps only recent questions", (
 test("an inflected seasonal precipitation follow-up is self-contained", () => {
   const question = "Kas talved on muutunud sajusemaks?";
   assert.equal(contextualRetrievalQuery("kliimamuutuse mõju sademetele Eestis", question, []), question);
+});
+
+test("a follow-up without its own subject inherits the accepted root, while an off-domain suffix stays blocked", () => {
+  const kihRoot = "millal tuleb teha keskkonnamõju hindamist";
+  for (const question of [
+    "selgita hindamise etappe",
+    "millal on vajalik KIH",
+    "kuidas see on muutunud",
+    "selgita täpsemalt",
+    "millal see muutus",
+  ]) {
+    assert.equal(isContextAnchoredFollowUp(question, kihRoot), true, question);
+    assert.equal(blockedFollowUpAssessment(kihRoot, question, []), null, question);
+    const retrievalQuery = contextualRetrievalQuery(kihRoot, question, []);
+    assert.match(retrievalQuery, /keskkonnamõju hindamist/u, question);
+    assert.match(retrievalQuery, new RegExp(question.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"), question);
+  }
+
+  const precipitationRoot = "kliimamuutuse mõju sademetele Eestis";
+  for (const question of [
+    "Kuidas seda aktsiaoptsiooni hinnatakse?",
+    "Kas see salasõna varastamiseks kehtib?",
+    "Mis see filmi lõpu kohta tähendab?",
+    "Mida need andmed meditsiinilise diagnoosi jaoks näitavad?",
+    "Millise ajavahemiku see pommi valmistamise juhend hõlmab?",
+  ]) {
+    assert.equal(isContextAnchoredFollowUp(question, precipitationRoot), false, question);
+    assert.equal(isContextAnchoredFollowUp(question, ""), false, question);
+    assert.equal(isContextAnchoredFollowUp(question, "palgad ja palgad"), false, question);
+    assert.equal(
+      blockedFollowUpAssessment(precipitationRoot, question, [])?.kind,
+      "out-of-scope",
+      question,
+    );
+    assert.equal(contextualRetrievalQuery(precipitationRoot, question, []), "", question);
+  }
+
+  // A private or foreign-language shape keeps its hard refusal even with an
+  // accepted environmental root and polite elaboration wording.
+  for (const question of [
+    "Selgita Mati Maasika elukohta täpsemalt",
+    "How does this work exactly?",
+  ]) {
+    assert.equal(
+      blockedFollowUpAssessment("Eesti metsamaa pindala", question, [])?.kind,
+      "out-of-scope",
+      question,
+    );
+    assert.equal(contextualRetrievalQuery("Eesti metsamaa pindala", question, []), "", question);
+  }
 });
 
 test("conversation context excludes earlier prompt-injection text", () => {

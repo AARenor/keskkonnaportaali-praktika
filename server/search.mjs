@@ -1940,6 +1940,20 @@ const STOP_WORDS = new Set([
   "such",
 ]);
 
+// Closed follow-up elaboration vocabulary: words that ask *about* an accepted
+// root subject without naming a new subject. Every token a follow-up adds must
+// be neutral here, an uppercase acronym, or an inflected form of a token the
+// conversation already contains; an off-domain noun ("aktsiaoptsiooni",
+// "salasõna") deliberately fails so it cannot ride in on an accepted root.
+const FOLLOW_UP_ELABORATION_TOKEN_PATTERN = /^(?:selgita|seleta|seletage|selgitage|kirjelda|too|naita|näita|ütle|raagi|räägi|täpsemalt|täpsemini|rohkem|veel|üksikasjalikult|üksikasjad|detailsemalt|konkreetsemalt|lähemalt|etapp\w*|üksikasj\w*|aasta\w*|number\w*|arv\w*|väärtus\w*|tulemus\w*|muutu\w*|arene\w*|arenenud|kasva\w*|suurene\w*|vähene\w*|juhtu\w*|toimu\w*|hakka\w*|jätka\w*|tähenda\w*|näita\w*|hõlma\w*|kata\w*|vajalik|nõutav|kohustuslik|kehtiv|olemasolev|uusim|viimane|viimased|puudu\w*|puudumine)$/iu;
+export function isNeutralElaborationToken(token) {
+  const value = String(token || "").trim().toLocaleLowerCase("et");
+  if (!value) return false;
+  return STOP_WORDS.has(value)
+    || PERSON_CONTEXT_STOPWORD_PATTERN.test(value)
+    || FOLLOW_UP_ELABORATION_TOKEN_PATTERN.test(value);
+}
+
 const DISCOVERY_STOP_WORDS = new Set([
   ...STOP_WORDS,
   "anna",

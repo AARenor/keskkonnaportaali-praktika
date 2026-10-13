@@ -32,6 +32,7 @@ import {
   forestryIntentServiceDocumentIds,
   isReviewedGenericProtectedAreaConsentQuery,
   isReviewedPublicOrganizationProtectedBuildingContactQuery,
+  isNeutralElaborationToken,
   normalize,
   officialServiceCatalogueDocuments,
   passageContainsEvidenceDisclaimer,
@@ -2088,10 +2089,45 @@ export function isSafeEllipticalFollowUp(value) {
     || /^(?:aga\s+)?(?:millised?|mis)\s+(?:andmed|andmestikud)\s+(?:on\s+)?(?:k[aä]ttesaadavad|olemas)$/u.test(normalized)
     || /^(?:aga\s+)?kust\s+(?:neid|need|nende)\s+(?:andmeid|andmed|andmestikke|andmestikud)\s+(?:n[aä]eb|leiab)$/u.test(normalized)
     || new RegExp(`^(?:aga\\s+)?kui\\s+suur\\s+${pronoun}\\s+(?:on|oli)$`, "u").test(normalized)
-    || new RegExp(`^(?:aga\\s+)?kuidas\\s+${pronoun}\\s+(?:arvutatakse|hinnatakse|mõõdetakse|võrreldakse|saadi)$`, "u").test(normalized)
+    || new RegExp(`^(?:aga\\s+)?kuidas\\s+${pronoun}\\s+(?:(?:arvutatakse|hinnatakse|mõõdetakse|võrreldakse|saadi)|(?:on|oli)\\s+(?:muutunud|arenenud))$`, "u").test(normalized)
+    || new RegExp(`^(?:aga\\s+)?(?:selgita|seleta)\\s+(?:${pronoun}|täpsemalt|rohkem|veel|üksikasjalikult)(?:\\s+(?:täpsemalt|rohkem|veel|üksikasjalikult))?$`, "u").test(normalized)
+    || new RegExp(`^(?:aga\\s+)?millal\\s+${pronoun}\\s+(?:muutus|hakkas\\s+kehtima|kehtima\\s+hakkas)$`, "u").test(normalized)
     || new RegExp(`^(?:aga\\s+)?kas\\s+${pronoun}\\s+(?:on|oli|kehtib|muutus|suurenes|vähenes|kasvas)$`, "u").test(normalized)
     || new RegExp(`^(?:aga\\s+)?(?:mida|mis)\\s+${pronoun}\\s+(?:(?:viimase|eelneva)\\s+(?:[1-9]|10|ühe|kahe|kolme|nelja|viie|kuue|seitsme|kaheksa|üheksa|kümne)\\s+aasta\\s+jooksul|(?:19|20)\\d{2}\\s+aastaga\\s+võrreldes)\\s+(?:tähendab|näitab)$`, "u").test(normalized)
     || new RegExp(`^(?:aga\\s+)?millise\\s+aja(?:vahemiku|perioodi)(?:ga)?\\s+${pronoun}(?:\\s+muutusi)?\\s+(?:võrreldakse|hõlmab|katab)$`, "u").test(normalized);
+}
+
+// A follow-up that carries no environment vocabulary of its own still inherits
+// the accepted root's scope, but only while every content token is a neutral
+// elaboration word, an uppercase acronym the conversation defines, a number,
+// or an inflected form of a token the conversation already contains. The
+// conversation root must itself stay inside the environment domain and the
+// follow-up must have failed the direct scope gate only for missing domain
+// vocabulary, so foreign-language, unsafe and private-person questions keep
+// their hard refusals below.
+export function isContextAnchoredFollowUp(question, contextQuery = "") {
+  const input = canonicalizePublicSearchQuery(question, { maximumLength: 120 });
+  const text = input.ok ? input.query : "";
+  if (!text || text.split(" ").length > 12) return false;
+  if (containsUnsafeInstruction(text)) return false;
+  const contextInput = canonicalizePublicSearchQuery(contextQuery, { maximumLength: 1_400 });
+  const context = contextInput.ok ? contextInput.query : "";
+  if (!context) return false;
+  const contextAssessment = assessSearchQuery(context);
+  if (contextAssessment.kind === "out-of-scope") return false;
+  const assessment = assessSearchQuery(text);
+  if (assessment.kind !== "out-of-scope" || assessment.reason !== "outside-environment-domain") return false;
+  const contextTokens = new Set(normalize(context).split(" ").filter(Boolean));
+  const acronymTokens = new Set((String(question).match(/[\p{Lu}]{2,}/gu) || [])
+    .map((token) => token.toLocaleLowerCase("et")));
+  return text.split(" ").filter(Boolean).every((token) => {
+    if (isNeutralElaborationToken(token)) return true;
+    if (acronymTokens.has(token.toLocaleLowerCase("et"))) return true;
+    if (/\d/u.test(token)) return true;
+    if (token.length < 4) return false;
+    const stem = token.slice(0, 4);
+    return [...contextTokens].some((root) => root.length >= 4 && root.startsWith(stem));
+  });
 }
 
 export function blockedFollowUpAssessment(rootQuery, question, previousQuestions = []) {
@@ -2102,7 +2138,7 @@ export function blockedFollowUpAssessment(rootQuery, question, previousQuestions
       : []),
     { value: question, allowEllipsis: true },
   ];
-  for (const { value, allowEllipsis } of fragments) {
+  for (const [index, { value, allowEllipsis }] of fragments.entries()) {
     const input = canonicalizePublicSearchQuery(value);
     if (input.reason === "empty") continue;
     if (!input.ok) return assessSearchQuery(value);
@@ -2112,12 +2148,23 @@ export function blockedFollowUpAssessment(rootQuery, question, previousQuestions
         kind: "out-of-scope",
         topic: null,
         reason: "personal-data-lookup",
-        clarification: "Ma ei aita tuvastada eraisiku elukohta, vara ega muid isikuga seostatavaid registriandmeid.",
+        clarification: "Ma ei aita tuvastada eraisiku elukohta, vara ega muid isikuga seotatud registriandmeid.",
       };
     }
     const assessment = assessSearchQuery(fragment);
+    // A missing-vocabulary follow-up stays scoped by the accepted conversation
+    // only when every token it adds is neutral, acronym, or root-derived; the
+    // anchor context deliberately excludes the fragment itself so a token can
+    // never anchor to itself.
+    const anchorContext = fragments
+      .filter((_fragment, otherIndex) => otherIndex !== index)
+      .map((fragment) => fragment.value)
+      .join(" → ");
     if (assessment.kind === "out-of-scope"
-      && (!allowEllipsis || !isSafeEllipticalFollowUp(fragment))) return assessment;
+      && (!allowEllipsis
+        || !(isSafeEllipticalFollowUp(fragment) || isContextAnchoredFollowUp(fragment, anchorContext)))) {
+      return assessment;
+    }
   }
   return null;
 }

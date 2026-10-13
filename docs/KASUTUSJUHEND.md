@@ -24,7 +24,7 @@ ega pärast uuesti laadimist; küsimused püsivad ainult avatud lehe mälus.
 3. Tulemuse metaandmetes tähendab **Allikas:** sisu väljaandjat. Keskkonnaagentuuri koostatud materjal kuvatakse nimega „Keskkonnaagentuur”, mitte lühendiga.
 4. **Andmed:** näitab eraldi andmeaastat ja vajadusel andmete täpset seisu. **Uuendatud:** näitab allikalehel avaldatud viimast muutmiskuupäeva; kui seda pole, kuvatakse **Avaldatud:**. Näiteks puidubilansi juures kuvatakse „Andmed: 2023 (seisuga 18.03.2026) · Uuendatud: 01.10.2026”, et lehe muutmise aega ei peetaks ekslikult andmeaastaks.
 5. „Ametlik” ei tähenda automaatselt, et iga sama lehe lause tõendab küsitud arvu. Vastus kasutab ainult küsimust otseselt katvat lõiku või valideeritud andmerida.
-6. Viitenumbril ja allikate kompaktsel legendil on sama värv; allika eristamiseks on alati ka number ja nimi. **Uusim leheuuendus** võrdleb üksnes teadaolevaid lehe muutmise kuupäevi, mitte andmeaastaid ega meie kontrollimise aega. Teadmata kuupäevaga allikale värskust juurde ei omistata.
+6. Viitenumbril ja allikate kompaktsel legendil on sama värv; allika eristamiseks on alati ka number ja nimi. **Legendi iga rida on link:** number, väljaandaja ja kuupäev avavad algallika uuel vahelehel — ka siis, kui vastus jättis intro ossa ilma viiteta (näiteks teate „nähtavad tõendilõigud ei kata küsimust” puhul). **Uusim leheuuendus** võrdleb üksnes teadaolevaid lehe muutmise kuupäevi, mitte andmeaastaid ega meie kontrollimise aega. Teadmata kuupäevaga allikale värskust juurde ei omistata.
 
 „Ülevaade” üksi ei ole teemaväline päring: otsing palub valida keskkonnateema. „Metsa ülevaade” või „Põhjavesi andmed Eestis” annavad täpsema lähtekoha.
 
@@ -51,6 +51,8 @@ Näiteks metsamaa tagavara sisaldab teistsugust üldkogumit kui puistute tagavar
 ## Diagrammid ja jätkuküsimused
 
 Diagramm kuvatakse ainult siis, kui server sai sama vastuse jaoks valideeritud ametliku arvurea. Diagrammi ei tuletata vabast tekstist. Vastuse all olev jätkuküsimus käivitab uue otsingu; varasem vastus ei muutu uue väite tõendiks.
+
+Jätkuküsimus, mis ise teema sõnu ei sisalda (näiteks „selgita hindamise etappe”, „millal on vajalik KIH” või „kuidas see on muutunud”), pärib algse küsimuse teema: otsing kombineerib mõlemad ja otsib tõendid uuesti. Kui jätkuküsimus toob kaasa teise valdkonna sõna (näiteks „aktsiaoptsioon” või „salasõna”), jääb teemavälise sisu kaitse alles ja päringu palutakse täpsustada.
 
 ## Kui täpset tõendit ei leitud
 

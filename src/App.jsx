@@ -850,19 +850,36 @@ function Citation({ number, sources = [] }) {
   );
 }
 
-function SourceLegend({ sources = [] }) {
+export function SourceLegend({ sources = [] }) {
   if (!sources.length) return null;
   const latest = latestSourceUpdates(sources);
   return (
     <ul className="source-legend" aria-label="Allikate värvid ja kuupäevad">
-      {sources.map((source) => (
-        <li key={source.citation} style={{ "--citation-color": citationColor(source.citation) }}>
-          <span className="source-legend__number">{source.citation}</span>
-          <span title={source.title}>{citationSourceLabel(source)} <span className="source-legend__date">{sourceDateMeta({ updated: source.updated, published: source.published, dataYear: source.dataYear, dataAsOf: source.dataAsOf })}</span>
-            {latest.includes(source.citation) ? <strong title="Uusim teadaolev lehe muutmise kuupäev nende allikate seas; see ei ole andmeaasta. Teadmata kuupäevaga allikaid ei võrreldud."> · Uusim leheuuendus</strong> : null}
-          </span>
-        </li>
-      ))}
+      {sources.map((source) => {
+        const row = (
+          <>
+            <span className="source-legend__number">{source.citation}</span>
+            <span title={source.title}>{citationSourceLabel(source)} <span className="source-legend__date">{sourceDateMeta({ updated: source.updated, published: source.published, dataYear: source.dataYear, dataAsOf: source.dataAsOf })}</span>
+              {latest.includes(source.citation) ? <strong title="Uusim teadaolev lehe muutmise kuupäev nende allikate seas; see ei ole andmeaasta. Teadmata kuupäevaga allikaid ei võrreldud."> · Uusim leheuuendus</strong> : null}
+            </span>
+          </>
+        );
+        const safeHref = safeExternalHref(source.url);
+        return (
+          <li key={source.citation} style={{ "--citation-color": citationColor(source.citation) }}>
+            {safeHref ? (
+              <ExternalAnchor
+                aria-label={`Allikas ${source.citation}: ${source.title || citationSourceLabel(source)} — ${sourceDateMeta(source)} (avaneb uuel vahelehel)`}
+                className="source-legend__link"
+                href={safeHref}
+              >
+                {row}
+                <ExternalLink aria-hidden="true" size={12} />
+              </ExternalAnchor>
+            ) : row}
+          </li>
+        );
+      })}
     </ul>
   );
 }

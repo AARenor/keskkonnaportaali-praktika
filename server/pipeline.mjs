@@ -30,6 +30,7 @@ import {
 import {
   canonicalResultUrl,
   evidenceDocumentsFromListing,
+  isContextAnchoredFollowUp,
   isSafeEllipticalFollowUp,
   prepareRankedSearchResults,
   rankSearchCandidates,
@@ -1743,7 +1744,12 @@ export async function searchEnvironmentLive(query, options = {}) {
   const contextualAssessment = assessSearchQuery(assessmentInput.query);
   const validatedEllipticalFollowUp = options.allowSafeEllipticalFollowUp === true
     && directAssessment.kind === "out-of-scope"
-    && isSafeEllipticalFollowUp(cleanQuery)
+    && (isSafeEllipticalFollowUp(cleanQuery)
+      // A follow-up whose own tokens name no new subject inherits the accepted
+      // root's scope: every added token must be neutral, acronym, or
+      // root-derived (see isContextAnchoredFollowUp). Hard scope, privacy and
+      // language refusals are unaffected.
+      || isContextAnchoredFollowUp(cleanQuery, options.rootContext || options.conversationContext || ""))
     // A period-only follow-up on a dated indicator assesses as
     // "requested-time-series-required" in context; the structured series
     // adapter answers it first, and otherwise the clarification stands.

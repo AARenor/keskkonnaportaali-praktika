@@ -2011,6 +2011,35 @@ h3 {
   background: var(--citation-color);
 }
 
+.source-legend__link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 100%;
+  border-radius: 4px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.source-legend__link svg {
+  align-self: center;
+  flex: 0 0 auto;
+  opacity: 0.55;
+}
+
+.source-legend__link:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--citation-color);
+  text-underline-offset: 3px;
+}
+
+.source-legend__link:hover svg { opacity: 1; }
+
+.source-legend__link:focus-visible {
+  outline: 2px solid var(--citation-color);
+  outline-offset: 2px;
+}
+
 .source-legend__date { font-weight: 400; }
 
 .answer-note {

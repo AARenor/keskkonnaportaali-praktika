@@ -797,6 +797,7 @@ app.post("/api/search/follow-up", async (request, response) => {
         deadlineAt,
         assessmentQuery: retrievalQuery,
         retrievalQuery,
+        rootContext: [rootQuery, ...previousQuestions].join(" → "),
         conversationContext: conversationContext(rootQuery, previousQuestions),
         allowSafeEllipticalFollowUp: true,
         searchResults,
