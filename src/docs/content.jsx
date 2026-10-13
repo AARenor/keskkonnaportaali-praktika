@@ -52,7 +52,7 @@ export const userGuide = {
           <li><strong>Tulemuse pealkiri</strong> viib allikale. Kirjeldus aitab otsustada, kas allikas vastab sinu küsimusele.</li>
           <li><strong>Allika nimi</strong> näitab info avaldajat. Vastuse viidete värvid ja allikate legend aitavad viiteid kokku viia.</li>
           <li><strong>Legendi read on lingid:</strong> iga allika number, nimi ja kuupäev avaneb kohe algallikas uuel vahelehel — ka siis, kui vastus ei mahtunud ühtegi viidet intro alla.</li>
-          <li><strong>„Andmed:”</strong> näitab andmeaastat; <strong>„Uuendatud:”</strong> lehe teadaolevat muutmisaega ning selle puudumisel <strong>„Avaldatud:”</strong> avaldamisaega.</li>
+          <li><strong>„Andmed:”</strong> näitab andmeaastat; <strong>„Uuendatud:”</strong> lehe teadaolevat muutmisaega ning selle puudumisel <strong>„Avaldatud:”</strong> avaldamisaega. Reaalaja seireallika kellaaeg on vaatlusaeg ja kuvatakse kui <strong>„Andmete seis:”</strong>.</li>
         </ul>
         <p>„Uusim leheuuendus” tähendab võrdlust teadaolevate lehe uuendamiskuupäevade vahel. See ei tähenda, et kõik selles allikas esitatud andmed oleksid sama aasta kohta.</p>
         <p>Olulise arvu juures kontrolli algallikast aastat, ühikut ja mõistet. Näiteks metsamaa pindala ei ole sama mis metsaga kaetud metsamaa ehk puistute pindala.</p>
