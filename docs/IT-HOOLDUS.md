@@ -52,7 +52,7 @@ Kindlat kalendripäeva ei eeldata. Kontroll käivitatakse vähemalt kord kuus ni
 
 ## Teadmusväljavõtte uuendamine
 
-HTML-i korpusesünkroon kogub nüüd ka ainult saidikaardis olevaid lehti. Hüdratsiooni vaikeseade on kaks paralleelset päringut ja vähemalt kahesekundiline paus töölise partiide vahel; robots.txt, noindex ja ümbersuunamise piirangud jäävad jõusse. Portaali tulemuste arvu vastuolu katkestab täissünkrooni: seda ei maskeerita eduka täieliku korjena. Korda kontrollitud seemnepäringutega; pooleli jooksnud töö ei anna kogu kataloogi vanade kirjete eemaldamise õigust.
+HTML-i korpusesünkroon kogub nüüd ka ainult saidikaardis olevaid lehti. Hüdratsiooni vaikeseade on kaks paralleelset päringut ja vähemalt kahesekundiline paus töölise partiide vahel; robots.txt, noindex ja ümbersuunamise piirangud jäävad jõusse. Kui robots.txt keelab portaali otsinguotsa, jätkub sünkroon saidikaardi ja kataloogikirjetega ning jooksu detailidesse märgitakse `catalogSkipped: "robots-disallowed"`; keelatud rada ei avata ja vanu kirjeid ei eemaldata. Portaali tulemuste arvu vastuolu katkestab täissünkrooni: seda ei maskeerita eduka täieliku korjena. Korda kontrollitud seemnepäringutega; pooleli jooksnud töö ei anna kogu kataloogi vanade kirjete eemaldamise õigust.
 
 Lehe `.publication-date-author` plokist säilitatakse väljaandja, `Avaldatud` ning `Uuendatud` kuupäev. Andmebaasi `metadata.source_updated_at` tähendab allika avaldatud leheuuendust. `fetched_at` tähendab meie korje aega ja saidikaardi `modified_at` on eraldi tehniline ajamärge; kumbagi ei nimetata avalikus vaates leheuuenduseks. Päev peab olema kalendris olemas. Uus metadata ilmub vanale kirjele alles pärast selle tegelikku uuesti laadimist.
 

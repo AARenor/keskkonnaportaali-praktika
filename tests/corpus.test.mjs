@@ -325,6 +325,11 @@ test("authoritative portal retirement is suppressed only by truncated portal dis
     includeCatalog: false,
     authoritativeCapacityDropped: 0,
   }), false);
+  assert.equal(shouldRetirePortalCatalog({
+    includeCatalog: true,
+    catalogSkipped: true,
+    authoritativeCapacityDropped: 0,
+  }), false);
 });
 
 test("hydration commits only when the locked post-update aggregate stays below the byte ceiling", async () => {

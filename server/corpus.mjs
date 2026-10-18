@@ -1900,6 +1900,10 @@ async function saveQuerySnapshot(client, query, total, urls, {
   ]);
 }
 
+function isRobotsDisallowedCorpusError(error) {
+  return error?.message === "Corpus source is disallowed by robots.txt";
+}
+
 export async function syncPortalCorpus({
   mode = "full",
   hydrateLimit = 0,
@@ -1925,6 +1929,7 @@ export async function syncPortalCorpus({
     const details = {
       sitemapPages: 0,
       catalogTotal: 0,
+      catalogSkipped: null,
       authoritativeCapacityDropped: 0,
       seedQueries: {},
       wikipedia: 0,
@@ -1948,45 +1953,60 @@ export async function syncPortalCorpus({
       onProgress?.({ stage: "sitemap", discovered: sitemapDocuments.length, indexed: totals.indexed });
 
       let catalogUrls = [];
+      let catalogSkipped = false;
       if (includeCatalog) {
-        const catalog = await crawlPortalSearch("", async (documents, page) => {
-          totals.discovered += documents.length;
-          const catalogUpsert = await upsertDocuments(client, documents, runId);
-          totals.indexed += catalogUpsert.indexed;
-          totals.capacityDropped += catalogUpsert.capacityDropped;
-          details.authoritativeCapacityDropped += catalogUpsert.capacityDropped;
-          onProgress?.({ stage: "catalog", page: page + 1, discovered: totals.discovered, indexed: totals.indexed });
-        });
-        details.catalogTotal = catalog.total;
-        details.catalogRepeatedPages = catalog.repeatedPages || 0;
-        catalogUrls = catalog.orderedUrls;
+        try {
+          const catalog = await crawlPortalSearch("", async (documents, page) => {
+            totals.discovered += documents.length;
+            const catalogUpsert = await upsertDocuments(client, documents, runId);
+            totals.indexed += catalogUpsert.indexed;
+            totals.capacityDropped += catalogUpsert.capacityDropped;
+            details.authoritativeCapacityDropped += catalogUpsert.capacityDropped;
+            onProgress?.({ stage: "catalog", page: page + 1, discovered: totals.discovered, indexed: totals.indexed });
+          });
+          details.catalogTotal = catalog.total;
+          details.catalogRepeatedPages = catalog.repeatedPages || 0;
+          catalogUrls = catalog.orderedUrls;
+        } catch (error) {
+          // The portal now disallows its search endpoint in robots.txt while
+          // keeping the sitemap public. Respect that policy, keep the sitemap
+          // and seed-query data, and do not fail the whole synchronization.
+          if (!isRobotsDisallowedCorpusError(error)) throw error;
+          catalogSkipped = true;
+          details.catalogSkipped = "robots-disallowed";
+        }
       }
 
       const hydrationCandidates = [];
       for (const rawQuery of seedQueries) {
         const query = normalizeCorpusQuery(rawQuery);
         if (!query) continue;
-        const snapshot = await crawlPortalSearch(query, async (documents, page) => {
-          totals.discovered += documents.length;
-          const seedUpsert = await upsertDocuments(client, documents, runId);
-          totals.indexed += seedUpsert.indexed;
-          totals.capacityDropped += seedUpsert.capacityDropped;
-          onProgress?.({ stage: "seed-query", query, page: page + 1, indexed: totals.indexed });
-        });
-        details.seedQueries[query] = {
-          total: snapshot.total,
-          pages: snapshot.pages,
-          repeatedPages: snapshot.repeatedPages || 0,
-          storedOccurrences: snapshot.orderedUrls.length,
-          distinctUrls: snapshot.distinctUrls.length,
-        };
-        await saveQuerySnapshot(client, query, snapshot.total, snapshot.orderedUrls, {
-          pageCount: snapshot.pages,
-          pageSize: PORTAL_PAGE_SIZE,
-          sortOrder: "portal-default",
-          querySource: "configured-seed",
-        });
-        hydrationCandidates.push(...snapshot.distinctUrls);
+        try {
+          const snapshot = await crawlPortalSearch(query, async (documents, page) => {
+            totals.discovered += documents.length;
+            const seedUpsert = await upsertDocuments(client, documents, runId);
+            totals.indexed += seedUpsert.indexed;
+            totals.capacityDropped += seedUpsert.capacityDropped;
+            onProgress?.({ stage: "seed-query", query, page: page + 1, indexed: totals.indexed });
+          });
+          details.seedQueries[query] = {
+            total: snapshot.total,
+            pages: snapshot.pages,
+            repeatedPages: snapshot.repeatedPages || 0,
+            storedOccurrences: snapshot.orderedUrls.length,
+            distinctUrls: snapshot.distinctUrls.length,
+          };
+          await saveQuerySnapshot(client, query, snapshot.total, snapshot.orderedUrls, {
+            pageCount: snapshot.pages,
+            pageSize: PORTAL_PAGE_SIZE,
+            sortOrder: "portal-default",
+            querySource: "configured-seed",
+          });
+          hydrationCandidates.push(...snapshot.distinctUrls);
+        } catch (error) {
+          if (!isRobotsDisallowedCorpusError(error)) throw error;
+          details.seedQueries[query] = { skipped: "robots-disallowed" };
+        }
       }
       // Seed-query pages are intentionally first: the initial bounded hydration
       // immediately improves the user's primary topics, then fills from the
@@ -2020,6 +2040,7 @@ export async function syncPortalCorpus({
       // disappeared portal records. Failed/partial runs never hide old data.
       if (shouldRetirePortalCatalog({
         includeCatalog,
+        catalogSkipped,
         authoritativeCapacityDropped: details.authoritativeCapacityDropped,
       })) {
         const retired = await client.query(`
@@ -2063,9 +2084,11 @@ export async function syncPortalCorpus({
 
 export function shouldRetirePortalCatalog({
   includeCatalog = false,
+  catalogSkipped = false,
   authoritativeCapacityDropped = 0,
 } = {}) {
   return Boolean(includeCatalog)
+    && !catalogSkipped
     && Math.max(0, Math.trunc(Number(authoritativeCapacityDropped) || 0)) === 0;
 }
 
@@ -2698,6 +2721,7 @@ async function readCorpusStats({ signal, deadlineAt } = {}) {
         status: lastRun.rows[0].status,
         finishedAt: lastRun.rows[0].finished_at,
         catalogTotal: Number(lastRun.rows[0].details?.catalogTotal || 0),
+        catalogSkipped: lastRun.rows[0].details?.catalogSkipped || null,
         sitemapPages: Number(lastRun.rows[0].details?.sitemapPages || 0),
       } : null,
     };
