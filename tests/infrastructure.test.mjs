@@ -513,11 +513,11 @@ test("live suggestions use per-client fair admission while preserving query coal
   ]);
   assert.match(integrations, /const officialSuggestionAdmission = createFairSearchAdmission\(\{[\s\S]*?maximumActive: MAX_CONCURRENT_SUGGESTIONS,[\s\S]*?maximumActivePerClient: 1,[\s\S]*?maximumQueuedPerClient: 2/u);
   assert.match(integrations, /suggestionInflight\.get\(cacheKey\)[\s\S]*?officialSuggestionAdmission\.acquire\(options\.clientKey[\s\S]*?finally \{\s*release\(\);/u);
-  assert.match(index, /getKeskkonnaportaalSuggestions\(query, 5, \{[\s\S]*?clientKey: requestRateLimitAddress\(request, proxyConfiguration\.trustedProxyCidrs/u);
+  assert.match(index, /getKeskkonnaportaalSuggestions\(query, 8, \{[\s\S]*?clientKey: requestRateLimitAddress\(request, proxyConfiguration\.trustedProxyCidrs/u);
 });
 
 test("reviewed autocomplete fallback surfaces structured environmental sources without forestry noise", () => {
-  assert.equal(REVIEWED_ENVIRONMENT_SUGGESTIONS.length, 14);
+  assert.equal(REVIEWED_ENVIRONMENT_SUGGESTIONS.length, 24);
   const hazardousWaste = getReviewedSearchSuggestions("ohtlikud jäätmed", 5);
   assert.deepEqual(hazardousWaste, ["Kui palju tekkis Eestis 2024. aastal ohtlikke jäätmeid?"]);
   assert.doesNotMatch(hazardousWaste.join(" "), /mets|raie|SMI/iu);
@@ -592,9 +592,9 @@ test("reviewed autocomplete aliases are local-only and cannot bypass the out-of-
   const end = server.indexOf('app.post("/api/suggestions"', start);
   const handler = server.slice(start, end);
   const localReturn = handler.indexOf("if (reviewedAlias || assessment.kind === \"out-of-scope\")");
-  const upstreamCall = handler.indexOf("getKeskkonnaportaalSuggestions(query, 5");
+  const upstreamCall = handler.indexOf("getKeskkonnaportaalSuggestions(query, 8");
   assert.ok(localReturn >= 0 && upstreamCall > localReturn);
-  assert.match(handler, /return response\.json\(\{ suggestions: reviewedAlias \? curated\.slice\(0, 5\) : \[\] \}\);/u);
+  assert.match(handler, /return response\.json\(\{ suggestions: reviewedAlias \? curated\.slice\(0, 8\) : \[\] \}\);/u);
 });
 
 test("fair search admission reserves global capacity for another client", async () => {
@@ -1108,7 +1108,7 @@ test("autocomplete never renders a late response under a newer query", () => {
     "Kas Eestis saab mets otsa?",
   ];
   assert.equal(suggestionsForValue("", {}, reviewed).length, 5);
-  assert.equal(REVIEWED_SEARCH_SUGGESTIONS.length, 33);
+  assert.equal(REVIEWED_SEARCH_SUGGESTIONS.length, 42);
   assert.ok(suggestionsForValue("m", {}, reviewed).every((item) => item.value.endsWith("?")));
   assert.deepEqual(suggestionsForValue("me", {}, ["How is forest increment calculated?"]), []);
   const rawClimate = { query: "kliima", items: [{ value: "kliima", count: 42 }, { value: "kliimamuutused", count: 18 }] };

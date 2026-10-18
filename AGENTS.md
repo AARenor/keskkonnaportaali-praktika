@@ -33,7 +33,7 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 - Never expose provider names, model names, vector stores, databases, fallback labels, connection states, or other infrastructure jargon in the public UI or public API response.
 - Terrapoint belongs only in its dedicated full-app iframe section. Do not use Terrapoint branding, provider metadata, redirects, or results in the general Keskkonnaportaal search.
 - An embedded application must never autofocus or move the host page on initial load. Verify a fresh desktop load remains at `scrollY === 0` and the iframe is not the active element.
-- Autocomplete must stay above adjacent content, show at most five useful questions, remain viewport-bounded, and support Arrow Up/Down, Enter, Escape, mouse, and touch.
+- Autocomplete must stay above adjacent content, show at most eight useful questions (user-raised from five on 2026-10-18 to surface more recommended search terms while typing), remain viewport-bounded (scroll inside the dropdown when needed), and support Arrow Up/Down, Enter, Escape, mouse, and touch.
 - A generic query such as `mets` must return a genuine source-grounded synthesis, not a list of copied search-result excerpts.
 - AI answer evidence must come from the same current, filtered and relevance-ranked result set shown to the user; the legacy reviewed forestry corpus may support tests or definitions, but must not bypass live retrieval for a primary answer.
 - Search ordering is relevance-first. Authority, completeness and freshness refine comparable results; a newer but off-topic page must not outrank a directly relevant source.

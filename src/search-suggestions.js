@@ -37,6 +37,15 @@ export const REVIEWED_ENVIRONMENT_SEARCH_SUGGESTIONS = Object.freeze([
   "Kui palju jäätmeid taaskasutati Eestis 2024. aastal?",
   "Kuidas aitab ringmajandus jäätmeid taaskasutada?",
   "Milline on Eesti elurikkuse seisund?",
+  "Kas Eestis tohib vanu rehve põletada?",
+  "Kas väikese tiigi rajamiseks on luba vaja?",
+  "Kuidas saada puurkaevu andmeid?",
+  "Kuidas arvutada ettevõtte süsinikujalajälge?",
+  "Kust näeb Tallinna mürakaarti?",
+  "Kas Pärnu rannas võib ujuda?",
+  "Kuidas kontrollida KOTKAS keskkonnaloa menetluse staatust?",
+  "Kust leida KESE keskkonnaseire mõõtmistulemusi?",
+  "Mis on Eesti jäätmete ringlussevõtu määr?",
 ]);
 
 export const REVIEWED_SEARCH_SUGGESTIONS = Object.freeze([
@@ -57,6 +66,16 @@ const REVIEWED_SOURCE_CODE_ALIASES = new Map([
   ["elurikkus", ["Milline on Eesti elurikkuse seisund?"]],
   ["voru temperatuur", ["Mis oli Võru ööpäeva keskmine õhutemperatuur 21. augustil 2025?"]],
   ["ohtlikud jaatmed", ["Kui palju tekkis Eestis 2024. aastal ohtlikke jäätmeid?"]],
+  ["kotkas", ["Kuidas kontrollida KOTKAS keskkonnaloa menetluse staatust?"]],
+  ["kese", ["Kust leida KESE keskkonnaseire mõõtmistulemusi?"]],
+  ["ringlussevott", ["Mis on Eesti jäätmete ringlussevõtu määr?"]],
+  ["rehvid", ["Kas Eestis tohib vanu rehve põletada?"]],
+  ["puurkaev", ["Kuidas saada puurkaevu andmeid?"]],
+  ["susinikujalajalg", ["Kuidas arvutada ettevõtte süsinikujalajälge?"]],
+  ["susinikujalajalge", ["Kuidas arvutada ettevõtte süsinikujalajälge?"]],
+  ["murakaart", ["Kust näeb Tallinna mürakaarti?"]],
+  ["tiik", ["Kas väikese tiigi rajamiseks on luba vaja?"]],
+  ["parnu rand", ["Kas Pärnu rannas võib ujuda?"]],
 ]);
 
 const REVIEWED_ALIAS_SURFACE_PATTERN = /^[a-z0-9õäöüšž]+(?:[ _-][a-z0-9õäöüšž]+)*$/iu;
@@ -119,7 +138,7 @@ function reviewedTokenMatches(queryToken, token) {
     .some((length) => editDistanceAtMostOne(queryToken, token.slice(0, length)));
 }
 
-export function suggestionsForValue(value, remote = {}, local = [], limit = 5) {
+export function suggestionsForValue(value, remote = {}, local = [], limit = 8) {
   const originalQuery = String(value || "").trim();
   if (originalQuery.length > REMOTE_SUGGESTION_MAX_LENGTH) return [];
   const canonicalQuery = originalQuery.normalize("NFKC");

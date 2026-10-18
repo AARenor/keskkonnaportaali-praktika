@@ -19,6 +19,16 @@ export const REVIEWED_ENVIRONMENT_SUGGESTIONS = Object.freeze([
   "Milline on homne ilmaprognoos Eestis?",
   "Milline on õhutemperatuur praegu Tartus?",
   "Mis oli Tartu Emajõe viimati avaldatud veetase?",
+  "Kas Eestis tohib vanu rehve põletada?",
+  "Kas väikese tiigi rajamiseks on luba vaja?",
+  "Kuidas saada puurkaevu andmeid?",
+  "Kuidas arvutada ettevõtte süsinikujalajälge?",
+  "Kust näeb Tallinna mürakaarti?",
+  "Kas Pärnu rannas võib ujuda?",
+  "Kuidas kontrollida KOTKAS keskkonnaloa menetluse staatust?",
+  "Kust leida KESE keskkonnaseire mõõtmistulemusi?",
+  "Mis on Eesti jäätmete ringlussevõtu määr?",
+  "Kust leida keskkonnaandmete API-d?",
 ]);
 
 const REVIEWED_SOURCE_CODE_ALIASES = new Map([
@@ -34,6 +44,16 @@ const REVIEWED_SOURCE_CODE_ALIASES = new Map([
   ["elurikkus", ["Milline on Eesti elurikkuse seisund?"]],
   ["voru temperatuur", ["Mis oli Võru ööpäeva keskmine õhutemperatuur 21. augustil 2025?"]],
   ["ohtlikud jaatmed", ["Kui palju tekkis Eestis 2024. aastal ohtlikke jäätmeid?"]],
+  ["kotkas", ["Kuidas kontrollida KOTKAS keskkonnaloa menetluse staatust?"]],
+  ["kese", ["Kust leida KESE keskkonnaseire mõõtmistulemusi?"]],
+  ["ringlussevott", ["Mis on Eesti jäätmete ringlussevõtu määr?"]],
+  ["rehvid", ["Kas Eestis tohib vanu rehve põletada?"]],
+  ["puurkaev", ["Kuidas saada puurkaevu andmeid?"]],
+  ["susinikujalajalg", ["Kuidas arvutada ettevõtte süsinikujalajälge?"]],
+  ["susinikujalajalge", ["Kuidas arvutada ettevõtte süsinikujalajälge?"]],
+  ["murakaart", ["Kust näeb Tallinna mürakaarti?"]],
+  ["tiik", ["Kas väikese tiigi rajamiseks on luba vaja?"]],
+  ["parnu rand", ["Kas Pärnu rannas võib ujuda?"]],
   ["ohk", ["Milline on õhutemperatuur praegu Tartus?", "Milline on homne ilmaprognoos Eestis?"]],
   ["ohukvaliteet", ["Milline on õhutemperatuur praegu Tartus?", "Milline on homne ilmaprognoos Eestis?"]],
 ]);
@@ -99,7 +119,7 @@ function generalSuggestions(query, limit) {
 }
 
 export function getReviewedSearchSuggestions(query, limit = 5) {
-  const safeLimit = Math.max(1, Math.min(Number(limit) || 5, 5));
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 5, 8));
   const reviewedAliases = aliasSuggestions(query, safeLimit);
   const reviewedGeneral = generalSuggestions(query, safeLimit);
   const values = [
