@@ -8250,7 +8250,7 @@ export function reviewedDataSourceSource(query) {
     normalize(source.title) === text && text.length >= 5
   ));
   const dataSourceMarker = /\b(?:andmeteenus|avaandme\w*|wfs|api|dhs|kese|kotkas|kaia|eelis|loodusveeb|seismo|nemo|swan|parametervalue|viewid|download_opendata|keskkonnaportaal)\b/u.test(text)
-    || /(?:^|\s)f_[a-z0-9_]+|(?:^|\s)t_[a-z0-9_]+/u.test(text)
+    || /(?:^|\s)[ft]_[a-z0-9_]+/iu.test(raw)
     || /https?:\/\//u.test(raw)
     || /\.[a-z]{2,4}\b/u.test(raw)
     || /\+$/u.test(raw);
@@ -8260,6 +8260,21 @@ export function reviewedDataSourceSource(query) {
   if (!exactTitle && !dataSourceMarker) {
     reviewedDataSourceCache.set(text, null);
     return null;
+  }
+  if (/\bkese\b/u.test(text) && /(?:seire|andme)/u.test(text)) {
+    const source = PORTAL_DATA_SOURCES.find((candidate) => (candidate.url === "https://kese.envir.ee" || candidate.url === "https://kese.envir.ee/"));
+    reviewedDataSourceCache.set(text, source || null);
+    return source || null;
+  }
+  if (/\bkotkas\b/u.test(text) && /(?:jaatme|register|heite)/u.test(text)) {
+    const source = PORTAL_DATA_SOURCES.find((candidate) => candidate.url === "https://kotkas.envir.ee/registry/index");
+    reviewedDataSourceCache.set(text, source || null);
+    return source || null;
+  }
+  if (/\bwfs\b/u.test(text) && /metsaregist/u.test(text) && /eraldis/u.test(text)) {
+    const source = PORTAL_DATA_SOURCES.find((candidate) => candidate.url.includes("typeName=metsaregister:eraldis&"));
+    reviewedDataSourceCache.set(text, source || null);
+    return source || null;
   }
   let result = null;
   if (tokens.length) {
