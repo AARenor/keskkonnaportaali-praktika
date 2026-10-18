@@ -105,6 +105,15 @@ const BROAD_SUGGESTIONS = [
   "Miks annavad allikad erinevaid metsanumbreid?",
   "Mis vahe on SMI-l ja Metsaregistril?",
   "Kui suur osa metsast on kaitstud?",
+  "Kuidas arvutatakse juurdekasvu?",
+  "Miks ei võrdu tagavara raiutava puidukogusega?",
+  "Kuidas mõjutab kliimamuutus metsi?",
+  "Kas Eestis saab mets otsa?",
+  "Kas praegu raiutakse rohkem kui 20 aastat tagasi?",
+  "Kas meie metsad muutuvad nooremaks?",
+  "Kas kuusk või mänd domineerib Eestis?",
+  "Kui palju lageraiet on viimase 10 aasta jooksul tehtud?",
+  "Kas kaitsealadel raiutakse?",
 ];
 
 export function normalizeForestryText(value = "") {
