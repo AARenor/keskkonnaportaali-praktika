@@ -1909,20 +1909,20 @@ async function saveQuerySnapshot(client, query, total, urls, {
 
 export function reviewedCatalogueCorpusRecords() {
   const records = officialServiceCatalogueDocuments()
-    .filter((document) => document?._answerEvidenceEligible === true
-      && document?.evidencePolicy !== "route-only"
-      && typeof document?.content === "string"
-      && document.content.length >= 80
+    .filter((document) => typeof (document?.content || document?.summary) === "string"
+      && (document.content || document.summary).length >= 40
       && /^https:\/\//u.test(String(document?.url || "")))
     .map((document) => {
       const reviewedAt = document._evidenceStatusAt || document._catalogueReviewedAt || new Date().toISOString();
+      const content = document.content || document.summary || "";
+      const evidencePolicy = document.evidencePolicy || "versioned";
       return {
         external_id: `reviewed:${document.id}`,
         source_key: REVIEWED_CATALOGUE_SOURCE_KEY,
         canonical_url: canonicalUrl(document.url),
         title: document.title || document.id,
         summary: document.summary || "",
-        content: document.content,
+        content,
         category: document.type || "Ametlik allikas",
         organization: document.organization || "",
         published_at: document._publishedAt || "",
@@ -1931,17 +1931,17 @@ export function reviewedCatalogueCorpusRecords() {
         topics: document.tags || document.topics || [],
         source_tier: "official",
         language: "et",
-        metadata_quality: 4,
+        metadata_quality: evidencePolicy === "route-only" ? 3 : 4,
         metadata: {
           source_kind: "reviewed-catalogue",
           hydrated: true,
-          evidence_policy: document.evidencePolicy || "versioned",
+          evidence_policy: evidencePolicy,
           reviewed_at: reviewedAt,
           catalogue_id: document.id,
           locator: document.locator || "",
           url: document.url,
         },
-        content_hash: createHash("sha256").update(document.content).digest("hex"),
+        content_hash: createHash("sha256").update(content).digest("hex"),
       };
     });
   // Several reviewed entries deliberately share a public landing URL (for
@@ -2259,12 +2259,15 @@ export function publicSearchItem(row, includeContent = false) {
     && hydrationMetadata.source_kind === "official-page-hydration"
     && boundedText(row.content, 80_000).length >= 80
     && /^[a-f0-9]{64}$/u.test(String(row.content_hash || ""));
-  const isReviewedCatalogueSource = row.source_key === REVIEWED_CATALOGUE_SOURCE_KEY
+  const reviewedCataloguePolicy = hydrationMetadata.evidence_policy || "versioned";
+  const isReviewedCatalogueRow = row.source_key === REVIEWED_CATALOGUE_SOURCE_KEY
     && !containsPageScaffold
     && hydrationMetadata.hydrated === true
     && hydrationMetadata.source_kind === "reviewed-catalogue"
-    && boundedText(row.content, 80_000).length >= 80
+    && boundedText(row.content, 80_000).length >= 40
     && /^[a-f0-9]{64}$/u.test(String(row.content_hash || ""));
+  const isReviewedCatalogueSource = isReviewedCatalogueRow && reviewedCataloguePolicy !== "route-only";
+  const isReviewedCatalogueRoute = isReviewedCatalogueRow && reviewedCataloguePolicy === "route-only";
   const item = {
     id: `corpus-${row.id}`,
     title: row.title,
@@ -2283,7 +2286,7 @@ export function publicSearchItem(row, includeContent = false) {
     ...(isReviewedCatalogueSource ? {
       retrieval: "reviewed-catalogue-source",
       delivery: "reviewed-catalogue",
-      evidencePolicy: hydrationMetadata.evidence_policy || "versioned",
+      evidencePolicy: reviewedCataloguePolicy,
       _answerEvidenceEligible: true,
       _evidenceVersion: row.content_hash,
       _evidenceStatusAt: hydrationMetadata.reviewed_at || fetchedAt,
@@ -2293,6 +2296,11 @@ export function publicSearchItem(row, includeContent = false) {
         maxAgeMs: REVIEWED_CATALOGUE_MAX_AGE_MS,
         requiresSourceTimestamp: true,
       },
+    } : isReviewedCatalogueRoute ? {
+      retrieval: "reviewed-catalogue-route",
+      delivery: "reviewed-catalogue",
+      evidencePolicy: "route-only",
+      _answerEvidenceEligible: false,
     } : isValidatedPageHydration ? {
       retrieval: "approved-page-hydration",
       delivery: "catalog-and-bounded-hydration",

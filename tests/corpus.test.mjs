@@ -573,6 +573,14 @@ test("reviewed catalogue rows are citable while crawled catalogue rows stay rout
     ...row,
     metadata: { ...row.metadata, reviewed_at: "2026-01-01T00:00:00Z" },
   }), { now }).eligible, false);
+  const route = publicSearchItem({
+    ...row,
+    metadata: { ...row.metadata, evidence_policy: "route-only" },
+  }, true);
+  assert.equal(route.retrieval, "reviewed-catalogue-route");
+  assert.equal(route.evidencePolicy, "route-only");
+  assert.equal(route._answerEvidenceEligible, false);
+  assert.equal(sourceEvidenceEligibility(route, { now }).eligible, false);
 });
 
 test("portal search parser preserves upstream total and card metadata", () => {
