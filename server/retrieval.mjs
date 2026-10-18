@@ -1018,20 +1018,45 @@ function rootCoverage(field, roots) {
   return roots.filter((root) => fieldHasRoot(field, root)).length / roots.length;
 }
 
+const normalizedDocumentFieldsCache = new WeakMap();
+const normalizedPassagesCache = new WeakMap();
+const primaryPassagesCache = new WeakMap();
+
+function normalizedDocumentFields(document) {
+  const cached = normalizedDocumentFieldsCache.get(document);
+  if (cached) return cached;
+  const fields = {
+    title: normalize(document.title),
+    summary: normalize(document.summary),
+    content: normalize(document.content),
+    tags: normalize([...(document.tags || []), ...(document.topics || [])].join(" ")),
+  };
+  if (document && typeof document === "object") normalizedDocumentFieldsCache.set(document, fields);
+  return fields;
+}
+
 function normalizedPassages(document) {
-  return [document.summary, document.excerpt, document.content]
+  const cached = normalizedPassagesCache.get(document);
+  if (cached) return cached;
+  const passages = [document.summary, document.excerpt, document.content]
     .filter(Boolean)
     .flatMap(splitTextPassages)
     .map(normalize)
     .filter(Boolean);
+  if (document && typeof document === "object") normalizedPassagesCache.set(document, passages);
+  return passages;
 }
 
 function primaryPassages(document) {
-  return [document.summary, document.excerpt]
+  const cached = primaryPassagesCache.get(document);
+  if (cached) return cached;
+  const passages = [document.summary, document.excerpt]
     .filter(Boolean)
     .flatMap(splitTextPassages)
     .map(normalize)
     .filter(Boolean);
+  if (document && typeof document === "object") primaryPassagesCache.set(document, passages);
+  return passages;
 }
 
 function bestPassageCoverage(document, roots) {
@@ -1440,10 +1465,11 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
   const roots = Array.isArray(analysis?.roots) && analysis.roots.length
     ? [...analysis.roots]
     : queryTerms(query);
-  const titleText = normalize(document.title);
-  const summaryText = normalize(document.summary);
-  const bodyText = normalize(document.content);
-  const tagText = normalize([...(document.tags || []), ...(document.topics || [])].join(" "));
+  const fields = normalizedDocumentFields(document);
+  const titleText = fields.title;
+  const summaryText = fields.summary;
+  const bodyText = fields.content;
+  const tagText = fields.tags;
   const searchableText = `${titleText} ${summaryText} ${bodyText} ${tagText}`;
   const titleMatches = roots.filter((root) => fieldHasRoot(titleText, root)).length;
   const coveredRoots = roots.filter((root) => fieldHasRoot(searchableText, root)).length;

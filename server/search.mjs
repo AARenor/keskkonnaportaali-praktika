@@ -25,6 +25,7 @@ import {
 import { withOfficialSourceProfile } from "./source-registry.mjs";
 import { publicSourceAllowed } from "./citation-policy.mjs";
 import { PORTAL_SECTION_SOURCES } from "./portal-source-catalogue.mjs";
+import { PORTAL_REPORT_SOURCES } from "./portal-report-catalogue.mjs";
 import { isStatisticsWaterAbstractionQuery } from "./statistics.mjs";
 
 export const FOREST_OVERVIEW_URL = "https://www.keskkonnaagentuur.ee/uudised/blogis-kui-palju-ja-millist-metsa-eestis";
@@ -633,6 +634,7 @@ const SEARCH_DOCUMENTS = [
     tags: ["kasvuhoonegaasid", "KHG", "heide", "inventuur", "CO2 ekvivalent", "1990–2024", "sektorid"],
     summary:
       "Kliimaministeeriumi püsileht koondab Eesti iga-aastase kasvuhoonegaaside inventuuri, aegridade selgitused, sektorite jaotuse ning allalaaditavad aruanded.",
+    _cataloguePriority: 8,
   },
   {
     id: "municipal-waste-recycling-page",
@@ -1739,6 +1741,7 @@ const ADDITIONAL_OFFICIAL_SERVICE_DOCUMENTS = [
     _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
   },
   ...PORTAL_SECTION_SOURCES,
+  ...PORTAL_REPORT_SOURCES,
 ];
 
 const RELATED = {
