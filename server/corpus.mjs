@@ -2969,7 +2969,10 @@ export async function startCorpusSyncIfStale() {
       // Between full syncs, keep filling page bodies. A title-only row cannot
       // rank for words that appear only in the page text, nor serve as evidence.
       const backfill = await hydrateCorpusBacklog({ limit: corpusBackfillHydrateLimit() });
-      return { status: "fresh", backfill };
+      // Reviewed catalogue additions (new laws, standards, terminology) must
+      // become searchable immediately, not only after the next 24-hour crawl.
+      const reviewedSeed = await withDatabaseClient((client) => seedReviewedCatalogueDocuments(client, null));
+      return { status: "fresh", backfill, reviewedCatalogueSeeded: reviewedSeed.seeded };
     }
     const seedQueries = String(process.env.CORPUS_SEED_QUERIES || "mets")
       .split(",").map(normalizeCorpusQuery).filter(Boolean).slice(0, 5);
