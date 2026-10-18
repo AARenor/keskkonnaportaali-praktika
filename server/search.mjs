@@ -24,6 +24,7 @@ import {
 } from "./municipalities.mjs";
 import { withOfficialSourceProfile } from "./source-registry.mjs";
 import { publicSourceAllowed } from "./citation-policy.mjs";
+import { PORTAL_SECTION_SOURCES } from "./portal-source-catalogue.mjs";
 import { isStatisticsWaterAbstractionQuery } from "./statistics.mjs";
 
 export const FOREST_OVERVIEW_URL = "https://www.keskkonnaagentuur.ee/uudised/blogis-kui-palju-ja-millist-metsa-eestis";
@@ -1737,6 +1738,7 @@ const ADDITIONAL_OFFICIAL_SERVICE_DOCUMENTS = [
     routeClasses: ["official_guidance", "official_indicator_or_report"],
     _catalogueReviewedAt: SOURCE_EXPANSION_REVIEWED_AT,
   },
+  ...PORTAL_SECTION_SOURCES,
 ];
 
 const RELATED = {

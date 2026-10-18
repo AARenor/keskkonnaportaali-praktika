@@ -2011,22 +2011,23 @@ async function seedReviewedCatalogueDocuments(client, runId) {
       external_id = EXCLUDED.external_id,
       source_key = EXCLUDED.source_key,
       title = EXCLUDED.title,
-      summary = EXCLUDED.summary,
-      content = EXCLUDED.content,
+      summary = CASE WHEN current.summary <> '' THEN current.summary ELSE EXCLUDED.summary END,
+      content = CASE WHEN current.content <> '' THEN current.content ELSE EXCLUDED.content END,
       category = EXCLUDED.category,
       organization = EXCLUDED.organization,
       published_at = EXCLUDED.published_at,
       published_label = EXCLUDED.published_label,
       topics = EXCLUDED.topics,
       source_tier = EXCLUDED.source_tier,
-      metadata_quality = EXCLUDED.metadata_quality,
-      metadata = EXCLUDED.metadata,
-      content_hash = EXCLUDED.content_hash,
-      fetched_at = NOW(),
+      metadata_quality = GREATEST(current.metadata_quality, EXCLUDED.metadata_quality),
+      metadata = current.metadata || EXCLUDED.metadata,
+      content_hash = CASE WHEN current.content <> '' THEN current.content_hash ELSE EXCLUDED.content_hash END,
+      fetched_at = CASE WHEN current.content <> '' THEN current.fetched_at ELSE NOW() END,
       last_seen_at = NOW(),
       last_seen_run = COALESCE($2, current.last_seen_run),
       is_available = TRUE
     WHERE current.content = ''
+      OR current.source_key IN ('portal-catalog', 'portal-sitemap')
   `, [JSON.stringify(records), runId]);
   return { seeded: result.rowCount || 0 };
 }
