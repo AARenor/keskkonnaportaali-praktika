@@ -47,6 +47,7 @@ import {
   composeSearchResponse,
   composeTopicDataOverviewResponse,
   composeWasteFacilitiesNavigationResponse,
+  directPortalOverviewSourceId,
   forestryIntentServiceDocumentIds,
   rankedSetCoversSubject,
   hasCompleteSentenceEnding,
@@ -1247,7 +1248,19 @@ export async function createPortalDraft(query, {
   const forestBalance = composeForestHarvestBalanceAnswer(retrievalQuery, reranked, query);
   const conventionalQuality = assessEvidence(retrievalQuery, reranked);
   const plannedEvidence = selectAnswerEvidence(retrievalQuery, reranked);
-  const quality = plannedEvidence?.strong
+  const directOverview = (() => {
+    const id = directPortalOverviewSourceId(retrievalQuery);
+    return id ? reranked.find((document) => document.id === id) || null : null;
+  })();
+  const quality = directOverview
+    ? {
+      ...conventionalQuality,
+      strong: true,
+      directDocumentId: directOverview.id,
+      answerIntent: "portal-overview",
+      supportingDocumentIds: [directOverview.id],
+    }
+    : plannedEvidence?.strong
     ? {
       ...conventionalQuality,
       strong: true,

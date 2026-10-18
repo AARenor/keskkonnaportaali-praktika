@@ -8203,6 +8203,33 @@ export function officialServiceCatalogueDocuments() {
     .map(withOfficialSourceProfile);
 }
 
+const PORTAL_OVERVIEW_SLUGS = Object.freeze([
+  ["energeetika", "energeetika-ja-keskkond"],
+  ["ilm", "ilm-ja-kliima"],
+  ["kliima", "ilm-ja-kliima"],
+  ["jaatmed", "jaatmed-ja-ringmajandus"],
+  ["ringmajandus", "jaatmed-ja-ringmajandus"],
+  ["liigid", "liigid"],
+  ["elurikkus", "liigid"],
+  ["muld", "muld-ja-maahoive"],
+  ["maahoive", "muld-ja-maahoive"],
+  ["okosusteemid", "okosusteemid"],
+  ["valisohk", "valisohk"],
+  ["vesi", "vesi"],
+  ["megatrendid", "megatrendid"],
+]);
+
+export function directPortalOverviewSourceId(query) {
+  const text = normalize(query);
+  if (!/\bkeskkonnaulevaade\b/u.test(text)) return null;
+  if (/\bmets\b/u.test(text)) return "forest-condition-review";
+  const match = PORTAL_OVERVIEW_SLUGS.find(([needle]) => new RegExp(`\\b${needle}\\b`, "u").test(text));
+  if (!match) return null;
+  return PORTAL_SECTION_SOURCES.find((source) => (
+    source.url.endsWith(`/keskkonnaulevaade-${match[1]}`)
+  ))?.id || null;
+}
+
 export function directDirectoryDocumentIds(query) {
   const text = normalize(query);
   const roots = queryTerms(query);
