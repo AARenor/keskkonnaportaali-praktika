@@ -1,5 +1,6 @@
 export const OFFICIAL_CITATION_ORIGIN_VALUES = Object.freeze([
   "https://airviro.klab.ee",
+  "https://atlex.ee",
   "https://andmed.stat.ee",
   "https://avaandmed.keskkonnaportaal.ee",
   "https://ec.europa.eu",
@@ -21,6 +22,7 @@ export const OFFICIAL_CITATION_ORIGIN_VALUES = Object.freeze([
   "https://kotkas.envir.ee",
   "https://lva.keskkonnainfo.ee",
   "https://ohuseire.ee",
+  "https://openknowledge.fao.org",
   "https://www.ohuseire.ee",
   "https://pakis.envir.ee",
   "https://proto.envir.ee",
@@ -32,6 +34,7 @@ export const OFFICIAL_CITATION_ORIGIN_VALUES = Object.freeze([
   "https://tallinn.ee",
   "https://tartu.ee",
   "https://terviseamet.ee",
+  "https://www.atlex.ee",
   "https://www.eea.europa.eu",
   "https://www.foresteurope.org",
   "https://www.ilmateenistus.ee",

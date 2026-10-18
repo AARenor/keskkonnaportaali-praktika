@@ -12,7 +12,7 @@ Võrreldava relevantsuse ja väitekatvuse korral rakendub järjestus **SMI → m
 
 ## Kontrollitud primaararuanded (01.10.2026)
 
-Riigi Teataja kontroll 01.10.2026: **Metsaseadus** jõustunud sõnastusega 01.07.2026, kehtivuse lõpp 31.12.2032 (RT I, 12.05.2026, 20); **Looduskaitseseadus** jõustunud sõnastusega 01.09.2026, hetkel kehtiv (RT I, 09.07.2026, 47); **Metsa majandamise eeskiri** jõustunud sõnastusega 16.06.2025, hetkel kehtiv (RT I, 13.06.2025, 14). Brauseriga kontrolliti sõnastuse metadata välju ning männi 90–120 aasta raievanuseid, sanitaarraie 30% täiuse alampiiri, § 29 lõike 11 pindalapiire ja § 41 lõike 14 üldist 20 tihumeetri erandit. Viimasel on eraldi riigikaitseline erand (§ 41 lg 14¹), mida ei tohi laiendada tavalisele kinnistule. Need kuupäevad on sõnastuse kehtivus, mitte leheuuendused.
+Riigi Teataja kontroll 01.10.2026: **Metsaseadus** jõustunud sõnastusega 01.07.2026, kehtivuse lõpp 31.12.2032 (RT I, 12.05.2026, 20); **Looduskaitseseadus** jõustunud sõnastusega 01.09.2026, hetkel kehtiv (RT I, 09.07.2026, 47); **Metsa majandamise eeskiri** jõustunud sõnastusega 16.06.2025, hetkel kehtiv (RT I, 13.06.2025, 14); **Metsa korraldamise juhend** kehtiva sõnastusega 01.01.2025 (RT I, 31.05.2024, 11). Brauseriga kontrolliti sõnastuse metadata välju ning männi 90–120 aasta raievanuseid, sanitaarraie 30% täiuse alampiiri, § 29 lõike 11 pindalapiire ja § 41 lõike 14 üldist 20 tihumeetri erandit. Viimasel on eraldi riigikaitseline erand (§ 41 lg 14¹), mida ei tohi laiendada tavalisele kinnistule. Need kuupäevad on sõnastuse kehtivus, mitte leheuuendused.
 
 | Allikas | Väljaanne / andmeperiood | Kontrollitud ulatus |
 |---|---|---|
@@ -23,11 +23,15 @@ Riigi Teataja kontroll 01.10.2026: **Metsaseadus** jõustunud sõnastusega 01.07
 | [SMI 2024 tabelid](https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI2024/SMI_2024.pdf) | Andmeaasta 2024; dokumendis näidatud tabelite seis 30.07.2025 | Olemasoleva väljaande metadata kontroll: väljaandeaasta on 2025, mitte pealkirja andmeaasta 2024. Üleslaadimise täpset päeva ei eeldata. Vanad arvud jäävad selle väljaande juurde; uusima töövihiku tagasiulatuvalt ümber arvutatud väärtusi ei liideta vana väljaande tabelitega. |
 | [Kuuse-kooreüraski juhend metsaomanikule](https://keskkonnaportaal.ee/et/kuuse-kooreurask-kuidas-teda-tunda-ja-ara-hoida-juhend-metsaomanikule) | Avaldatud 19.04.2024; uuendatud 27.05.2025 | Leht nimetab väljaandjaks Kliimaministeeriumi ja koostajaks Keskkonnaministeeriumi; portaali majutus ei muuda väljaandjat. Ürask toitub koore niineosast; rohelisest võrast üksi ei piisa kahjustuse välistamiseks. |
 
+| [Metsa korraldamise juhend](https://www.riigiteataja.ee/et/akt/131082018008?leiaKehtiv) | Kehtiv sõnastus 01.01.2025; RT I, 31.05.2024, 11 | § 1–5 ja § 14–21: kaardistamine, eraldise mõiste ja mõõtmistäpsus, ülepinnaline takseerimine, majandamisvõtete kavandamine, raiemahu ja arvestuslangi metoodika ning metsamajandamiskava koostisosad. |
+| [FAO FRA 2025 Terms and Definitions](https://openknowledge.fao.org/server/api/core/bitstreams/a6e225da-4a31-4e06-818d-ca3aeadfd635/content) | FRA 2025 terminoloogia, Rooma 2023 | Ptk 1a, 1d ja 2a: metsa ja muu puittaimestikuga maa rahvusvaheline määratlus, kasvav tagavara, metsastumine, raadamine ja metsapindala netomuutus. |
+| [Metsandusteatmik](https://atlex.ee/toode/metsandusteatmik/) | E. Laas, V. Uri; Atlex 2023; 432 lk; ISBN 978-9916-620-22-9 | Paberväljaanne, mille täistekst ei ole veebis. Kirje toetab mõistete ja bibliograafia navigatsiooni, mitte tsitaati teose sisust. |
+
 Need on leheküljeviitega üle vaadatud väljavõtted, mitte automaatselt indekseeritud PDF-ide kogu sisu. Väljavõttele kehtib 31-päevane kordusülevaatuse piir. Faili enda avaldamisaastat ei asendata seda linkiva lehe uuendamiskuupäevaga. Puidubilansi maandumislehe tegelik uuendamiskuupäev kontrolli ajal oli **01.10.2026**.
 
 ## Metsanduse mõisted ja seosed
 
-Terminoloogiline alus: aastaraamatu „Mets 2023” eestikeelsed ja ingliskeelsed peatüki- ning tabelipealkirjad; majanduskategooriate täpsed määratlused lk 18. Ingliskeelsed vasted selgitavad terminoloogiat, mitte ei lülita sisse ingliskeelset otsingut.
+Terminoloogiline alus: aastaraamatu „Mets 2023” eestikeelsed ja ingliskeelsed peatüki- ning tabelipealkirjad; majanduskategooriate täpsed määratlused lk 18. Rahvusvahelise võrdluse annab FAO FRA 2025 terminoloogia ning eestikeelse sõnastiku ja mõistete navigatsiooni Metsandusteatmik. Ingliskeelsed vasted selgitavad terminoloogiat, mitte ei lülita sisse ingliskeelset otsingut.
 
 | Mõiste / lühend | Tähendus või allika vaste | Oluline eristus |
 |---|---|---|

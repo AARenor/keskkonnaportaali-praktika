@@ -27,6 +27,7 @@ import {
   parseRobotsTxt,
   persistHydratedCorpusDocument,
   publicSearchItem,
+  reviewedCatalogueCorpusRecords,
   robotsAllowsUrl,
   shouldRetirePortalCatalog,
   summarizeUrlOccurrences,
@@ -519,6 +520,59 @@ test("only an atomically validated corpus hydration row becomes answer evidence"
   assert.equal(sourceEvidenceEligibility(missingStatus, {
     now: Date.parse("2026-08-21T12:00:00Z"),
   }).eligible, false);
+});
+
+test("reviewed catalogue seeding covers the supplied legal and terminology sources without duplicate URLs", () => {
+  const records = reviewedCatalogueCorpusRecords();
+  assert.ok(records.length >= 50, `expected a broad reviewed catalogue, got ${records.length}`);
+  const urls = records.map((record) => record.canonical_url);
+  assert.equal(new Set(urls).size, urls.length);
+  for (const id of ["forest-law", "forest-management-rules", "forest-management-guide", "fao-fra-terms-2025", "metsandusteatmik"]) {
+    const record = records.find((row) => row.external_id === `reviewed:${id}`);
+    assert.ok(record, id);
+    assert.equal(record.source_key, "reviewed-catalogue-source");
+    assert.equal(record.source_tier, "official");
+    assert.equal(record.metadata.source_kind, "reviewed-catalogue");
+    assert.equal(record.metadata.hydrated, true);
+    assert.equal(record.metadata.evidence_policy, "versioned");
+    assert.match(record.content_hash, /^[a-f0-9]{64}$/u);
+  }
+});
+
+test("reviewed catalogue rows are citable while crawled catalogue rows stay route-only", () => {
+  const now = Date.parse("2026-10-18T12:00:00Z");
+  const row = {
+    id: 901,
+    source_key: "reviewed-catalogue-source",
+    canonical_url: "https://www.riigiteataja.ee/et/akt/131082018008?leiaKehtiv",
+    title: "Metsa korraldamise juhend",
+    summary: "Metsa korraldamise juhend sätestab metsa inventeerimise ja majandamise kavandamise nõuded.",
+    content: "Metsa korraldamise juhend sätestab metsa kaardistamise tingimused, metsa inventeerimise eesmärgid ja metoodika ning metsamajandamiskava nõuded.",
+    category: "Kehtiv õigusakt",
+    organization: "Riigi Teataja",
+    published_at: null,
+    published_label: "jookseb",
+    topics: ["mets", "metsakorraldus"],
+    source_tier: "official",
+    content_hash: "b".repeat(64),
+    fetched_at: "2026-10-18T00:00:00Z",
+    metadata: {
+      hydrated: true,
+      source_kind: "reviewed-catalogue",
+      evidence_policy: "versioned",
+      reviewed_at: "2026-10-18T00:00:00Z",
+    },
+  };
+  const item = publicSearchItem(row, true);
+  assert.equal(item.retrieval, "reviewed-catalogue-source");
+  assert.equal(item.evidencePolicy, "versioned");
+  assert.equal(item._answerEvidenceEligible, true);
+  assert.equal(item._evidenceVersion, row.content_hash);
+  assert.equal(sourceEvidenceEligibility(item, { now }).eligible, true);
+  assert.equal(sourceEvidenceEligibility(publicSearchItem({
+    ...row,
+    metadata: { ...row.metadata, reviewed_at: "2026-01-01T00:00:00Z" },
+  }), { now }).eligible, false);
 });
 
 test("portal search parser preserves upstream total and card metadata", () => {

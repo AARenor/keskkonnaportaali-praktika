@@ -181,7 +181,7 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     organization: "Riigi Teataja",
     type: "Kehtiv õigusakt",
     published: "jooksev",
-    url: "https://www.riigiteataja.ee/akt/115122017017?leiaKehtiv=",
+    url: "https://www.riigiteataja.ee/et/akt/12771900?leiaKehtiv",
     tags: ["mets", "raie", "sanitaarraie", "raievanus", "mänd", "boniteet"],
     summary: "Metsa majandamise eeskiri sätestab puuliigi ja boniteediklassi järgi raievanused ning sanitaarraie tingimused.",
     content: "Metsa majandamise eeskirja § 6 lõike 3 järgi tohib sanitaarraiet teha mis tahes vanusega puistus, kuid puistu täius ei tohi sanitaarraie käigus langeda alla 30%. Eeskirja § 3 järgi ei ole männi lageraievanus üks kindel arv: hariliku männi raievanused on boniteediklasside 1A, 1, 2, 3, 4 ning 5 ja 5A järgi vastavalt 90, 90, 90, 100, 110 ja 120 aastat ehk 90–120 aastat. Lageraie võib olla lubatud ka küpsusdiameetri või muude seaduses sätestatud tingimuste alusel, mistõttu konkreetse puistu otsus ei põhine ainult vanusel.",
@@ -266,7 +266,7 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     organization: "Riigi Teataja",
     type: "Kehtiv õigusakt",
     published: "jooksev",
-    url: "https://www.riigiteataja.ee/akt/MS",
+    url: "https://www.riigiteataja.ee/et/akt/112052026020?leiaKehtiv",
     tags: ["mets", "metsamaa", "raie", "lageraie", "raielank", "metsateatis", "säästev majandamine", "tagavara"],
     summary: "Metsaseadus sätestab metsa kui ökosüsteemi kaitse, säästva majandamise, metsaressursi arvestuse ja metsateatise õigusliku raami.",
     content: "Metsaseaduse eesmärk on tagada metsa kui ökosüsteemi kaitse ja säästev majandamine. Seadus eristab metsa, metsamaad, metsaressursi arvestust ja konkreetseid metsamajandamise tegevusi. Kasvava metsa tagavara on metsaressursi näitaja, mitte automaatselt lubatud või majanduslikult kättesaadav raiemaht. Raie lubatavus sõltub muu hulgas metsa seisundist, vanusest, asukohast, õiguslikest piirangutest ja nõuetekohasest menetlusest. Metsaseaduse § 28 järgi tehakse sanitaarraiet metsa sanitaarse seisundi parandamiseks ning ohuallikat mittekujutavate surevate või surnud puude puidu kasutamise võimaldamiseks, kui see ei ohusta elustiku mitmekesisust. Metsaseaduse § 29 lõike 11 järgi on lageraielangi ülempiir olenevalt kasvukohast kaks hektarit luitel, erosiooni- või tuuleohtlikul ning loo ja sambliku kasvukohal, viis hektarit loetletud soo- ja rabakasvukohtades ning muudes kasvukohatüüpides üldjuhul seitse hektarit; viie ja seitsme hektari piirangul on seaduses ühe metsaeraldise erand. Metsateatise kohustus ja erandid on sätestatud §-s 41. § 41 lõike 14 järgi võib metsaomanik metsateatist esitamata raiuda kuni 20 tihumeetrit puitu kinnisasja kohta aastas.",
@@ -417,6 +417,51 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     _publishedAt: "2025-01-15",
     _forestryIntentKinds: ["forest-notice", "property-forest-data", "logging-in-protected-areas", "old-forest-protection"],
   },
+  {
+    id: "forest-management-guide",
+    title: "Metsa korraldamise juhend",
+    organization: "Riigi Teataja / Keskkonnaminister",
+    type: "Kehtiv õigusakt",
+    published: "jooksev",
+    url: "https://www.riigiteataja.ee/et/akt/131082018008?leiaKehtiv",
+    tags: ["mets", "metsakorraldus", "inventeerimine", "takseerimine", "metsamajandamiskava", "raiemahu arvestus", "arvestuslank", "eraldis"],
+    summary: "Metsa korraldamise juhend sätestab metsa kaardistamise, inventeerimise, majandamise kavandamise, raiemahu arvestamise ja metsamajandamiskava nõuded.",
+    content: "Metsa korraldamise juhend sätestab metsa kaardistamise tingimused, metsa inventeerimise eesmärgid ja metoodika, metsa majandamise viiside ja võtete kavandamise nõuded, metsa raiemahu arvestamise metoodika ja metsamajandamiskava koostamisele esitatavad nõuded. Kaardistamisel kasutatakse L-EST97 ristkoordinaatide süsteemi. Metsa kaardistamise ja kirjeldamise üksus on eraldis: pindalalt terviklik metsaosa, mis on päritolu, koosseisu, vanuse, rinnaspindala, kõrguse ja metsakasvukohatüübi poolest kogu ulatuses piisavalt ühetaoline ühesuguste majandamisvõtete rakendamiseks. Eraldise pindala alampiir on ümardatult 0,1 ha ja eraldise keskmise laiuse alampiir on 15 m; eraldiste piirid kaardistatakse 10 meetri täpsusega. Metsa inventeerimine ülepinnalise takseerimisega seisneb eraldise kaardistamises, puistu takseertunnuste määramises ning takseerkirjelduse koostamises; silmamõõdulist takseerimist täpsustatakse mõõtmiste, loendamiste või kaugseire andmetega. Metsa kasutamise võtete kavandamisel lähtutakse eraldise seisundist ja metsa majandamise kitsendustest. Harvendusraie maksimaalne kavandatav väljaraie puistu esimesest rindest koos kokkuveoteedelt raiutud puiduga on 40% rinde raie-eelsest tagavarast; kümneaastase metsamajandamiskava kohta ei ole eraldise kohta soovitatav kavandada rohkem kui kaks harvendusraiet. Metsa raiemahu määramisel lähtutakse õigusaktidest, arvestuslangist, tagavara juurdekasvust, ökonoomsuse kriteeriumitest ning metsaomaniku ettepanekutest. Riigimetsa majandajal, kelle metsamaa pindala on suurem kui 1000 ha, on uuendusraie pindala määramise aluseks arvestuslank. Metsamajandamiskava koostatakse kehtivate või metsaressursi arvestuse riiklikku registrisse esitatavate metsa inventeerimisandmete alusel ning see peab sisaldama muu hulgas temaatilisi kaarte, metsa takseerkirjeldust, koondtabeleid ning kavandatud metsamajandustööde nimekirju ja mahte.",
+    locator: "§ 1–2: reguleerimisala ja inventeerimise eesmärk; § 3–4: kaardistamine ja eraldis; § 5: ülepinnaline takseerimine; § 14–17: majandamisvõtete kavandamine; § 18–19: raiemahu ja arvestuslangi metoodika; § 20–21: metsamajandamiskava. Kehtiv sõnastus 01.01.2025, RT I, 31.05.2024, 11.",
+    _publishedAt: "2024-05-31",
+    _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
+    _forestryIntentKinds: ["forest-management-guide", "forest-inventory-method"],
+  },
+  {
+    id: "fao-fra-terms-2025",
+    title: "FAO FRA 2025 Terms and Definitions",
+    organization: "Food and Agriculture Organization of the United Nations (FAO)",
+    type: "Rahvusvaheline terminoloogia",
+    published: "2023",
+    url: "https://openknowledge.fao.org/server/api/core/bitstreams/a6e225da-4a31-4e06-818d-ca3aeadfd635/content",
+    tags: ["mets", "FAO", "FRA", "terminoloogia", "definitsioonid", "metsaressurss", "metsastumine", "raadamine", "kasvav tagavara"],
+    summary: "FAO FRA 2025 terminoloogia määratleb metsa, muu puittaimestikuga maa, kasvava tagavara, metsastumise, raadamise ja metsapindala netomuutuse rahvusvahelised mõisted.",
+    content: "FAO FRA 2025 määratluse järgi on mets maa-ala, mis on suurem kui 0,5 hektarit ja kus puud on kõrgemad kui 5 meetrit ning võra katvus on üle 10%, või puud suudavad need künnised kohapeal saavutada; mets ei hõlma maad, mis on peamiselt põllumajanduslikus või linnalises kasutuses. Muu puittaimestikuga maa on maa, mis ei ole mets, on suurem kui 0,5 hektarit ning kus puud on kõrgemad kui 5 meetrit ja võra katvus on 5–10%, või põõsaste, puhmaste ja puude summaarne katvus on üle 10%. Kasvav tagavara on kõigi elusate puude üle koore maht, mille rinnasdiameeter on vähemalt 10 cm, sealhulgas tüvi maapinnast kuni 0 cm läbimõõduga tipuni, välja arvatud oksad. Raadamine on metsa muutmine muuks maakasutuseks, olenemata sellest, kas see on inimtekkeline; see hõlmab võra katvuse püsivat langetamist alla 10% künnise ega hõlma raiet, kui mets eeldatavasti uueneb looduslikult või metsakultuurimeetmetega. Metsastumine on metsa rajamine istutamise või külvamise teel maal, mis oli varem muus maakasutuses. Metsa pindala netomuutus on metsapindala erinevus kahe FRA võrdlusaasta vahel ning see võib olla positiivne, negatiivne või null.",
+    locator: "FRA 2025 Terms and Definitions, ptk 1a (Forest; Other wooded land), 1d (Afforestation; Deforestation; Net change) ja 2a (Growing stock).",
+    _publishedAt: "2023-01-01",
+    _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
+    _forestryIntentKinds: ["forest-terms-definition", "fao-fra-definition"],
+  },
+  {
+    id: "metsandusteatmik",
+    title: "Metsandusteatmik",
+    organization: "Atlex / E. Laas, V. Uri",
+    type: "Paberväljaanne",
+    published: "2023",
+    url: "https://atlex.ee/toode/metsandusteatmik/",
+    tags: ["mets", "terminoloogia", "mõisted", "metsandus", "eesti keel", "inglise keel", "sõnaraamat"],
+    summary: "Metsandusteatmik on 2023. aastal ilmunud 432-leheküljeline paberväljaanne, mis seletab metsanduslikke mõisteid ja märksõnu eesti ja inglise keeles.",
+    content: "Metsandusteatmik seletab metsanduslikke mõisteid ja märksõnu. Mõistete tundmine ning nende ühene tõlgendamine on oluline metsandusliku arendus- ja majandustegevuse planeerimisel, seadusloomes ning hariduses. Mõistete adekvaatne kasutamine on aluseks ka metsanduslike info- ja seiresüsteemide arendamisel ning nende põhjal otsuste langetamisel. Raamat ilmus 2023. aastal, on 432 lehekülge, formaat B5, ISBN 978-9916-620-22-9. Tegemist on paberväljaandega, mille täistekst ei ole avalikus veebis kättesaadav; otsing saab viidata raamatu bibliograafilisele kirjele ja kirjastuse tutvustusele, mitte tsitaadile teose sisust.",
+    locator: "Kirjastuse Atlex tootekirje: autorid E. Laas ja V. Uri, ilmumisaasta 2023, 432 lk, ISBN 978-9916-620-22-9.",
+    _publishedAt: "2023-03-09",
+    _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
+    _forestryIntentKinds: ["metsandusteatmik-definition", "forest-terms-definition"],
+  },
 ];
 
 const INTENTS = {
@@ -463,6 +508,49 @@ const INTENTS = {
       ["kõlvikuteks"],
       ["ei ole siiski sama", "ei ole sama"],
     ],
+  },
+
+  "forest-law-overview": {
+    serviceDocumentIds: ["forest-law"],
+    discoveryQueries: ["Metsaseadus eesmärk säästev majandamine raie lubatavus"],
+    evidenceGroups: [
+      ["Metsaseaduse eesmärk", "metsa kui ökosüsteemi kaitse"],
+      ["säästev majandamine"],
+      ["raie lubatavus", "raie lubatavus sõltub"],
+    ],
+    minimumSupportingDocuments: 1,
+  },
+  "forest-management-guide": {
+    serviceDocumentIds: ["forest-management-guide"],
+    discoveryQueries: ["metsa korraldamise juhend eraldis inventeerimine metsamajandamiskava"],
+    evidenceGroups: [
+      ["eraldise pindala alampiir", "0,1 ha"],
+      ["ülepinnalise takseerimisega"],
+      ["raiemahu määramisel", "arvestuslangist"],
+      ["metsamajandamiskava"],
+    ],
+    minimumSupportingDocuments: 1,
+  },
+  "fao-fra-definition": {
+    serviceDocumentIds: ["fao-fra-terms-2025"],
+    discoveryQueries: ["FAO FRA 2025 terms definitions forest growing stock deforestation"],
+    evidenceGroups: [
+      ["0,5 hektarit", "0.5 hectares"],
+      ["kasvav tagavara", "growing stock"],
+      ["raadamine", "deforestation"],
+    ],
+    minimumSupportingDocuments: 1,
+  },
+  "metsandusteatmik-definition": {
+    serviceDocumentIds: ["metsandusteatmik"],
+    discoveryQueries: ["Metsandusteatmik mõisted eesti inglise keeles"],
+    evidenceGroups: [
+      ["Metsandusteatmik"],
+      ["mõisteid ja märksõnu"],
+      ["paberväljaanne", "paberväljaandega"],
+      ["432"],
+    ],
+    minimumSupportingDocuments: 1,
   },
   "forest-publication-cycle": {
     serviceDocumentIds: ["smi", "forest-yearbook-overview"],
@@ -1177,6 +1265,19 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
   if (/^(?:(?:mis\s+on|palun\s+selgita)\s+)?(?:metsa\s+aastaraamat\w*|metsaaastaraamat\w*)$/u.test(text)) return resolved("forest-yearbook-definition");
   if (/\blulucf\b/u.test(text)) return resolved("lulucf-definition");
   if (/\betak\b/u.test(text)) return resolved("etak-definition");
+  if (/\bmetsandusteatmik\w*/u.test(text)
+    || /\bmetsandus(?:e|lik\w*)\s+moist\w*|\bmetsatermin\w*/u.test(text)) {
+    return resolved("metsandusteatmik-definition");
+  }
+  if (/\bfao\b|\bfra\b|forest\s+resources\s+assessment|metsaressursi\s+hindamine/u.test(text)) {
+    return resolved("fao-fra-definition");
+  }
+  if (/\bmetsa?\s+korraldamise\s+juhend\b|\bkorraldamise\s+juhend\b|\bmetsa?\s+korraldamine\b/u.test(text)) {
+    return resolved("forest-management-guide");
+  }
+  if (/^metsaseadus$|^mis\s+on\s+metsaseadus$/u.test(text)) {
+    return resolved("forest-law-overview");
+  }
   if (/\bmetsa?\s+majandamise\s+eeskiri\b|\bmetsamajandamise\s+eeskiri\b/u.test(text)
     && !/\b(?:sanitaar\w*|rai\w*vanus\w*|boniteet\w*|pindala\w*|hektar\w*|lubat\w*|keeld\w*)\b/u.test(text)) {
     return resolved("forest-management-rules-overview");

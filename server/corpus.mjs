@@ -11,7 +11,11 @@ import {
   validateApprovedPublicHttpsUrl,
 } from "./public-https.mjs";
 import { createFairSearchAdmission } from "./request-budget.mjs";
-import { canonicalizePublicSearchQuery, minimizePublicProviderQuery } from "./search.mjs";
+import {
+  canonicalizePublicSearchQuery,
+  minimizePublicProviderQuery,
+  officialServiceCatalogueDocuments,
+} from "./search.mjs";
 import { specialistSubjectRoot, specialistSubjectVariants } from "./topic-keywords.mjs";
 
 const PORTAL_BASE = "https://keskkonnaportaal.ee";
@@ -41,6 +45,8 @@ const OFFICIAL_DISCOVERY_RETENTION_HOURS = Math.max(
   Math.min(Number(process.env.OFFICIAL_DISCOVERY_RETENTION_HOURS) || 168, 720),
 );
 const APPROVED_PAGE_EVIDENCE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1_000;
+const REVIEWED_CATALOGUE_MAX_AGE_MS = 31 * 24 * 60 * 60 * 1_000;
+const REVIEWED_CATALOGUE_SOURCE_KEY = "reviewed-catalogue-source";
 const OFFICIAL_DISCOVERY_MAX_ROWS = Math.max(
   1_000,
   Math.min(Math.trunc(Number(process.env.OFFICIAL_DISCOVERY_MAX_ROWS) || 20_000), 100_000),
@@ -1900,6 +1906,131 @@ async function saveQuerySnapshot(client, query, total, urls, {
   ]);
 }
 
+
+export function reviewedCatalogueCorpusRecords() {
+  const records = officialServiceCatalogueDocuments()
+    .filter((document) => document?._answerEvidenceEligible === true
+      && document?.evidencePolicy !== "route-only"
+      && typeof document?.content === "string"
+      && document.content.length >= 80
+      && /^https:\/\//u.test(String(document?.url || "")))
+    .map((document) => {
+      const reviewedAt = document._evidenceStatusAt || document._catalogueReviewedAt || new Date().toISOString();
+      return {
+        external_id: `reviewed:${document.id}`,
+        source_key: REVIEWED_CATALOGUE_SOURCE_KEY,
+        canonical_url: canonicalUrl(document.url),
+        title: document.title || document.id,
+        summary: document.summary || "",
+        content: document.content,
+        category: document.type || "Ametlik allikas",
+        organization: document.organization || "",
+        published_at: document._publishedAt || "",
+        published_label: document.published || "",
+        modified_at: "",
+        topics: document.tags || document.topics || [],
+        source_tier: "official",
+        language: "et",
+        metadata_quality: 4,
+        metadata: {
+          source_kind: "reviewed-catalogue",
+          hydrated: true,
+          evidence_policy: document.evidencePolicy || "versioned",
+          reviewed_at: reviewedAt,
+          catalogue_id: document.id,
+          locator: document.locator || "",
+          url: document.url,
+        },
+        content_hash: createHash("sha256").update(document.content).digest("hex"),
+      };
+    });
+  // Several reviewed entries deliberately share a public landing URL (for
+  // example an annual publication and its regeneration chapter). PostgreSQL
+  // accepts one row per canonical URL, so keep the richest extract.
+  const byUrl = new Map();
+  for (const record of records) {
+    const existing = byUrl.get(record.canonical_url);
+    if (!existing || record.content.length > existing.content.length) byUrl.set(record.canonical_url, record);
+  }
+  return [...byUrl.values()];
+}
+
+// The portal crawl is a mirror, not the complete reviewed source registry.
+// Persist reviewed catalogue documents that have no portal row so a database
+// search can also reach external laws, UN terminology and file-only sources.
+// Existing crawled rows are never overwritten; empty metadata-only rows are
+// filled with the reviewed extract.
+async function seedReviewedCatalogueDocuments(client, runId) {
+  const records = reviewedCatalogueCorpusRecords();
+  if (!records.length) return { seeded: 0 };
+  const result = await client.query(`
+    INSERT INTO practice_corpus_documents AS current (
+      external_id, source_key, canonical_url, title, summary, content, category,
+      organization, published_at, published_label, modified_at, topics, source_tier,
+      language, metadata_quality, metadata, content_hash, last_seen_run
+    )
+    SELECT
+      item.external_id,
+      item.source_key,
+      item.canonical_url,
+      item.title,
+      item.summary,
+      item.content,
+      item.category,
+      item.organization,
+      NULLIF(item.published_at, '')::DATE,
+      item.published_label,
+      NULLIF(item.modified_at, '')::TIMESTAMPTZ,
+      COALESCE(ARRAY(SELECT jsonb_array_elements_text(item.topics)), ARRAY[]::TEXT[]),
+      item.source_tier,
+      item.language,
+      item.metadata_quality,
+      item.metadata,
+      item.content_hash,
+      $2
+    FROM jsonb_to_recordset($1::JSONB) AS item(
+      external_id TEXT,
+      source_key TEXT,
+      canonical_url TEXT,
+      title TEXT,
+      summary TEXT,
+      content TEXT,
+      category TEXT,
+      organization TEXT,
+      published_at TEXT,
+      published_label TEXT,
+      modified_at TEXT,
+      topics JSONB,
+      source_tier TEXT,
+      language TEXT,
+      metadata_quality SMALLINT,
+      metadata JSONB,
+      content_hash TEXT
+    )
+    ON CONFLICT (canonical_url) DO UPDATE SET
+      external_id = EXCLUDED.external_id,
+      source_key = EXCLUDED.source_key,
+      title = EXCLUDED.title,
+      summary = EXCLUDED.summary,
+      content = EXCLUDED.content,
+      category = EXCLUDED.category,
+      organization = EXCLUDED.organization,
+      published_at = EXCLUDED.published_at,
+      published_label = EXCLUDED.published_label,
+      topics = EXCLUDED.topics,
+      source_tier = EXCLUDED.source_tier,
+      metadata_quality = EXCLUDED.metadata_quality,
+      metadata = EXCLUDED.metadata,
+      content_hash = EXCLUDED.content_hash,
+      fetched_at = NOW(),
+      last_seen_at = NOW(),
+      last_seen_run = COALESCE($2, current.last_seen_run),
+      is_available = TRUE
+    WHERE current.content = ''
+  `, [JSON.stringify(records), runId]);
+  return { seeded: result.rowCount || 0 };
+}
+
 function isRobotsDisallowedCorpusError(error) {
   return error?.message === "Corpus source is disallowed by robots.txt";
 }
@@ -1950,6 +2081,8 @@ export async function syncPortalCorpus({
       totals.indexed += sitemapUpsert.indexed;
       totals.capacityDropped += sitemapUpsert.capacityDropped;
       details.authoritativeCapacityDropped += sitemapUpsert.capacityDropped;
+      const reviewedSeed = await seedReviewedCatalogueDocuments(client, runId);
+      details.reviewedCatalogueSeeded = reviewedSeed.seeded;
       onProgress?.({ stage: "sitemap", discovered: sitemapDocuments.length, indexed: totals.indexed });
 
       let catalogUrls = [];
@@ -2126,6 +2259,12 @@ export function publicSearchItem(row, includeContent = false) {
     && hydrationMetadata.source_kind === "official-page-hydration"
     && boundedText(row.content, 80_000).length >= 80
     && /^[a-f0-9]{64}$/u.test(String(row.content_hash || ""));
+  const isReviewedCatalogueSource = row.source_key === REVIEWED_CATALOGUE_SOURCE_KEY
+    && !containsPageScaffold
+    && hydrationMetadata.hydrated === true
+    && hydrationMetadata.source_kind === "reviewed-catalogue"
+    && boundedText(row.content, 80_000).length >= 80
+    && /^[a-f0-9]{64}$/u.test(String(row.content_hash || ""));
   const item = {
     id: `corpus-${row.id}`,
     title: row.title,
@@ -2141,7 +2280,20 @@ export function publicSearchItem(row, includeContent = false) {
     sourceTier: row.source_tier,
     _publishedAt: row.published_at ? new Date(row.published_at).toISOString().slice(0, 10) : null,
     _relevance: Number(row.relevance || 0),
-    ...(isValidatedPageHydration ? {
+    ...(isReviewedCatalogueSource ? {
+      retrieval: "reviewed-catalogue-source",
+      delivery: "reviewed-catalogue",
+      evidencePolicy: hydrationMetadata.evidence_policy || "versioned",
+      _answerEvidenceEligible: true,
+      _evidenceVersion: row.content_hash,
+      _evidenceStatusAt: hydrationMetadata.reviewed_at || fetchedAt,
+      freshness: {
+        class: "reviewed-catalogue",
+        basis: "reviewed-at",
+        maxAgeMs: REVIEWED_CATALOGUE_MAX_AGE_MS,
+        requiresSourceTimestamp: true,
+      },
+    } : isValidatedPageHydration ? {
       retrieval: "approved-page-hydration",
       delivery: "catalog-and-bounded-hydration",
       evidencePolicy: "versioned",
@@ -2689,6 +2841,7 @@ async function readCorpusStats({ signal, deadlineAt } = {}) {
         COUNT(*) FILTER (WHERE source_tier = 'official')::INTEGER AS official,
         COUNT(*) FILTER (WHERE source_tier = 'supplementary')::INTEGER AS supplementary,
         COUNT(*) FILTER (WHERE source_tier = 'other')::INTEGER AS other,
+        COUNT(*) FILTER (WHERE source_key = 'reviewed-catalogue-source')::INTEGER AS reviewed_catalogue,
         MAX(last_seen_at) AS indexed_at
       FROM practice_corpus_documents
       WHERE is_available = TRUE
@@ -2716,6 +2869,7 @@ async function readCorpusStats({ signal, deadlineAt } = {}) {
       official: Number(row.official),
       supplementary: Number(row.supplementary),
       other: Number(row.other),
+      reviewedCatalogue: Number(row.reviewed_catalogue || 0),
       indexedAt: row.indexed_at,
       lastSync: lastRun.rows[0] ? {
         status: lastRun.rows[0].status,

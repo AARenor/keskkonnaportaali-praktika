@@ -1443,3 +1443,33 @@ test("the generic forest overview leads with the newest published SMI measuremen
   assert.doesNotMatch(draft.answer.intro, /2\s*350,6|51,84%/u);
   assertNumericClaimsHaveVisibleWitnesses(draft, query);
 });
+
+test("the supplied legal, guide and terminology sources are cited directly", async () => {
+  const directory = officialServiceCatalogueDocuments();
+  const cases = [
+    ["Metsaseadus", "forest-law-overview", /metsa kui ökosüsteemi kaitse[\s\S]*säästev majandamine/iu],
+    ["Metsa korraldamise juhend", "forest-management-guide", /eraldise pindala alampiir[\s\S]*raiemahu/iu],
+    ["FAO FRA metsa definitsioon", "fao-fra-definition", /0,5 hektarit[\s\S]*10%[\s\S]*kasvav tagavara/iu],
+    ["Metsandusteatmik", "metsandusteatmik-definition", /432[\s\S]*mõisteid ja märksõnu/iu],
+    ["metsanduse mõisted", "metsandusteatmik-definition", /Metsandusteatmik/iu],
+    ["Metsa majandamise eeskiri", "forest-management-rules-overview", /raievanused[\s\S]*sanitaarraie/iu],
+  ];
+  for (const [query, expectedIntent, expectedAnswer] of cases) {
+    assert.equal(forestEvidenceIntent(query)?.kind, expectedIntent, query);
+    const visible = rankPublicSearchCandidates(query, directory, {
+      intentDocuments: directory,
+      now: NOW,
+    }).slice(0, 12);
+    const plan = selectAnswerEvidence(query, visible);
+    assert.equal(plan?.kind, expectedIntent, query);
+    assert.equal(plan?.strong, true, query);
+    const draft = await createPortalDraft(query, {
+      deadlineAt: Date.now(),
+      searchResults: { total: visible.length, items: visible },
+    });
+    assert.equal(draft.evidence.answerable, true, query);
+    assert.match(answerText(draft), expectedAnswer, query);
+    assert.ok(draft.sources.every((source) => source.url.startsWith("https://")), query);
+    assertNumericClaimsHaveVisibleWitnesses(draft, query);
+  }
+});
