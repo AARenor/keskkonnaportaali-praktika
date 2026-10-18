@@ -7552,6 +7552,15 @@ export function assessSearchQuery(query, options = {}) {
     "official_live_air",
     "official_live_water",
   ].includes(routeClass));
+  const reviewedDataSource = reviewedDataSourceSource(cleanQuery);
+  if (reviewedDataSource) {
+    return {
+      kind: "answerable",
+      topic: "andmed",
+      reason: "reviewed-data-source",
+      clarification: null,
+    };
+  }
   if (!domainRoots.length && !forestryIntent && !hasRecognizedLiveRoute) {
     return {
       kind: "out-of-scope",
@@ -8229,6 +8238,68 @@ const PORTAL_OVERVIEW_SLUGS = Object.freeze([
   ["megatrendid", "megatrendid"],
 ]);
 
+const reviewedDataSourceCache = new Map();
+
+export function reviewedDataSourceSource(query) {
+  const text = normalize(query);
+  if (!text) return null;
+  if (reviewedDataSourceCache.has(text)) return reviewedDataSourceCache.get(text);
+  const tokens = text.split(" ").filter((token) => token.length >= 2 && !STOP_WORDS.has(token));
+  const raw = String(query || "").trim();
+  const exactTitle = PORTAL_DATA_SOURCES.some((source) => (
+    normalize(source.title) === text && text.length >= 5
+  ));
+  const dataSourceMarker = /\b(?:andmeteenus|avaandme\w*|wfs|api|dhs|kese|kotkas|kaia|eelis|loodusveeb|seismo|nemo|swan|parametervalue|viewid|download_opendata|keskkonnaportaal)\b/u.test(text)
+    || /(?:^|\s)f_[a-z0-9_]+|(?:^|\s)t_[a-z0-9_]+/u.test(text)
+    || /https?:\/\//u.test(raw)
+    || /\.[a-z]{2,4}\b/u.test(raw)
+    || /\+$/u.test(raw);
+  // Generic one-word topics ("vesi", "kliima") must keep their normal broad
+  // topic gate. The bypass is only for a named data service or an exact
+  // catalogue title.
+  if (!exactTitle && !dataSourceMarker) {
+    reviewedDataSourceCache.set(text, null);
+    return null;
+  }
+  let result = null;
+  if (tokens.length) {
+    let best = -Infinity;
+    for (const source of PORTAL_DATA_SOURCES) {
+      const haystack = normalize([
+        source.title,
+        source.url,
+        ...(source.tags || []),
+        source.summary,
+      ].filter(Boolean).join(" "));
+      const matched = tokens.filter((token) => textHasQueryRoot(haystack, token)).length;
+      if (matched !== tokens.length) continue;
+      let params = 0;
+      let segments = 0;
+      try {
+        const url = new URL(source.url);
+        params = url.searchParams.size;
+        segments = url.pathname.split("/").filter(Boolean).length;
+      } catch {
+        // Keep the title score for malformed catalogue URLs.
+      }
+      // Prefer the exact catalogue title, then the less specific service URL
+      // when several entries share a title (for example a general register
+      // search versus a pre-filtered object-type query).
+      const score = tokens.length * 100
+        + (normalize(source.title) === text ? 20 : 0)
+        + (params === 0 ? 10 : 0)
+        - params * 2
+        - Math.min(20, segments);
+      if (score > best) {
+        best = score;
+        result = source;
+      }
+    }
+  }
+  reviewedDataSourceCache.set(text, result);
+  return result;
+}
+
 export function directPortalOverviewSourceId(query) {
   const text = normalize(query);
   if (!/\bkeskkonnaulevaade\b/u.test(text)) return null;
@@ -8304,6 +8375,8 @@ export function directDirectoryDocumentIds(query) {
   }
   const reportId = directPortalReportSourceId(query);
   if (reportId) preferred.push(reportId);
+  const reviewedDataSource = reviewedDataSourceSource(query);
+  if (reviewedDataSource) preferred.push(reviewedDataSource.id);
   return [...new Set(preferred)];
 }
 
