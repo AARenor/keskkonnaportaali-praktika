@@ -8230,6 +8230,19 @@ export function directPortalOverviewSourceId(query) {
   ))?.id || null;
 }
 
+export function directPortalOverviewSource(query) {
+  const id = directPortalOverviewSourceId(query);
+  if (!id) return null;
+  if (id === "forest-condition-review") {
+    return {
+      id,
+      url: "https://keskkonnaportaal.ee/et/keskkonnaulevaade/keskkonnaulevaade-mets",
+    };
+  }
+  const source = PORTAL_SECTION_SOURCES.find((candidate) => candidate.id === id);
+  return source ? { id: source.id, url: source.url } : null;
+}
+
 export function directDirectoryDocumentIds(query) {
   const text = normalize(query);
   const roots = queryTerms(query);
