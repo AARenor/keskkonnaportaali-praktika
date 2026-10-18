@@ -19,6 +19,7 @@ export const OFFICIAL_CITATION_ORIGIN_VALUES = Object.freeze([
   "https://kliimaatlas.keskkonnaportaal.ee",
   "https://kliimaministeerium.ee",
   "https://www.kliimaministeerium.ee",
+  "https://kese.envir.ee",
   "https://kotkas.envir.ee",
   "https://lva.keskkonnainfo.ee",
   "https://ohuseire.ee",
