@@ -48,6 +48,7 @@ import {
   composeTopicDataOverviewResponse,
   composeWasteFacilitiesNavigationResponse,
   directPortalOverviewSource,
+  directPortalReportSource,
   forestryIntentServiceDocumentIds,
   rankedSetCoversSubject,
   hasCompleteSentenceEnding,
@@ -1249,7 +1250,7 @@ export async function createPortalDraft(query, {
   const conventionalQuality = assessEvidence(retrievalQuery, reranked);
   const plannedEvidence = selectAnswerEvidence(retrievalQuery, reranked);
   const directOverview = (() => {
-    const source = directPortalOverviewSource(retrievalQuery);
+    const source = directPortalOverviewSource(retrievalQuery) || directPortalReportSource(retrievalQuery);
     if (!source) return null;
     return reranked.find((document) => document.id === source.id
       || canonicalResultUrl(document.url) === canonicalResultUrl(source.url)) || null;

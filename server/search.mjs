@@ -7754,10 +7754,15 @@ export function assessSearchQuery(query, options = {}) {
   // annual series being available for exactly that year.
   const explicitYearMetric = /\b(?:19|20)\d{2}\b/u.test(normalized)
     && /\b(?:raiemaht|raiepindala|lageraie|pindala|tagavara|juurdekasv|heide|heitmed|saaste|jaatmed|ringlus|temperatuur|sademed|metsasus|osakaal|maht)\w*/u.test(normalized);
+  // A named report or indicator plus an Estonia scope is a concrete data
+  // request, even when the only topic root would otherwise be too broad.
+  const explicitReportQuery = /\b(?:jaatmeteke|heitkogus\w*|seire\s+tulemus\w*|aastaraamat\w*|ulevaade|ülevaade|aruanne)\w*/u.test(normalized)
+    && /\b(?:eesti|eestis|20\d{2})\b/u.test(normalized);
   if (!isTopicDataOverviewQuery(cleanQuery, roots)
     && !isStatisticsWaterAbstractionQuery(cleanQuery)
     && !namesFellingType
     && !explicitYearMetric
+    && !explicitReportQuery
     && AMBIGUOUS_ROOTS.has(topic) && (roots.length <= 1 || waterContextOnly)) {
     return {
       kind: "needs-clarification",
@@ -8246,6 +8251,24 @@ export function directPortalOverviewSource(query) {
   return source ? { id: source.id, url: source.url } : null;
 }
 
+const PORTAL_REPORT_SOURCE_IDS = new Map(PORTAL_REPORT_SOURCES
+  .filter((source) => /\/et\//u.test(source.url))
+  .map((source) => [source.url.replace(/^https:\/\/keskkonnaportaal\.ee\/et\//u, ""), source.id]));
+
+function directPortalReportSourceId(query) {
+  const text = normalize(query);
+  if (/\bjaatmeteke\b|\bjaatmete\s+teke\b/u.test(text)) {
+    return PORTAL_REPORT_SOURCE_IDS.get("jaatmeteke") || null;
+  }
+  return null;
+}
+
+export function directPortalReportSource(query) {
+  const id = directPortalReportSourceId(query);
+  const source = id ? PORTAL_REPORT_SOURCES.find((candidate) => candidate.id === id) : null;
+  return source ? { id: source.id, url: source.url } : null;
+}
+
 export function directDirectoryDocumentIds(query) {
   const text = normalize(query);
   const roots = queryTerms(query);
@@ -8277,6 +8300,8 @@ export function directDirectoryDocumentIds(query) {
   if (/\b(?:keskkonnaandm|keskonnaandm)\w*\b[\s\S]{0,60}\b(?:teenus|loetelu)\w*\b/u.test(text)) {
     preferred.push("official-data-services", "open-data-downloader");
   }
+  const reportId = directPortalReportSourceId(query);
+  if (reportId) preferred.push(reportId);
   return [...new Set(preferred)];
 }
 
