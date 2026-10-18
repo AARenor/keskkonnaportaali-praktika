@@ -14,7 +14,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/andmeallikad/kaardirakenduse-teated. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2025-08-01",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-andmekataloog-26d376",
@@ -29,7 +29,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/andmekataloog. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2025-03-21",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-andmete-kasutuslood-1a8ee0",
@@ -44,7 +44,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/andmete-kasutuslood. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-11-19",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-andmete-kasutuslood-kliimastatistika-kuupaeva-pohiselt-9a920e",
@@ -59,7 +59,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/andmete-kasutuslood/kliimastatistika-kuupaeva-pohiselt. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-11-19",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-andmete-kasutuslood-seismilised-sundmused-31d5cb",
@@ -74,7 +74,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/andmete-kasutuslood/seismilised-sundmused. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-11-19",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-avaandmete-allalaadija-6887c4",
@@ -89,7 +89,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/avaandmete-allalaadija. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2025-08-22",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-eesti-looduse-infosusteemi-andmestikud-ca9b0c",
@@ -104,7 +104,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/eesti-looduse-infosusteemi-andmestikud. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-11-14",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-hudroloogilise-prognoosi-andmestik-hudroloogilise-prognoosi-kirjeld-4170bb",
@@ -119,7 +119,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/hudroloogilise-prognoosi-andmestik/hudroloogilise-prognoosi-kirjeldus. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-10-17",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-hudroloogilise-seire-andmestik-0ab41c",
@@ -134,7 +134,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/hudroloogilise-seire-andmestik. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-02-01",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-hudroloogilise-seire-andmestik-hudroloogilise-seire-andmestiku-kirj-ba3aa6",
@@ -149,7 +149,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/hudroloogilise-seire-andmestik/hudroloogilise-seire-andmestiku-kirjeldus. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-01-18",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-ilma-mudelprognoosid-f2bd4c",
@@ -164,7 +164,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/ilma-mudelprognoosid. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-10-17",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-ilma-mudelprognoosid-ilma-mudeliandmete-kirjeldus-c29618",
@@ -179,7 +179,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/ilma-mudelprognoosid/ilma-mudeliandmete-kirjeldus. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-10-17",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-ilmaprognoosid-5f6934",
@@ -194,7 +194,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/ilmaprognoosid. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-10-20",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-ilmaprognoosid-ilmaprognooside-kirjeldus-d558d9",
@@ -209,7 +209,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/ilmaprognoosid/ilmaprognooside-kirjeldus. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-10-20",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-ilmavaatluste-andmestik-meteoroloogilise-seire-andmestiku-kirjeldus-b8bc48",
@@ -224,7 +224,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/ilmavaatluste-andmestik/meteoroloogilise-seire-andmestiku-kirjeldus. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-10-17",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-kliimaandmestik-9420cd",
@@ -239,7 +239,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/kliimaandmestik. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-02-01",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-kliimaandmestik-kliimaandmestiku-kirjeldus-73e415",
@@ -254,7 +254,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/kliimaandmestik/kliimaandmestiku-kirjeldus. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-01-17",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-looduse-huvede-andmestikud-f8e058",
@@ -269,7 +269,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/looduse-huvede-andmestikud. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-11-14",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-meteoroloogilise-seire-andmestik-3b0af8",
@@ -284,7 +284,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/meteoroloogilise-seire-andmestik. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-10-17",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-meteoroloogiliste-radarite-andmestik-023916",
@@ -299,7 +299,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/meteoroloogiliste-radarite-andmestik. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-10-10",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-radariandmestik-radariandmete-kirjeldus-12f15d",
@@ -314,7 +314,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/radariandmestik/radariandmete-kirjeldus. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-10-10",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-sonastikud-32e22a",
@@ -329,7 +329,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/sonastikud. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-11-18",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-tuleohu-fwi-andmestik-405b20",
@@ -344,7 +344,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/tuleohu-fwi-andmestik. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-10-20",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-tuleohu-fwi-andmestik-tuleohu-andmestiku-kirjeldus-33aaf1",
@@ -359,7 +359,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/tuleohu-fwi-andmestik/tuleohu-andmestiku-kirjeldus. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-10-20",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-valisohu-saastamisega-seotud-tegevuste-aruanded-cb4fa8",
@@ -374,7 +374,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/valisohu-saastamisega-seotud-tegevuste-aruanded. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-11-15",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-avaandmed-veekasutuse-andmestik-380740",
@@ -389,7 +389,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/avaandmed/veekasutuse-andmestik. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-11-15",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-keskkonnaulevaade-keskkonnaulevaade-energeetika-ja-keskkond-3a71e3",
@@ -404,7 +404,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/keskkonnaulevaade/keskkonnaulevaade-energeetika-ja-keskkond. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-10-14",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-keskkonnaulevaade-keskkonnaulevaade-ilm-ja-kliima-87279c",
@@ -419,7 +419,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/keskkonnaulevaade/keskkonnaulevaade-ilm-ja-kliima. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-01-31",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-keskkonnaulevaade-keskkonnaulevaade-jaatmed-ja-ringmajandus-16b062",
@@ -434,7 +434,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/keskkonnaulevaade/keskkonnaulevaade-jaatmed-ja-ringmajandus. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-04-18",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-keskkonnaulevaade-keskkonnaulevaade-liigid-eb684c",
@@ -449,7 +449,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/keskkonnaulevaade/keskkonnaulevaade-liigid. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-11-19",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-keskkonnaulevaade-keskkonnaulevaade-megatrendid-7552d1",
@@ -464,7 +464,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/keskkonnaulevaade/keskkonnaulevaade-megatrendid. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-12-18",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-keskkonnaulevaade-keskkonnaulevaade-muld-ja-maahoive-4dadfe",
@@ -479,7 +479,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/keskkonnaulevaade/keskkonnaulevaade-muld-ja-maahoive. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-09-09",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-keskkonnaulevaade-keskkonnaulevaade-okosusteemid-e0a15c",
@@ -494,7 +494,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/keskkonnaulevaade/keskkonnaulevaade-okosusteemid. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-03-19",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-keskkonnaulevaade-keskkonnaulevaade-valisohk-f14e5a",
@@ -509,7 +509,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/keskkonnaulevaade/keskkonnaulevaade-valisohk. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-01-07",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-keskkonnaulevaade-keskkonnaulevaade-vesi-b7fb63",
@@ -524,7 +524,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/keskkonnaulevaade/keskkonnaulevaade-vesi. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-12-18",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-elusloodus-f36bef",
@@ -539,7 +539,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/elusloodus. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-04-18",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-elusloodus-looduskaitse-e636a8",
@@ -554,7 +554,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/elusloodus/looduskaitse. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2021-12-15",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-elusloodus-ulukid-a78fba",
@@ -569,7 +569,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/elusloodus/ulukid. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2021-12-20",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-ilm-ja-kliima-5f2e69",
@@ -584,7 +584,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/ilm-ja-kliima. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2021-12-20",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-ilm-ja-kliima-ajalugu-5cdc0f",
@@ -599,7 +599,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/ilm-ja-kliima/ajalugu. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2026-05-25",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-ilm-ja-kliima-ida-virumaa-kliimast-352ba9",
@@ -614,7 +614,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/ilm-ja-kliima/ida-virumaa-kliimast. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2022-01-23",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-ilm-ja-kliima-ilmaulevaated-9b2765",
@@ -629,7 +629,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/ilm-ja-kliima/ilmaulevaated. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-05-04",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-ilm-ja-kliima-kliimamuutused-69e91c",
@@ -644,7 +644,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/ilm-ja-kliima/kliimamuutused. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-11-01",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-ilm-kliima-ilmajutud--c3-bcks-mereline-maakond--e2-80-93-l-c3-a4-c3-a4-bca3dd",
@@ -659,7 +659,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/ilm-kliima/ilmajutud/%C3%BCks-mereline-maakond-%E2%80%93-l%C3%A4%C3%A4nemaa. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2022-01-23",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-ilm-kliima-ilmajutud-harjumaa-kliimast-74deca",
@@ -674,7 +674,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/ilm-kliima/ilmajutud/harjumaa-kliimast. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-02-07",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-ilm-kliima-ilmajutud-j-c3-b5gevamaa-kliimast-f003bb",
@@ -689,7 +689,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/ilm-kliima/ilmajutud/j%C3%B5gevamaa-kliimast. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2022-10-14",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-ilm-kliima-ilmajutud-kliimast-eestimaa-s-c3-bcdames-0b0670",
@@ -704,7 +704,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/ilm-kliima/ilmajutud/kliimast-eestimaa-s%C3%BCdames. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2022-01-23",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-ilm-kliima-ilmajutud-l-c3-a4-c3-a4ne-virumaa-kliimast-51e1f9",
@@ -719,7 +719,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/ilm-kliima/ilmajutud/l%C3%A4%C3%A4ne-virumaa-kliimast. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2022-12-02",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-ilm-kliima-ilmajutud-p-c3-a4ikesepaistelised-tormide-saared-4e0dae",
@@ -734,7 +734,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/ilm-kliima/ilmajutud/p%C3%A4ikesepaistelised-tormide-saared. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2022-01-23",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-ilm-kliima-ilmajutud-p-c3-b5lvamaa-kliimast-2dbdac",
@@ -749,7 +749,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/ilm-kliima/ilmajutud/p%C3%B5lvamaa-kliimast. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2022-10-14",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-ilm-kliima-ilmajutud-raplamaa-kliimast-1fff5a",
@@ -764,7 +764,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/ilm-kliima/ilmajutud/raplamaa-kliimast. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2022-10-14",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-ilm-kliima-ilmajutud-suvemaakond-p-c3-a4rnumaa-6517a6",
@@ -779,7 +779,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/ilm-kliima/ilmajutud/suvemaakond-p%C3%A4rnumaa. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2022-01-23",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-ilm-kliima-ilmajutud-tartumaa-kliimast-52b99e",
@@ -794,7 +794,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/ilm-kliima/ilmajutud/tartumaa-kliimast. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2022-01-21",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-ilm-kliima-ilmajutud-tormide-rand--e2-80-93-hiiumaa-6b108c",
@@ -809,7 +809,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/ilm-kliima/ilmajutud/tormide-rand-%E2%80%93-hiiumaa. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2022-01-23",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-ilm-kliima-ilmajutud-v-c3-b5rumaa-kliimast-81c730",
@@ -824,7 +824,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/ilm-kliima/ilmajutud/v%C3%B5rumaa-kliimast. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2022-01-23",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-ilm-kliima-ilmajutud-valga-maakonna-kliimast-55964a",
@@ -839,7 +839,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/ilm-kliima/ilmajutud/valga-maakonna-kliimast. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2022-01-23",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-ilm-kliima-ilmajutud-viljandimaa-kliimast-6d7bb0",
@@ -854,7 +854,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/ilm-kliima/ilmajutud/viljandimaa-kliimast. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2022-10-14",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-ilm-kliima-meteoroloogiap-c3-a4evad-2022-varane-hoiatus-ja-tegutsemine-9ca53a",
@@ -869,7 +869,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/ilm-kliima/meteoroloogiap%C3%A4evad/2022-varane-hoiatus-ja-tegutsemine-katastroofiriski. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2022-10-05",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-jaatmed-ja-ringmajandus-jaatmed-e381cb",
@@ -884,7 +884,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/jaatmed-ja-ringmajandus/jaatmed. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-09-25",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-jaatmed-ja-ringmajandus-jaatmed-ehitus-ja-lammutusjaatmed-68efc7",
@@ -899,7 +899,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/jaatmed-ja-ringmajandus/jaatmed/ehitus-ja-lammutusjaatmed. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2026-05-27",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-jaatmed-ja-ringmajandus-jaatmed-ohtlikud-jaatmed-6ce954",
@@ -914,7 +914,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/jaatmed-ja-ringmajandus/jaatmed/ohtlikud-jaatmed. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2026-05-27",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-jaatmed-ja-ringmajandus-jaatmed-olmejaatmed-e0093f",
@@ -929,7 +929,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/jaatmed-ja-ringmajandus/jaatmed/olmejaatmed. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2026-05-27",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-jaatmed-ja-ringmajandus-jaatmed-probleemtooted-297bab",
@@ -944,7 +944,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/jaatmed-ja-ringmajandus/jaatmed/probleemtooted. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2026-05-27",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-jaatmed-ja-ringmajandus-jaatmed-statistiline-ulevaade-a155ab",
@@ -959,7 +959,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/jaatmed-ja-ringmajandus/jaatmed/statistiline-ulevaade. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2026-05-27",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-jaatmed-ja-ringmajandus-ringmajandus-7ca09f",
@@ -974,7 +974,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/jaatmed-ja-ringmajandus/ringmajandus. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2022-05-04",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-jaatmed-ja-ringmajandus-ringmajandus-jatkusuutlik-rahastus-0bb3fa",
@@ -989,7 +989,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/jaatmed-ja-ringmajandus/ringmajandus/jatkusuutlik-rahastus. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-04-19",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-jaatmed-ja-ringmajandus-ringmajandus-ringmajandus-eestis-a47ba4",
@@ -1004,7 +1004,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/jaatmed-ja-ringmajandus/ringmajandus/ringmajandus-eestis. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-04-19",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-jaatmed-ja-ringmajandus-ringmajandus-teadlikkust-tostvad-materjalid-ja-6e64f6",
@@ -1019,7 +1019,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/jaatmed-ja-ringmajandus/ringmajandus/teadlikkust-tostvad-materjalid-ja-viited. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-04-19",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-jaatmed-ladestamine-9f5966",
@@ -1034,7 +1034,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/jaatmed/ladestamine. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-11-06",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kaugseire-d861a3",
@@ -1049,7 +1049,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kaugseire. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-10-10",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kaugseire-copernicuse-teenused-beafea",
@@ -1064,7 +1064,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kaugseire/copernicuse-teenused. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-10-27",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kaugseire-copernicuse-teenused-cams-toodete-teadlikkuse-tostmine-ja-ka-a006d4",
@@ -1079,7 +1079,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kaugseire/copernicuse-teenused/cams-toodete-teadlikkuse-tostmine-ja-kasutuselevotu. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-10-22",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kaugseire-ilm-radaritelt-2e3e33",
@@ -1094,7 +1094,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kaugseire/ilm-radaritelt. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-11-08",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kaugseire-ilm-satelliitidelt-fa2603",
@@ -1109,7 +1109,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kaugseire/ilm-satelliitidelt. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-10-10",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kaugseire-jaakaart-e5f45d",
@@ -1124,7 +1124,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kaugseire/jaakaart. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-10-10",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kaugseire-raadiosondeerimine-d27172",
@@ -1139,7 +1139,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kaugseire/raadiosondeerimine. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-10-27",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kaugseire-uleujutuste-kaart-3eab47",
@@ -1154,7 +1154,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kaugseire/uleujutuste-kaart. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-04-02",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-keskkonnaseire-c1a052",
@@ -1169,7 +1169,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/keskkonnaseire. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2022-02-02",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-keskkonnaseire-riiklik-keskkonnaseire-programm-802daf",
@@ -1184,7 +1184,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/keskkonnaseire/riiklik-keskkonnaseire-programm. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-05-16",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-keskkonnaseire-riikliku-keskkonnaseire-visualiseeritud-tulemused-d526ec",
@@ -1199,7 +1199,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/keskkonnaseire/riikliku-keskkonnaseire-visualiseeritud-tulemused. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2026-01-02",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kestlikkus-d0af90",
@@ -1214,7 +1214,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kestlikkus. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2026-03-13",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kestlikkus-emas-58d0e5",
@@ -1229,7 +1229,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kestlikkus/emas. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2025-02-03",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kestlikkus-emas-mis-emas-efdf60",
@@ -1244,7 +1244,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kestlikkus/emas/mis-emas. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-09-25",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kestlikkus-emas-taotlemine-cb6ca5",
@@ -1259,7 +1259,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kestlikkus/emas/taotlemine. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-09-25",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kestlikkus-euroopa-liidu-okomargis-c24c2e",
@@ -1274,7 +1274,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kestlikkus/euroopa-liidu-okomargis. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-09-25",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kestlikkus-euroopa-liidu-okomargis-ettevotjale-575ed4",
@@ -1289,7 +1289,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kestlikkus/euroopa-liidu-okomargis/ettevotjale. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-09-25",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kestlikkus-euroopa-liidu-okomargis-mis-eli-okomargis-717c3b",
@@ -1304,7 +1304,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kestlikkus/euroopa-liidu-okomargis/mis-eli-okomargis. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-09-25",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kestlikkus-euroopa-liidu-okomargis-oluline-teave-1fe238",
@@ -1319,7 +1319,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kestlikkus/euroopa-liidu-okomargis/oluline-teave. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-09-25",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kestlikkus-euroopa-liidu-okomargis-taotlemine-1e1367",
@@ -1334,7 +1334,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kestlikkus/euroopa-liidu-okomargis/taotlemine. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-09-25",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kestlikkus-euroopa-liidu-okomargis-tasud-df4ed5",
@@ -1349,7 +1349,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kestlikkus/euroopa-liidu-okomargis/tasud. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-09-25",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kestlikkus-euroopa-liidu-okomargis-tooteruhmad-elektroonikatooted-0531ad",
@@ -1364,7 +1364,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kestlikkus/euroopa-liidu-okomargis/tooteruhmad/elektroonikatooted. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-09-25",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kestlikkus-euroopa-liidu-okomargis-tooteruhmad-kasvusubstraadid-mullap-6c3e89",
@@ -1379,7 +1379,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kestlikkus/euroopa-liidu-okomargis/tooteruhmad/kasvusubstraadid-mullaparandusained-ja-mults. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2025-09-26",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kestlikkus-euroopa-liidu-okomargis-tooteruhmad-kattematerjalid-0b023a",
@@ -1394,7 +1394,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kestlikkus/euroopa-liidu-okomargis/tooteruhmad/kattematerjalid. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2025-09-26",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kestlikkus-euroopa-liidu-okomargis-tooteruhmad-koristamine-c66324",
@@ -1409,7 +1409,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kestlikkus/euroopa-liidu-okomargis/tooteruhmad/koristamine. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-09-25",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kestlikkus-euroopa-liidu-okomargis-tooteruhmad-kosmeetika-ja-loomahool-da536e",
@@ -1424,7 +1424,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kestlikkus/euroopa-liidu-okomargis/tooteruhmad/kosmeetika-ja-loomahooldustooted-ning-hugieen. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-09-25",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kestlikkus-euroopa-liidu-okomargis-tooteruhmad-maardeained-15b36e",
@@ -1439,7 +1439,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kestlikkus/euroopa-liidu-okomargis/tooteruhmad/maardeained. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2025-09-26",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kestlikkus-euroopa-liidu-okomargis-tooteruhmad-moobel-ja-madratsid-42c081",
@@ -1454,7 +1454,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kestlikkus/euroopa-liidu-okomargis/tooteruhmad/moobel-ja-madratsid. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-09-25",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kestlikkus-euroopa-liidu-okomargis-tooteruhmad-paberitooted-7c9ff3",
@@ -1469,7 +1469,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kestlikkus/euroopa-liidu-okomargis/tooteruhmad/paberitooted. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-09-25",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kestlikkus-euroopa-liidu-okomargis-tooteruhmad-tekstiil-ja-jalatsid-78508b",
@@ -1484,7 +1484,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kestlikkus/euroopa-liidu-okomargis/tooteruhmad/tekstiil-ja-jalatsid. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-09-25",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kestlikkus-euroopa-liidu-okomargis-tooteruhmad-turism-8c38fd",
@@ -1499,7 +1499,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kestlikkus/euroopa-liidu-okomargis/tooteruhmad/turism. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-09-25",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kestlikkus-euroopa-liidu-okomargis-tooteruhmad-varvid-ja-lakid-d76440",
@@ -1514,7 +1514,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kestlikkus/euroopa-liidu-okomargis/tooteruhmad/varvid-ja-lakid. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2025-09-26",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kliimapoliitika-andmevarav-energeetika-f54bed",
@@ -1529,7 +1529,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kliimapoliitika-andmevarav/energeetika. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2026-03-17",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kliimapoliitika-andmevarav-hooned-ab4023",
@@ -1544,7 +1544,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kliimapoliitika-andmevarav/hooned. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2026-03-17",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kliimapoliitika-andmevarav-jaatmed-9daf56",
@@ -1559,7 +1559,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kliimapoliitika-andmevarav/jaatmed. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2026-03-17",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kliimapoliitika-andmevarav-lulucf-abb6a5",
@@ -1574,7 +1574,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kliimapoliitika-andmevarav/lulucf. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2026-03-17",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kliimapoliitika-andmevarav-pollumajandus-7f30cb",
@@ -1589,7 +1589,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kliimapoliitika-andmevarav/pollumajandus. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2026-03-17",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kliimapoliitika-andmevarav-toostus-0eeb5a",
@@ -1604,7 +1604,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kliimapoliitika-andmevarav/toostus. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2026-03-17",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-kliimapoliitika-andmevarav-transport-0d30e5",
@@ -1619,7 +1619,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/kliimapoliitika-andmevarav/transport. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2026-03-17",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-loodushuved-925a45",
@@ -1634,7 +1634,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/loodushuved. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-09-15",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-mets-2d9b3a",
@@ -1649,7 +1649,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/mets. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2021-11-22",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-mets-kuuse-kooreurask-3b2882",
@@ -1664,7 +1664,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/mets/kuuse-kooreurask. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-02-05",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-muld-ja-maahoive-maa-ja-mullakasutuse-teadus-arendusprojekt-ed07f4",
@@ -1679,7 +1679,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/muld-ja-maahoive/maa-ja-mullakasutuse-teadus-arendusprojekt. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-10-17",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-reaalajamajandus-ed00e6",
@@ -1694,7 +1694,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/reaalajamajandus. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-03-31",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-reaalajamajandus-jaatmevaldkond-1955d2",
@@ -1709,7 +1709,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/reaalajamajandus/jaatmevaldkond. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-03-31",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-reaalajamajandus-metsavaldkond-555ae5",
@@ -1724,7 +1724,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/reaalajamajandus/metsavaldkond. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-01-11",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-reaalajamajandus-tootjavastutuse-valdkond-ef9698",
@@ -1739,7 +1739,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/reaalajamajandus/tootjavastutuse-valdkond. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-03-31",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-reaalajamajandus-veevaldkond-91cbfb",
@@ -1754,7 +1754,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/reaalajamajandus/veevaldkond. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-03-31",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-035463",
@@ -1769,7 +1769,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-09-16",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-bioenergia-3851b3",
@@ -1784,7 +1784,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/bioenergia. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-08-29",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-bioenergia-kas-biogaasil-eestis-tulevikku-4b7b29",
@@ -1799,7 +1799,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/bioenergia/kas-biogaasil-eestis-tulevikku. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-10-23",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-energiajulge-olla-siis-kui-tead-ise-mida-teha-2be5de",
@@ -1814,7 +1814,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/energiajulge-olla-siis-kui-tead-ise-mida-teha. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2025-06-26",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-inimene-peaks-ehitama-tuulikud-enda-mitte-lindude-pesit-692666",
@@ -1829,7 +1829,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/inimene-peaks-ehitama-tuulikud-enda-mitte-lindude-pesitsuspaika. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2025-01-27",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-kaasamine-planeeringutes-millal-ja-kuidas-saavad-kohali-9eec25",
@@ -1844,7 +1844,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/kaasamine-planeeringutes-millal-ja-kuidas-saavad-kohalikud-kaasa-raakida. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2026-02-09",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-kas-eesti-elektritootmine-saab-puhtaks-ainult-hiina-teh-0cdba8",
@@ -1859,7 +1859,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/kas-eesti-elektritootmine-saab-puhtaks-ainult-hiina-tehnoloogia-abil. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-11-25",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-kas-taastuvenergiaga-saab-taielikult-fossiilsed-kutused-4bf488",
@@ -1874,7 +1874,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/kas-taastuvenergiaga-saab-taielikult-fossiilsed-kutused-asendada. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-10-24",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-mis-saab-siis-kui-tuul-ei-puhu-ja-paike-ei-paista-f38a4a",
@@ -1889,7 +1889,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/mis-saab-siis-kui-tuul-ei-puhu-ja-paike-ei-paista. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-11-21",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-muud-energialiigid-cce9eb",
@@ -1904,7 +1904,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/muud-energialiigid. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-09-16",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-paikeseenergia-c22021",
@@ -1919,7 +1919,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/paikeseenergia. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-09-16",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-repowereu-8c523a",
@@ -1934,7 +1934,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/repowereu. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-09-16",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-taastuvenergia-kkk-tuulikute-luhivideod-839c67",
@@ -1949,7 +1949,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/taastuvenergia-kkk/tuulikute-luhivideod. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2025-03-31",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-taastuvenergia-kkk-vaata-videoid-eksperdid-arutlevad-ku-483594",
@@ -1964,7 +1964,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/taastuvenergia-kkk/vaata-videoid-eksperdid-arutlevad-kuidas-tuuleparkidega. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2025-07-02",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-taastuvenergia-kogukonnad-eestis-ehk-kuidas-naabrid-end-ab25c7",
@@ -1979,7 +1979,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/taastuvenergia-kogukonnad-eestis-ehk-kuidas-naabrid-endale-ise-elektrit. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-10-23",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-tuuleenergia-7df941",
@@ -1994,7 +1994,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/tuuleenergia. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-09-16",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-tuuleenergia-infraheli-bdb0c4",
@@ -2009,7 +2009,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/tuuleenergia/infraheli. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2025-01-15",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-tuuleenergia-kas-ja-milline-moju-tuulikute-vibratsiooni-62e690",
@@ -2024,7 +2024,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/tuuleenergia/kas-ja-milline-moju-tuulikute-vibratsioonil. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2025-07-03",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-tuuleenergia-keskkonnatervise-ekspert-linna-liikluskara-6752b9",
@@ -2039,7 +2039,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/tuuleenergia/keskkonnatervise-ekspert-linna-liikluskara-mojutab-tervist. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-08-02",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-tuuleenergia-koduomanikud-ei-pea-tuuleparkide-laheduses-4963ae",
@@ -2054,7 +2054,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/tuuleenergia/koduomanikud-ei-pea-tuuleparkide-laheduses-eluaseme-vaartuse. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2025-04-28",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-tuuleenergia-kuidas-sunnib-tuulepark-e84615",
@@ -2069,7 +2069,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/tuuleenergia/kuidas-sunnib-tuulepark. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2025-10-08",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-tuuleenergia-tuuleparkide-keskkonnamoju-hindamise-vordl-ffb53b",
@@ -2084,7 +2084,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/tuuleenergia/tuuleparkide-keskkonnamoju-hindamise-vordlusanaluus-ja-juhend. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2025-04-25",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-tuuleenergia-tuulikumojude-hindamine-puudutab-alati-ka--d5ac3b",
@@ -2099,7 +2099,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/tuuleenergia/tuulikumojude-hindamine-puudutab-alati-ka-inimest-ja-kogukonda. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2025-10-08",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-tuuleenergia-tuulikutasud-610065",
@@ -2114,7 +2114,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/tuuleenergia/tuulikutasud. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2025-01-24",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-tuuleenergia-tuulikute-tervisemojud-sustemaatiline-ulev-deb337",
@@ -2129,7 +2129,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/tuuleenergia/tuulikute-tervisemojud-sustemaatiline-ulevaade-viimasel. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2025-11-13",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-taastuvenergia-viis-ponevat-fakti-taastuvenergia-kohta-fb52e5",
@@ -2144,7 +2144,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/taastuvenergia/viis-ponevat-fakti-taastuvenergia-kohta. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2025-05-27",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-valisohk-014b5f",
@@ -2159,7 +2159,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/valisohk. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2021-12-20",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-valisohk-ohk-euroopas-170781",
@@ -2174,7 +2174,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/valisohk/ohk-euroopas. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2022-01-24",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-vesi-51174e",
@@ -2189,7 +2189,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/vesi. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2021-12-20",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-vesi-meri-ad1a67",
@@ -2204,7 +2204,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/vesi/meri. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2021-12-29",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-vesi-pinnavesi-a1d781",
@@ -2219,7 +2219,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/vesi/pinnavesi. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2021-12-29",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-vesi-pinnavesi-hudroloogiline-seire-e6adde",
@@ -2234,7 +2234,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/vesi/pinnavesi/hudroloogiline-seire. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-10-23",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-vesi-pinnavesi-veekogude-muudatused-eelises-644338",
@@ -2249,7 +2249,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/vesi/pinnavesi/veekogude-muudatused-eelises. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2025-04-22",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-vesi-pohjavesi-pohjavee-seire-8bc27b",
@@ -2264,7 +2264,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/vesi/pohjavesi/pohjavee-seire. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-05-08",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-vesi-pohjavesi-pohjaveevarud-ja-bilanss-6449b0",
@@ -2279,7 +2279,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/vesi/pohjavesi/pohjaveevarud-ja-bilanss. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2023-05-08",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-vesi-veemajanduskavad-5e22ae",
@@ -2294,7 +2294,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/vesi/veemajanduskavad. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-06-21",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-vesi-veemajanduskavad-uleujutuste-maandamiskava-129330",
@@ -2309,7 +2309,7 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/vesi/veemajanduskavad/uleujutuste-maandamiskava. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-05-27",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
   {
     id: "portal-et-teemad-vesi-veemajanduskavad-vete-terviseplaan-164333",
@@ -2324,6 +2324,6 @@ export const PORTAL_SECTION_SOURCES = Object.freeze([
     locator: "Keskkonnaportaal: /et/teemad/vesi/veemajanduskavad/vete-terviseplaan. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
     _publishedAt: "2024-05-29",
     _catalogueReviewedAt: "2026-10-18T00:00:00.000Z",
-    _cataloguePriority: -1,
+    _cataloguePriority: -10,
   },
 ]);

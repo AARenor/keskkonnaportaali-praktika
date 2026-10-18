@@ -1589,7 +1589,8 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
     - roundupPenalty
     - offIntentDirectoryPenalty
     - broadGatewayPenalty
-    - (futureDated ? 0.6 : 0);
+    - (futureDated ? 0.6 : 0)
+    + (Number(document._cataloguePriority) || 0) * 2;
   return {
     score,
     matched: forestryRestrictionMatched
@@ -1633,7 +1634,6 @@ export function rankSearchCandidates(query, documents = [], { sort = "relevance"
       if (sort === "newest") {
         return right._ranking.answerEvidencePriority - left._ranking.answerEvidencePriority
           || right._ranking.servicePriority - left._ranking.servicePriority
-          || right._ranking.cataloguePriority - left._ranking.cataloguePriority
           || right._ranking.relevanceBucket - left._ranking.relevanceBucket
           || Number(left._ranking.futureDated) - Number(right._ranking.futureDated)
           || right._ranking.publishedAt - left._ranking.publishedAt
@@ -1642,7 +1642,6 @@ export function rankSearchCandidates(query, documents = [], { sort = "relevance"
       }
       return right._ranking.answerEvidencePriority - left._ranking.answerEvidencePriority
         || right._ranking.servicePriority - left._ranking.servicePriority
-        || right._ranking.cataloguePriority - left._ranking.cataloguePriority
         || right._ranking.score - left._ranking.score
         || Number(left._ranking.futureDated) - Number(right._ranking.futureDated)
         || right._ranking.publishedAt - left._ranking.publishedAt
