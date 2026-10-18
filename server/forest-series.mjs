@@ -116,10 +116,25 @@ function requestedWindow(text, table) {
   } else if (decades && numberFrom(decades[1]) !== null) {
     const count = numberFrom(decades[1]) * 10;
     window = { from: published.to - count + 1, to: published.to, mode: "last-n" };
+  } else if (distinctYears.length === 1
+    && !TREND_WORDS.test(text)
+    && !/\bviimas\w*\s+(?:aasta|kumnendi|aastakumne)\w*/u.test(text)) {
+    // A single explicit year is a concrete observation request. Fetch a
+    // ten-year context window ending at that year so the answer can cite the
+    // exact point and still render a meaningful line chart.
+    window = { from: distinctYears[0], to: distinctYears[0], mode: "year", targetYear: distinctYears[0] };
   } else if (distinctYears.length === 0 && (TREND_WORDS.test(text) || /\bviimas\w*\s+aastakumne\w*|\bviimas\w*\s+kumnendi\w*/u.test(text))) {
     window = { from: published.to - DEFAULT_WINDOW_YEARS + 1, to: published.to, mode: "default" };
   }
   if (!window) return null;
+  if (window.mode === "year") {
+    const targetYear = Number(window.targetYear);
+    if (!Number.isInteger(targetYear)
+      || targetYear < published.from || targetYear > published.to) return null;
+    const from = Math.max(published.from, targetYear - DEFAULT_WINDOW_YEARS + 1);
+    const to = targetYear;
+    return { from, to, mode: "year", targetYear };
+  }
   const from = Math.max(window.from, published.from);
   const to = Math.min(window.to, published.to);
   const count = to - from + 1;
@@ -641,7 +656,12 @@ export function composeForestSeriesResponse(query, documents = [], options = {})
   const projection = source._forestSeries;
   const first = projection.points[0];
   const last = projection.points.at(-1);
-  const isCurrentQuantity = intent.years.mode === "context";
+  const targetYear = intent.years.mode === "year" ? Number(intent.years.targetYear) : null;
+  const currentPoint = targetYear
+    ? projection.points.find((point) => point.year === targetYear) || last
+    : last;
+  const isCurrentQuantity = intent.years.mode === "context" || intent.years.mode === "year";
+  const titleLabel = projection.seriesLabel.replace(/:\s*/gu, " ");
   const origin = projection.source === "smi"
     ? `Keskkonnaagentuuri SMI ${SMI_2025_YEAR} tulemuste töölehe ${projection.worksheet}`
     : `Statistikaameti tabeli ${projection.table} (SMI hinnang)`;
@@ -652,11 +672,14 @@ export function composeForestSeriesResponse(query, documents = [], options = {})
     answer: {
       eyebrow: projection.source === "smi" ? `Keskkonnaagentuur, SMI ${SMI_2025_YEAR}` : `Statistikaameti tabel ${projection.table}`,
       title: isCurrentQuantity
-        ? `${projection.seriesLabel} ${last.year}. aastal: ${etNumber(last.value, projection.digits)} ${projection.unit}`
-        : `${projection.seriesLabel} ${projection.years.from}–${projection.years.to}: ${etNumber(first.value, projection.digits)} → ${etNumber(last.value, projection.digits)} ${projection.unit}`,
+        ? `${titleLabel} ${currentPoint.year}. aastal: ${etNumber(currentPoint.value, projection.digits)} ${projection.unit}`
+        : `${titleLabel} ${projection.years.from}–${projection.years.to}: ${etNumber(first.value, projection.digits)} → ${etNumber(last.value, projection.digits)} ${projection.unit}`,
       intro: isCurrentQuantity
-        ? `${origin} järgi oli ${projection.sentenceLabel} ${last.year}. aastal ${etNumber(last.value, projection.digits)} ${projection.unit}. See on viimane selles allikas avaldatud aasta; allolev diagramm näitab eelnevate aastate konteksti.`
-          + (last.error === undefined ? "" : ` Hinnangu suhteline viga oli ±${etNumber(last.error, 1)}%.`)
+        ? `${origin} järgi oli ${projection.sentenceLabel} ${currentPoint.year}. aastal ${etNumber(currentPoint.value, projection.digits)} ${projection.unit}.`
+          + (intent.years.mode === "year"
+            ? " Allolev diagramm näitab valitud aastat koos eelnevate avaldatud aastatega."
+            : " See on viimane selles allikas avaldatud aasta; allolev diagramm näitab eelnevate aastate konteksti.")
+          + (currentPoint.error === undefined ? "" : ` Hinnangu suhteline viga oli ±${etNumber(currentPoint.error, 1)}%.`)
         : source.summary,
       introCitations: [1],
       parts: [{

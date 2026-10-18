@@ -7743,9 +7743,16 @@ export function assessSearchQuery(query, options = {}) {
   const waterContextOnly = ["vesi", "jarv"].includes(topic) && nonContextRoots.length === 0;
   // A named felling type (sanitaarraie, lageraie) is a specific subject, not bare "raie".
   const namesFellingType = topic === "raie" && /\b\p{L}{3,}rai(?:e|u)\p{L}*/u.test(normalized);
+  // A quantity with an explicit year is a concrete observation request, even
+  // when its only topic root ("raie") would otherwise count as a broad theme.
+  // Without this, "raiemaht 2024" asked for clarification despite an official
+  // annual series being available for exactly that year.
+  const explicitYearMetric = /\b(?:19|20)\d{2}\b/u.test(normalized)
+    && /\b(?:raiemaht|raiepindala|lageraie|pindala|tagavara|juurdekasv|heide|heitmed|saaste|jaatmed|ringlus|temperatuur|sademed|metsasus|osakaal|maht)\w*/u.test(normalized);
   if (!isTopicDataOverviewQuery(cleanQuery, roots)
     && !isStatisticsWaterAbstractionQuery(cleanQuery)
     && !namesFellingType
+    && !explicitYearMetric
     && AMBIGUOUS_ROOTS.has(topic) && (roots.length <= 1 || waterContextOnly)) {
     return {
       kind: "needs-clarification",

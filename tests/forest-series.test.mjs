@@ -116,7 +116,6 @@ test("forest series intent binds MM03 cut types and measures", () => {
 
 test("forest series intent refuses single-year, ambiguous, breakdown and Eurostat-balance questions", () => {
   for (const query of [
-    "Metsamaa pindala 2024",
     "Kui suur osa Eestist on mets?",
     "mets aastate lõikes",
     "raiemaht",
@@ -133,7 +132,6 @@ test("forest series intent refuses single-year, ambiguous, breakdown and Eurosta
     "metsamaa pindala 1990–1995",
     "metsamaa pindala 2026–2030",
     "forest area from 2015 to 2024",
-    "metsasus 2024. aastal",
     `metsamaa pindala ${"aegrida ".repeat(40)}`,
     "metsamaa pindala Tartumaal aastate lõikes",
     "Harjumaa lageraie pindala 2015–2024",
@@ -264,7 +262,12 @@ test("forest series parser rejects schema drift, stale fetches and out-of-bound 
   assert.deepEqual(forestSeriesFromJson(query, kk51Fixture(), { now: NOW, fetchedAt: FETCHED_AT, stale: true }), [], "stale");
   assert.deepEqual(forestSeriesFromJson(query, kk51Fixture(), { now: NOW, fetchedAt: NOW + 10 * 60_000 }), [], "future fetch");
   assert.deepEqual(forestSeriesFromJson(query, kk51Fixture(), { now: NOW, fetchedAt: NOW - 14 * 60 * 60_000 }), [], "old fetch");
-  assert.deepEqual(forestSeriesFromJson("Metsamaa pindala 2024", kk51Fixture(), { now: NOW, fetchedAt: FETCHED_AT }), [], "no intent");
+  const contextYears = Array.from({ length: 10 }, (_value, index) => String(2015 + index));
+  const [singleYear] = forestSeriesFromJson("Metsamaa pindala 2024", kk51Fixture({}, {
+    years: contextYears,
+    values: contextYears.map((_year, index) => 2300 + index),
+  }), { now: NOW, fetchedAt: FETCHED_AT });
+  assert.deepEqual(singleYear._forestSeries.years, { from: 2015, to: 2024 }, "single year resolves to a context window");
 });
 
 test("forest series parser reports an unpublished year as a gap", () => {
@@ -301,7 +304,7 @@ test("forest series response carries a cited line chart built from the same poin
   assert.ok(response);
   assert.equal(response.total, 7);
   assert.equal(response.answer.eyebrow, "Statistikaameti tabel MM03");
-  assert.equal(response.answer.title, "Lageraie: raiepindala 2015–2024: 31,6 → 34,0 tuhat ha");
+  assert.equal(response.answer.title, "Lageraie raiepindala 2015–2024: 31,6 → 34,0 tuhat ha");
   assert.equal(response.answer.intro, documents[0].summary);
   assert.deepEqual(response.answer.introCitations, [1]);
   assert.equal(response.answer.parts.length, 1);
@@ -365,7 +368,9 @@ test("structured loader posts one bounded forest series request only for a serie
     now: NOW,
     fetchPxwebDataset: async () => { throw new Error("must not fetch"); },
   });
-  assert.equal(single.some((document) => String(document.id).startsWith("forest-series-")), false);
+  const singleSeries = single.find((document) => String(document.id).startsWith("forest-series-"));
+  assert.ok(singleSeries, "an explicit year uses the reviewed SMI series");
+  assert.deepEqual(singleSeries._forestSeries.years, { from: 2015, to: 2024 });
 
   const failed = await loadStructuredIndicatorDocuments(query, {
     now: NOW,
@@ -528,7 +533,6 @@ test("context series intent binds single-value forest questions to the last ten 
 test("context series intent stays out of the way of series, single-year, balance and scoped questions", () => {
   for (const query of [
     "Metsamaa pindala 2024",
-    "metsasus 2024. aastal",
     "Metsamaa pindala viimase kümne aasta jooksul",
     "lageraie pindala 2015–2024",
     "Kuidas on Eesti metsasus muutunud?",
@@ -810,7 +814,7 @@ test("a felling question without a period is answered from the MM03 series itsel
   assert.ok(document);
   const response = composeForestSeriesResponse(query, [document], { now: NOW });
   assert.equal(response.answer.eyebrow, "Statistikaameti tabel MM03");
-  assert.equal(response.answer.title, "Koguraie: raiepindala 2024. aastal: 113,6 tuhat ha");
+  assert.equal(response.answer.title, "Koguraie raiepindala 2024. aastal: 113,6 tuhat ha");
   assert.match(response.answer.intro, /Hinnangu suhteline viga oli ±9,5%/u);
   assert.equal(response.chart.series[0].points.length, 10);
   assert.equal(composeForestSeriesResponse("mitu ha metsa on eestis", [document], { now: NOW }), null);

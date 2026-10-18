@@ -187,7 +187,7 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     content: "Metsa majandamise eeskirja § 6 lõike 3 järgi tohib sanitaarraiet teha mis tahes vanusega puistus, kuid puistu täius ei tohi sanitaarraie käigus langeda alla 30%. Eeskirja § 3 järgi ei ole männi lageraievanus üks kindel arv: hariliku männi raievanused on boniteediklasside 1A, 1, 2, 3, 4 ning 5 ja 5A järgi vastavalt 90, 90, 90, 100, 110 ja 120 aastat ehk 90–120 aastat. Lageraie võib olla lubatud ka küpsusdiameetri või muude seaduses sätestatud tingimuste alusel, mistõttu konkreetse puistu otsus ei põhine ainult vanusel.",
     locator: "§ 3 lõiked 1–3: raievanused ja küpsusdiameeter; § 6 lõige 3: sanitaarraie igas vanuses puistus ning 30% täiuse alampiir. Kontrollitud 01.10.2026: sõnastus jõustunud 16.06.2025, RT I, 13.06.2025, 14; kehtiv.",
     _catalogueReviewedAt: "2026-10-01T00:00:00.000Z",
-    _forestryIntentKinds: ["sanitary-cutting-rules", "pine-cutting-age"],
+    _forestryIntentKinds: ["sanitary-cutting-rules", "pine-cutting-age", "forest-management-rules-overview"],
   },
   {
     id: "moose-population-2025",
@@ -303,7 +303,7 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     locator: "Keskkonnaülevaate kaitse näitaja ja 2024. aastast kasutatav kaitstava metsamaa arvutusmetoodika.",
     _publishedAt: "2026-01-07",
     _catalogueReviewedAt: "2026-10-01T00:00:00.000Z",
-    _forestryIntentKinds: ["protected-forest-share", "stock-versus-harvestable", "etak-definition"],
+    _forestryIntentKinds: ["protected-forest-share", "protected-forest-overview", "stock-versus-harvestable", "etak-definition"],
   },
   {
     id: "nature-protection-share-2025",
@@ -344,7 +344,7 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     content: "SMI 2025 aastahinnang koondab ligikaudu 28 000 proovitükki ja viie aasta mõõtmised ning üks proovitükk esindab keskmiselt 156,2 hektarit. Valikuuringu tulemused üldistatakse kogu Eestile ning hinnangutega kaasneb valimist tulenev statistiline viga. 2025. aastal muudeti puude kõrguse, tagavara, alla 8 cm puude mahu, juurdekasvu, suremuse ja netojuurdekasvu arvutusmetoodikat; esitlus hoiatab, et seetõttu muutuvad kõik mahuhinnangud ja eri metoodikaga avaldatud arve ei tohi käsitleda täiesti võrreldavana. Uue metoodikaga oli metsamaa pindala 2 360,2 tuhat hektarit ehk 52,1% Eesti pindalast ning kasvava metsa tagavara 466 miljonit m³. Metsamaast oli 20,2% mittemajandatav, 10,4% majanduspiiranguga ja 69,4% majandusmets. Enamuspuuliigi järgi moodustasid mänd 29%, kuusk 19% ja kask 30% metsamaa pindalast. Nii noorte kui ka vanade metsade pindala suurenes, puistute keskmine vanus oli 55 aastat ning 2025. aasta raiemahu eksperthinnang 11,0 miljonit m³.",
     locator: "SMI 2025 tulemuste esitlus: valimi maht ja üldistamine, metoodikamuutus, pindala, tagavara, majanduskategooriad, puuliigid, vanusjaotus ja raiemaht.",
     _publishedAt: "2026-08-18",
-    _forestryIntentKinds: ["smi-method-comparison", "forest-stock-uncertainty", "sample-size-and-precision", "increment-method", "increment-estimate-2024", "stock-versus-harvestable", "protected-forest-share", "forest-management-category-share", "forest-age-trend", "pine-versus-spruce", "forest-harvest-2025", "harvest-over-time"],
+    _forestryIntentKinds: ["smi-method-comparison", "forest-stock-uncertainty", "forest-stock-overview", "forest-increment-overview", "sample-size-and-precision", "increment-method", "increment-estimate-2024", "stock-versus-harvestable", "protected-forest-share", "protected-forest-overview", "forest-management-category-share", "forest-age-trend", "pine-versus-spruce", "forest-harvest-2025", "harvest-over-time"],
   },
   {
     id: "forest-smi-methodology-20-years",
@@ -738,6 +738,28 @@ const INTENTS = {
     ],
     minimumSupportingDocuments: 2,
   },
+  "forest-stock-overview": {
+    serviceDocumentIds: ["forest-smi-2025-presentation", "forest-stock-stable"],
+    discoveryQueries: ["SMI 2025 kasvava metsa tagavara 466 miljonit m3", "metsa tagavara statistiline hinnang"],
+    evidenceGroups: [
+      ["466 miljonit m³", "466 miljonit"],
+      ["kasvava metsa tagavara", "metsa tagavara"],
+      ["2025"],
+      ["statistiline viga", "valimist"],
+    ],
+    minimumSupportingDocuments: 1,
+  },
+  "forest-increment-overview": {
+    serviceDocumentIds: ["forest-area", "forest-smi-2025-presentation", "increment-method"],
+    discoveryQueries: ["SMI metsamaa juurdekasv 15,4303 miljonit tihumeetrit", "metsa juurdekasv hektari kohta"],
+    evidenceGroups: [
+      ["15,4303"],
+      ["juurdekasv"],
+      ["6,6"],
+      ["±1,4%", "1,4%"],
+    ],
+    minimumSupportingDocuments: 1,
+  },
   "rmk-versus-smi": {
     serviceDocumentIds: ["forest-rmk-data-methods", "metsainfo-hetkeseis", "smi", "forest-smi-2025-presentation"],
     discoveryQueries: ["RMK metsade olem SMI", "RMK takseerandmed statistiline metsainventuur"],
@@ -773,10 +795,18 @@ const INTENTS = {
     ],
   },
   "forest-overview": {
-    serviceDocumentIds: ["forest-area", "smi", "forest-condition-review", "metsainfo-hetkeseis"],
-    discoveryQueries: ["Eesti metsamaa pindala SMI", "Eesti metsade seisund SMI ülevaade", "metsaandmed SMI Metsaregister"],
+    serviceDocumentIds: [
+      "forest-area",
+      "forest-stock-stable",
+      "forest-smi-2025-tables",
+      "forest-smi-2025-presentation",
+      "smi",
+      "forest-condition-review",
+      "metsainfo-hetkeseis",
+    ],
+    discoveryQueries: ["Eesti metsamaa pindala SMI 2025", "Eesti metsade seisund SMI ülevaade", "metsaandmed SMI Metsaregister"],
     evidenceGroups: [
-      ["51,84%", "2 350,6"],
+      ["52,1%", "2 360,2"],
       ["valikuuring", "proovitükk"],
       ["elurikkus", "kaitse"],
       ["eri näitajad", "eraldi", "mitmel viisil"],
@@ -833,6 +863,27 @@ const INTENTS = {
       ["kaitse all"],
       ["rangelt kaitstav"],
       ["õigusliku kaitse", "ruumianalüüsi"],
+    ],
+    minimumSupportingDocuments: 1,
+  },
+  "protected-forest-overview": {
+    serviceDocumentIds: ["protected-forest-share", "forest-condition-review"],
+    discoveryQueries: ["kaitsealune metsamaa osakaal 2024", "metsade kaitse ruumianalüüs"],
+    evidenceGroups: [
+      ["28,4%"],
+      ["16,8%"],
+      ["kaitse all"],
+      ["2024"],
+    ],
+    minimumSupportingDocuments: 1,
+  },
+  "forest-management-rules-overview": {
+    serviceDocumentIds: ["forest-management-rules"],
+    discoveryQueries: ["metsa majandamise eeskiri raievanused sanitaarraie", "metsa majandamise eeskiri boniteediklass"],
+    evidenceGroups: [
+      ["raievanus"],
+      ["sanitaarraie"],
+      ["boniteediklass"],
     ],
     minimumSupportingDocuments: 1,
   },
@@ -1126,6 +1177,10 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
   if (/^(?:(?:mis\s+on|palun\s+selgita)\s+)?(?:metsa\s+aastaraamat\w*|metsaaastaraamat\w*)$/u.test(text)) return resolved("forest-yearbook-definition");
   if (/\blulucf\b/u.test(text)) return resolved("lulucf-definition");
   if (/\betak\b/u.test(text)) return resolved("etak-definition");
+  if (/\bmetsa?\s+majandamise\s+eeskiri\b|\bmetsamajandamise\s+eeskiri\b/u.test(text)
+    && !/\b(?:sanitaar\w*|rai\w*vanus\w*|boniteet\w*|pindala\w*|hektar\w*|lubat\w*|keeld\w*)\b/u.test(text)) {
+    return resolved("forest-management-rules-overview");
+  }
   if ((hasSmi || /\bstatistiline\s+metsainventuur\w*\b/u.test(text))
     && /\b(?:metsa\s+)?aastaraamat\w*\b/u.test(text)
     && /\b(?:millal|avalda\w*|ilmub|ilmuma|ajakava\w*|graafik\w*)\b/u.test(text)) {
@@ -1314,6 +1369,31 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
     && /\b(?:raiutav\w*|raiemaht\w*|kattesaadav\w*|kasutatav\w*|ules\s+votta|kasutada\s+saab|puidukogus\w*|maha\s+rai\w*|koik\s+rai\w*)\b/u.test(text)) {
     return resolved("stock-versus-harvestable");
   }
+  // A bare stock question asks for the current quantity. Keep explicitly
+  // comparative, uncertain or geography-bound formulations on their own
+  // routes above; everything else can use the reviewed SMI 2025 figure.
+  if (hasStock
+    && /\b(?:metsa|metsade|puistu|puistute|eesti)\w*/u.test(text)
+    && !hasIncrement
+    && !regionalScope
+    && !municipalityScope
+    && !/\b(?:erinev\w*|eri|vordl\w*|kumb|rohkem|vahem|suurem|vaiksem|muut\w*|trend\w*|prognoos\w*)\b/u.test(text)) {
+    return resolved("forest-stock-overview");
+  }
+  if (/\b15(?:\s+|[,.])4303\b/u.test(text) && /\b(?:kasvuhinnang\w*|tm|tihumeet)\b/u.test(text)) {
+    return resolved("increment-estimate-2024");
+  }
+  if (hasIncrement && /\b(?:kuidas|arvuta\w*|mudel\w*|tekib|moodet\w*|hinnat\w*|metoodik\w*)\b/u.test(text) && !hasHarvest) {
+    return resolved("increment-method");
+  }
+  if (hasIncrement
+    && /\b(?:metsa|metsade|puistu|puistute|eesti)\w*/u.test(text)
+    && !hasHarvest
+    && !regionalScope
+    && !municipalityScope
+    && !/\b(?:erinev\w*|eri|vordl\w*|kumb|rohkem|vahem|suurem|vaiksem|muut\w*|trend\w*|prognoos\w*|kestlik\w*|jatkusuutlik\w*)\b/u.test(text)) {
+    return resolved("forest-increment-overview");
+  }
   if (/\b452(?:[,.]\d+)?\b/u.test(text)
     && /\b(?:tapne|vaieldamatu|tegelik)\w*\b/u.test(text)
     && /\b(?:puidumaht|tihumeet|tm)\w*\b/u.test(text)) {
@@ -1359,6 +1439,11 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
     && /\b(?:kui\s+suur|kui\s+palju|mitu|osa|osakaal|protsent\w*)\b/u.test(text)) return resolved("forest-management-category-share");
   if (hasForest && !regionalScope && !municipalityScope && /\b(?:kaitse\s+all|kaitstud|kaitsealuse|kaitstav\w*|range\s+kaitse|rangelt\s+kaitstav)\b/u.test(text)
     && /\b(?:kui\s+suur|kui\s+palju|mitu|osa|osakaal|protsent\w*)\b/u.test(text)) return resolved("protected-forest-share");
+  if (hasForest && !regionalScope && !municipalityScope
+    && /\b(?:kaitsealune\s+mets|kaitstud\s+mets|kaitsealune\s+metsamaa|kaitse\s+all\s+olev\s+mets)\b/u.test(text)
+    && !/\b(?:rai\w*|metsateatis\w*|luba\w*|piirang\w*|ehita\w*|natura)\b/u.test(text)) {
+    return resolved("protected-forest-overview");
+  }
   if (hasProtection && (hasHarvest || hasNotice)) return resolved("logging-in-protected-areas");
   if (hasNotice || (/\braiekavatsus\w*\b/u.test(text) && /\blubav\w*\s+mar(?:k|g)\w*\b/u.test(text))) return resolved("forest-notice");
   if (hasStem(tokens, ["mand", "mann", "mannik"], true) && hasStem(tokens, ["kuusk", "kuus", "kuusik"], true)) {
@@ -1373,12 +1458,6 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
   if ((hasIncrement || /\bjuurdekasvu\s+numb\w*/u.test(text))
     && /\b(?:kestlik\w*|jatkusuutlik\w*)\b/u.test(text)
     && /\b(?:toesta\w*|automaats\w*)\b/u.test(text)) return resolved("forest-harvest-balance");
-  if (/\b15(?:\s+|[,.])4303\b/u.test(text) && /\b(?:kasvuhinnang\w*|tm|tihumeet)\b/u.test(text)) {
-    return resolved("increment-estimate-2024");
-  }
-  if (hasIncrement && /\b(?:kuidas|arvuta\w*|mudel\w*|tekib|moodet\w*|hinnat\w*|metoodik\w*)\b/u.test(text) && !hasHarvest) {
-    return resolved("increment-method");
-  }
   // Harvest-versus-increment questions already have a dedicated structured
   // Eurostat/KAUR adapter. Leave them to that path so current observations
   // retain priority over this directory's explanatory fallback extract.

@@ -60,7 +60,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v67-topic-scope-fallback-evidence";
+export const SEARCH_RESPONSE_REVISION = "answer-v68-redundancy-and-freshness";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
@@ -178,6 +178,88 @@ function passageDirectness(query, passage) {
   return yearScore;
 }
 
+const CONDENSER_STOP_WORDS = new Set([
+  "ehk", "ning", "oli", "olid", "on", "see", "seda", "kui", "mis", "et",
+  "eesti", "aasta", "aastal", "aastatel", "andmed", "andmetel", "järgi", "põhjal",
+]);
+
+function condenserWords(value = "") {
+  return String(value || "")
+    .normalize("NFKC")
+    .toLocaleLowerCase("et")
+    .replace(/[^0-9a-zõäöüšž]+/giu, " ")
+    .split(/\s+/u)
+    .filter((word) => word.length >= 4 && !CONDENSER_STOP_WORDS.has(word));
+}
+
+function condenserNumbers(value = "") {
+  return [...String(value || "").normalize("NFKC").matchAll(/\d+(?:[.,]\d+)?/gu)]
+    .map((match) => match[0].replace(",", "."));
+}
+
+function condenserOverlap(left, right) {
+  const a = new Set(condenserWords(left));
+  const b = new Set(condenserWords(right));
+  if (!a.size || !b.size) return 0;
+  let shared = 0;
+  for (const word of a) if (b.has(word)) shared += 1;
+  return shared / (a.size + b.size - shared);
+}
+
+// Remove a sentence that repeats another one's facts with slightly different
+// framing. This is intentionally conservative: the later sentence must carry
+// every number of the earlier one, and the wording must overlap substantially.
+// Definition sentences such as "Statistiline metsainventuur ehk SMI on ..."
+// are merged with a following acronym sentence instead of dropped.
+export function condenseRedundantSentences(value = "", { mergeDefinitions = false } = {}) {
+  const text = String(value || "").replace(/\s+/gu, " ").trim();
+  if (!text) return text;
+  const sentences = text
+    .split(/(?<=[.!?])\s+(?=[A-ZÕÄÖÜŠŽ0-9„“"'])/u)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+  if (sentences.length < 2) return text;
+  const condensed = [];
+  for (const sentence of sentences) {
+    const previous = condensed.at(-1);
+    if (previous) {
+      const aNumbers = condenserNumbers(previous);
+      const bNumbers = condenserNumbers(sentence);
+      const numbersCovered = aNumbers.length > 0
+        && aNumbers.every((number) => bNumbers.includes(number));
+      const overlap = condenserOverlap(previous, sentence);
+      if (numbersCovered && overlap >= 0.38) {
+        // Keep the sentence that also carries the additional fact.
+        condensed[condensed.length - 1] = sentence;
+        continue;
+      }
+      if (overlap >= 0.82) {
+        const aCovered = bNumbers.length > 0
+          && bNumbers.every((number) => aNumbers.includes(number));
+        if (aCovered || condenserWords(sentence).length <= condenserWords(previous).length) continue;
+        condensed[condensed.length - 1] = sentence;
+        continue;
+      }
+      if (mergeDefinitions) {
+        const definition = previous.match(/^(.+?)\s+ehk\s+([A-ZÕÄÖÜŠŽ][\w-]{1,})\s+on\s+(.+)$/u);
+        if (definition) {
+          const [, fullName, acronym, predicate] = definition;
+          const prefix = `${acronym} on `;
+          if (sentence.startsWith(prefix)) {
+            const rest = sentence.slice(prefix.length);
+            if (condenserOverlap(predicate, rest) >= 0.2) {
+              condensed[condensed.length - 1] = `${fullName} ehk ${acronym} on ${rest}`;
+              continue;
+            }
+          }
+        }
+      }
+    }
+    condensed.push(sentence);
+  }
+  return condensed.join(" ");
+}
+
 export function directEvidenceExtract(query, document, plannedEvidence = null) {
   const subjects = queryTerms(query).filter((root) => specialistSubjectVariants(root));
   const stablePublicationText = (value) => {
@@ -203,8 +285,9 @@ export function directEvidenceExtract(query, document, plannedEvidence = null) {
       const joined = [extract, passage].filter(Boolean).join(" ");
       return joined.length <= 520 ? joined : extract;
     }, "");
-  if (plannedExtract && hasCompleteSentenceEnding(plannedExtract)
-    && subjects.every((root) => textHasQueryRoot(plannedExtract, root))) return plannedExtract;
+  const condensedPlannedExtract = condenseRedundantSentences(plannedExtract);
+  if (condensedPlannedExtract && hasCompleteSentenceEnding(condensedPlannedExtract)
+    && subjects.every((root) => textHasQueryRoot(condensedPlannedExtract, root))) return condensedPlannedExtract;
   const preferred = new Set(plannedPassages.map((value) => normalize(value)));
   const passages = [document?.summary, document?.content]
     .filter(Boolean)
@@ -482,10 +565,18 @@ function composeOfficialForestryEvidenceFallback(query, plannedEvidence, sources
     // can silently change the subject (for example harvest volume to clearcut
     // area) even though the citation number remains unchanged.
     const unique = distinctPassages(selectedPassages);
-    const text = unique.reduce((result, passage) => {
+    const directAnswerIntents = new Set([
+      "forest-stock-overview",
+      "forest-increment-overview",
+      "protected-forest-overview",
+    ]);
+    const ordered = directAnswerIntents.has(plannedEvidence.kind)
+      ? [...unique].sort((left, right) => passageQueryCoverage(query, right) - passageQueryCoverage(query, left))
+      : unique;
+    const text = condenseRedundantSentences(ordered.reduce((result, passage) => {
       const joined = [result, passage].filter(Boolean).join(" ");
       return joined.length <= 680 ? joined : result;
-    }, "");
+    }, ""));
     return text ? [{ source, citation, text }] : [];
   });
   if (!bundles.length) return null;
@@ -511,11 +602,26 @@ function composeGenericForestOverviewFallback(query, plannedEvidence, sources = 
   if (plannedEvidence?.kind !== "forest-overview" || !plannedEvidence?.strong) return null;
   const visibleOfficial = sources.filter((source) => source?.sourceTier === "official" && sourceCitation(source));
   const byId = new Map(visibleOfficial.map((source) => [source.id, source]));
-  const area = byId.get("forest-area");
+  const publishedTimestamp = (source) => {
+    if (Number(source?._ranking?.publishedAt) > 0) return Number(source._ranking.publishedAt);
+    const value = String(source?.published || "").trim();
+    const date = value.match(/^(\d{2})\.(\d{2})\.(\d{4})$/u);
+    if (date) return Date.UTC(Number(date[3]), Number(date[2]) - 1, Number(date[1]));
+    const year = value.match(/\b((?:19|20)\d{2})\b/u);
+    return year ? Date.UTC(Number(year[1]), 0, 1) : 0;
+  };
+  const areaCandidate = visibleOfficial
+    .map((source) => ({ source, passage: forestAreaMeasurementPassage(source) }))
+    .filter((candidate) => candidate.passage)
+    .sort((left, right) => publishedTimestamp(right.source) - publishedTimestamp(left.source))[0];
+  // The overview must lead with the newest published national measurement.
+  // The SMI 2024 PDF is retained as a fallback only for older result sets.
+  const area = areaCandidate?.source || byId.get("forest-area");
   const conditionDoc = byId.get("forest-condition-review");
   const registryView = byId.get("metsainfo-hetkeseis");
   if (!area) return null;
-  const areaPassage = forestAreaMeasurementPassage(area) || safeSourcePassages(area)[0] || "";
+  const areaPassage = areaCandidate?.passage
+    || forestAreaMeasurementPassage(area) || safeSourcePassages(area)[0] || "";
   const findMethodHit = () => {
     for (const source of visibleOfficial) {
       const hit = safeSourcePassages(source).find((passage) => {
@@ -581,6 +687,9 @@ function composeGenericForestOverviewFallback(query, plannedEvidence, sources = 
       citations: registryCitations,
     });
   }
+  // The introduction already carries the area measurement; repeating the same
+  // sentence as the first section makes the answer look duplicated.
+  if (parts.length > 1 && normalize(parts[0].text) === normalize(areaPassage)) parts.shift();
   return {
     eyebrow: "Allikapõhine kokkuvõte",
     title: "Eesti metsa ei kirjelda üksainus number",
@@ -609,7 +718,16 @@ function answerEvidenceDocuments(documents = [], plannedEvidence, forestBalance)
   const byId = new Map((documents || []).map((document) => [document.id, document]));
   const selected = ids.map((id) => byId.get(id)).filter(Boolean);
   const chosen = selected.length ? selected : documents;
-  if (plannedEvidence.kind !== "forest-area-method" || !plannedEvidence.strong) return chosen;
+  // The generic overview answer also explains the condition and registry
+  // context. They are visible official sources but not required to satisfy the
+  // four evidence groups, so add them explicitly for the fallback composer.
+  const overviewChosen = plannedEvidence.kind === "forest-overview"
+    ? [...chosen, ...documents.filter((document) => (
+      ["forest-condition-review", "metsainfo-hetkeseis"].includes(document.id)
+      && !chosen.some((candidate) => candidate.id === document.id)
+    ))]
+    : chosen;
+  if (plannedEvidence.kind !== "forest-area-method" || !plannedEvidence.strong) return overviewChosen;
   // Limit every downstream consumer—including the optional model and the
   // visible citation excerpt—to the two passages selected for this composite
   // question. The cited source may contain stock and harvest figures elsewhere,
@@ -1009,9 +1127,11 @@ export function publicResponse(draft, { now = Date.now() } = {}) {
     chart: chart ? { ...chart, citation: citationMap.get(chart.citation) } : undefined,
     answer: answer ? {
       ...answer,
+      intro: condenseRedundantSentences(answer.intro, { mergeDefinitions: true }),
       introCitations: compactCitations(answer.introCitations),
       parts: answerParts.map((part) => ({
         ...part,
+        text: condenseRedundantSentences(part.text, { mergeDefinitions: true }),
         citations: compactCitations(part.citations),
       })),
     } : answer,

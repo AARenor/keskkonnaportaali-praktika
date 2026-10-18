@@ -1399,3 +1399,47 @@ test("a route-only corpus copy cannot suppress the reviewed increment evidence a
   assert.equal(draft.evidence.answerable, true);
   assert.equal(draft.sources.find((source) => source.citation === draft.answer.introCitations[0])?.id, "increment-method");
 });
+
+test("short forestry quantity and lookup questions answer from their direct official evidence", async () => {
+  const directory = officialServiceCatalogueDocuments();
+  const cases = [
+    ["metsa tagavara", "forest-stock-overview", /466\s+miljonit\s+m³/iu],
+    ["metsa juurdekasv", "forest-increment-overview", /15,4303[\s\S]*±1,4%/iu],
+    ["kaitsealune mets", "protected-forest-overview", /28,4%[\s\S]*16,8%/iu],
+    ["metsa majandamise eeskiri", "forest-management-rules-overview", /raievanus[\s\S]*sanitaarraie/iu],
+  ];
+  for (const [query, expectedIntent, expectedAnswer] of cases) {
+    assert.equal(forestEvidenceIntent(query)?.kind, expectedIntent, query);
+    const visible = rankPublicSearchCandidates(query, directory, {
+      intentDocuments: directory,
+      now: NOW,
+    }).slice(0, 12);
+    const plan = selectAnswerEvidence(query, visible);
+    assert.equal(plan?.kind, expectedIntent, query);
+    assert.equal(plan?.strong, true, query);
+    const draft = await createPortalDraft(query, {
+      deadlineAt: Date.now(),
+      searchResults: { total: visible.length, items: visible },
+    });
+    assert.equal(draft.evidence.answerable, true, query);
+    assert.match(answerText(draft), expectedAnswer, query);
+    assertNumericClaimsHaveVisibleWitnesses(draft, query);
+  }
+});
+
+test("the generic forest overview leads with the newest published SMI measurement", async () => {
+  const query = "mets";
+  const directory = officialServiceCatalogueDocuments();
+  const visible = rankPublicSearchCandidates(query, directory, {
+    intentDocuments: directory,
+    now: NOW,
+  }).slice(0, 12);
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    searchResults: { total: visible.length, items: visible },
+  });
+  assert.equal(draft.answer.title, "Eesti metsa ei kirjelda üksainus number");
+  assert.match(draft.answer.intro, /2\s*360,2\s+tuhat hektarit[\s\S]*52,1%/u);
+  assert.doesNotMatch(draft.answer.intro, /2\s*350,6|51,84%/u);
+  assertNumericClaimsHaveVisibleWitnesses(draft, query);
+});

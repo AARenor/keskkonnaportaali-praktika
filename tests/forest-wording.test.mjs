@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { composeForestSeriesResponse, resolveForestSeriesIntent, smiForestSeriesDocument, validatedForestSeriesProjection } from "../server/forest-series.mjs";
 import { rankPublicSearchCandidates, rankSearchCandidates } from "../server/retrieval.mjs";
-import { searchEnvironmentLive } from "../server/pipeline.mjs";
+import { condenseRedundantSentences, searchEnvironmentLive } from "../server/pipeline.mjs";
 import { loadStructuredIndicatorDocuments } from "../server/indicators.mjs";
 
 const WORDINGS = ["raiemaht", "kui palju on raiemaht", "Kui suur on raiemaht?", "Kui palju metsa Eestis raiutakse?"];
@@ -22,7 +22,7 @@ test("a harvest quantity question answers the latest published value before cont
   const query = "kui palju on raiemaht";
   const document = smiForestSeriesDocument(query);
   const result = composeForestSeriesResponse(query, [document]);
-  assert.equal(result.answer.title, "Koguraie: raiemaht 2024. aastal: 12 500 tuhat m³");
+  assert.equal(result.answer.title, "Koguraie raiemaht 2024. aastal: 12 500 tuhat m³");
   assert.match(result.answer.intro, /järgi oli koguraie raiemaht 2024\. aastal 12 500 tuhat m³\./u);
   assert.doesNotMatch(result.answer.intro, /2015/u);
   assert.equal(result.chart.series[0].points.length, 10);
@@ -126,4 +126,10 @@ test("natural harvest quantities load the primary SMI series without a remote fa
     });
     assert.deepEqual(documents.map((d) => d.id), [smiForestSeriesDocument(query).id], query);
   }
+});
+
+test("a repeated current-measurement sentence is collapsed before display", () => {
+  const intro = "Keskkonnaagentuuri SMI 2025 tulemuste järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast. SMI 2025 järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast ning kasvava metsa tagavara püsis stabiilsena 466 miljoni m³ juures.";
+  const condensed = condenseRedundantSentences(intro);
+  assert.equal(condensed, "SMI 2025 järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast ning kasvava metsa tagavara püsis stabiilsena 466 miljoni m³ juures.");
 });
