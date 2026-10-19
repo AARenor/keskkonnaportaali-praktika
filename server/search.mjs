@@ -8440,6 +8440,28 @@ export function directDirectoryDocumentIds(query) {
   return [...new Set(preferred)];
 }
 
+const FRESHNESS_TIE_CACHE = new WeakMap();
+
+// Lexical ties (exact equal score) must prefer the fresher reviewed source so
+// a decade-old manual page cannot beat an equally relevant current guide.
+function rankDocumentsFreshness(document) {
+  const cached = FRESHNESS_TIE_CACHE.get(document);
+  if (cached !== undefined) return cached;
+  const internal = String(document?._publishedAt || "").trim();
+  let timestamp = null;
+  if (/^\d{4}-\d{2}-\d{2}$/u.test(internal)) timestamp = Date.parse(`${internal}T00:00:00Z`);
+  if (timestamp === null || !Number.isFinite(timestamp)) {
+    const label = String(document?.published || "").trim();
+    const estonianDate = label.match(/^(\d{2})\.(\d{2})\.(\d{4})$/u);
+    timestamp = estonianDate
+      ? Date.UTC(Number(estonianDate[3]), Number(estonianDate[2]) - 1, Number(estonianDate[1]))
+      : /^(?:19|20)\d{2}$/u.test(label) ? Date.UTC(Number(label), 0, 1) : null;
+  }
+  const value = Number.isFinite(timestamp) ? timestamp : 0;
+  FRESHNESS_TIE_CACHE.set(document, value);
+  return value;
+}
+
 export function rankDocuments(query, documents = SEARCH_DOCUMENTS, { russianRoots = [] } = {}) {
   const primaryTopic = assessSearchQuery(query).topic;
   const preferred = new Map(directDirectoryDocumentIds(query).map((id, index) => [id, index]));
@@ -8458,6 +8480,7 @@ export function rankDocuments(query, documents = SEARCH_DOCUMENTS, { russianRoot
       const bPreference = preferred.get(b.id) ?? Number.POSITIVE_INFINITY;
       return aPreference - bPreference
         || b.score - a.score
+        || rankDocumentsFreshness(b) - rankDocumentsFreshness(a)
         || a.title.localeCompare(b.title, "et");
     });
 }

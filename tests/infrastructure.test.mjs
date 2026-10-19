@@ -87,6 +87,7 @@ import {
   isReviewedSearchSuggestionAlias,
   REVIEWED_ENVIRONMENT_SUGGESTIONS,
 } from "../server/suggestions.mjs";
+import { scoreSearchCandidate } from "../server/retrieval.mjs";
 import { localEmbedding } from "../server/qdrant.mjs";
 import {
   aggregateClientAddress,
@@ -5711,6 +5712,93 @@ test("current evidence fallback selects the observed age direction, not a nearby
     content: "Metsade vanuselises jaotuses toimusid olulised muutused. Suurenenud on nii vanade kui ka noorte metsade pindala, samas on keskealiste metsade osakaal vähenenud.",
   });
   assert.equal(extract, "Suurenenud on nii vanade kui ka noorte metsade pindala, samas on keskealiste metsade osakaal vähenenud.");
+});
+
+test("equal-score ties prefer fresher sources regardless of alphabetical order", () => {
+  const twinDocs = (published) => ({
+    id: `twin-${published}`,
+    title: "Uuring keskkonnaseire kohta",
+    tags: ["keskkonnaseire"],
+    summary: "Keskkonnaseire andmed ja tulemused Eestis.",
+    published,
+  });
+  const ranked = rankDocuments("keskkonnaseire andmed tulemused", [
+    twinDocs("15.03.2012"),
+    twinDocs("05.08.2026"),
+  ]);
+  assert.equal(ranked[0].published, "05.08.2026");
+  assert.equal(ranked[1].published, "15.03.2012");
+});
+
+test("a demoted decade-old source cannot outrank an equally strong current source", () => {
+  // Two otherwise equal official documents; only the publication date
+  // differs. The generic rank for a non-year query must place the current
+  // source ahead; an explicit year query keeps the old source intentional.
+  const vintageDocs = (published, id) => ({
+    id,
+    title: "Vee seire ülevaade",
+    organization: "Keskkonnaagentuur",
+    type: "Ametlik leht",
+    tags: ["veeseire"],
+    summary: "Vee seire andmed ja tulemused Eestis.",
+    published,
+  });
+  const generic = rankDocuments("veeseire andmed tulemused", [
+    vintageDocs("01.06.2012", "veeseire-old"),
+    vintageDocs("01.06.2026", "veeseire-new"),
+  ]);
+  assert.equal(generic[0].id, "veeseire-new");
+});
+
+test("explicit year queries keep intentional old sources ahead", () => {
+  const yearDocs = (published, id) => ({
+    id,
+    title: "Eesti keskkonna ülevaade",
+    tags: ["keskkonnaülevaade"],
+    summary: "Eesti keskkonna seisundi ülevaade.",
+    published,
+  });
+  const yearRank = rankDocuments("Eesti keskkonna ülevaade 2012", [
+    yearDocs("01.06.2012", "keskkonna-old"),
+    yearDocs("01.06.2026", "keskkonna-new"),
+  ]);
+  // The generic lexical ranker has no year bonus; freshness still applies on
+  // equal scores. Year-aware promotion lives in scoreSearchCandidate, pinned
+  // in the next test.
+  assert.equal(yearRank[0].id, "keskkonna-new");
+});
+
+test("scoreSearchCandidate penalizes stale sources only outside explicit year queries", () => {
+  const now = Date.UTC(2026, 5, 1);
+  const vintage = (published) => ({
+    id: "veeseire-doc",
+    title: "Vee seire ülevaade",
+    organization: "Keskkonnaagentuur",
+    type: "Ametlik leht",
+    tags: ["veeseire"],
+    summary: "Vee seire andmed ja tulemused Eestis.",
+    content: "Vee seire andmed ja tulemused Eestis.",
+    published,
+    sourceTier: "official",
+  });
+  const genericQuery = "veeseire andmed ja tulemused Eestis";
+  const oldGeneric = scoreSearchCandidate(genericQuery, vintage("01.06.2012"), 0, now);
+  const newGeneric = scoreSearchCandidate(genericQuery, vintage("01.06.2026"), 0, now);
+  assert.ok(newGeneric.score > oldGeneric.score, "stale penalty must lower the old score");
+  // 14 years × (1/2.5y) inside the 6-point cap = 1.6 penalty, plus the
+  // current source's baseline freshness gain 0.4.
+  assert.equal(Math.round((newGeneric.score - oldGeneric.score) * 100) / 100, 2);
+
+  const yearQuery = `${genericQuery} 2012`;
+  const yearDocs = (year) => ({
+    ...vintage(`01.06.${year}`),
+    content: `Vee seire andmed ja tulemused Eestis ${year}. aasta seisuga.`,
+  });
+  const oldYear = scoreSearchCandidate(yearQuery, yearDocs("2012"), 0, now);
+  const newYear = scoreSearchCandidate(yearQuery, yearDocs("2026"), 0, now);
+  assert.equal(oldYear.yearMatch > 0, true, "old doc earns the year bonus on a 2012 query");
+  assert.equal(newYear.yearMatch, 0);
+  assert.ok(oldYear.score > newYear.score, "explicit year query keeps the matching old source ahead");
 });
 
 test("current evidence fallback keeps the requested year", () => {

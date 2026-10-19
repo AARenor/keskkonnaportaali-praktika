@@ -413,6 +413,14 @@ function authorityScore(sourceTier) {
   return 0;
 }
 
+// Gentle decay so a ~15-year-old document no longer beats equally lexical
+// current sources on generic queries. Bounded well below a single title-tag
+// hit (7), so a genuinely strong older source still wins the direct match.
+function staleSourcePenalty(ageYears) {
+  if (ageYears === null || !Number.isFinite(ageYears) || ageYears <= 10) return 0;
+  return Math.min(6, (ageYears - 10) / 2.5);
+}
+
 const AUXILIARY_QUERY_ROOTS = new Set([
   "muutus", "tulevik", "noor", "vanus", "tallinn", "tartu", "parnu", "parnumaa", "narva", "ida", "virumaa",
   "viljandi", "rakvere", "voru", "kuressaare", "haapsalu", "johvi",
@@ -2026,6 +2034,10 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
     + yearMatch
     + completeness
     + upstreamSignal
+    // A decade-old document must not outrank an equally strong current one on
+    // a generic query. Explicit year requests (yearMatch) are exempt, so
+    // historical lookups keep their intentional old-source promotion.
+    - (queryYear || forestryFact ? 0 : staleSourcePenalty(ageYears))
     + sqlSignal
     + intentEvidence.score
     + (directMatch ? 4 : 0)
