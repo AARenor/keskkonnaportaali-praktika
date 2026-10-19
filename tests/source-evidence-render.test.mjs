@@ -6,10 +6,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { load } from "cheerio";
 import { createServer } from "vite";
 import { officialServiceCatalogueDocuments, splitTextPassages } from "../server/search.mjs";
-import { buildEvidencePack } from "../server/evidence-pack.mjs";
 import { sourceDateMeta } from "../src/source-label.js";
 
-test("used source evidence renders its complete bounded body in a native disclosure, not just a tooltip", async () => {
+test("the answer shows only its clickable official sources and never an evidence excerpt disclosure", async () => {
   const vite = await createServer({
     configFile: false,
     root: fileURLToPath(new URL("../", import.meta.url)),
@@ -22,39 +21,19 @@ test("used source evidence renders its complete bounded body in a native disclos
     const { SourceLegend } = await vite.ssrLoadModule("/src/App.jsx");
     const catalogue = officialServiceCatalogueDocuments();
     const source = { ...catalogue.find((item) => item.id === "protected-forest-share"), citation: 1 };
-    const pack = buildEvidencePack({ sources: [source], query: "õietolm" });
-    const excerpt = pack.entries[0].content;
-    assert.ok(excerpt.length <= 4_000);
-    const late = splitTextPassages(excerpt).find((passage) => excerpt.indexOf(passage) >= 1_200);
-    assert.ok(late, "The real published body must exercise the former clipping defect");
+    const excerpt = buildFakeEvidenceExcerpt(source);
     const unused = { ...catalogue.find((item) => item.id === "forest-area"), citation: 2, evidenceExcerpt: "UNUSED_SOURCE_BODY" };
     const render = (sources, answer = { introCitations: [1], parts: [] }, chart) => load(renderToStaticMarkup(
       createElement(SourceLegend, { sources, answer, chart }),
     ));
     const displayed = { ...source, evidenceExcerpt: excerpt };
     const $ = render([displayed, unused]);
-    const disclosure = $("details");
-    assert.equal(disclosure.find("summary").text(), "Kasutatud tõendilõigud");
-    assert.ok(disclosure.text().includes(excerpt));
-    assert.ok(disclosure.text().includes(late));
-    assert.match(disclosure.text(), /kaardiandmestik/iu);
-    assert.match(disclosure.text(), /ETAK/iu);
-    assert.match(disclosure.text(), /projekteeritav/iu);
-    assert.ok(disclosure.text().includes(source.locator));
-    assert.ok(disclosure.text().includes(sourceDateMeta(source)));
-    assert.equal(disclosure.find("h3 a").attr("href"), source.url);
-    assert.doesNotMatch(disclosure.text(), /UNUSED_SOURCE_BODY/u);
-
-    const chartOnly = render([displayed], { introCitations: [], parts: [] }, { citation: 1 });
-    assert.ok(chartOnly("details").text().includes(excerpt));
-    assert.equal(render([displayed], { introCitations: [], parts: [] })("details").length, 0);
-    assert.equal(render([{ ...source, evidenceExcerpt: undefined }])("details").length, 0,
-      "A title, date, locator or summary must not manufacture an evidence body");
-
-    const untrusted = `${excerpt}\n<img src=x onerror=alert(1)>`;
-    const escaped = render([{ ...source, evidenceExcerpt: untrusted }]);
-    assert.equal(escaped("details img").length, 0);
-    assert.ok(escaped("details").text().includes("<img src=x onerror=alert(1)>"));
+    assert.equal($("details.answer-evidence").length, 0,
+      "The legend of clickable sources has replaced the evidence excerpt disclosure");
+    assert.doesNotMatch($("body").text(), /Kasutatud tõendilõigud/u);
+    assert.doesNotMatch($("body").text(), /UNUSED_SOURCE_BODY/u);
+    const legendLink = $("ul.source-legend li a.source-legend__link");
+    assert.equal(legendLink.attr("href"), source.url, "the citation legend stays clickable");
   } finally {
     await vite.close();
   }
@@ -79,8 +58,8 @@ test("every visible source legend row opens its official HTTPS source, even with
       url: "http://insecure.example/forest-area",
     };
     // An answer whose intro carries no citation (for example the
-    // "nähtavad tõendilõigud ei kata küsimust" notice) still lists its
-    // sources: those legend rows are the only way to reach the originals.
+    // "nähtav tõend ei kata küsimust" notice) still lists its
+    // sources: those legend rows are the way to reach the originals.
     const answer = { introCitations: [], parts: [] };
     const $ = load(renderToStaticMarkup(createElement(SourceLegend, {
       sources: [{ ...http, citation: 1 }, insecure],
@@ -100,3 +79,11 @@ test("every visible source legend row opens its official HTTPS source, even with
     await vite.close();
   }
 });
+
+function buildFakeEvidenceExcerpt(source) {
+  // A long bounded excerpt proves the old disclosure body would not leak back
+  // through any other render path.
+  let text = `Figures about ${source.title} from the evidence pack. `.repeat(3);
+  text += splitTextPassages("Täiendavasisu kaardiandmestik ETAK projekteeritav alad kaitsealune mets 2011–2025." + " Lisasõnadetail. ".repeat(40))[0] || "";
+  return text.slice(0, 4_000);
+}

@@ -47,6 +47,7 @@ import {
   assessSearchQuery,
   canonicalizePublicSearchQuery,
   composeOfficialServiceNavigationResponse,
+  composeAmbiguousDomainGuidanceResponse,
   composeScopeResponse,
   composeSearchResponse,
   composeTopicDataOverviewResponse,
@@ -1325,6 +1326,8 @@ async function searchWithinBudget(cleanQuery, {
     publicQuery: cleanQuery,
   }) || composeOfficialServiceNavigationResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
+  }) || composeAmbiguousDomainGuidanceResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
   });
   const structuredIndicatorDraft = draftMatchesListingAndFilters(
     structuredIndicatorCandidate,
@@ -1569,6 +1572,8 @@ export function searchTimeoutFallback(cleanQuery, {
     total: searchResults?.total,
     publicQuery: cleanQuery,
   }) || composeOfficialServiceNavigationResponse(cleanQuery, searchResults?.items, {
+    total: searchResults?.total,
+  }) || composeAmbiguousDomainGuidanceResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
   });
   const structuredIndicator = draftMatchesListingAndFilters(

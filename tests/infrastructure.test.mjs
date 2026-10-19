@@ -73,12 +73,14 @@ import { cadastreSourceDocuments, composeCadastreAnswer, normalizeSpatialState }
 import {
   assessEvidence,
   assessSearchQuery,
+  composeAmbiguousDomainGuidanceResponse,
   composeOfficialServiceNavigationResponse,
   composeWasteFacilitiesNavigationResponse,
   composeScopeResponse,
   composeSearchResponse,
   officialServiceCatalogueDocuments,
   rankDocuments,
+  directDirectoryDocumentIds,
   rankedSetCoversSubject,
   searchEnvironment,
 } from "../server/search.mjs";
@@ -5686,6 +5688,70 @@ test("search copy distinguishes related official results from a true zero result
     answerable: false,
   });
   assert.match(empty.answer.intro, /ametlikku tõendit ei leitud/u);
+});
+
+test("broad ambiguous-domain questions route to their reviewed official service", () => {
+  const query = "Kus Eestis on kõige puhtam õhk?";
+  const source = officialServiceCatalogueDocuments()
+    .find((document) => document.id === "air-catalogue");
+  assert.ok(source);
+  const guidance = composeAmbiguousDomainGuidanceResponse(query, [source]);
+  assert.ok(guidance);
+  assert.equal(guidance.sources[0]?.id, "air-catalogue");
+  assert.equal(guidance.evidence?.kind, "official-navigation-routing");
+  assert.match(guidance.answer.intro, /Õhukvaliteedi materjalid/u);
+  // The routing card carries the immutable catalogue summary; it must not
+  // invent the comparison the question asked about.
+  assert.doesNotMatch(guidance.answer.intro, /kõige puhtam/u);
+  assert.deepEqual(guidance.answer.introCitations, [1]);
+
+  // Only the reviewed catalogue identity passes: a forged alias must stay
+  // out of the routing path.
+  for (const witness of [
+    { ...source, id: "forged-service-id" },
+    { ...source, url: "https://example.invalid/forged" },
+    { ...source, sourceTier: "supplementary" },
+  ]) assert.equal(composeAmbiguousDomainGuidanceResponse(query, [witness]), null);
+
+  // A named year or a precise station request stays with the claim-based
+  // coverage pipeline; an unrelated subject is never routed here.
+  assert.equal(composeAmbiguousDomainGuidanceResponse("Kus on kõige puhtam õhk 2024. aastal?", [source]), null);
+  assert.equal(composeAmbiguousDomainGuidanceResponse("Kus on kõige puhtam seirejaam?", [source]), null);
+  assert.equal(composeAmbiguousDomainGuidanceResponse("Kus Eestis on kõige suurem varandus?", [source]), null);
+});
+
+test("broad ambiguous-domain listing keeps the reviewed cards visible", () => {
+  const query = "Kui palju taastuvat energiat Eestis toodetakse?";
+  assert.ok(directDirectoryDocumentIds(query).includes("renewable-energy-guidance"));
+  const catalogue = officialServiceCatalogueDocuments();
+  const ranked = rankPublicSearchCandidates(query, catalogue, { now: Date.now(), intentDocuments: catalogue });
+  assert.equal(ranked[0]?.id, "renewable-energy-guidance");
+
+  // Even when corpus noise ranks ahead of the service cards, the air
+  // guidance cards stay on the first visible page.
+  const merged = rankPublicSearchCandidates("Kus Eestis on kõige puhtam õhk?",
+    [...catalogue].reverse(), { now: Date.now(), intentDocuments: catalogue });
+  assert.ok(merged.slice(0, 2).some((document) => document.id === "air-catalogue"));
+});
+
+test("ambiguous domain guidance renders before any model attempt", async () => {
+  const query = "Kui palju taastuvat energiat Eestis toodetakse?";
+  const source = officialServiceCatalogueDocuments()
+    .find((document) => document.id === "renewable-energy-guidance");
+  assert.ok(source);
+  let modelCalls = 0;
+  const result = await searchEnvironmentLive(query, {
+    useCache: false,
+    searchResults: { total: 1, items: [source] },
+    async generateAnswer() {
+      modelCalls += 1;
+      throw new Error("guidance response must not reach a model");
+    },
+  });
+  assert.equal(modelCalls, 0);
+  assert.equal(result.sources[0]?.id, "renewable-energy-guidance");
+  assert.deepEqual(result.answer.introCitations, [1]);
+  assert.doesNotMatch(result.answer.intro, /Täpset ja piisavalt asjakohast/u);
 });
 
 test("an unrelated subject never claims related official results", () => {

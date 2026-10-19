@@ -853,13 +853,6 @@ function Citation({ number, sources = [] }) {
 export function SourceLegend({ sources = [], answer, chart }) {
   if (!sources.length) return null;
   const latest = latestSourceUpdates(sources);
-  const usedCitations = new Set([
-    ...(answer?.introCitations || []),
-    ...(answer?.parts || []).flatMap((part) => part.citations || []),
-    ...(chart?.citation ? [chart.citation] : []),
-  ].map(Number));
-  const evidenceSources = sources.filter((source) => usedCitations.has(Number(source.citation))
-    && typeof source.evidenceExcerpt === "string" && source.evidenceExcerpt.trim());
   return (
     <>
     <ul className="source-legend" aria-label="Allikate värvid ja kuupäevad">
@@ -889,19 +882,6 @@ export function SourceLegend({ sources = [], answer, chart }) {
         );
       })}
     </ul>
-    {evidenceSources.length > 0 ? (
-      <details className="answer-evidence">
-        <summary>Kasutatud tõendilõigud</summary>
-        {evidenceSources.map((source) => (
-          <section key={source.citation} className="answer-evidence__source">
-            <h3><ExternalAnchor href={source.url}>Allikas {source.citation}: {source.title}</ExternalAnchor></h3>
-            <p className="answer-evidence__meta">{sourceDateMeta(source)}</p>
-            {source.locator ? <p className="answer-evidence__meta">Asukoht: {source.locator}</p> : null}
-            <p className="answer-evidence__text">{source.evidenceExcerpt}</p>
-          </section>
-        ))}
-      </details>
-    ) : null}
     </>
   );
 }

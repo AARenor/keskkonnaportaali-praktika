@@ -8437,7 +8437,57 @@ export function directDirectoryDocumentIds(query) {
   if (reportId) preferred.push(reportId);
   const reviewedDataSource = reviewedDataSourceSource(query);
   if (reviewedDataSource) preferred.push(reviewedDataSource.id);
+  // A broad ambiguous-domain question ("Kus on kõige puhtam õhk?") has no
+  // claims-bearing catalogue card, but its domain's official service
+  // summaries do exist. Keep those cards inside the first visible page so
+  // ranking noise cannot bury the reviewed guidance below word-overlap
+  // corpus items. Numeric years and precise station requests stay out.
+  const ambiguousIds = ambiguousBroadDomainGuidanceIds(query, roots);
+  if (ambiguousIds.length) preferred.push(...ambiguousIds);
   return [...new Set(preferred)];
+}
+
+// Broad ambiguous-domain query characteristics: at most two domain roots,
+// every domain root in AMBIGUOUS_ROOTS (exact fold), no explicit year, and
+// no precise measurement-object request. Shared by directory injection and
+// composeAmbiguousDomainGuidanceResponse.
+export function ambiguousBroadDomainGuidanceIds(query, roots = queryTerms(query)) {
+  const text = normalize(query);
+  // Foreign-script queries resolve through the translation bridge instead:
+  // the guidance prose is Estonian and the pinned discovery order for
+  // translated queries (waste guide first) must stay untouched.
+  if (FOREIGN_SCRIPT_PATTERN.test(String(query || ""))) return [];
+  if (forestEvidenceIntent(query)) return [];
+  const domainRoots = roots.filter((root) => rootIsDomain(root));
+  if (domainRoots.length === 0 || domainRoots.length > 2) return [];
+  if (!domainRoots.every((root) => AMBIGUOUS_ROOTS.has(root))) return [];
+  if (/\b(?:19|20)\d{2}\b/u.test(text)) return [];
+  if (/\b(?:seirejaam|proovipunkt|mõõtejaam)\b/u.test(text)) return [];
+  // Precise service requests must keep their specialised cards: a state
+  // ("seisund"), a result of monitoring ("tulemused"), a sample, a PM2.5
+  // reading, a construction consent or sorting procedure is no longer a
+  // broad ambiguous-domain question.
+  if (/\b(?:seisund|tulemus\w*|proov\w*|hetkeseis\w*|pm\s*2\.?\s*5|pm25|kooskolastus|n[oõ]usolek|ehitamis?\w*|maja|sorteerim\w*|menetl\w*|vajalik|lub\w*|m[oõ][oõ]t\w*|kinnistu|piirang\w*)\b/u.test(text)) return [];
+  // Stemmed query roots carry precise intent even when the normalized text
+  // hides it behind inflection ("nõusolekut", "ehitada"): prefix-check the
+  // folded roots directly.
+  const precisionRootPattern = /^(?:seisund|tulemus|proov|hetkeseis|pm25|kooskolastus|nousolek|ehitami|saunamaja|maja|sorteerim|menetl|vajalik|lub|moot|rajam|monis|kinnistu|piirang|menlus)/iu;
+  if (roots.some((root) => precisionRootPattern.test(String(root || "")))) return [];
+  const lead = domainRoots[0];
+  // Protection, water, monitoring and waste families keep their specialised
+  // routing for any qualified question. Their guidance only engages on bare
+  // domain questions ("Kus Eestis on kaitsealasid?"): every other content
+  // root must be a neutral question word. Air and energy questions keep the
+  // broader behaviour because no other family claims those domains.
+  if (["kaitseala", "vesi", "jarv", "jogi", "meri", "pohjavesi", "seire", "andmed", "jaat", "prugi"].includes(lead)) {
+    const neutralQuestionRoots = new Set([
+      "kus", "kuhu", "kui", "mis", "palju", "koige", "eesti", "eestis", "mida",
+      "millest", "miks", "kes", "kelle", "millal", "kuidas", "ikka",
+    ]);
+    const secondaryRoots = roots.filter((root) => root !== lead && !domainRoots.includes(root));
+    if (!secondaryRoots.every((root) => neutralQuestionRoots.has(root))) return [];
+  }
+  return AMBIGUOUS_DOMAIN_GUIDANCE_IDS(domainRoots[0]);
 }
 
 const FRESHNESS_TIE_CACHE = new WeakMap();
@@ -8731,6 +8781,79 @@ export function composeOfficialServiceNavigationResponse(query, documents = [], 
     },
   };
 }
+
+// Broad ambiguous-domain questions ("Kus on kõige puhtam õhk?", "Kui palju
+// taastuvat energiat toodetakse?") rarely carry a claims-bearing passage in a
+// single catalogue card, but the domain IS covered by reviewed official
+// services. Rather than asserting there is no evidence at all, route the
+// question to its reviewed service summary with a visible citation. This
+// composes only immutable catalogue prose — never live values or a computed
+// superlative — so it stays honest while replacing the bare refusal.
+export function composeAmbiguousDomainGuidanceResponse(query, documents = [], options = {}) {
+  const canonicalInput = canonicalizePublicSearchQuery(query);
+  if (!canonicalInput.ok || forestEvidenceIntent(canonicalInput.query)) return null;
+  const cleanQuery = canonicalInput.query;
+  const assessment = assessSearchQuery(cleanQuery);
+  if (assessment.kind !== "answerable") return null;
+  const terms = queryTerms(cleanQuery);
+  const preferredIds = ambiguousBroadDomainGuidanceIds(cleanQuery, terms);
+  if (preferredIds.length === 0) return null;  const visible = Array.isArray(documents) ? documents : [];
+  const witness = preferredIds.flatMap((id) => visible.filter((document) => (
+    document?.id === id && document.sourceTier === "official"
+  )))[0];
+  if (!witness) return null;
+  const catalogue = [...SEARCH_DOCUMENTS, ...ADDITIONAL_OFFICIAL_SERVICE_DOCUMENTS];
+  const source = catalogue.find((document) => document.id === witness.id && document.url === witness.url);
+  if (!source) return null;
+
+  const citedSource = reviewedNavigationCitationSource({
+    ...source,
+    tags: [...(source.tags || [])].slice(0, 5),
+  }, 1, witness);
+  return {
+    query: cleanQuery,
+    total: Number.isFinite(options.total) ? options.total : 1,
+    generatedAt: new Date().toISOString(),
+    answer: {
+      eyebrow: "Ametlik teenus",
+      title: source.title,
+      intro: source.summary,
+      introCitations: [1],
+      parts: [],
+      note: "Teenusekirjeldus juhatab ametliku vaate juurde, kuid ei kinnita üksikut mõõtetulemust ega võrdlust hetkeseisus.",
+    },
+    sources: [citedSource],
+    related: relatedQueries(cleanQuery, [source]),
+    clarification: null,
+    evidence: {
+      kind: "official-navigation-routing",
+      documentIds: [source.id],
+    },
+  };
+}
+
+// Reviewed service cards that safely describe their domain's official data
+// when the question is broad and ambiguous. Each entry's prose stays in the
+// immutable catalogue; the visible witness remains required at compose time.
+const AMBIGUOUS_DOMAIN_GUIDANCE_IDS = (root) => {
+  const ids = [];
+  if (root === "ohk" || root === "ohukvaliteet" || root === "saaste") {
+    ids.push("air-catalogue", "air-quality-live");
+  } else if (root === "energia" || root === "elektriauto") {
+    ids.push("renewable-energy-guidance");
+  } else if (root === "vesi" || root === "jarv" || root === "jogi" || root === "meri" || root === "pohjavesi") {
+    ids.push("groundwater-overview", "water-monitoring");
+  } else if (root === "jaat" || root === "prugi") {
+    ids.push("waste-reporting-data");
+  } else if (root === "kliima" || root === "ilm" || root === "temperatuur" || root === "sademed") {
+    ids.push("historical-weather-data", "weather-overview");
+  } else if (root === "elurikkus" || root === "looduskaitse" || root === "kaitseala") {
+    ids.push("biodiversity");
+  } else if (root === "seire" || root === "andmed") {
+    ids.push("kese-monitoring", "official-data-services");
+  }
+  return ids;
+};
 
 function responseSources(ids) {
   const catalogue = [...SEARCH_DOCUMENTS, ...ADDITIONAL_OFFICIAL_SERVICE_DOCUMENTS];
