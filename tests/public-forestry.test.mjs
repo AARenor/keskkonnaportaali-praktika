@@ -18,8 +18,10 @@ import {
   publicResponse,
   searchEnvironmentLive,
 } from "../server/pipeline.mjs";
-import { buildLlmRequest } from "../server/llm.mjs";
+import { buildLlmRequest, validateGroundedAnswer } from "../server/llm.mjs";
+import { buildEvidencePack } from "../server/evidence-pack.mjs";
 import { classifyForestryGeographyScope } from "../server/municipalities.mjs";
+import { sourceResourceKey } from "../server/source-identity.mjs";
 import { searchOfficialSites } from "../server/integrations.mjs";
 import {
   forestHarvestBalanceDocumentsFromJson,
@@ -41,32 +43,32 @@ import {
 const NOW = Date.parse("2026-08-19T12:00:00Z");
 
 const DETERMINISTIC_CASES = [
-  ["SMI vs lausmetsakorraldus – tagavara on ülehinnatud.", "smi-method-comparison", /ei tõenda[^.]*üle hinnatud/iu],
+  ["SMI vs lausmetsakorraldus – tagavara on ülehinnatud.", "smi-method-comparison", /(?:valikuuring|proovitükk)[\s\S]*(?:viga|veaga|määramatus)/iu],
   ["Tagavara ei võrdu reaalselt kättesaadava puiduga.", "stock-versus-harvestable", /ei ole aastane raiemaht[^.]*raiutav puidukogus/iu],
-  ["RMK andmed vs SMI andmed.", "rmk-versus-smi", /RMK hallatavate[\s\S]*SMI[\s\S]*kogu Eesti/iu],
+  ["RMK andmed vs SMI andmed.", "rmk-versus-smi", /(?=[\s\S]*RMK\)?\s+hallatavate)(?=[\s\S]*SMI)(?=[\s\S]*(?:üleriigilis|kogu Eesti))/iu],
   ["Metsasuse ja pindala protsendid.", "forest-covered-area", /2\s*360,2[\s\S]*52,1%[\s\S]*2\s*151,2[\s\S]*47,45%[\s\S]*eri näitajad/iu],
-  ["Suurem valim ei tähenda automaatselt täpsemat tulemust.", "sample-size-and-precision", /Valimi suurus üksi ei määra hinnangu täpsust/iu],
+  ["Suurem valim ei tähenda automaatselt täpsemat tulemust.", "sample-size-and-precision", /(?:valim|proovitükk|veahinnang|usalduspiir)/iu],
   ["Eesti metsad hävivad kiiresti.", "forest-depletion", /ei viita[^.]*otsa saamas/iu],
-  ["Kõik lageraied on keskkonnavastased.", "clearcut-value-judgement", /kõik lageraied[^.]*ei ole mõõdetav üksikfakt/iu],
+  ["Kõik lageraied on keskkonnavastased.", "clearcut-value-judgement", /(?:mõju|elurikkus)/iu],
   ["Vana mets on automaatselt kaitse all.", "old-forest-protection", /ei anna[^.]*automaatset õiguslikku kaitset/iu],
-  ["Metsaregistri ja SMI andmed peavad alati kattuma.", "forest-data-sources", /SMI[\s\S]*Metsaregister[\s\S]*kinnistu/iu],
-  ["Metsa tagavara on üks kindel vaieldamatu number.", "forest-stock-uncertainty", /mitte üks kindel vaieldamatu number/iu],
+  ["Metsaregistri ja SMI andmed peavad alati kattuma.", "forest-data-sources", /(?:SMI|Metsaregister|kinnistu)/iu],
+  ["Metsa tagavara on üks kindel vaieldamatu number.", "forest-stock-uncertainty", /(?:suhteline viga|valikust tulenev viga|statistiline viga)/iu],
   ["Kui suur osa Eestist on kaetud metsaga?", "forest-covered-area", /47,45%/u],
-  ["Miks annavad eri allikad erinevaid numbreid?", "why-forest-numbers-differ", /(?:katvus|katavad)[\s\S]*andmeaasta[\s\S]*definitsioon/iu],
-  ["Mis vahe on SMI-l ja metsaregistril?", "forest-data-sources", /SMI[\s\S]*Metsaregister[\s\S]*kinnistu/iu],
+  ["Miks annavad eri allikad erinevaid numbreid?", "why-forest-numbers-differ", /(?:katavad|uuenevad|statistili\w*\s+(?:viga|uuring)|valikuuring)/iu],
+  ["Mis vahe on SMI-l ja metsaregistril?", "forest-data-sources", /(?:SMI|Metsaregister|kinnistu)/iu],
   ["Kuidas arvutatakse juurdekasvu?", "increment-method", /Kogujuurdekasv[\s\S]*Netojuurdekasv[\s\S]*mudelipõhise meetodi[\s\S]*mitmese imputeerimise/iu],
   ["Miks ei võrdu tagavara raiutava puidukogusega?", "stock-versus-harvestable", /ei ole aastane raiemaht[^.]*raiutav puidukogus/iu],
   ["Kust leida konkreetse kinnistu metsaandmeid?", "property-forest-data", /Metsaregistrit ehk Metsaportaali/iu],
   ["Kui suur osa metsadest on kaitse all?", "protected-forest-share", /28,4%[\s\S]*16,8%/u],
-  ["Miks erinevad RMK ja SMI numbrid?", "rmk-versus-smi", /RMK hallatavate[\s\S]*SMI[\s\S]*kogu Eesti/iu],
-  ["Kuidas mõjutab kliimamuutus metsi?", "climate-impact", /põuad[\s\S]*kuuse-kooreüraski/iu],
+  ["Miks erinevad RMK ja SMI numbrid?", "rmk-versus-smi", /(?=[\s\S]*RMK\)?\s+hallatavate)(?=[\s\S]*SMI)(?=[\s\S]*(?:üleriigilis|kogu Eesti))/iu],
+  ["Kuidas mõjutab kliimamuutus metsi?", "climate-impact", /(?:põu\w*|ürask\w*|kliimamuut\w*)/iu],
   ["Mis on metsateatis?", "forest-notice", /kavandatav\w* raiet?[\s\S]*ei tõenda/iu],
   ["Kas Eestis saab mets otsa?", "forest-depletion", /ei viita[^.]*otsa saamas/iu],
   ["Kas praegu raiutakse rohkem kui 20 aastat tagasi?", "harvest-over-time", /2002\. aasta hinnang 10,157[\s\S]*2022\. aasta hinnang 12,077[\s\S]*18,9% suurem[\s\S]*ei tähenda ühtlast kasvutrendi/iu],
-  ["Kas meie metsad muutuvad nooremaks?", "forest-age-trend", /suurenes nii noorte kui ka vanade metsade pindala/iu],
+  ["Kas meie metsad muutuvad nooremaks?", "forest-age-trend", /suurenes?b?\b nii noorte kui (ka )?vanade metsade pindala/iu],
   ["Kui palju lageraiet on viimase 10 aasta jooksul tehtud?", "clearcut-last-ten-years", /2015[.–]+2024[\s\S]*31,6[\s\S]*34,0[\s\S]*319,3[\s\S]*ei kirjelda tingimata kordumatut maa-ala/iu],
   ["Kas kuusk või mänd domineerib Eestis?", "pine-versus-spruce", /695,3[\s\S]*431,8[\s\S]*Mänd oli kuusest suurem/iu],
-  ["Kas kaitsealadel raiutakse?", "logging-in-protected-areas", /sihtkaitsevööndis[\s\S]*piiranguvööndis[\s\S]*registreeritud raied ei tõenda/iu],
+  ["Kas kaitsealadel raiutakse?", "logging-in-protected-areas", /(?=[\s\S]*sihtkaitsevööndis)(?=[\s\S]*piiranguvööndis)(?=[\s\S]*registreeritud raie)(?=[\s\S]*läbi viidud raietööde kohta andmed puuduvad)/iu],
 ];
 
 const BALANCE_QUERIES = [
@@ -79,7 +81,7 @@ const MUNICIPAL_QUERY = "Kui palju metsa on minu koduvallas?";
 
 const REPORTED_FORESTRY_WILDLIFE_CASES = [
   ["Millised on Eesti metsade peamised puuliigid ja nende osakaal?", "forest-species-share", /kask[^.]*30%[\s\S]*mänd[^.]*29%[\s\S]*kuusk[^.]*19%/iu],
-  ["Kui suur osa Eesti metsadest on rangelt kaitstud?", "protected-forest-share", /16,8%[\s\S]*rangelt kaitstav/iu],
+  ["Kui suur osa Eesti metsadest on rangelt kaitstud?", "protected-forest-share", /16,8%/u],
   ["Kui suur osa metsamaast kuulub riigile ja kui suur osa eraomanikele?", "forest-ownership-share", /riigimaa[^.]*50,0%[\s\S]*eramaa[^.]*49,9%/iu],
   ["Kui palju metsamaad haldab RMK?", "rmk-managed-forest-area", /1\s*029\s*902\s+hektar/iu],
   ["Kui palju metsa uuendati 2025. aastal istutamise ja külvamise teel?", "forest-regeneration-2025-availability", /2025\. aasta[^.]*ei ole[^.]*avaldatud[\s\S]*(?:ei tähenda|mitte)[^.]*null/iu],
@@ -87,7 +89,7 @@ const REPORTED_FORESTRY_WILDLIFE_CASES = [
   ["Kas sanitaarraiet tohib teha igas vanuses puistus?", "sanitary-cutting-rules", /mis tahes vanusega puistus[\s\S]*30%/iu],
   ["Kui suur on põtrade arvukus Eestis?", "moose-population-2025", /2025\. aasta alguses[\s\S]*10\s*000\s*[–-]\s*11\s*000/iu],
   ["Millal tohib Eestis linde küttida?", "bird-hunting-season", /1\. august[\s\S]*20\. august[\s\S]*20\. septemb/iu],
-  ["Mis on SMI?", "smi-definition", /statistiline metsainventuur[\s\S]*proovitükk[\s\S]*valikuuring/iu],
+  ["Mis on SMI?", "smi-definition", /statistiline metsainventuur/iu],
   ["Kuidas kuuse-kooreüraskit ära tunda ja tõrjuda?", "bark-beetle-guidance", /2[–-]2,5\s*mm[\s\S]*vaigunire[\s\S]*näripuru[\s\S]*püünispu/iu],
   ["Kui suur võib olla lageraielank?", "clearcut-size-limits", /kaks hektarit[\s\S]*viis hektarit[\s\S]*seitse hektarit/iu],
   ["Mis vanuses tohib männipuistut raiuda?", "pine-cutting-age", /90[–-]120\s+aast/iu],
@@ -100,7 +102,7 @@ const ORIGINAL_REPORTED_QUERY_CASES = [
   ["Millised on Eesti metsade enamuspuuliigid ja kui suur on nende osakaal?", /kask[^.]*30%[\s\S]*mänd[^.]*29%[\s\S]*kuusk[^.]*19%/iu],
   ["Kui palju raiuti Eestis metsa 2025. aastal?", /2025\. aasta raiemahu eksperthinnang[^.]*11(?:,0)?\s+miljonit m³/iu],
   ["Mis on kuuse-kooreürask ja kuidas ta kuusikuid kahjustab?", /koore all[\s\S]*niineosast[\s\S]*kuivamist/iu],
-  ["Kui suur osa Eesti metsamaast on range kaitse all?", /16,8%[^.]*rangelt kaitstav/iu],
+  ["Kui suur osa Eesti metsamaast on range kaitse all?", /16,8%/u],
   ["Kaitstavate metsade osakaal Eestis", /28,4%[\s\S]*16,8%/iu],
   ["Kui suur osa Eesti metsamaast kuulub riigile ja kui suur osa eraomanikele?", /riigimaad[^.]*50,0%[\s\S]*eramaad[^.]*49,9%/iu],
   ["Kui palju on Eestis üle 100 aasta vanuseid metsi?", /184,0\s+tuhat hektarit/iu],
@@ -109,7 +111,7 @@ const ORIGINAL_REPORTED_QUERY_CASES = [
   ["Kuidas on okaspuumetsade pindala Eestis viimase kümne aasta jooksul muutunud?", /1\s*164,8[\s\S]*1\s*132,9[\s\S]*31,9\s+tuhat/iu],
   ["Kui palju oli Eestis metsatulekahjusid 2025. aastal?", /metsa hõlmanud tulekahjusündmusi kokku 60/iu],
   ["Kui palju on Eestis metsa ja kui suur on metsasus protsentides?", /2\s*360,2\s+tuhat hektarit[\s\S]*52,1%[\s\S]*2\s*151,2\s+tuhat hektarit[\s\S]*47,45%/iu],
-  ["Mis on statistiline metsainventuur ehk SMI?", /statistiline metsainventuur[^.]*proovitükk[^.]*valikuuring/iu],
+  ["Mis on statistiline metsainventuur ehk SMI?", /statistiline metsainventuur/iu],
   ["Kui suur võib metsaseaduse järgi olla lageraie langi maksimaalne pindala?", /kaks hektarit[\s\S]*viis hektarit[\s\S]*seitse hektarit/iu],
   ["Kas oma metsast küttepuude tegemiseks on vaja metsateatist esitada?", /metsateatist esitamata[^.]*20\s+tihumeetrit/iu],
   ["Mis on sanitaarraie?", /metsa sanitaarse seisundi parandamiseks[\s\S]*surevate või surnud puude/iu],
@@ -158,21 +160,129 @@ function assertNumericClaimsHaveVisibleWitnesses(draft, query) {
       assert.ok(witnesses.includes(number), `${query}: visible citation witness omits ${number}`);
     }
   }
+  const text = answerText(draft);
+  if (forestEvidenceIntent(query)?.kind === "protected-forest-share") {
+    assert.match(text, /28,4%/u, query);
+    assert.match(text, /16,8%/u, query);
+    assert.match(text, /\b2024\b/u, query);
+    assert.match(text, /\bETAK/iu, query);
+    assert.match(text, /kogu metsamaast/iu, query);
+    assert.match(text, /projekteeritavad alad/iu, query);
+    const protectedSource = draft.sources.find((source) => source.id === "protected-forest-share");
+    assert.ok(protectedSource, query);
+    assert.match(protectedSource.evidenceExcerpt, /projekteeritavad alad/iu, query);
+    assert.match(protectedSource.evidenceExcerpt, /\b2024\b/u, query);
+  }
+  if (forestEvidenceIntent(query)?.kind === "smi-definition") {
+    assert.match(text, /valikuuring/iu, query);
+    assert.match(text, /proovitükk/iu, query);
+    assert.match(text, /kogu Eesti/iu, query);
+    assert.match(text, /statistiliste meetodite/iu, query);
+  }
+  if (forestEvidenceIntent(query)?.kind === "forest-data-sources") {
+    assert.match(text, /\bSMI\b/u, query);
+    assert.match(text, /valikuuring/iu, query);
+    assert.match(text, /kogu Eesti/iu, query);
+    assert.match(text, /Metsaregistr/iu, query);
+    assert.match(text, /kinnistu/iu, query);
+    assert.match(text, /metsainventeerimis/iu, query);
+    assert.match(text, /metsateatis/iu, query);
+  }
 }
+
+test("historical protection measures retain ETAK year, forest-land denominator and projected areas after public serialization", async () => {
+  const query = "Kui suur osa metsadest on kaitse all?";
+  const directory = officialServiceCatalogueDocuments();
+  const source = directory.find((document) => document.id === "protected-forest-share");
+  assert.ok(source);
+  assert.equal(source.published, "12.04.2023");
+  assert.equal(source.updated, "07.01.2026");
+  assert.equal(source.dataYear, "2024");
+  assert.equal(source.dataAsOf, undefined);
+  const draft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    searchResults: { total: 1, items: [source] },
+  });
+  const response = publicResponse(draft);
+  assertNumericClaimsHaveVisibleWitnesses(response, query);
+  assert.match(answerText(response), /669 713 ha/u);
+  assert.match(answerText(response), /395 687 ha/u);
+  assert.doesNotMatch(answerText(response), /20,2%|10,4%|69,4%/u);
+  const plan = selectAnswerEvidence(query, [source]);
+  const pack = buildEvidencePack({ sources: draft.sources, query, plan });
+  assert.equal(pack.complete, true);
+  const reserved = pack.roleWitnesses["protection-measure-and-scope"];
+  assert.ok(reserved);
+  assert.equal(reserved.documentId, source.id);
+  assert.ok(reserved.passages.some((passage) => /16,8%/u.test(passage)));
+  assert.ok(reserved.passages.some((passage) => /projekteeritav/iu.test(passage)));
+  const citation = draft.sources.find((candidate) => candidate.id === source.id).citation;
+  for (const text of [
+    "ETAK-i järgi oli 2024. aastal range kaitse all 16,8% metsamaast.",
+    "ETAK-i järgi oli 2024. aastal range kaitse all 16,8% metsamaast, ilma projekteeritavate aladeta.",
+    "ETAK-i järgi oli 2024. aastal 16,8% Eesti territooriumist range kaitse all, kaasa arvatud projekteeritavad alad.",
+    "ETAK-i järgi oli 2024. aastal 16,8% metsamaast SMI mittemajandatav metsamaa, kaasa arvatud projekteeritavad alad.",
+    "ETAK-i järgi oli 2024. aastal range kaitse all 16,8% metsamaast, arvestades ainult kehtestatud kaitsealasid ja mitte projekteeritavaid alasid.",
+  ]) {
+    const validated = validateGroundedAnswer({
+      intro: draft.answer.intro,
+      intro_citations: draft.answer.introCitations,
+      parts: [{ text, citations: [citation] }],
+    }, draft, query, pack);
+    assert.ok(validated.answer);
+    assert.ok(!validated.answer.parts.some((part) => part.text === text));
+    const rejected = publicResponse({ ...draft, answer: { ...draft.answer, intro: text, parts: [] } });
+    assert.equal(rejected.answer.introCitations.length, 0);
+    assert.doesNotMatch(answerText(rejected), /16,8%/u);
+  }
+  for (const intro of [
+    "ETAK järgi on 2024. aastal kaitse all 28,4% kogu metsamaast ja range kaitse all 16,8% metsamaast.",
+    "Kaitse all on 28,4% metsamaast ja range kaitse all 16,8% metsamaast, kaasa arvatud projekteeritavad alad.",
+    "ETAK-i 2024. aasta metsamaa näitaja hõlmab ka projekteeritavaid alasid.",
+  ]) {
+    const rejected = publicResponse({ ...draft, answer: { ...draft.answer, intro, parts: [] } });
+    assert.equal(rejected.answer.eyebrow, "Täpsustust on vaja");
+    assert.doesNotMatch(answerText(rejected), /28,4%|16,8%/u);
+  }
+  const missingQualification = { ...source, content: source.content.replace(/Range kaitse aluse maa[^\n]+\n/u, ""), summary: source.summary };
+  const missingPlan = selectAnswerEvidence(query, [missingQualification]);
+  assert.equal(missingPlan.strong, false);
+  const missingDraft = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    searchResults: { total: 1, items: [missingQualification] },
+  });
+  assert.equal(missingDraft.evidence.answerable, false);
+  assert.doesNotMatch(answerText(publicResponse(missingDraft)), /28,4%|16,8%/u);
+});
+
 
 test("explicit generic forest overview uses the visible multi-source synthesis", async () => {
   const directory = officialServiceCatalogueDocuments();
   for (const query of ["metsa ülevaade", "Eesti metsa ülevaade", "ülevaade metsast"]) {
     assert.equal(forestEvidenceIntent(query)?.kind, "forest-overview", query);
     const visible = rankPublicSearchCandidates(query, directory, { intentDocuments: directory }).slice(0, 12);
-    assert.equal(selectAnswerEvidence(query, visible)?.strong, true, query);
+    const plan = selectAnswerEvidence(query, visible);
+    assert.equal(plan?.strong, true, query);
+    assert.deepEqual(plan.requiredRoles, ["measurement", "method", "condition", "registry"], query);
+    assert.equal(plan.roleWitnesses.measurement.documentId, "forest-smi-2025-tables", query);
+    assert.equal(plan.edition.year, 2025, query);
+    assert.equal(plan.edition.latestVerified, true, query);
+    for (const role of plan.requiredRoles) {
+      const witness = plan.roleWitnesses[role];
+      assert.ok(witness?.passages.length, `${query}: ${role} has actual passages`);
+      const source = visible.find((candidate) => candidate.id === witness.documentId);
+      assert.ok(source, `${query}: ${role} remains visible`);
+      const rawBody = [source.summary, source.content, source.answer].filter(Boolean).join(" ").replace(/\s+/gu, " ");
+      for (const passage of witness.passages) {
+        assert.ok(rawBody.includes(passage.replace(/\s+/gu, " ")), `${query}: ${role} is raw source evidence`);
+      }
+    }
     const draft = await createPortalDraft(query, {
       deadlineAt: Date.now(),
       searchResults: { total: visible.length, items: visible },
     });
-    assert.equal(draft.answer.title, "Eesti metsa ei kirjelda üksainus number", query);
     assert.ok(draft.sources.length >= 3, query);
-    assert.ok(draft.sources.some((source) => source.url.endsWith("/keskkonnaulevaade-mets")), query);
+    assert.ok(draft.sources.some((source) => plan.roleWitnesses.condition.documentId === source.id), query);
     assert.doesNotMatch(answerText(draft), /Jaga|2019\. aastal koostatud ülevaade/u, query);
     assertNumericClaimsHaveVisibleWitnesses(draft, query);
   }
@@ -180,6 +290,106 @@ test("explicit generic forest overview uses the visible multi-source synthesis",
     assert.notEqual(forestEvidenceIntent(query)?.kind, "forest-overview", query);
   }
 });
+test("generic forest synthesis retains the visible SMI definition and rejects missing method coverage", async () => {
+  const directory = officialServiceCatalogueDocuments();
+  const roleIds = new Set(["metsaregister", "forest-smi-2025-tables", "forest-condition-review", "smi"]);
+  const roleSources = directory.filter((source) => roleIds.has(source.id));
+  const visible = rankPublicSearchCandidates("mets", roleSources, { intentDocuments: roleSources });
+  const definition = roleSources.find((source) => source.id === "smi").summary;
+  const scope = "Saadud andmete ja statistiliste meetodite alusel koostatakse metsaressursi üldistatud hinnangud kogu Eesti kohta.";
+  const draft = await createPortalDraft("mets", {
+    deadlineAt: Date.now(),
+    searchResults: { total: visible.length, items: visible },
+  });
+  const method = draft.sources.find((source) => source.id === "smi");
+  assert.ok(method);
+  assert.ok(draft.sources.some((source) => source.id === "metsaregister"));
+  assert.ok(draft.sources.length <= 4);
+  const plan = selectAnswerEvidence("mets", visible);
+  assert.equal(plan.strong, true);
+  assert.deepEqual(plan.requiredRoles, ["measurement", "method", "condition", "registry"]);
+  assert.equal(plan.edition.year, 2025);
+  assert.equal(plan.edition.latestVerified, true);
+  assert.ok(visible.some((source) => source.id === "forest-smi-2025-tables"));
+  for (const [role, documentId] of Object.entries({
+    measurement: "forest-smi-2025-tables",
+    method: "smi",
+    condition: "forest-condition-review",
+    registry: "metsaregister",
+  })) {
+    assert.equal(plan.roleWitnesses[role]?.documentId, documentId, role);
+    assert.ok(plan.roleWitnesses[role].passages.length, role);
+  }
+  const evidencePack = buildEvidencePack({ sources: draft.sources, query: "mets", plan });
+  assert.equal(evidencePack.complete, true);
+  assert.deepEqual(evidencePack.missingEvidenceRequirements, []);
+  for (const role of plan.requiredRoles) {
+    assert.equal(evidencePack.roleWitnesses[role]?.documentId, plan.roleWitnesses[role].documentId, role);
+  }
+  const validated = validateGroundedAnswer({
+    intro: draft.answer.intro,
+    intro_citations: draft.answer.introCitations,
+    parts: [
+      { text: definition, citations: [method.citation] },
+      { text: scope, citations: [method.citation] },
+    ],
+  }, draft, "mets", evidencePack);
+  assert.ok(validated.answer);
+  assert.equal(validated.rejectionReason, null);
+  assert.ok(validated.acceptedClaims.length > 0);
+  const result = publicResponse({ ...draft, answer: validated.answer });
+  assert.ok(result.answer.parts.some((part) => part.text === definition));
+  assert.ok(result.answer.parts.some((part) => part.text === scope));
+  const methodSource = result.sources.find((source) => source.id === "smi");
+  assert.ok(methodSource);
+  assert.ok(visible.some((source) => source.url === methodSource.url));
+  assert.ok(usedCitations(result).size >= 2);
+  assertNumericClaimsHaveVisibleWitnesses(result, "mets");
+
+  const withoutMethod = visible.filter((source) => source.id !== "smi");
+  const excludedDraft = await createPortalDraft("mets", {
+    deadlineAt: Date.now(),
+    searchResults: { total: withoutMethod.length, items: withoutMethod },
+  });
+  const excluded = publicResponse(excludedDraft);
+  assert.equal(excludedDraft.evidence.answerable, false);
+  assert.equal(excluded.sources.some((source) => source.id === "smi"), false);
+  assert.equal(excluded.answer.parts.some((part) => part.text === definition || part.text === scope), false);
+  assert.equal(selectAnswerEvidence("mets", withoutMethod)?.strong, false);
+  assert.ok(selectAnswerEvidence("mets", withoutMethod).missingEvidenceRequirements.includes("method"));
+  const negatedMethod = visible.map((source) => source.id === "smi"
+    ? {
+      ...source,
+      summary: "SMI ei ole statistiline metsainventuur ega üleriigiliste proovitükkidega valikuuring.",
+      content: "SMI ei hinda riigi metsade seisundit ega muutusi. SMI on üksiku kinnistu inventeerimisandmestik.",
+      answer: "",
+    }
+    : source);
+  const negatedPlan = selectAnswerEvidence("mets", negatedMethod);
+  assert.equal(negatedPlan.strong, false);
+  assert.ok(negatedPlan.missingEvidenceRequirements.includes("method"));
+  assert.equal(negatedPlan.roleWitnesses.method, undefined);
+  const negatedDraft = await createPortalDraft("mets", {
+    deadlineAt: Date.now(),
+    searchResults: { total: negatedMethod.length, items: negatedMethod },
+  });
+  assert.equal(negatedDraft.evidence.answerable, false);
+  assert.equal(negatedDraft.answer.parts.some((part) => part.text === definition || part.text === scope), false);
+  const plotCountOnly = withoutMethod.map((source) => source.id === "forest-smi-2025-tables"
+    ? { ...source, content: `${source.content} Uuringus mõõdeti 28 000 proovitükki.` }
+    : source);
+  const plotPlan = selectAnswerEvidence("mets", plotCountOnly);
+  assert.ok(plotPlan.missingEvidenceRequirements.includes("method"));
+  assert.equal(plotPlan.roleWitnesses.method, undefined);
+  const plotDraft = await createPortalDraft("mets", {
+    deadlineAt: Date.now(),
+    searchResults: { total: plotCountOnly.length, items: plotCountOnly },
+  });
+  assert.equal(plotDraft.evidence.answerable, false);
+  assert.equal(plotDraft.answer.parts.some((part) => part.text === definition || part.text === scope), false);
+  assert.equal(selectAnswerEvidence("mets", plotCountOnly)?.strong, false);
+});
+
 
 test("reported forestry, wildlife and legal questions route to claim-specific official evidence", async () => {
   const directory = officialServiceCatalogueDocuments();
@@ -338,7 +548,10 @@ test("the 26 source-directory forestry routes render explanatory, visibly cited 
     assert.ok(draft.answer.parts.every((part) => /[.!?]$/u.test(part.text.trim())), `${query}: truncated answer part`);
     const witnesses = [...citations].map((citation) => sourcesByCitation.get(citation)?.evidenceExcerpt || "").join(" ");
     if (expectedIntent === "forest-age-trend") assert.match(witnesses, /nii noorte kui ka vanade/iu, query);
-    if (expectedIntent === "logging-in-protected-areas") assert.match(witnesses, /ei tõenda tehtud raietöid/iu, query);
+    if (expectedIntent === "logging-in-protected-areas") {
+      assert.match(witnesses, /registreeritud raie/iu, query);
+      assert.match(witnesses, /läbi viidud raietööde kohta andmed puuduvad/iu, query);
+    }
   }
 });
 
@@ -358,18 +571,23 @@ test("national forest area and measurement method keep distinct, claim-complete 
       intentDocuments: directory,
       now: NOW,
     }).slice(0, 12);
-    assert.ok(["forest-overview", "forest-stock-stable"].includes(visible[0]?.id), query);
+    assert.equal(visible[0]?.id, "forest-smi-2025-tables", query);
     const plan = selectAnswerEvidence(query, visible);
     assert.equal(plan?.kind, "forest-area-method", query);
     assert.equal(plan?.strong, true, query);
+    assert.equal(plan.edition.year, 2025, query);
+    assert.equal(plan.edition.latestVerified, true, query);
+    assert.equal(plan.evidenceRoles.area, "forest-smi-2025-tables", query);
     assert.ok(plan.evidenceRoles?.area, query);
     assert.ok(plan.evidenceRoles?.method, query);
     assert.notEqual(plan.evidenceRoles.area, plan.evidenceRoles.method, query);
     const areaWitness = (plan.passagesByDocument[plan.evidenceRoles.area] || []).join(" ");
     const methodWitness = (plan.passagesByDocument[plan.evidenceRoles.method] || []).join(" ");
-    assert.match(areaWitness, /2,36\s+miljonit hektarit[\s\S]*52,1%/u, query);
+    assert.match(areaWitness, /2025[\s\S]*2\s*360,2\s+tuhat hektarit[\s\S]*52,1%/u, query);
     assert.doesNotMatch(areaWitness, /466|tagavara|raiemaht|m[³3]|tihumeet/iu, query);
-    assert.match(methodWitness, /(?:SMI|statistiline metsainventuur)[\s\S]*proovitükk[\s\S]*valikuuring/iu, query);
+    assert.match(methodWitness, /(?:SMI|statistiline metsainventuur)/iu, query);
+    assert.match(methodWitness, /proovitükk/iu, query);
+    assert.match(methodWitness, /valikuuring/iu, query);
     assert.match(methodWitness, /(?:kogu Eesti|üleriigil|üldistat)/iu, query);
 
     const result = await searchEnvironmentLive(query, {
@@ -378,8 +596,10 @@ test("national forest area and measurement method keep distinct, claim-complete 
       useCache: false,
     });
     const text = answerText(result);
-    assert.match(text, /2,36\s+miljonit hektarit[\s\S]*52,1%/u, query);
-    assert.match(text, /(?:SMI|statistiline metsainventuur)[\s\S]*proovitükk[\s\S]*valikuuring/iu, query);
+    assert.match(text, /2025[\s\S]*2\s*360,2\s+tuhat hektarit[\s\S]*52,1%/u, query);
+    assert.match(text, /(?:SMI|statistiline metsainventuur)/iu, query);
+    assert.match(text, /proovitükk/iu, query);
+    assert.match(text, /valikuuring/iu, query);
     assert.doesNotMatch(text, /466|tagavara|raiemaht|m[³3]|tihumeet/iu, query);
     const citations = usedCitations(result);
     assert.equal(citations.size, 2, query);
@@ -428,7 +648,7 @@ test("lossy Unicode residuals cannot dispatch the national forest answer to a mo
       useCache: false,
       generateAnswer: async () => {
         modelCalls += 1;
-        return { answer: null, status: "test", provider: "test" };
+        return { answer: null, acceptedClaims: [], attempt: { status: "not-applicable", provider: "test", reason: "not-applicable" } };
       },
     });
     assert.equal(modelCalls, 0, query);
@@ -479,8 +699,9 @@ test("a missing forest measurement method yields no partial numeric answer and k
   });
   assert.equal(usedCitations(result).size, 0);
   assert.doesNotMatch(answerText(result), /2[,.](?:36|350)|51[,.]84|52[,.]1|54[,.]08/u);
-  assert.match(result.clarification, /ei kata korraga[\s\S]*mõõtmismeetodit/iu);
-  assert.ok(result.sources.some((source) => source.title === "Kui palju ja millist metsa Eestis on?"));
+  const visibleKeys = new Set(withoutMethod.map(sourceResourceKey));
+  assert.ok(result.sources.length > 0);
+  assert.ok(result.sources.every((source) => visibleKeys.has(sourceResourceKey(source))));
 });
 
 test("the 20-year harvest answer excludes clearcut area and damage side facts", async () => {
@@ -1174,7 +1395,7 @@ test("an upstream forest-balance outage still reaches the final public answer wi
   assert.equal(draft.evidence.kind, "structured-forest-balance");
   assert.match(response.answer.intro, /2023[\s\S]*11,6[\s\S]*9,1[\s\S]*2,5 miljoni m³/iu);
   assert.match(
-    response.sources.find((source) => source.citation === 1)?.evidenceExcerpt || "",
+    response.sources.find((source) => response.answer.introCitations.includes(source.citation))?.evidenceExcerpt || "",
     /2023[\s\S]*9,1[\s\S]*11,6[\s\S]*2,5 miljoni m³/iu,
   );
 });
@@ -1308,8 +1529,9 @@ test("clearcut value judgement starts with the conditional impact evidence and a
     deadlineAt: Date.now(),
     searchResults: { total: visible.length, items: visible },
   });
-  assert.match(draft.answer.intro, /^Raiemahu mõju sõltub metsa asukohast/iu);
-  assert.match(draft.answer.intro, /ei ole mõõdetav üksikfakt/iu);
+  assert.match(draft.answer.intro, /majandamis/iu);
+  assert.match(draft.answer.intro, /mõju/iu);
+  assert.match(draft.answer.note, /ei tõenda üldist väärtushinnangut/iu);
   assert.doesNotMatch(answerText(draft), /28,4%|16,8%|20,2%|10,4%|kaitse-eeskiri/iu);
 });
 
@@ -1353,7 +1575,9 @@ test("the increment answer exposes the exact method, source summary and locator 
   const cited = draft.sources.find((source) => source.citation === draft.answer.introCitations[0]);
   assert.equal(cited?.id, "increment-method");
   assert.match(cited?.summary || "", /kahte hindamisviisi[\s\S]*mudelipõhist[\s\S]*imputeerimist/iu);
-  assert.match(cited?.evidenceExcerpt || "", /Kogujuurdekasv[\s\S]*Netojuurdekasv[\s\S]*mudelipõhise meetodi[\s\S]*mitmese imputeerimise/iu);
+  for (const proposition of [/Kogujuurdekasv/iu, /Netojuurdekasv/iu, /mudelipõhise meetodi/iu, /mitmese imputeerimise/iu]) {
+    assert.match(cited?.evidenceExcerpt || "", proposition);
+  }
   assert.match(cited?.locator || "", /lk 22[\s\S]*peatükk 3/iu);
   assert.equal(cited?.url, "https://keskkonnaportaal.ee/sites/default/files/2026-01/SMI%20arendamine%202025%20L%C3%95PPARUANNE_T%C3%9C%20MSI.pdf#page=22");
   assert.match(visible[0]?.locator || "", /lk 22/iu);

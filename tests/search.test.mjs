@@ -21,7 +21,8 @@ import {
   isCurrentWeatherObservationQuery,
   isLatestPublishedHydrologyQuery,
 } from "../server/indicators.mjs";
-import { canonicalResultUrl, prepareRankedSearchResults, rankSearchCandidates } from "../server/retrieval.mjs";
+import { prepareRankedSearchResults, rankSearchCandidates } from "../server/retrieval.mjs";
+import { sourceResourceKey } from "../server/source-identity.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
 
 test("normalize handles Estonian diacritics", () => {
@@ -769,10 +770,10 @@ test("researched official source expansion covers twenty-five previously missing
 
   assert.ok(documents.length >= 144, `expected at least 144 reviewed sources, got ${documents.length}`);
   const addedIds = new Set(cases.map(([, id]) => id));
-  const addedUrls = cases.map(([, id]) => canonicalResultUrl(byId.get(id)?.url));
+  const addedUrls = cases.map(([, id]) => sourceResourceKey(byId.get(id)?.url));
   const baselineUrls = new Set(documents
     .filter((document) => !addedIds.has(document.id))
-    .map((document) => canonicalResultUrl(document.url)));
+    .map((document) => sourceResourceKey(document.url)));
   assert.equal(new Set(addedUrls).size, cases.length, "new source URLs are pairwise unique");
   for (const url of addedUrls) {
     assert.equal(baselineUrls.has(url), false, `${url} is new to the baseline catalogue`);

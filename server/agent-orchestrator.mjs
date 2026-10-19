@@ -1,7 +1,11 @@
 import { Agent, OpenAIProvider, RunContext, Runner, tool } from "@openai/agents";
 import OpenAI from "openai";
 import { z } from "zod";
-import { LLM_GATEWAY_MODEL, validateLlmProviderUrl } from "./provider-policy.mjs";
+import {
+  LLM_GATEWAY_MODEL,
+  resolveLlmReasoningEffort,
+  validateLlmProviderUrl,
+} from "./provider-policy.mjs";
 import {
   AGENT_MANAGER_MAX_TURNS,
   AGENT_SPECIALIST_MAX_TOKENS,
@@ -26,14 +30,7 @@ export const GROUNDED_AGENT_OUTPUT = z.object({
     text: z.string().min(1).max(1_200),
     citations: citationList,
   }).strict()).max(5),
-  related_questions: z.array(z.string().min(1).max(180)).max(6),
 }).strict();
-
-function boundedReasoningEffort(value = "low") {
-  return ["none", "minimal", "low", "medium", "high", "xhigh"].includes(value)
-    ? value
-    : "low";
-}
 
 export function createGroundedSearchAgents({
   model = LLM_GATEWAY_MODEL,
@@ -43,7 +40,7 @@ export function createGroundedSearchAgents({
   runner,
   reviewInput = "",
 } = {}) {
-  const effort = boundedReasoningEffort(reasoningEffort);
+  const effort = resolveLlmReasoningEffort(reasoningEffort);
   const specialistSettings = {
     reasoning: { effort },
     text: { verbosity: "low" },
@@ -376,10 +373,9 @@ export async function runAgentWithUsage({
         runContext = createRunContext();
       }
     }
-    // Whatever survives the attempt budget must persist as the same
-    // generation failure: downstream (generateGroundedAnswer) records it in
-    // the run row and serves the deterministic evidence draft instead of
-    // stopping or leaking a schema-shaped provider error to the user.
+    // Preserve the failure category for downstream bounded attempt metadata.
+    // The caller serves the deterministic draft without persisting or exposing
+    // the provider's raw error message.
     if (lastError?.name === "ModelBehaviorError") {
       throw new EmptyGenerationError();
     }

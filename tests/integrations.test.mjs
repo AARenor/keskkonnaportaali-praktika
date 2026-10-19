@@ -28,6 +28,7 @@ import {
 } from "../server/terrapoint.mjs";
 import { createByteBoundedLruCache } from "../server/upstream.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
+import { sameSourceResource } from "../server/source-identity.mjs";
 
 function vportalDocument(overrides = {}) {
   return {
@@ -1098,4 +1099,51 @@ test("hydrated article text restores spacing between adjacent styled sentences",
     <main><article><p><span>Esimene lause.</span><strong>Teine lause!</strong><span>„Kolmas lause.”</span></p></article></main>
   `);
   assert.equal(text, "Esimene lause. Teine lause! „Kolmas lause.”");
+});
+
+test("resource aliases never widen hydration redirect binding or cached payload reuse", async () => {
+  const nonce = Date.now();
+  const cases = [
+    [`https://keskkonnaportaal.ee/et/identity-${nonce}`, `https://keskkonnaportaal.ee/identity-${nonce}`],
+    [`https://keskkonnaagentuur.ee/identity-${nonce}?b=2&a=1`, `https://keskkonnaagentuur.ee/identity-${nonce}?a=1&b=2`],
+    [`https://keskkonnaagentuur.ee/tracking-${nonce}?utm_source=original`, `https://keskkonnaagentuur.ee/tracking-${nonce}`],
+  ];
+  for (const [original, alias] of cases) {
+    assert.equal(sameSourceResource(original, alias), true);
+    assert.equal(hydrationResourceMatches(original, alias), false);
+    const source = {
+      id: "approved-page", url: original, title: "Kontrollitud lehekülg",
+      sourceTier: "official", retrieval: "catalogue-directory",
+      evidencePolicy: "claim-specific", _answerEvidenceEligible: true,
+    };
+    let calls = 0;
+    const body = (text) => `<main><p>${text.repeat(15)}</p></main>`;
+    const [cachedOriginal] = await hydrateOfficialDocuments([source], 1, {
+      requestText: async (url) => {
+        calls += 1;
+        assert.equal(url, original);
+        return { status: 200, url, body: body("Original target source body. ") };
+      },
+    });
+    assert.match(cachedOriginal.content, /Original target source body/u);
+    const [rejectedAlias] = await hydrateOfficialDocuments([{ ...source, url: alias }], 1, {
+      requestText: async (url) => {
+        calls += 1;
+        assert.equal(url, alias);
+        return { status: 200, url: original, body: body("Wrong alias source body. ") };
+      },
+    });
+    assert.equal(rejectedAlias._pageHydrated, undefined);
+    assert.equal(rejectedAlias.content, undefined);
+    const [acceptedAlias] = await hydrateOfficialDocuments([{ ...source, url: alias }], 1, {
+      requestText: async (url) => {
+        calls += 1;
+        return { status: 200, url, body: body("Independently approved alias body. ") };
+      },
+    });
+    assert.equal(calls, 3);
+    assert.match(acceptedAlias.content, /Independently approved alias body/u);
+    assert.doesNotMatch(acceptedAlias.content, /Original target|Wrong alias/u);
+    assert.equal(acceptedAlias.url, alias);
+  }
 });

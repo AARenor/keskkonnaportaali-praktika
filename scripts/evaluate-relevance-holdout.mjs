@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { canonicalResultUrl, rankSearchCandidates } from "../server/retrieval.mjs";
-import { officialServiceCatalogueDocuments } from "../server/search.mjs";
+import { rankSearchCandidates } from "../server/retrieval.mjs";
+import { sourceResourceKey } from "../server/source-identity.mjs";
+import { officialServiceCatalogueDocuments, officialSourceSelectionExclusions } from "../server/search.mjs";
 import { requestBoundedAuditJson } from "./audit-http.mjs";
 
 const options = Object.fromEntries(process.argv.slice(2).map((argument) => {
@@ -14,12 +15,13 @@ if (!/^[a-z0-9_-]+\.json$/u.test(datasetFile)) {
 }
 const datasetText = await readFile(new URL(`../evaluation/${datasetFile}`, import.meta.url), "utf8");
 const dataset = JSON.parse(datasetText);
-const now = Date.parse("2026-08-18T00:00:00Z");
+const now = Date.parse(dataset.referenceAt || "2026-08-18T00:00:00Z");
 const documents = officialServiceCatalogueDocuments();
 const documentById = new Map(documents.map((document) => [document.id, document]));
+const exclusionsById = new Map(officialSourceSelectionExclusions().map((source) => [source.id, source]));
 const unknownSourceIds = dataset.cases
   .map((item) => item.topSource)
-  .filter((id) => !documentById.has(id));
+  .filter((id) => !documentById.has(id) && !exclusionsById.has(id));
 if (unknownSourceIds.length) {
   throw new Error(`Evaluation dataset references unknown source IDs: ${[...new Set(unknownSourceIds)].join(", ")}`);
 }
@@ -41,6 +43,14 @@ function rankFor(item) {
     expected: item.topSource,
     actual: ranked[0]?.id || null,
     rank: index < 0 ? null : index + 1,
+    ...(exclusionsById.has(item.topSource) ? {
+      reason: "excluded-publisher",
+      excludedExpectedSource: exclusionsById.get(item.topSource),
+    } : {}),
+    ...(item.sourcePeriod ? {
+      sourcePeriod: item.sourcePeriod,
+      periodMatches: Object.entries(item.sourcePeriod).every(([key, value]) => ranked[index]?.[key] === value),
+    } : {}),
   };
 }
 
@@ -52,7 +62,7 @@ const ndcgAt5 = cases.reduce((sum, item) => (
   sum + (item.rank && item.rank <= 5 ? 1 / Math.log2(item.rank + 1) : 0)
 ), 0) / total;
 const recallAt5 = cases.filter((item) => item.rank && item.rank <= 5).length / total;
-const failures = cases.filter((item) => item.rank !== 1);
+const failures = cases.filter((item) => item.rank !== 1 || item.periodMatches === false);
 const metrics = (items) => ({
   precisionAt1: round(items.filter((item) => item.rank === 1).length / items.length),
   mrr: round(items.reduce((sum, item) => sum + (item.rank ? 1 / item.rank : 0), 0) / items.length),
@@ -91,16 +101,16 @@ if (baseUrl) {
       error = cause.name;
     }
     const ranked = body?.searchResults?.items || [];
-    const expectedUrl = canonicalResultUrl(documentById.get(item.topSource)?.url || "");
+    const expectedUrl = sourceResourceKey((documentById.get(item.topSource) || exclusionsById.get(item.topSource))?.url || "");
     // Live discovery may merge the same canonical page under an upstream ID.
     // Qrels describe the source page, not an implementation-specific ID.
-    const index = ranked.findIndex((source) => canonicalResultUrl(source.url) === expectedUrl);
+    const index = ranked.findIndex((source) => sourceResourceKey(source.url) === expectedUrl);
     liveCases.push({
       id: item.id,
       expected: item.topSource,
       expectedUrl,
       actual: ranked[0]?.id || body?.sources?.[0]?.id || null,
-      actualUrl: canonicalResultUrl(ranked[0]?.url || body?.sources?.[0]?.url || ""),
+      actualUrl: sourceResourceKey(ranked[0]?.url || body?.sources?.[0]?.url || ""),
       rank: index < 0 ? null : index + 1,
       status: response?.status || null,
       durationMs: Date.now() - startedAt,
@@ -130,6 +140,7 @@ const result = {
   ndcgAt5: round(ndcgAt5),
   recallAt5: round(recallAt5),
   gates: dataset.gates,
+  caseResults: cases,
   failures,
   live,
 };
@@ -140,6 +151,7 @@ const missesGate = (values) => Object.entries(dataset.gates).some(([name, minimu
   Number.isFinite(Number(minimum)) && Number(values[name]) < Number(minimum)
 ));
 if (missesGate({ precisionAt1, mrr, ndcgAt5, recallAt5 })
+  || cases.some((item) => item.periodMatches === false)
   || (live && (missesGate(live) || live.failures.length))) {
   process.exitCode = 1;
 }

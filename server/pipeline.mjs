@@ -11,7 +11,10 @@ import { composeClimateDailyMeanResponse } from "./climate.mjs";
 import {
   hydrateOfficialDocuments,
 } from "./integrations.mjs";
-import { generateGroundedAnswer, sanitizeLlmEvidenceText } from "./llm.mjs";
+import { assertAnswerAddressesQuery, claimTokens, generateGroundedAnswer, safeSemanticInference, tokensShareStem } from "./llm.mjs";
+import { buildEvidencePack } from "./evidence-pack.mjs";
+import { deliveredOutcome } from "./delivered-outcome.mjs";
+import { publicSourceWitnessKey, sameSourceResource, sourceEvidenceBinding, sourceIsLinkedToVisibleService, sourceResourceKey, sourceWitnessKey } from "./source-identity.mjs";
 import { composeEelisEmajogiPublicWatercourseResponse, composeEelisNaturaSiteResponse } from "./eelis.mjs";
 import {
   composeStatisticsHazardousWasteResponse,
@@ -28,14 +31,15 @@ import {
   composeNationalWeatherForecastResponse,
 } from "./indicators.mjs";
 import {
-  canonicalResultUrl,
   evidenceDocumentsFromListing,
+  currentListingEvidencePlan,
   isContextAnchoredFollowUp,
   isSafeEllipticalFollowUp,
   prepareRankedSearchResults,
-  rankSearchCandidates,
+  rankPublicSearchCandidates,
   resultMatchesFilters,
   selectAnswerEvidence,
+  selectSmiDefinitionEvidence,
   stablePublicResultId,
 } from "./retrieval.mjs";
 import {
@@ -51,9 +55,11 @@ import {
   directPortalReportSource,
   forestryIntentServiceDocumentIds,
   rankedSetCoversSubject,
+  forestEvidenceIntent,
   hasCompleteSentenceEnding,
   normalize,
   queryTerms,
+  sanitizeLlmEvidenceText,
   splitTextPassages,
   textHasQueryRoot,
 } from "./search.mjs";
@@ -62,7 +68,9 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v69-portal-source-expansion";
+// Increment whenever the public response/citation contract changes so rows
+// written under an older policy cannot be served without regeneration.
+export const SEARCH_RESPONSE_REVISION = "answer-v70-source-pack-portal-expansion";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
@@ -89,61 +97,20 @@ function conventionalEvidenceDocumentsFromListing(listing) {
   return evidenceDocumentsFromListing(conventionalListing);
 }
 
-function rankPortalDocuments(query, documents) {
-  const ranked = rankSearchCandidates(query, documents).map((document) => ({
+function rankPortalDocuments(query, documents, options = {}) {
+  return rankPublicSearchCandidates(query, documents, { ...options, intentDocuments: documents }).map((document) => ({
     ...document,
-    score: document._ranking.score,
+    score: document._ranking?.score || 0,
   }));
-  // The public search ranker has already admitted these official documents
-  // for the resolved forestry intent. A second lexical pass must not discard
-  // a complementary methodology source merely because it uses different
-  // words from the user's misconception (for example “valimi suurus” rather
-  // than “kümme korda rohkem vaatlusi”).
-  const requiredIds = forestryIntentServiceDocumentIds(query);
-  const documentsById = new Map((documents || []).map((document) => [document.id, document]));
-  const required = requiredIds.map((id) => documentsById.get(id)).filter(Boolean);
-  const seenCandidates = new Set();
-  const candidates = [...ranked, ...required].filter((document) => {
-    if (!document?.id || seenCandidates.has(document.id)) return false;
-    seenCandidates.add(document.id);
-    return true;
-  });
-  const plannedEvidence = selectAnswerEvidence(query, candidates);
-  if (!plannedEvidence?.strong) return ranked;
-  const directIndex = candidates.findIndex((document) => document.id === plannedEvidence.directDocumentId);
-  const withDirectFirst = directIndex > 0
-    ? [candidates[directIndex], ...candidates.slice(0, directIndex), ...candidates.slice(directIndex + 1)]
-    : candidates;
-  if (!required.length) return withDirectFirst;
-  // The displayed list and the answer use the same ranked candidate set. A
-  // verified passage may lead that set, and the complementary official
-  // SMI/Metsaregister documents stay visible in the same evidence set. No
-  // separately fetched source can enter the answer here.
-  const seen = new Set();
-  return [withDirectFirst[0], ...required, ...withDirectFirst].filter((document) => {
-    if (!document?.id || seen.has(document.id)) return false;
-    seen.add(document.id);
-    return true;
-  });
 }
 
-function canonicalHydrationKey(document = {}) {
-  const canonical = canonicalResultUrl(document.url);
-  try {
-    const url = new URL(canonical);
-    if (url.protocol !== "https:" || !url.hostname || url.username || url.password) return "";
-    return url.toString();
-  } catch {
-    return "";
-  }
-}
 
 export function reassociateHydratedDocuments(candidates = [], hydratedDocuments = []) {
   const hydratedByUrl = new Map(hydratedDocuments
-    .map((document) => [canonicalHydrationKey(document), document])
+    .map((document) => [sourceWitnessKey(document), document])
     .filter(([key]) => key));
   return candidates.map((document) => {
-    const key = canonicalHydrationKey(document);
+    const key = sourceWitnessKey(document);
     return (key && hydratedByUrl.get(key)) || document;
   });
 }
@@ -282,6 +249,8 @@ export function directEvidenceExtract(query, document, plannedEvidence = null) {
       ? value.replace(/,\s*millel\s+kasv\w*[\s\S]*$/iu, ".")
       : value)
     .map((value) => value.replace(/\s+/gu, " ").trim())
+    .map((value) => plannedEvidence?.kind === "forest-area" && !hasCompleteSentenceEnding(value)
+      ? `${value}.` : value)
     .filter((value) => value.length >= 20 && hasCompleteSentenceEnding(value))
     .reduce((extract, passage) => {
       const joined = [extract, passage].filter(Boolean).join(" ");
@@ -310,73 +279,6 @@ export function directEvidenceExtract(query, document, plannedEvidence = null) {
     .sort((left, right) => right.score - left.score)[0]?.passage?.slice(0, 520) || "";
 }
 
-function forestrySourcePassages(source = {}) {
-  return [source.summary, source.answer, source.content]
-    .filter(Boolean)
-    .flatMap((value) => splitTextPassages(sanitizeLlmEvidenceText(value)))
-    .map(normalize)
-    .filter(Boolean);
-}
-
-function hasForestryComparisonRole(source) {
-  const passages = forestrySourcePassages(source);
-  const explicitlyExcludesDataSource = (passage) => {
-    const hasData = /\b(?:metsa|metsandus|metsainventeerimis)andm\w*/u.test(passage);
-    const hasNamedSource = /\b(?:smi|statistilise\s+metsainvent|metsaregis\w*)/u.test(passage);
-    const excludesMembership = /\b(?:ei\s+kuulu|pole\s+osa|ei\s+ole\s+(?:osa|allik\w*)|pole\s+(?:osa|allik\w*))/u.test(passage);
-    return hasData && hasNamedSource && excludesMembership;
-  };
-  const deniesPositiveMembership = (passage) => /\b(?:ei\s+(?:utle|kinnita|naita)|ei\s+tahenda)\b[\s\S]{0,180}\b(?:smi|statistilise\s+metsainvent|metsaregis\w*)\b[\s\S]{0,180}\b(?:kuulub|on\s+neist|on\s+(?:uks|üks))/u.test(passage)
-    || /\b(?:uksnes|ainult)\s+loetleb\b[\s\S]{0,180}\bmarks[oõ]n\w*/u.test(passage);
-  if (passages.some(explicitlyExcludesDataSource) || passages.some(deniesPositiveMembership)) return false;
-  return passages.some((passage) => {
-    const hasData = /\b(?:metsa|metsandus|metsainventeerimis)andm\w*/u.test(passage);
-    const hasSmi = /\b(?:smi|statistilise\s+metsainvent)/u.test(passage);
-    const hasRegistry = /\bmetsaregis\w*/u.test(passage);
-    const hasUmbrellaOrMultipleSources = /\b(?:katusmoist\w*|mitmel\s+viisil|eri(?:nevate)?\s+andmeallik\w*)/u.test(passage);
-    const saysSmiIsOneOfThem = /\b(?:smi|statistilise\s+metsainvent)\w*\s+on\s+neist\s+(?:uks|üks)/u.test(passage)
-      || /\b(?:smi|statistilise\s+metsainvent)\w*\s+on\s+(?:uks\s+)?(?:metsa|metsandus|metsainventeerimis)andm\w*\s+(?:allik\w*|osa\w*)/u.test(passage)
-      || /\b(?:smi|statistilise\s+metsainvent)\w*\s+kuulub\s+(?:metsa|metsandus|metsainventeerimis)andm\w*(?:\s+hulka)?/u.test(passage)
-      || /\b(?:metsa|metsandus|metsainventeerimis)andm\w*\s+hulka\s+kuulub\s+(?:smi|statistilise\s+metsainvent)/u.test(passage);
-    const saysSmiAndRegistryAreDistinctSources = hasRegistry && (
-      /\b(?:smi|statistilise\s+metsainvent)\w*[\s\S]{0,180}\bmetsaregis\w*[\s\S]{0,100}\b(?:eri|erinevad|erinevate)\s+(?:ametlik(?:ud|e)?\s+)?(?:andme)?allik\w*/u.test(passage)
-      || /\bmetsaregis\w*[\s\S]{0,180}\b(?:smi|statistilise\s+metsainvent)\w*[\s\S]{0,100}\b(?:eri|erinevad|erinevate)\s+(?:ametlik(?:ud|e)?\s+)?(?:andme)?allik\w*/u.test(passage)
-    );
-    return hasData && hasSmi && hasUmbrellaOrMultipleSources && !explicitlyExcludesDataSource(passage)
-      && (saysSmiIsOneOfThem || saysSmiAndRegistryAreDistinctSources);
-  });
-}
-
-function hasSmiNationalRole(source) {
-  const passages = forestrySourcePassages(source);
-  const smiName = "(?:smi|statistilise\\s+metsainvent)";
-  const hasMethod = passages.some((passage) => new RegExp(`\\b${smiName}\\w*\\s+on\\b[\\s\\S]{0,140}\\bvalikuuring\\w*`, "u").test(passage)
-    && /\bproovitukk\w*/u.test(passage)
-    && /\buleriigil\w*/u.test(passage)
-    && /\bstatistilis\w*/u.test(passage)
-    && !new RegExp(`\\b${smiName}\\w*\\s+(?:ei\\s+ole|pole)\\b[\\s\\S]{0,140}\\b(?:valikuuring|proovitukk|uleriigil|statistilis)`, "u").test(passage));
-  const hasNationalStateChangeAndParcelLimit = passages.some((passage) => new RegExp(`\\b${smiName}\\w*\\s+(?:sobib|annab|kirjeldab|hindab)\\b`, "u").test(passage)
-    && /\b(?:eesti\w*|riigi\s+mets\w*|kogu\s+eesti)/u.test(passage)
-    && /\bseisundi\w*/u.test(passage)
-    && /\bmuutus\w*/u.test(passage)
-    && /\bmitte\s+(?:uksiku\s+)?kinnistu\w*/u.test(passage)
-    && /\binventeerimis\w*/u.test(passage)
-    && !new RegExp(`\\b${smiName}\\w*\\s+(?:ei\\s+sobi|pole\\s+sobiv|ei\\s+anna|ei\\s+kirjelda|ei\\s+hinda)\\b`, "u").test(passage));
-  return hasMethod && hasNationalStateChangeAndParcelLimit;
-}
-
-function hasForestRegisterRole(source) {
-  const passages = forestrySourcePassages(source);
-  const registrySubject = "(?:metsaregis\\w*|registri\\s+andmestik)";
-  const affirmativeRegistryPredicate = (passage) => new RegExp(`\\b${registrySubject}\\b[\\s\\S]{0,160}\\b(?:sisaldab|koondab|kuuluvad|sobib)\\b`, "u").test(passage)
-    && !new RegExp(`\\b${registrySubject}\\b[\\s\\S]{0,160}\\b(?:ei\\s+sisalda|pole\\s+(?:osa|allik))\\b`, "u").test(passage);
-  return passages.some((passage) => affirmativeRegistryPredicate(passage)
-    && /\binventeerimis\w*/u.test(passage)
-    && /\bmetsateatis\w*/u.test(passage))
-    && passages.some((passage) => affirmativeRegistryPredicate(passage)
-      && /\bkinnistu\w*/u.test(passage)
-      && /\b(?:metsaeraldis\w*|eraldis\w*)/u.test(passage));
-}
 
 function sourceCitation(source) {
   const citation = Number(source?.citation);
@@ -409,32 +311,26 @@ function forestAreaMeasurementPassage(source) {
 }
 
 function stableForestStockPassage(source) {
-  return safeSourcePassages(source).find((passage) => {
+  const passages = safeSourcePassages(source);
+  const stable = passages.find((passage) => {
+    const text = normalize(passage);
+    return /\b(?:kasvava\s+metsa\s+tagavara|metsa\s+(?:kogu)?tagavara|metsatagavara|metsavaru)\w*/u.test(text)
+      && /\b(?:stabiil\w*|pusi\w*|muutumat\w*)/u.test(text)
+      && !/\bei\s+(?:ole|pusi)\s+stabiil\w*/u.test(text);
+  });
+  if (!stable) return "";
+  const measured = passages.find((passage) => {
     const text = normalize(passage);
     const measuredText = passage.normalize("NFKC").toLocaleLowerCase("et");
     const hasYear = /\b(?:19|20)\d{2}\b/u.test(text);
-    const hasStock = /\b(?:kasvava\s+metsa\s+tagavara|metsa\s+tagavara|metsavaru)\w*/u.test(text);
-    const hasStableDirection = /\b(?:stabiil\w*|pusi\w*|muutumat\w*)/u.test(text);
+    const hasStock = /\b(?:kasvava\s+metsa\s+tagavara|metsa\s+(?:kogu)?tagavara|metsatagavara|metsavaru)\w*/u.test(text)
+      || (/\bmetsamaa\s+pindala\b/u.test(text) && /\bkasvas\b[\s\S]{0,80}\bpuitu\b/u.test(text));
     const hasMeasuredVolume = /\b\d+(?:[.,]\d+)?\s*(?:miljon\w*\s+)?(?:tm\b|tihumeet\w*|m[³3]\b|kuupmeet\w*)/u.test(measuredText);
-    return hasYear && hasStock && hasStableDirection && hasMeasuredVolume;
-  }) || "";
+    return hasYear && hasStock && hasMeasuredVolume;
+  });
+  return measured ? (measured === stable ? measured : `${measured} ${stable}`) : "";
 }
 
-function forestConditionPassage(source) {
-  return safeSourcePassages(source).find((passage) => {
-    const text = normalize(passage);
-    const dimensions = [
-      /\bpindala\w*/u,
-      /\btagavara\w*/u,
-      /\bvanus\w*|vanuselis\w*/u,
-      /\bkahjust\w*/u,
-      /\belurikk\w*/u,
-      /\bkaits\w*/u,
-      /\bkliima\w*|risk\w*/u,
-    ].filter((pattern) => pattern.test(text)).length;
-    return /\bmets\w*/u.test(text) && dimensions >= 3;
-  }) || "";
-}
 
 // This is a constrained degraded-mode answer, not a hidden knowledge-base
 // answer. It is composed only when the visible official result set contains a
@@ -443,14 +339,11 @@ function forestConditionPassage(source) {
 function composeForestDataSourcesFallback(query, plannedEvidence, sources = [], previousAnswer = {}) {
   if (plannedEvidence?.kind !== "forest-data-sources" || !plannedEvidence?.strong) return null;
   const visibleOfficial = sources.filter((source) => source?.sourceTier === "official" && sourceCitation(source));
-  const comparison = visibleOfficial.find((source) => source.id === plannedEvidence.directDocumentId
-    && hasForestryComparisonRole(source));
-  if (!comparison) return null;
-  const smiMethod = visibleOfficial.find((source) => source.id !== comparison.id && hasSmiNationalRole(source));
-  const registry = visibleOfficial.find((source) => source.id !== comparison.id
-    && source.id !== smiMethod?.id
-    && hasForestRegisterRole(source));
-  if (!smiMethod || !registry) return null;
+  const roles = plannedEvidence.evidenceRoles;
+  const comparison = visibleOfficial.find((source) => source.id === roles?.comparison);
+  const smiMethod = visibleOfficial.find((source) => source.id === roles?.method);
+  const registry = visibleOfficial.find((source) => source.id === roles?.registry);
+  if (!comparison || !smiMethod || !registry) return null;
 
   const comparisonCitations = uniqueCitations([comparison]);
   const smiCitations = uniqueCitations([smiMethod]);
@@ -463,22 +356,22 @@ function composeForestDataSourcesFallback(query, plannedEvidence, sources = [], 
   return {
     eyebrow: "Allikapõhine kokkuvõte",
     title: String(previousAnswer.title || query).trim().slice(0, 180),
-    intro: "Metsaandmed on mitmel viisil kogutavate metsandusandmete katusmõiste; SMI ei ole metsaandmete sünonüüm. SMI on üleriigiliste proovitükkidega valikuuring, mille põhjal koostatakse statistiliste meetoditega kogu Eesti metsade üldistatud hinnang. SMI sobib riigi metsade seisundi ja muutuste hindamiseks, mitte üksiku kinnistu inventeerimisandmete esitamiseks. Metsaregister sisaldab kinnistute metsainventeerimise andmeid ning lisaks metsateatiste, metsakaitseekspertiiside ja metsauuendusekspertiiside andmeid. Registri andmestik sobib kinnistu- ja metsaeraldisepõhiste andmete vaatamiseks. Nende arvud ei pea kattuma, sest allikatel on erinev eesmärk, katvus ja ajaseis; enne võrdlemist tuleb ühtlustada definitsioon, andmeaasta ja üldkogum.",
+    intro: "Metsandusandmeid kogutakse mitmel viisil. Statistiline metsainventuur (SMI) on valikuuring, mille raames mõõdetakse üleriigiliselt proovitükke. Saadud andmete ja statistiliste meetodite alusel koostatakse metsaressursi üldistatud hinnangud kogu Eesti kohta. Riigi ja teiste metsomanike poolt tellitud kinnistute metsainventeerimiseandmed on registreeritud metsaressursi arvestuse riiklikus registris (Metsaregister). Metsaregistrisse koondatakse lisaks andmed metsateatiste, metsakaitseekspertiiside ja metsauuendusekspertiiside kohta.",
     introCitations,
     parts: [
       {
         title: "Metsaandmed",
-        text: "Metsaandmed on mitmel viisil kogutavate andmete katusmõiste: SMI ja kinnistute inventeerimisandmeid koondav Metsaregister on eri ametlikud allikad.",
+        text: "Eestis kogutakse metsandusandmeid mitmel viisil, tagamaks andmete täpsus, ajas võrreldavus, kvaliteet ja usaldusväärsus.",
         citations: comparisonCitations,
       },
       {
         title: "SMI roll",
-        text: "SMI on üleriigiliste proovitükkidega valikuuring, mille põhjal koostatakse statistiliste meetoditega kogu Eesti metsade üldistatud hinnang.",
+        text: "Statistiline metsainventuur (SMI) on valikuuring, mille raames mõõdetakse üleriigiliselt proovitükke. Saadud andmete ja statistiliste meetodite alusel koostatakse metsaressursi üldistatud hinnangud kogu Eesti kohta.",
         citations: smiCitations,
       },
       {
         title: "Metsaregistri roll",
-        text: "Metsaregister sisaldab kinnistute metsainventeerimise andmeid ning lisaks metsateatiste, metsakaitseekspertiiside ja metsauuendusekspertiiside andmeid. Registri andmestik sobib kinnistu- ja metsaeraldisepõhiste andmete vaatamiseks.",
+        text: "Riigi ja teiste metsomanike poolt tellitud kinnistute metsainventeerimiseandmed on registreeritud metsaressursi arvestuse riiklikus registris (Metsaregister). Register sisaldab metsainventeerimise, metsateatiste, metsauuenduse, metsakaitseekspertiiside ja välitööde andmeid.",
         citations: registryCitations,
       },
     ],
@@ -501,17 +394,15 @@ function composeForestDepletionFallback(query, plannedEvidence, sources = [], pr
 
   const areaPassage = forestAreaMeasurementPassage(area);
   const stockPassage = stableForestStockPassage(status);
-  const contextPassage = forestConditionPassage(context);
+  const contextPassage = (plannedEvidence.passagesByDocument?.[context.id] || []).join(" ");
   if (!areaPassage || !stockPassage || !contextPassage) return null;
-  const measurementPassages = [areaPassage, stockPassage].filter((passage, index, passages) => (
-    passages.findIndex((candidate) => normalize(candidate) === normalize(passage)) === index
-  ));
+  const measurementPassages = distinctPassages([areaPassage, stockPassage].flatMap(splitTextPassages));
   const measurementText = measurementPassages.join(" ");
   const contextCitations = uniqueCitations([context]);
   return {
     eyebrow: "Allikapõhine kokkuvõte",
     title: String(previousAnswer.title || query).trim().slice(0, 180),
-    intro: `Leitud ametlikud näitajad ei viita sellele, et Eesti mets oleks otsa saamas. ${measurementText} Need mõõtmised kirjeldavad konkreetset andmeaastat, mitte kindlat tulevikuprognoosi. Metsa ökoloogilist seisundit tuleb hinnata eraldi kahjustuste, elurikkuse, kaitse ja kliimariskide kõrval.`,
+    intro: `Praegused ametlikud näitajad ei viita sellele, et Eesti mets oleks otsa saamas. ${measurementText} Need mõõtmised kirjeldavad konkreetset andmeaastat, mitte kindlat tulevikuprognoosi. Ökoloogiline seisund näitab looduslikkust, mis ei pruugi tähendada puistu kõrget majanduslikku väärtust.`,
     introCitations: uniqueCitations([status, area, context]),
     parts: [
       {
@@ -593,7 +484,9 @@ function composeOfficialForestryEvidenceFallback(query, plannedEvidence, sources
       text: bundle.text,
       citations: [bundle.citation],
     })),
-    note: String(previousAnswer.note || "").trim().slice(0, 700),
+    note: plannedEvidence.kind === "clearcut-value-judgement"
+      ? "Need väljavõtted kirjeldavad metsamajandamise mõju ja selle tingimusi; need ei tõenda üldist väärtushinnangut iga lageraie kohta."
+      : String(previousAnswer.note || "").trim().slice(0, 700),
   };
 }
 
@@ -601,118 +494,41 @@ function composeOfficialForestryEvidenceFallback(query, plannedEvidence, sources
 // loobumise asemel. Koostatud ainult nähtavast ametlikust tulemusehulgast
 // täpsete väljavõtetega, et väited säilitaksid nähtava tunnistaja.
 function composeGenericForestOverviewFallback(query, plannedEvidence, sources = [], previousAnswer = {}) {
-  if (plannedEvidence?.kind !== "forest-overview" || !plannedEvidence?.strong) return null;
-  const visibleOfficial = sources.filter((source) => source?.sourceTier === "official" && sourceCitation(source));
-  const byId = new Map(visibleOfficial.map((source) => [source.id, source]));
-  const publishedTimestamp = (source) => {
-    if (Number(source?._ranking?.publishedAt) > 0) return Number(source._ranking.publishedAt);
-    const value = String(source?.published || "").trim();
-    const date = value.match(/^(\d{2})\.(\d{2})\.(\d{4})$/u);
-    if (date) return Date.UTC(Number(date[3]), Number(date[2]) - 1, Number(date[1]));
-    const year = value.match(/\b((?:19|20)\d{2})\b/u);
-    return year ? Date.UTC(Number(year[1]), 0, 1) : 0;
+  if (plannedEvidence?.kind !== "forest-overview" || !plannedEvidence.strong) return null;
+  const roles = plannedEvidence.roleWitnesses;
+  const byId = new Map(sources.map((source) => [source.id, source]));
+  const roleClaim = (role) => {
+    const witness = roles?.[role];
+    const source = byId.get(witness?.documentId);
+    if (!source || !sourceCitation(source)) return null;
+    const text = witness.passages.map(sanitizeLlmEvidenceText)
+      .map((passage) => passage.replace(/\s+/gu, " ").trim())
+      .filter(Boolean)
+      .map((passage) => hasCompleteSentenceEnding(passage) ? passage : `${passage}.`)
+      .join(" ");
+    return text ? { text, citations: [sourceCitation(source)] } : null;
   };
-  const areaCandidate = visibleOfficial
-    .map((source) => ({ source, passage: forestAreaMeasurementPassage(source) }))
-    .filter((candidate) => candidate.passage)
-    .sort((left, right) => publishedTimestamp(right.source) - publishedTimestamp(left.source))[0];
-  // The overview must lead with the newest published national measurement.
-  // The SMI 2024 PDF is retained as a fallback only for older result sets.
-  const area = areaCandidate?.source || byId.get("forest-area");
-  const conditionDoc = byId.get("forest-condition-review");
-  const registryView = byId.get("metsainfo-hetkeseis");
-  if (!area) return null;
-  const areaPassage = areaCandidate?.passage
-    || forestAreaMeasurementPassage(area) || safeSourcePassages(area)[0] || "";
-  const findMethodHit = () => {
-    for (const source of visibleOfficial) {
-      const hit = safeSourcePassages(source).find((passage) => {
-        const text = normalize(passage);
-        return /valikuuring/u.test(text) && (/proovitukk|statistil|uleriigil/u.test(text));
-      });
-      if (hit) return { source, passage: hit };
-    }
-    return null;
-  };
-  const methodHit = findMethodHit();
-  const methodPassage = methodHit?.passage || "";
-  const methodSource = methodHit?.source;
-  const findConditionHit = () => {
-    for (const source of visibleOfficial) {
-      const hit = safeSourcePassages(source).find((passage) => {
-        const text = normalize(passage);
-        return /elurikk/u.test(text) && /kaits/u.test(text);
-      });
-      if (hit) return { source, passage: hit };
-    }
-    return null;
-  };
-  const conditionHit = findConditionHit();
-  const conditionPassage = (conditionDoc && (forestConditionPassage(conditionDoc) || safeSourcePassages(conditionDoc)[0]))
-    || conditionHit?.passage
-    || "";
-  const conditionSource = conditionDoc || conditionHit?.source;
-  const registryPassage = registryView
-    ? safeSourcePassages(registryView).find((passage) => /eraldi|mitmel viisil|erinev/u.test(normalize(passage)))
-      || safeSourcePassages(registryView)[0]
-    : "";
-  const hasCondition = Boolean(conditionPassage);
-  const hasRegistry = Boolean(registryPassage);
-  if (!areaPassage || !methodPassage || (!hasCondition && !hasRegistry)) return null;
-  const areaCitations = uniqueCitations([area]);
-  const methodCitations = uniqueCitations([methodSource].filter(Boolean));
-  const conditionCitations = uniqueCitations([conditionSource].filter(Boolean));
-  const registryCitations = uniqueCitations([registryView].filter(Boolean));
-  const parts = [
-    {
-      title: "Metsa pindala",
-      text: areaPassage,
-      citations: areaCitations,
-    },
-    {
-      title: "Kuidas mõõdetakse",
-      text: methodPassage,
-      citations: methodCitations.length ? methodCitations : areaCitations,
-    },
-  ];
-  if (hasCondition) {
-    parts.push({
-      title: "Seisundi tervikpilt",
-      text: conditionPassage,
-      citations: conditionCitations.length ? conditionCitations : areaCitations,
-    });
-  }
-  if (registryPassage && registryCitations.length) {
-    parts.push({
-      title: "Andmete erinevus",
-      text: registryPassage,
-      citations: registryCitations,
-    });
-  }
-  // The introduction already carries the area measurement; repeating the same
-  // sentence as the first section makes the answer look duplicated.
-  if (parts.length > 1 && normalize(parts[0].text) === normalize(areaPassage)) parts.shift();
+  const measurement = roleClaim(plannedEvidence.numericSourceRole);
+  const method = roleClaim("method");
+  const condition = roleClaim("condition");
+  const registry = roleClaim("registry");
+  if (!measurement || !method || !condition || !registry) return null;
   return {
     eyebrow: "Allikapõhine kokkuvõte",
     title: "Eesti metsa ei kirjelda üksainus number",
-    intro: areaPassage,
-    introCitations: areaCitations,
-    parts,
+    intro: measurement.text,
+    introCitations: measurement.citations,
+    parts: [
+      { title: "Kuidas mõõdetakse", ...method },
+      { title: "Seisundi tervikpilt", ...condition },
+      { title: "Andmete erinevus", ...registry },
+    ],
     note: String(previousAnswer.note || "").trim().slice(0, 700),
   };
 }
 
 function answerEvidenceDocuments(documents = [], plannedEvidence, forestBalance) {
   if (forestBalance || !plannedEvidence?.strong) return documents;
-  if (plannedEvidence.kind === "forest-data-sources") {
-    const direct = documents.find((document) => document.id === plannedEvidence.directDocumentId);
-    const smiMethod = documents.find((document) => document.id !== direct?.id && hasSmiNationalRole(document));
-    const registry = documents.find((document) => document.id !== direct?.id
-      && document.id !== smiMethod?.id
-      && hasForestRegisterRole(document));
-    const comparisonSet = [direct, smiMethod, registry].filter(Boolean);
-    if (comparisonSet.length === 3) return comparisonSet;
-  }
   const ids = [...new Set([
     plannedEvidence.directDocumentId,
     ...(plannedEvidence.supportingDocumentIds || []),
@@ -720,52 +536,9 @@ function answerEvidenceDocuments(documents = [], plannedEvidence, forestBalance)
   const byId = new Map((documents || []).map((document) => [document.id, document]));
   const selected = ids.map((id) => byId.get(id)).filter(Boolean);
   const chosen = selected.length ? selected : documents;
-  // The generic overview answer also explains the condition and registry
-  // context. They are visible official sources but not required to satisfy the
-  // four evidence groups, so add them explicitly for the fallback composer.
-  const overviewChosen = plannedEvidence.kind === "forest-overview"
-    ? [...chosen, ...documents.filter((document) => (
-      ["forest-condition-review", "metsainfo-hetkeseis"].includes(document.id)
-      && !chosen.some((candidate) => candidate.id === document.id)
-    ))]
-    : chosen;
-  if (plannedEvidence.kind !== "forest-area-method" || !plannedEvidence.strong) return overviewChosen;
-  // Limit every downstream consumer—including the optional model and the
-  // visible citation excerpt—to the two passages selected for this composite
-  // question. The cited source may contain stock and harvest figures elsewhere,
-  // but those facts were not requested and cannot enter this answer pack.
-  return chosen.map((document) => {
-    const passages = distinctPassages(plannedEvidence.passagesByDocument?.[document.id] || []);
-    if (!passages.length) return document;
-    const { answer: _answer, ...projected } = document;
-    const evidenceText = passages.join(" ");
-    return {
-      ...projected,
-      summary: evidenceText,
-      content: evidenceText,
-    };
-  });
+  return chosen;
 }
 
-function boundedEvidenceExcerpt(passages = []) {
-  const seen = new Set();
-  const sanitized = passages
-    .map(sanitizeLlmEvidenceText)
-    .map((value) => value.replace(/\s+/gu, " ").trim())
-    .filter((value) => value.length >= 20)
-    .map((value) => hasCompleteSentenceEnding(value) ? value : `${value}.`)
-    .map((value) => `${value.charAt(0).toLocaleUpperCase("et")}${value.slice(1)}`)
-    .filter((value) => {
-      const key = normalize(value);
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  return sanitized.reduce((result, passage) => {
-    const joined = [result, passage].filter(Boolean).join(" ");
-    return joined.length <= 900 ? joined : result;
-  }, "");
-}
 
 function answerCitationNumbers(answer = {}) {
   return new Set([
@@ -774,14 +547,6 @@ function answerCitationNumbers(answer = {}) {
   ].map(Number).filter(Number.isFinite));
 }
 
-function answerClaimForCitation(answer = {}, citation) {
-  return [
-    (answer.introCitations || []).map(Number).includes(citation) ? answer.intro : "",
-    ...(answer.parts || []).flatMap((part) => (
-      (part.citations || []).map(Number).includes(citation) ? [part.title, part.text] : []
-    )),
-  ].filter(Boolean).join(" ");
-}
 
 function answerClaims(answer = {}) {
   return [
@@ -809,8 +574,9 @@ function canonicalClaimNumbers(value) {
 }
 
 function claimWitnessCoverage(claim, witness) {
-  const roots = queryTerms(claim);
-  const matchedRoots = roots.filter((root) => textHasQueryRoot(witness, root));
+  const roots = [...new Set(claimTokens(claim))];
+  const witnessTokens = claimTokens(witness);
+  const matchedRoots = roots.filter((root) => witnessTokens.some((token) => tokensShareStem(root, token)));
   const expectedNumbers = canonicalClaimNumbers(claim);
   const witnessedNumbers = new Set(canonicalClaimNumbers(witness));
   const matchedNumbers = expectedNumbers.filter((number) => witnessedNumbers.has(number));
@@ -822,19 +588,21 @@ function claimWitnessCoverage(claim, witness) {
   };
 }
 
-function claimHasVisibleWitness(claim, witness, relationshipClaim = claim) {
+function claimHasVisibleWitness(claim, witness, relationshipClaim = claim, query = "", minimumRootCoverage = 0.4) {
+
   const passages = (Array.isArray(witness) ? witness : [witness])
     .flatMap(splitTextPassages)
     .filter(Boolean);
-  const relationshipWitness = relationshipClaimHasPassageWitness(relationshipClaim, passages);
-  if (relationshipWitness === false) return false;
   const joinedWitness = passages.join(" ");
   const coverage = claimWitnessCoverage(claim, joinedWitness);
   if (coverage.matchedNumbers.length !== coverage.expectedNumbers.length) return false;
+  if (safeSemanticInference(relationshipClaim, joinedWitness, query)) return true;
+  const relationshipWitness = relationshipClaimHasPassageWitness(relationshipClaim, passages);
+  if (relationshipWitness === false) return false;
   if (!coverage.roots.length) return true;
   const requiredRoots = coverage.roots.length <= 2
     ? coverage.roots.length
-    : Math.max(2, Math.ceil(coverage.roots.length * 0.4));
+    : Math.max(2, Math.ceil(coverage.roots.length * minimumRootCoverage));
   return coverage.matchedRoots.length >= requiredRoots;
 }
 
@@ -846,7 +614,10 @@ function rebindSupportedCitations(citations, supports, propositionUnits = []) {
   for (const citation of [...retained]) {
     if (supports([citation])) continue;
     const without = retained.filter((candidate) => candidate !== citation);
-    if (!without.length || !supports(without)) continue;
+    // Dropping a citation is optional. Require near-complete factual concept
+    // coverage without it; generic shared topic words cannot replace its
+    // definition (for example subtraction of natural mortality).
+    if (!without.length || !supports(without, undefined, 0.8)) continue;
     const uniquelySupportsProposition = propositionUnits.some((unit) => (
       supports([citation], unit) && !supports(without, unit)
     ));
@@ -855,21 +626,24 @@ function rebindSupportedCitations(citations, supports, propositionUnits = []) {
   return retained.length && supports(retained) ? retained : [];
 }
 
-function visibleClaimCitations(claim, sourcesByCitation) {
+function visibleClaimCitations(claim, sourcesByCitation, query) {
   const supportCache = new Map();
-  const supports = (citations, proposition = claim) => {
-    const cacheKey = `${citations.join(",")}:${proposition.text}:${proposition.relationshipText}`;
+  const supports = (citations, proposition = claim, minimumRootCoverage = 0.4) => {
+    const cacheKey = `${citations.join(",")}:${proposition.text}:${proposition.relationshipText}:${minimumRootCoverage}`;
     if (supportCache.has(cacheKey)) return supportCache.get(cacheKey);
     const witnesses = citations
       .map((citation) => sourcesByCitation.get(citation)?.evidenceExcerpt || "")
       .filter(Boolean);
     const supported = witnesses.length > 0
-      && claimHasVisibleWitness(proposition.text, witnesses, proposition.relationshipText);
+      && claimHasVisibleWitness(proposition.text, witnesses, proposition.relationshipText, query, minimumRootCoverage)
+      && (proposition !== claim || propositionUnits.every((unit) => (
+        claimHasVisibleWitness(unit.text, witnesses, unit.relationshipText, query, minimumRootCoverage)
+      )));
     supportCache.set(cacheKey, supported);
     return supported;
   };
   const propositionUnits = splitTextPassages(claim.propositionText || claim.relationshipText || claim.text)
-    .filter(hasCompleteSentenceEnding)
+    .filter((text) => text.trim() && !/^(?:jah|ei|yes|no)[.!?]$/iu.test(text.trim()))
     .map((text) => ({ text, relationshipText: text }));
   return rebindSupportedCitations(claim.citations, supports, propositionUnits);
 }
@@ -882,7 +656,7 @@ function rebindAnswerCitationsToVisibleWitnesses(draft = {}) {
     relationshipText: introText,
     propositionText: introText,
     citations: (draft.answer?.introCitations || []).map(Number).filter(Number.isFinite),
-  }, sourcesByCitation);
+  }, sourcesByCitation, draft.query);
   const parts = (draft.answer?.parts || []).map((part) => {
     const partText = String(part.text || "").trim();
     const citations = visibleClaimCitations({
@@ -890,7 +664,7 @@ function rebindAnswerCitationsToVisibleWitnesses(draft = {}) {
       relationshipText: partText,
       propositionText: partText,
       citations: (part.citations || []).map(Number).filter(Number.isFinite),
-    }, sourcesByCitation);
+    }, sourcesByCitation, draft.query);
     return { ...part, citations };
   });
   return {
@@ -903,31 +677,6 @@ function rebindAnswerCitationsToVisibleWitnesses(draft = {}) {
   };
 }
 
-function claimCoveringPassages(claim, passages = [], relationshipClaim = claim) {
-  const remaining = passages.map((passage, index) => ({ passage, index }));
-  const selected = [];
-  let witness = "";
-  while (remaining.length && selected.length < 8 && !claimHasVisibleWitness(claim, witness, relationshipClaim)) {
-    const before = claimWitnessCoverage(claim, witness);
-    const ranked = remaining.map((candidate) => {
-      const combined = [witness, candidate.passage].filter(Boolean).join(" ");
-      const after = claimWitnessCoverage(claim, combined);
-      const numberGain = after.matchedNumbers.length - before.matchedNumbers.length;
-      const rootGain = after.matchedRoots.length - before.matchedRoots.length;
-      return {
-        ...candidate,
-        gain: numberGain * 100 + rootGain * 10 + passageQueryCoverage(claim, candidate.passage),
-      };
-    }).sort((left, right) => right.gain - left.gain || left.index - right.index);
-    const best = ranked[0];
-    if (!best || best.gain <= 0) break;
-    selected.push(best.passage);
-    witness = [witness, best.passage].filter(Boolean).join(" ");
-    const removeIndex = remaining.findIndex((candidate) => candidate.index === best.index);
-    remaining.splice(removeIndex, 1);
-  }
-  return selected;
-}
 
 function answerClaimsHaveVisibleWitnesses(draft = {}) {
   const sourcesByCitation = new Map((draft.sources || []).map((source) => [Number(source.citation), source]));
@@ -936,7 +685,7 @@ function answerClaimsHaveVisibleWitnesses(draft = {}) {
       .map((citation) => sourcesByCitation.get(citation)?.evidenceExcerpt || "")
       .filter(Boolean);
     return witnesses.length > 0
-      && claimHasVisibleWitness(claim.text, witnesses, claim.relationshipText);
+      && claimHasVisibleWitness(claim.text, witnesses, claim.relationshipText, draft.query);
   });
 }
 
@@ -948,12 +697,12 @@ function claimHasVisibleWitnessInDraft(draft, claim) {
     .map((source) => source.evidenceExcerpt || "")
     .filter(Boolean);
   return witnesses.length > 0
-    && claimHasVisibleWitness(claim.text, witnesses, claim.relationshipText || claim.text);
+    && claimHasVisibleWitness(claim.text, witnesses, claim.relationshipText || claim.text, draft.query);
 }
 
-function finalizeVisibleAnswerWitnesses(draft, query, plannedEvidence) {
+function finalizeVisibleAnswerWitnesses(draft, query, evidencePack) {
   const attached = rebindAnswerCitationsToVisibleWitnesses(
-    attachEvidenceExcerpts(draft, query, plannedEvidence),
+    attachEvidenceExcerpts(draft, query, evidencePack),
   );
   if (answerClaimsHaveVisibleWitnesses(attached)) return attached;
 
@@ -993,45 +742,21 @@ function finalizeVisibleAnswerWitnesses(draft, query, plannedEvidence) {
       parts,
     },
   };
-  return attachEvidenceExcerpts(reduced, query, plannedEvidence);
+  return attachEvidenceExcerpts(reduced, query, evidencePack);
 }
 
-function attachEvidenceExcerpts(draft, _query, plannedEvidence) {
+function attachEvidenceExcerpts(draft, _query, evidencePack) {
   const usedCitations = answerCitationNumbers(draft?.answer);
-  const claims = answerClaims(draft?.answer);
   return {
     ...draft,
     sources: (draft.sources || []).map((source) => {
       if (!usedCitations.has(Number(source.citation))) return source;
-      const plannedPassages = plannedEvidence?.passagesByDocument?.[source.id] || [];
-      const claimText = answerClaimForCitation(draft.answer, Number(source.citation));
-      const sourcePassages = distinctPassages([...plannedPassages, ...safeSourcePassages(source)]);
-      const sourceClaims = claims.filter((claim) => claim.citations.includes(Number(source.citation)));
-      const claimPassages = distinctPassages(sourceClaims.flatMap((claim) => (
-        claimCoveringPassages(claim.text, sourcePassages, claim.relationshipText)
-      )));
-      // The deterministic planner already returns passages in explanatory
-      // order. Preserve that order for its accepted draft; the claim-ranked
-      // passages become authoritative when rebinding a later model answer.
-      const primaryPassages = plannedPassages.length
-        ? distinctPassages(plannedPassages)
-        : claimPassages;
-      const selectedKeys = new Set([...primaryPassages, ...claimPassages].map(normalize));
-      const fallbackPassages = sourcePassages
-        .filter((passage) => !selectedKeys.has(normalize(passage)))
-        .map((passage, index) => ({
-          passage,
-          index,
-          coverage: passageQueryCoverage(claimText, passage),
-        }))
-        .sort((left, right) => right.coverage - left.coverage || left.index - right.index)
-        .map((candidate) => candidate.passage);
-      const evidenceExcerpt = boundedEvidenceExcerpt([
-        ...primaryPassages,
-        ...claimPassages,
-        ...fallbackPassages,
-      ]);
-      return evidenceExcerpt ? { ...source, evidenceExcerpt } : source;
+      const packed = evidencePack?.entries.find((entry) => entry.citation === Number(source.citation));
+      const { evidenceExcerpt: _previousExcerpt, ...snapshot } = source;
+      // The immutable pack has already reserved complete required witnesses
+      // within its per-source and whole-pack bounds. Public proof must expose
+      // those same bytes, not select or clip a second evidence window.
+      return packed?.content ? { ...snapshot, evidenceExcerpt: packed.content } : snapshot;
     }),
   };
 }
@@ -1095,9 +820,18 @@ export function publicResponse(draft, { now = Date.now() } = {}) {
     const source = sources.find((candidate) => Number(candidate?.citation) === citation);
     return sourceCanSupportPublicCitation(source || {}, { now }).eligible;
   });
+  let validMeasureScope = true;
+  if (answer && forestEvidenceIntent(response.query)?.kind === "protected-forest-share") {
+    try {
+      assertAnswerAddressesQuery([answer.intro, ...(Array.isArray(answerParts) ? answerParts.map((part) => part.text) : [])].join(" "), response.query);
+    } catch {
+      validMeasureScope = false;
+    }
+  }
   if (!validCitationShape
     || !validAnswerCitations
     || !citationsResolveExactlyOnce
+    || !validMeasureScope
     || !citedSourcesSupportPublicClaims) {
     return {
       ...response,
@@ -1197,9 +931,9 @@ export function shouldGenerateGroundedAnswer(draft) {
   );
 }
 
-export function mergeRelatedQuestions(generated = [], reviewed = [], limit = 6) {
+function reviewedRelatedQuestions(reviewed = [], limit = 6) {
   const seen = new Set();
-  return [...generated, ...reviewed]
+  return reviewed
     .map((value) => String(value || "").replace(/\s+/gu, " ").trim())
     .filter((value) => {
       const key = value.toLocaleLowerCase("et").replace(/[^0-9a-zõäöüšž]+/giu, " ").trim();
@@ -1215,6 +949,7 @@ export async function createPortalDraft(query, {
   signal,
   retrievalQuery = query,
   searchResults,
+  sort = searchResults?.appliedFilters?.sort || "relevance",
   clientKey = "unknown",
 } = {}) {
   throwIfRequestAborted(signal);
@@ -1224,15 +959,20 @@ export async function createPortalDraft(query, {
     deadlineAt,
     signal,
     clientKey,
+    filters: { sort },
   });
   const candidates = conventionalEvidenceDocumentsFromListing(listing);
   // Route-only federated cards stay visible as discovery results but cannot
   // become answer evidence. Hydrate only independently eligible sources so a
   // search never spends six page requests on cards discarded immediately.
-  const ranked = rankPortalDocuments(retrievalQuery, candidates);
+  const rankingOptions = { sort, now: Date.now() };
+  const retainedPlan = currentListingEvidencePlan(listing, retrievalQuery, candidates, sort);
+  const ranked = retainedPlan ? candidates : rankPortalDocuments(retrievalQuery, candidates, rankingOptions);
   const hydrationBudget = remainingBudget(deadlineAt, 7_000);
-  const answerCandidates = ranked.slice(0, 10);
-  const hydratedTop = hydrationBudget >= 500
+  const answerCandidates = retainedPlan
+    ? ranked.filter((source) => retainedPlan.supportingDocumentIds.includes(source.id))
+    : ranked.slice(0, 10);
+  const hydratedTop = retainedPlan ? answerCandidates : hydrationBudget >= 500
     ? await hydrateOfficialDocuments(ranked.slice(0, 6), 6, {
       timeoutMs: Math.min(2_000, hydrationBudget),
       signal,
@@ -1245,15 +985,16 @@ export async function createPortalDraft(query, {
   // Re-associate hydration only with the same canonical HTTPS resource.
   const hydrated = reassociateHydratedDocuments(answerCandidates, hydratedTop);
   const eligibleHydrated = evidenceDocumentsFromListing({ items: hydrated });
-  const reranked = rankPortalDocuments(retrievalQuery, eligibleHydrated);
+  const currentPlan = retainedPlan && currentListingEvidencePlan(listing, retrievalQuery, eligibleHydrated, sort);
+  const reranked = currentPlan ? eligibleHydrated : rankPortalDocuments(retrievalQuery, eligibleHydrated, rankingOptions);
   const forestBalance = composeForestHarvestBalanceAnswer(retrievalQuery, reranked, query);
-  const conventionalQuality = assessEvidence(retrievalQuery, reranked);
-  const plannedEvidence = selectAnswerEvidence(retrievalQuery, reranked);
+  const conventionalQuality = currentPlan ? {} : assessEvidence(retrievalQuery, reranked);
+  const plannedEvidence = currentPlan || selectAnswerEvidence(retrievalQuery, reranked, { ...rankingOptions, preRanked: true });
   const directOverview = (() => {
     const source = directPortalOverviewSource(retrievalQuery) || directPortalReportSource(retrievalQuery);
     if (!source) return null;
     return reranked.find((document) => document.id === source.id
-      || canonicalResultUrl(document.url) === canonicalResultUrl(source.url)) || null;
+      || sameSourceResource(document.url, source.url)) || null;
   })();
   const quality = directOverview
     ? {
@@ -1271,7 +1012,7 @@ export async function createPortalDraft(query, {
       answerIntent: plannedEvidence.kind,
       supportingDocumentIds: plannedEvidence.supportingDocumentIds,
     }
-    : plannedEvidence?.kind === "forest-area-method" || plannedEvidence?.requiresStrictScopeEvidence
+    : ["forest-area-method", "forest-overview"].includes(plannedEvidence?.kind) || plannedEvidence?.requiresStrictScopeEvidence
       ? {
         ...conventionalQuality,
         strong: false,
@@ -1308,7 +1049,7 @@ export async function createPortalDraft(query, {
   const seenAnswerDocuments = new Set();
   const answerDocuments = [...compositeNavigationDocuments, ...plannedAnswerDocuments]
     .filter((document) => {
-      const key = canonicalResultUrl(document?.url) || document?.id;
+      const key = sourceWitnessKey(document) || document?.id;
       if (!key || seenAnswerDocuments.has(key)) return false;
       seenAnswerDocuments.add(key);
       return true;
@@ -1386,9 +1127,36 @@ export async function createPortalDraft(query, {
     draft.answer.intro = directExtract;
     draft.answer.introCitations = [directCitation];
   }
+  const definitionRoots = queryTerms(retrievalQuery);
+  let packPlan = plannedEvidence;
+  if (draft.evidence.answerable && draft.sources.length === 1
+    && definitionRoots.length && definitionRoots.every((root) => root === "smi")) {
+    const source = draft.sources[0];
+    const definition = selectSmiDefinitionEvidence(source);
+    if (definition.satisfies) {
+      // Select actual definition and scope passages once; a summary synonym
+      // must not become a second definition in the single-source model pack.
+      packPlan = {
+        requiredRoles: ["definition"],
+        roleWitnesses: { definition: {
+          documentId: source.id, ...sourceEvidenceBinding(source), passages: definition.passages,
+        } },
+        requiredOnly: true,
+      };
+      draft.answer = {
+        ...draft.answer,
+        eyebrow: "Allikapõhine kokkuvõte",
+        intro: definition.passages.slice(0, 2).join(" "),
+        introCitations: [sourceCitation(source)],
+        parts: [],
+      };
+    }
+  }
+  const evidencePack = buildEvidencePack({ sources: draft.sources, query: retrievalQuery, plan: packPlan });
+  draft.evidence.sourceEvidencePack = evidencePack;
   return draft.evidence?.answerable === true
-    ? finalizeVisibleAnswerWitnesses(draft, retrievalQuery, plannedEvidence)
-    : attachEvidenceExcerpts(draft, retrievalQuery, plannedEvidence);
+    ? finalizeVisibleAnswerWitnesses(draft, retrievalQuery, evidencePack)
+    : attachEvidenceExcerpts(draft, retrievalQuery, evidencePack);
 }
 
 function stableRevisionValue(value) {
@@ -1409,7 +1177,8 @@ export function searchListingRevision(listing = {}) {
     const currentEvidence = sourceCanSupportPublicCitation(item);
     return stableRevisionValue({
       id: item.id,
-      url: canonicalResultUrl(item.url),
+      resourceKey: sourceResourceKey(item.url),
+      witnessKey: sourceWitnessKey(item),
       title: item.title,
       organization: item.organization,
       type: item.type,
@@ -1417,7 +1186,7 @@ export function searchListingRevision(listing = {}) {
       answer: item.answer,
       content: item._contentHash || item.content,
       locator: item.locator,
-      actionUrl: item.actionUrl ? canonicalResultUrl(item.actionUrl) : null,
+      actionUrl: item.actionUrl ? sourceResourceKey(item.actionUrl) : null,
       actionLabel: item.actionLabel,
       published: item.published,
       updated: item.updated,
@@ -1454,14 +1223,20 @@ export function cachedSourcesBelongToListing(cached, listing) {
     || (source?.actionUrl !== undefined && (!publicSourceAllowed({url: source.actionUrl}) || !officialCitationUrlEligibility(source.actionUrl).eligible))
   ))) return false;
   if (!listing?.items?.length || !cached?.sources?.length) return true;
-  const urls = new Set(listing.items.map((item) => canonicalResultUrl(item.url)));
-  return cached.sources.every((source) => urls.has(canonicalResultUrl(source.url)));
+  const witnesses = new Set(listing.items.map(publicSourceWitnessKey).filter(Boolean));
+  return cached.sources.every((source) => {
+    const key = publicSourceWitnessKey(source);
+    return key !== null && witnesses.has(key);
+  });
 }
 
 function draftSourcesBelongToListing(draft, listing) {
   if (!draft?.sources?.length) return true;
-  const urls = new Set((listing?.items || []).map((item) => canonicalResultUrl(item.url)));
-  return draft.sources.every((source) => urls.has(canonicalResultUrl(source.url)));
+  const witnesses = new Set((listing?.items || []).map(publicSourceWitnessKey).filter(Boolean));
+  return draft.sources.every((source) => {
+    const key = publicSourceWitnessKey(source);
+    return (key !== null && witnesses.has(key)) || sourceIsLinkedToVisibleService(source, listing?.items);
+  });
 }
 
 export function draftMatchesListingAndFilters(draft, listing, filters = {}) {
@@ -1484,6 +1259,7 @@ async function searchWithinBudget(cleanQuery, {
   onDraft,
   onBackgroundCleanup,
   generateAnswer = generateGroundedAnswer,
+  persistSearch = recordSearch,
 }) {
   throwIfRequestAborted(signal);
   const assessment = assessSearchQuery(assessmentQuery);
@@ -1500,7 +1276,7 @@ async function searchWithinBudget(cleanQuery, {
   const cacheRevision = `${SEARCH_RESPONSE_REVISION}:${searchListingRevision(searchResults)}`;
   const listingBackedCache = cacheEnabled && Boolean(searchResults?.items?.length);
   if (listingBackedCache) {
-    const cached = await readSearchCache(cleanQuery, cacheRevision);
+    const cached = await readSearchCache(cleanQuery, cacheRevision, { signal, deadlineAt });
     throwIfRequestAborted(signal);
     if (cached && cachedSourcesBelongToListing(cached, searchResults)) {
       // Defence in depth: persisted responses still cross the current public
@@ -1563,6 +1339,7 @@ async function searchWithinBudget(cleanQuery, {
       const filteredDocuments = rankPortalDocuments(
         retrievalQuery,
         conventionalEvidenceDocumentsFromListing(searchResults),
+        { sort: filters.sort, now: startedAt },
       );
       draft = composeSearchResponse(cleanQuery, filteredDocuments, {
         answerable: false,
@@ -1586,6 +1363,7 @@ async function searchWithinBudget(cleanQuery, {
       retrievalQuery,
       searchResults,
       clientKey: llmClientKey,
+      sort: filters.sort || "relevance",
     });
   }
   if (!draftMatchesListingAndFilters(draft, searchResults, filters)) {
@@ -1593,6 +1371,7 @@ async function searchWithinBudget(cleanQuery, {
       retrievalQuery,
       conventionalEvidenceDocumentsFromListing(searchResults)
         .filter((document) => resultMatchesFilters(document, filters)),
+      { sort: filters.sort, now: startedAt },
     );
     draft = composeSearchResponse(cleanQuery, filteredDocuments, {
       answerable: false,
@@ -1604,8 +1383,20 @@ async function searchWithinBudget(cleanQuery, {
     });
   }
   throwIfRequestAborted(signal);
+  // Every composer crosses the same one-pack boundary, including reviewed
+  // navigation and typed adapters that do not use createPortalDraft.
+  if (!draft.evidence?.sourceEvidencePack) {
+    draft.evidence = {
+      ...draft.evidence,
+      sourceEvidencePack: buildEvidencePack({ sources: draft.sources, query: retrievalQuery }),
+    };
+    draft = draft.evidence.answerable === true
+      ? finalizeVisibleAnswerWitnesses(draft, retrievalQuery, draft.evidence.sourceEvidencePack)
+      : attachEvidenceExcerpts(draft, retrievalQuery, draft.evidence.sourceEvidencePack);
+  }
   draft.generatedAt = new Date().toISOString();
-  const canGenerate = shouldGenerateGroundedAnswer(draft);
+  const evidencePack = draft.evidence?.sourceEvidencePack;
+  const canGenerate = shouldGenerateGroundedAnswer(draft) && evidencePack?.complete === true;
   const llmBudget = remainingBudget(deadlineAt, 300);
   if (canGenerate && llmBudget >= 500 && typeof onDraft === "function") {
     throwIfRequestAborted(signal);
@@ -1615,6 +1406,14 @@ async function searchWithinBudget(cleanQuery, {
   // input and any streamed consumer. A ready model answer must rebind its
   // visible citation witnesses before it can replace this snapshot.
   const deterministicDraft = structuredClone(draft);
+  // Keep opaque source admission on our snapshot, never on provider copies.
+  // Cloning a descriptor cannot recreate its private constructor binding.
+  deterministicDraft.sources = deterministicDraft.sources.map((source, index) => ({
+    ...source,
+    ...(draft.sources[index]._visibleServiceWitness
+      ? { _visibleServiceWitness: draft.sources[index]._visibleServiceWitness } : {}),
+  }));
+  deterministicDraft.evidence.sourceEvidencePack = evidencePack;
   // Never hand the model the full remaining budget: its attempt timers
   // would then run into the shared deadline, and the resulting abort
   // converts a ready cited draft into a timeout message. Keep a tail margin
@@ -1629,36 +1428,45 @@ async function searchWithinBudget(cleanQuery, {
       signal,
       conversationContext,
       clientKey: llmClientKey,
+      evidencePack,
     })
-    : { answer: null, status: "not-applicable", provider: "deterministic-current-evidence" };
+    : { answer: null, acceptedClaims: [], attempt: {
+      provider: "deterministic-current-evidence",
+      status: shouldGenerateGroundedAnswer(draft) ? "degraded" : "not-applicable",
+      reason: !shouldGenerateGroundedAnswer(draft) ? "not-applicable"
+        : !evidencePack?.complete ? "evidence-insufficient" : "budget",
+    } };
   throwIfRequestAborted(signal);
 
+  let visibleRejected = false;
   if (llmResult.answer) {
     const modelDraft = rebindAnswerCitationsToVisibleWitnesses(attachEvidenceExcerpts({
       ...structuredClone(deterministicDraft),
+      sources: deterministicDraft.sources,
+      evidence: deterministicDraft.evidence,
       answer: structuredClone(llmResult.answer),
-    }, retrievalQuery, null));
+    }, retrievalQuery, evidencePack));
     // Validation proves that a model claim is grounded in the internal
     // evidence pack. This second boundary proves that the same claim is also
     // supported by the bounded excerpt a reader can actually inspect.
-    draft = answerClaimsHaveVisibleWitnesses(modelDraft) ? modelDraft : deterministicDraft;
+    visibleRejected = !answerClaimsHaveVisibleWitnesses(modelDraft);
+    draft = visibleRejected ? deterministicDraft : modelDraft;
   } else {
     draft = deterministicDraft;
   }
-  // Related-question links are reviewed product copy, not answer content. A
-  // model may still emit the legacy schema field, but untrusted evidence must
-  // never turn that uncited field into public navigation or hidden-prompt text.
-  draft.related = mergeRelatedQuestions([], draft.related, 6);
+  // Related navigation is reviewed local product copy, never provider output.
+  draft.related = reviewedRelatedQuestions(draft.related, 6);
   draft.generatedAt = new Date().toISOString();
   draft = withForestContextChart(withLandUseShareChart(draft, retrievalQuery, searchResults?.items, { now: startedAt }), retrievalQuery, searchResults?.items, { now: startedAt });
-  const response = publicResponse(draft, { now: startedAt });
+  const publishedResponse = publicResponse(draft, { now: startedAt });
+  const deterministicResponse = publicResponse(deterministicDraft, { now: startedAt });
   const durationMs = Date.now() - startedAt;
   const evidenceKind = draft.evidence?.kind;
   const spatialDegraded = evidenceKind === "official-spatial-snapshot"
     && Object.values(draft.evidence?.states || {}).some((state) => state === "unavailable");
   const structuredStale = evidenceKind === "structured-forest-balance"
     && draft.sources.some((source) => source._stale === true);
-  const cacheResponse = llmResult.status !== "ready" && (
+  const cacheEligible = (
     evidenceKind === "safe-abstention"
     || evidenceKind === "needs-clarification"
     || evidenceKind === "official-live-routing"
@@ -1671,19 +1479,43 @@ async function searchWithinBudget(cleanQuery, {
     "structured-national-weather-forecast",
     "structured-forest-balance",
   ].includes(evidenceKind) ? 5 : 20;
+  const publishedBindings = Object.fromEntries((publishedResponse.sources || []).map((source) => {
+    const originals = draft.sources.filter((candidate) => (
+      stablePublicResultId(candidate) === source.id
+      && candidate.url === source.url && candidate.locator === source.locator
+      && Number.isInteger(candidate.citation) && candidate.citation > 0
+    ));
+    if (originals.length !== 1) return [source.citation, undefined];
+    const original = originals[0];
+    const binding = evidencePack?.bindings[original.citation];
+    const retained = sourceEvidenceBinding(original);
+    const packed = evidencePack?.entries.filter((entry) => entry.citation === original.citation);
+    return [source.citation, binding && packed?.length === 1
+      && retained.witnessKey !== null && retained.witnessKey === binding.witnessKey
+      && retained.version === binding.version && retained.snapshotHash === binding.snapshotHash ? binding : undefined];
+  }));
+  const outcome = deliveredOutcome({
+    publishedResponse, deterministicResponse, deterministicCacheValue: deterministicDraft, acceptedClaims: llmResult.acceptedClaims,
+    attempt: visibleRejected && llmResult.attempt
+      ? { ...llmResult.attempt, reason: "visible-rejected" } : llmResult.attempt,
+    evidenceKind, cacheEligible, publishedBindings,
+  });
+  const response = outcome.response;
 
   if (requestCanStillPersist({ signal, deadlineAt })) {
-    await retainSearchPersistence(recordSearch({
+    await retainSearchPersistence(persistSearch({
       query: cleanQuery,
       response,
-      cacheValue: draft,
+      cacheValue: deterministicDraft,
+      cacheOutcome: outcome,
       revision: cacheRevision,
-      answerProvider: llmResult.provider,
-      answerStatus: llmResult.status,
+      answerProvider: outcome.answerProvider,
+      answerStatus: outcome.answerStatus,
+      attempt: outcome.attempt,
       documentIds: draft.evidence?.documentIds || [],
       durationMs,
       ttlMinutes,
-      cacheResponse: listingBackedCache && cacheResponse,
+      cacheResponse: listingBackedCache && outcome.cacheResponse,
       signal,
       deadlineAt,
     }), onBackgroundCleanup);
@@ -1754,6 +1586,7 @@ export function searchTimeoutFallback(cleanQuery, {
       assessmentQuery,
       conventionalEvidenceDocumentsFromListing(searchResults)
         .filter((document) => resultMatchesFilters(document, filters)),
+      { sort: filters.sort, now: startedAt },
     );
     return publicResponse(composeSearchResponse(cleanQuery, visible, {
       answerable: false,
@@ -1771,6 +1604,7 @@ export function searchTimeoutFallback(cleanQuery, {
       assessmentQuery,
       conventionalEvidenceDocumentsFromListing(searchResults)
         .filter((document) => resultMatchesFilters(document, filters)),
+      { sort: filters.sort, now: startedAt },
     )
     : [];
   const quality = assessEvidence(cleanQuery, ranked);
@@ -1959,6 +1793,7 @@ export async function searchEnvironmentLive(query, options = {}) {
     generateAnswer: typeof options.generateAnswer === "function"
       ? options.generateAnswer
       : generateGroundedAnswer,
+    persistSearch: typeof options.recordSearch === "function" ? options.recordSearch : recordSearch,
   }).catch((error) => {
     if (options.signal?.aborted) {
       throw options.signal.reason instanceof Error ? options.signal.reason : error;

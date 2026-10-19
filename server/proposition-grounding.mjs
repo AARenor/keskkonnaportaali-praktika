@@ -1,3 +1,5 @@
+import { splitTextPassages } from "./search.mjs";
+
 const RELATION_FAMILIES = Object.freeze([
   {
     family: "monitor",
@@ -294,11 +296,20 @@ function embeddedRelativeNamedClauses(passage, knownEntities = []) {
   return clauses.filter((clause, index, all) => all.indexOf(clause) === index);
 }
 
+function acronymDefinitionClauses(passage) {
+  const definition = passage.match(/^(?<name>\p{Lu}[\p{L}\p{M}-]+(?:\s+[\p{Ll}][\p{L}\p{M}-]+){1,7})\s*\((?<acronym>\p{Lu}{2,12})(?:;\s*ingl\s+[\p{L}\p{M}, .-]+)?\)\s+(?<predicate>(?:on|is|are)\b[\s\S]+)$/u);
+  if (!definition) return [passage];
+  // The parenthetical name binds one acronym to its expansion in this same
+  // passage. Translated aliases are not independent named propositions.
+  const { name, acronym, predicate } = definition.groups;
+  return [`${acronym} tähendab ${name}.`, `${acronym} ${predicate}`];
+}
+
 function atomicRelationshipClauses(value, knownEntities = []) {
-  const passages = String(value || "")
-    .split(/(?:\n+|(?<=[.!?;])\s+)/u)
+  const passages = splitTextPassages(value)
     .map((part) => stripReportingPreamble(part).trim())
     .filter(Boolean)
+    .flatMap(acronymDefinitionClauses)
     .flatMap((passage) => splitIndependentPunctuationClauses(passage, knownEntities))
     .flatMap((passage) => [passage, ...embeddedRelativeNamedClauses(passage, knownEntities)]);
   return passages.flatMap((passage) => {
@@ -946,6 +957,16 @@ function genericSignatureStatus(signature, evidenceClauses, evidenceEntityLexico
 export function relationshipClaimHasPassageWitness(claim, evidencePassages = []) {
   const clauses = evidencePassages.flatMap(atomicRelationshipClauses);
   const evidenceEntityLexicon = reliableEvidenceEntityLexicon(clauses);
+  // A sentence-initial common noun is capitalized by grammar, not named
+  // authority. Treat it as ordinary content only when the cited raw body
+  // independently uses that exact noun in lowercase.
+  const ordinaryStarter = String(claim || "").match(/^\p{Lu}\p{Ll}{3,}\b/u)?.[0];
+  if (ordinaryStarter && !evidenceEntityLexicon.some((entity) => (
+    entityMatches(canonicalEntity(ordinaryStarter), entity.canonical)
+  )) && evidencePassages.some((passage) => (
+    (String(passage).match(/[\p{L}\p{M}]+/gu) || [])
+      .includes(ordinaryStarter.toLocaleLowerCase("et"))
+  ))) claim = `${ordinaryStarter.toLocaleLowerCase("et")}${claim.slice(ordinaryStarter.length)}`;
   const signatures = relationshipSignatures(claim, evidenceEntityLexicon);
   const genericSignatures = atomicRelationshipClauses(claim, evidenceEntityLexicon)
     .flatMap((clause) => genericNamedSignatures(clause, evidenceEntityLexicon));

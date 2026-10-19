@@ -57,12 +57,32 @@ test("agent orchestration is the default but retains an explicit direct escape h
   assert.equal(agentOrchestrationEnabled("direct"), false);
 });
 
+test("SDK rejects unsupported reasoning configuration before provider dispatch or budget reservation", async () => {
+  let dispatched = 0;
+  let reservations = 0;
+  for (const reasoningEffort of ["minimal", "none", "high", "xhigh", "max", "unknown", "", null, 0]) {
+    await assert.rejects(runGroundedSearchOrchestration({
+      apiKey: "test-only-gateway-bearer",
+      baseUrl: "https://terrapoint.arle.top/v1",
+      model: "openai-codex/gpt-6-luna",
+      reasoningEffort,
+      userInput: "KÜSIMUS: test\nEVIDENCE [1]: ametlik tõend",
+      reserveProviderRequest: () => { reservations += 1; },
+      requestJsonImpl: async () => {
+        dispatched += 1;
+        throw new Error("Invalid reasoning configuration must not dispatch");
+      },
+    }), /LLM_REASONING_EFFORT must be low or medium/u);
+  }
+  assert.equal(dispatched, 0);
+  assert.equal(reservations, 0);
+});
+
 test("the SDK runner must call both review specialists before the manager can answer", async () => {
   const expected = {
     intro: "Otsene vastus.",
     intro_citations: [1],
     parts: [],
-    related_questions: [],
   };
   const model = new ScriptedModel([
     [functionCall(
@@ -81,6 +101,7 @@ test("the SDK runner must call both review specialists before the manager can an
   });
   const reviewInput = "KÜSIMUS: test\nEVIDENCE [1]: ametlik tõend";
   const { manager } = createGroundedSearchAgents({
+    reasoningEffort: "low",
     systemInstructions: "Kasuta ainult evidence'i.",
     runner,
     reviewInput,
@@ -108,7 +129,6 @@ test("application boundary rejects a manager answer if the provider skips the fo
     intro: "Näiliselt valmis vastus.",
     intro_citations: [1],
     parts: [],
-    related_questions: [],
   }))]]);
   const runner = new Runner({
     modelProvider: { getModel: () => model },
@@ -134,7 +154,6 @@ test("manager output schema rejects unknown fields and invalid citations", () =>
     intro: "Otsene vastus.",
     intro_citations: [1],
     parts: [{ text: "Selgitus.", citations: [2] }],
-    related_questions: ["Mis muutus?"],
   };
   assert.equal(GROUNDED_AGENT_OUTPUT.safeParse(valid).success, true);
   assert.equal(GROUNDED_AGENT_OUTPUT.safeParse({ ...valid, intro_citations: [0] }).success, false);
@@ -146,7 +165,6 @@ test("explicit RunContext aggregates manager and both specialist model calls", a
     intro: "Otsene vastus.",
     intro_citations: [1],
     parts: [],
-    related_questions: [],
   };
   const model = new ScriptedModel([
     response([functionCall(
@@ -164,7 +182,7 @@ test("explicit RunContext aggregates manager and both specialist model calls", a
     traceIncludeSensitiveData: false,
   });
   const reviewInput = "KÜSIMUS: test\nEVIDENCE [1]: ametlik tõend";
-  const { manager } = createGroundedSearchAgents({ runner, reviewInput });
+  const { manager } = createGroundedSearchAgents({ runner, reviewInput, reasoningEffort: "medium" });
   let observed;
 
   const result = await runAgentWithUsage({
@@ -607,7 +625,6 @@ test("an empty model response is retried once and a repeated empty response surf
     intro: "Otsene vastus.",
     intro_citations: [1],
     parts: [],
-    related_questions: [],
   };
   // NOTE: attempts 1 and 2 share one ScriptedModel, so tool call IDs must
   // stay unique across attempts or the SDK rejects the repeated
@@ -649,11 +666,9 @@ test("an empty model response is retried once and a repeated empty response surf
   assert.ok(observed.requests >= 2);
   recovering.assertComplete();
 
-  // The manager turn returns no usable output on both attempts. The exact
-  // "failed to generate" error must surface — generateGroundedAnswer
-  // catches it, records the message in the persisted run row
-  // (practice_search_runs.provenance.answerStatus), and serves the
-  // deterministic evidence draft instead of stopping or hanging.
+  // Empty output remains a generation failure; the caller maps it to bounded
+  // private attempt metadata and serves the deterministic evidence draft.
+  // The provider's raw error is neither public prose nor persisted telemetry.
   // One scripted block per attempt: a fresh RunContext retries the full
   // review-evidence flow, so each attempt consumes review + 2 specialists
   // + 1 empty manager turn = 4 scripted steps. The second attempt's script
@@ -690,7 +705,6 @@ test("the real SDK Responses transport preserves the Codex selector, tool review
     intro: "Metsaandmed on allikas [1].",
     intro_citations: [1],
     parts: [],
-    related_questions: [],
   };
   const userInput = JSON.stringify({
     question: "Mis on metsaandmed?",

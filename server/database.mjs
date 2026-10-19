@@ -1,13 +1,14 @@
 import { createHmac } from "node:crypto";
 import pg from "pg";
 import { boundedChart, validPublicChart } from "./answer-chart.mjs";
-import { canonicalizePublicSearchQuery } from "./search.mjs";
+import { canonicalizePublicSearchQuery, containsPrivatePersonLookup } from "./search.mjs";
+import { deterministicCacheValue } from "./delivered-outcome.mjs";
 
 const { Pool } = pg;
 const databaseUrl = String(process.env.DATABASE_URL || "");
 const searchHashSecret = String(process.env.SEARCH_HASH_SECRET || "");
 export const SEARCH_HASH_VERSION = "hmac-sha256-v3";
-export const SEARCH_CACHE_RESPONSE_SCHEMA = "privacy-safe-v6";
+export const SEARCH_CACHE_RESPONSE_SCHEMA = "privacy-safe-v7";
 export const SEARCH_CACHE_MAX_RESPONSE_BYTES = 128 * 1_024;
 function boundedPersistenceInteger(value, fallback, minimum, maximum) {
   return Math.max(minimum, Math.min(Math.trunc(Number(value) || fallback), maximum));
@@ -326,6 +327,10 @@ export function isPersistentResponseCacheProvider(value) {
 }
 
 export function sanitizeCachedResponse(response, query) {
+  return sanitizeResponseCache(response, query, false);
+}
+
+function sanitizeResponseCache(response, query, controlled) {
   if (!response || typeof response !== "object" || Array.isArray(response)) return null;
   const queryValue = query ?? response.query;
   const queryWasProvided = queryValue !== undefined && queryValue !== null;
@@ -344,7 +349,7 @@ export function sanitizeCachedResponse(response, query) {
     ? response.answer
     : {};
   const rawTitle = boundedText(rawAnswer.title, 180);
-  const titleMode = rawAnswer.titleMode === "query"
+  const titleMode = controlled || rawAnswer.titleMode === "query"
     || (rawQuery && canonicalPrivateText(rawTitle) === canonicalPrivateText(rawQuery))
     ? "query"
     : "fixed";
@@ -362,6 +367,9 @@ export function sanitizeCachedResponse(response, query) {
       organization: boundedText(source?.organization, 240),
       type: boundedText(source?.type, 160),
       published: boundedText(source?.published, 80),
+      updated: boundedText(source?.updated, 80),
+      dataYear: boundedText(source?.dataYear, 80),
+      dataAsOf: boundedText(source?.dataAsOf, 80),
       url: boundedText(source?.url, 2_000),
       summary: boundedText(source?.summary, 2_000),
       evidenceExcerpt: boundedText(source?.evidenceExcerpt, 4_000),
@@ -385,7 +393,7 @@ export function sanitizeCachedResponse(response, query) {
             freshness: {
               class: boundedText(source.freshness.class, 80),
               basis: boundedText(source.freshness.basis, 80),
-              maxAgeMs: Number.isFinite(Number(source.freshness.maxAgeMs))
+              maxAgeMs: source.freshness.maxAgeMs === null ? null : Number.isFinite(Number(source.freshness.maxAgeMs))
                 && Number(source.freshness.maxAgeMs) > 0
                 && Number(source.freshness.maxAgeMs) <= 10 * 366 * 24 * 60 * 60 * 1_000
                 ? Number(source.freshness.maxAgeMs)
@@ -429,14 +437,27 @@ export function sanitizeCachedResponse(response, query) {
   if (rawQuery) {
     const queryForms = privateTextForms(rawQuery);
     if (!queryForms.converged) return null;
-    const privateNeedles = queryForms.forms;
-    const retainsPrivateQuery = retainedStrings(safe).some((value) => {
+    if (controlled && queryForms.forms.some((form) => (
+      containsPrivacySensitiveQuerySegment(form) || containsPrivatePersonLookup(form)
+    ))) return null;
+    // A deterministic snapshot contains source-owned facts and controlled
+    // template prose, not provider output. Topic-word overlap is expected.
+    // URLs/locators remain untrusted query-bearing channels even on that path.
+    const queryBearing = controlled
+      ? safe.sources.map((source) => ({ url: source.url, actionUrl: source.actionUrl, locator: source.locator }))
+      : safe;
+    const retainsPrivateQuery = retainedStrings(queryBearing).some((value) => {
       const retained = privateTextForms(value);
       if (!retained.converged) return true;
-      return retained.forms.some((form) => privateNeedles.some((needle) => form.includes(needle)));
+      return retained.forms.some((form) => queryForms.forms.some((needle) => form.includes(needle)));
     });
-    if (retainsPrivateQuery) return null;
-    if (retainedQueryFragment(safe, queryForms.forms)) return null;
+    if (retainsPrivateQuery || retainedQueryFragment(queryBearing, queryForms.forms)) return null;
+    // Keep fixed-point convergence over every retained field. Sensitive query
+    // identifiers were rejected above; opaque source version hashes are public
+    // provenance, not query identifiers.
+    if (controlled && retainedStrings(safe).some((value) => (
+      !privateTextForms(value).converged
+    ))) return null;
   }
   return safe;
 }
@@ -460,7 +481,7 @@ export const SEARCH_CACHE_READ_SQL = `
   FROM practice_search_cache
   WHERE query_hash = $1
     AND key_version = 'hmac-sha256-v3'
-    AND response_schema = 'privacy-safe-v6'
+    AND response_schema = 'privacy-safe-v7'
     AND expires_at > NOW()
 `;
 
@@ -470,7 +491,7 @@ export const SEARCH_DATA_PURGE_SQL = `
     FROM practice_search_cache
     WHERE expires_at <= NOW()
       OR key_version <> 'hmac-sha256-v3'
-      OR response_schema <> 'privacy-safe-v6'
+      OR response_schema <> 'privacy-safe-v7'
     ORDER BY expires_at ASC, query_hash ASC
     LIMIT $1
     FOR UPDATE
@@ -596,7 +617,7 @@ async function ensureSchema() {
         query_hash TEXT PRIMARY KEY,
         response JSONB NOT NULL,
         key_version TEXT NOT NULL DEFAULT 'hmac-sha256-v3',
-        response_schema TEXT NOT NULL DEFAULT 'privacy-safe-v6',
+        response_schema TEXT NOT NULL DEFAULT 'privacy-safe-v7',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         expires_at TIMESTAMPTZ NOT NULL
       );
@@ -633,8 +654,8 @@ async function ensureSchema() {
           SELECT 1
           FROM practice_search_cache
           WHERE key_version <> 'hmac-sha256-v3'
-             OR response_schema <> 'privacy-safe-v6'
-             OR COALESCE(response->>'cacheSchema', '') <> 'privacy-safe-v6'
+             OR response_schema <> 'privacy-safe-v7'
+             OR COALESCE(response->>'cacheSchema', '') <> 'privacy-safe-v7'
           LIMIT 1
         ) THEN
           -- The cache is optional. A metadata-level reset removes every legacy
@@ -650,7 +671,7 @@ async function ensureSchema() {
       ALTER TABLE practice_search_cache
         ALTER COLUMN key_version SET DEFAULT 'hmac-sha256-v3';
       ALTER TABLE practice_search_cache
-        ALTER COLUMN response_schema SET DEFAULT 'privacy-safe-v6';
+        ALTER COLUMN response_schema SET DEFAULT 'privacy-safe-v7';
     `).then(() => true).catch((error) => {
       schemaPromise = undefined;
       throw error;
@@ -674,11 +695,13 @@ export async function withDatabaseClient(operation) {
 export async function databaseQuery(text, parameters = [], options = {}) {
   const poolInstance = getPool();
   if (!poolInstance) return null;
-  if (options?.ensureSearchSchema !== false) await ensureSchema();
   const signal = options?.signal;
   const deadlineAt = Number(options?.deadlineAt);
   const requestScoped = Boolean(signal) || Number.isFinite(deadlineAt);
-  if (!requestScoped) return poolInstance.query(text, parameters);
+  if (!requestScoped) {
+    if (options?.ensureSearchSchema !== false) await ensureSchema();
+    return poolInstance.query(text, parameters);
+  }
 
   const throwIfClosed = () => {
     if (!signal?.aborted && (!Number.isFinite(deadlineAt) || Date.now() < deadlineAt)) return;
@@ -690,6 +713,8 @@ export async function databaseQuery(text, parameters = [], options = {}) {
     ? Math.max(0, Math.min(DATABASE_QUERY_TIMEOUT_MS, deadlineAt - Date.now()))
     : DATABASE_QUERY_TIMEOUT_MS;
 
+  throwIfClosed();
+  if (options?.ensureSearchSchema !== false) await ensureSchema();
   throwIfClosed();
   const client = await poolInstance.connect();
   let transactionOpen = false;
@@ -721,15 +746,25 @@ export async function databaseQuery(text, parameters = [], options = {}) {
   }
 }
 
-export async function readSearchCache(query, revision) {
+export async function readSearchCache(query, revision, options = {}) {
+  const throwIfClosed = () => {
+    if (options.signal?.aborted) throw options.signal.reason instanceof Error
+      ? options.signal.reason : new DOMException("Cache read was aborted", "AbortError");
+    if (Number.isFinite(options.deadlineAt) && Date.now() >= options.deadlineAt) {
+      throw new DOMException("Cache read deadline expired", "TimeoutError");
+    }
+  };
+  throwIfClosed();
   const canonicalInput = canonicalizePublicSearchQuery(query);
-  if (!canonicalInput.ok) return null;
-  if (!getPool()) return null;
+  if (!canonicalInput.ok || !getPool()) return null;
   try {
-    await ensureSchema();
-    const result = await pool.query(SEARCH_CACHE_READ_SQL, [queryFingerprint(canonicalInput.query, revision)]);
-    return restoreCachedResponse(result.rows[0]?.response, canonicalInput.query);
-  } catch {
+    const result = await databaseQuery(SEARCH_CACHE_READ_SQL,
+      [queryFingerprint(canonicalInput.query, revision)], options);
+    throwIfClosed();
+    return restoreCachedResponse(result?.rows[0]?.response, canonicalInput.query);
+  } catch (error) {
+    throwIfClosed();
+    if (error?.name === "AbortError" || error?.name === "TimeoutError") throw error;
     return null;
   }
 }
@@ -819,7 +854,7 @@ export async function runSearchPersistenceTransaction(client, {
         `UPDATE practice_search_cache
          SET response = $2::jsonb,
              key_version = 'hmac-sha256-v3',
-             response_schema = 'privacy-safe-v6',
+             response_schema = 'privacy-safe-v7',
              created_at = NOW(),
              expires_at = NOW() + ($3 * INTERVAL '1 minute')
          WHERE query_hash = $1
@@ -834,7 +869,7 @@ export async function runSearchPersistenceTransaction(client, {
         if (capacity.canInsert) {
           const inserted = await client.query(
             `INSERT INTO practice_search_cache (query_hash, response, expires_at, key_version, response_schema)
-             VALUES ($1, $2::jsonb, NOW() + ($3 * INTERVAL '1 minute'), 'hmac-sha256-v3', 'privacy-safe-v6')
+             VALUES ($1, $2::jsonb, NOW() + ($3 * INTERVAL '1 minute'), 'hmac-sha256-v3', 'privacy-safe-v7')
              ON CONFLICT (query_hash) DO UPDATE SET
                response = EXCLUDED.response,
                key_version = EXCLUDED.key_version,
@@ -873,14 +908,30 @@ export async function runSearchPersistenceTransaction(client, {
   }
 }
 
+const SEARCH_ATTEMPT_REASONS = new Set([
+  "none", "not-applicable", "disabled", "capacity", "budget", "timeout",
+  "provider-error", "invalid-output", "local-rejected", "no-new-contribution",
+  "visible-rejected", "evidence-insufficient",
+]);
+
+function boundedSearchAttempt(attempt) {
+  if (!attempt || typeof attempt !== "object" || Array.isArray(attempt)
+    || !SEARCH_ATTEMPT_REASONS.has(attempt.reason)) return null;
+  const provider = boundedText(attempt.provider, 160);
+  const status = boundedText(attempt.status, 40);
+  return provider && status ? { provider, status, reason: attempt.reason } : null;
+}
+
 export async function recordSearch({
   query,
   response,
   cacheValue = response,
+  cacheOutcome,
   revision,
   answerProvider = "unknown",
   answerStatus = "ready",
   documentIds = [],
+  attempt,
   durationMs,
   ttlMinutes = 60,
   cacheResponse = true,
@@ -906,7 +957,12 @@ export async function recordSearch({
       answerStatus,
       documentIds: (documentIds || []).map(String).slice(0, 12),
     };
-    const safeResponse = sanitizeCachedResponse(cacheValue, acceptedQuery);
+    const privateAttempt = boundedSearchAttempt(attempt);
+    if (privateAttempt) provenance.attempt = privateAttempt;
+    const controlledValue = deterministicCacheValue(cacheOutcome, acceptedQuery);
+    const safeResponse = cacheOutcome && controlledValue !== cacheValue
+      ? null
+      : sanitizeResponseCache(cacheValue, acceptedQuery, controlledValue === cacheValue);
     const persistence = await runSearchPersistenceTransaction(client, {
       hash,
       safeResponse,

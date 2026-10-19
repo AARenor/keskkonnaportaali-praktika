@@ -66,7 +66,7 @@ test("broad official data-overview queries return cited current-source answers",
       deadlineAt: startedAt + 3_000,
       searchResults: listingFor(query),
       useCache: false,
-      generateAnswer: async () => ({ answer: null, status: "not-applicable", provider: "test" }),
+      generateAnswer: async () => ({ answer: null, acceptedClaims: [], attempt: { status: "not-applicable", provider: "test", reason: "not-applicable" } }),
     });
     assert.ok(response.answer.introCitations.length > 0, query);
     assert.equal(response.sources[0]?.id, expectedLead, query);
@@ -86,7 +86,7 @@ test("a hydrated official overview remains bound by its visible id and exact URL
     deadlineAt: startedAt + 3_000,
     searchResults: listing,
     useCache: false,
-    generateAnswer: async () => ({ answer: null, status: "not-applicable", provider: "test" }),
+    generateAnswer: async () => ({ answer: null, acceptedClaims: [], attempt: { status: "not-applicable", provider: "test", reason: "not-applicable" } }),
   });
 
   assert.equal(response.sources[0]?.id, "metsainfo-hetkeseis");
@@ -115,7 +115,7 @@ test("safe data follow-ups inherit the environmental subject without admitting s
       allowSafeEllipticalFollowUp: true,
       searchResults: listingFor(retrievalQuery),
       useCache: false,
-      generateAnswer: async () => ({ answer: null, status: "not-applicable", provider: "test" }),
+      generateAnswer: async () => ({ answer: null, acceptedClaims: [], attempt: { status: "not-applicable", provider: "test", reason: "not-applicable" } }),
     });
     assert.ok(response.answer.introCitations.length > 0, question);
     assert.equal(response.sources[0]?.id, "groundwater-overview", question);

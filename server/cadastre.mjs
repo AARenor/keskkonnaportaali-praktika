@@ -1,4 +1,5 @@
 import { requestApprovedPublicHttpsText } from "./public-https.mjs";
+import { bindSourceToVisibleService } from "./source-identity.mjs";
 
 const GEOSERVER_BASE = "https://gsavalik.envir.ee/geoserver";
 const GEOSERVER_ORIGINS = new Set([new URL(GEOSERVER_BASE).origin]);
@@ -197,13 +198,26 @@ export function composeCadastreAnswer(query, cadastreNumber, snapshot) {
     forestText = "Metsaregistri avalik WFS ei vastanud ettenähtud aja jooksul. Puuduv vastus ei tähenda, et kinnistul metsa või piiranguid ei ole.";
   }
 
-  const sources = cadastreSourceDocuments(dateLabel).map((source, index) => ({
-    ...source,
+  const definitions = cadastreSourceDocuments();
+  const sources = definitions.map((service, index) => bindSourceToVisibleService({
+    ...service,
     citation: index + 1,
-    sourceSystem: source.organization,
-    summary: `Avaliku teenuse väljavõte ${dateLabel}.`,
+    sourceSystem: service.organization,
+    // This is a checked request snapshot, not an upstream publication or
+    // measurement timestamp and not a fabricated semantic document version.
+    published: "",
+    summary: index === 0 ? intro : forestText,
+    content: index === 0 ? intro : forestText,
     locator: index === 0 ? "kataster:ky_kehtiv" : "metsaregister:eraldis",
-  }));
+    fetchUrl: index === 0
+      ? wfsUrl("kataster", "kataster:ky_kehtiv", `tunnus='${cadastreNumber}'`, "tunnus,pindala,siht1,l_aadress,omvorm,ov_nimi,mk_nimi", 2).href
+      : wfsUrl("metsaregister", "metsaregister:eraldis", `katastri_nr='${cadastreNumber}'`, "id,katastri_nr,pindala,invent_kp", 250).href,
+    retrieval: "official-structured-cadastre-wfs",
+    evidencePolicy: "claim-specific",
+    _answerEvidenceEligible: true,
+    _evidenceStatusAt: extractedAt,
+    freshness: { class: "checked-service-snapshot", basis: "service-status-at", maxAgeMs: 10 * 60_000, requiresSourceTimestamp: true },
+  }, service));
 
   return {
     query,
@@ -227,6 +241,7 @@ export function composeCadastreAnswer(query, cadastreNumber, snapshot) {
     evidence: {
       kind: "official-spatial-snapshot",
       documentIds: sources.map((source) => source.id),
+      answerable: true,
       states: { cadastre: cadastre.status, forest: forest.status },
     },
   };

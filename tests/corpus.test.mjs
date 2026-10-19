@@ -5,7 +5,7 @@ import { Readable } from "node:stream";
 import test from "node:test";
 import {
   buildPrefixTsQuery,
-  canonicalOfficialDiscoveryUrl,
+  backfillCorpusSourceIdentity,
   deduplicateCorpusDocuments,
   extractReadablePage,
   fetchCorpusText,
@@ -34,6 +34,7 @@ import {
 } from "../server/corpus.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
 import * as corpus from "../server/corpus.mjs";
+import { SOURCE_IDENTITY_VERSION, sourceResourceKey } from "../server/source-identity.mjs";
 
 test("full corpus hydration includes sitemap-only pages but excludes files and external hosts", () => {
   assert.equal(typeof corpus.corpusHydrationCandidates, "function");
@@ -195,28 +196,42 @@ test("live discovery row admission preserves existing URLs and caps new rows", (
   ).map((item) => item.url), ["https://example.test/existing"]);
 });
 
-test("live discovery uses one canonical identity for queueing and persistence", () => {
-  const reordered = "https://keskkonnaagentuur.ee/teema?b=2&utm_source=live&a=1#section";
-  const canonical = "https://keskkonnaagentuur.ee/teema?a=1&b=2";
-  assert.equal(canonicalOfficialDiscoveryUrl(reordered), canonical);
-  assert.equal(canonicalOfficialDiscoveryUrl(canonical), canonical);
-  assert.equal(canonicalOfficialDiscoveryUrl("http://keskkonnaagentuur.ee/teema?a=1&b=2"), "");
-  assert.notEqual(
-    canonicalOfficialDiscoveryUrl("https://keskkonnaagentuur.ee/teema?a=1&a=2"),
-    canonicalOfficialDiscoveryUrl("https://keskkonnaagentuur.ee/teema?a=2&a=1"),
-  );
-
-  const first = normalizeOfficialDiscoveryDocuments([{ url: reordered, title: "Esimene" }]);
-  const second = normalizeOfficialDiscoveryDocuments([{ url: canonical, title: "Teine" }]);
-  const combined = normalizeOfficialDiscoveryDocuments([
-    { url: reordered, title: "Esimene" },
-    { url: canonical, title: "Teine" },
+test("discovery compares stable resource keys without replacing approved transport URLs", () => {
+  const original = "https://keskkonnaagentuur.ee/teema?b=2&utm_source=live&a=1#section";
+  const reordered = "https://keskkonnaagentuur.ee/teema?a=1&b=2";
+  const first = normalizeOfficialDiscoveryDocuments([{ url: original, title: "Esimene" }]);
+  const second = normalizeOfficialDiscoveryDocuments([{ url: reordered, title: "Teine" }]);
+  assert.equal(first[0].url, original.split("#")[0]);
+  assert.equal(first[0].metadata.sourceResourceKey, second[0].metadata.sourceResourceKey);
+  assert.equal(first[0].metadata.sourceIdentityVersion, SOURCE_IDENTITY_VERSION);
+  assert.notEqual(first[0].externalId, second[0].externalId);
+  // Existing canonical_url uniqueness remains URL-specific; shared identity
+  // does not merge stored documents or rewrite strict fetch targets.
+  assert.equal(normalizeOfficialDiscoveryDocuments([
+    { url: original, title: "Esimene" },
+    { url: reordered, title: "Teine" },
+  ]).length, 2);
+  assert.deepEqual(normalizeOfficialDiscoveryDocuments([
+    { url: "http://keskkonnaagentuur.ee/teema", title: "Keelatud transport" },
+  ]), []);
+  const repeats = normalizeOfficialDiscoveryDocuments([
+    { url: "https://keskkonnaagentuur.ee/teema?a=1&a=2", title: "Esimene järjekord" },
+    { url: "https://keskkonnaagentuur.ee/teema?a=2&a=1", title: "Teine järjekord" },
   ]);
-  assert.equal(first[0].url, canonical);
-  assert.equal(first[0].externalId, second[0].externalId);
-  assert.equal(combined.length, 1);
-  assert.equal(combined[0].url, canonical);
-  assert.deepEqual(limitOfficialDiscoveryDocuments(combined, [canonical], 20_000, 20_000), combined);
+  assert.notEqual(repeats[0].metadata.sourceResourceKey, repeats[1].metadata.sourceResourceKey);
+  assert.deepEqual(repeats.map((document) => document.url), [
+    "https://keskkonnaagentuur.ee/teema?a=1&a=2",
+    "https://keskkonnaagentuur.ee/teema?a=2&a=1",
+  ]);
+  const pdfPages = normalizeOfficialDiscoveryDocuments([
+    { url: "https://keskkonnaportaal.ee/report.pdf#page=22", title: "Lehekülg 22" },
+    { url: "https://keskkonnaportaal.ee/report.pdf#page=35", title: "Lehekülg 35" },
+  ]);
+  assert.deepEqual(pdfPages.map((document) => document.url), [
+    "https://keskkonnaportaal.ee/report.pdf#page=22",
+    "https://keskkonnaportaal.ee/report.pdf#page=35",
+  ]);
+  assert.equal(pdfPages[0].metadata.sourceResourceKey, pdfPages[1].metadata.sourceResourceKey);
 });
 
 test("aggregate corpus admission includes available rows, bytes and existing updates", () => {
@@ -383,7 +398,7 @@ test("duplicate URLs are merged before a PostgreSQL upsert batch", () => {
       metadata: { placeholder: true },
     },
     {
-      url: "https://www.keskkonnaportaal.ee/et/mets/",
+      url: "https://keskkonnaportaal.ee/et/mets",
       title: "Metsa ülevaade",
       summary: "Sisuline kokkuvõte.",
       topics: ["Seire"],
@@ -433,7 +448,10 @@ test("federated snippets can never replace a non-live page body or its provenanc
     assert.equal(merged.content, "OFFICIAL_PAGE_BODY kontrollitud lehesisu.");
     assert.deepEqual(merged.topics, ["lehe teema"]);
     assert.equal(merged.sourceTier, "official");
-    assert.deepEqual(merged.metadata, { source_kind: "portal-catalog", hydrated: true });
+    const { sourceResourceKey: resourceKey, sourceIdentityVersion, ...historicMetadata } = merged.metadata;
+    assert.deepEqual(historicMetadata, { source_kind: "portal-catalog", hydrated: true });
+    assert.equal(resourceKey, sourceResourceKey(url));
+    assert.equal(sourceIdentityVersion, SOURCE_IDENTITY_VERSION);
     assert.doesNotMatch(JSON.stringify(merged), /LIVE_INDEX/u);
   }
   assert.deepEqual(left, right);
@@ -450,7 +468,10 @@ test("federated snippets can never replace a non-live page body or its provenanc
     assert.equal(merged.sourceKey, "portal-catalog");
     assert.equal(merged.content, "");
     assert.equal(merged.summary, "");
-    assert.deepEqual(merged.metadata, { source_kind: "portal-sitemap" });
+    const { sourceResourceKey: resourceKey, sourceIdentityVersion, ...historicMetadata } = merged.metadata;
+    assert.deepEqual(historicMetadata, { source_kind: "portal-sitemap" });
+    assert.equal(resourceKey, sourceResourceKey(url));
+    assert.equal(sourceIdentityVersion, SOURCE_IDENTITY_VERSION);
   }
 });
 
@@ -670,14 +691,14 @@ test("portal snapshot preserves upstream occurrences but pages distinct URLs", (
   ]);
 });
 
-test("sitemap parser canonicalizes portal URLs and keeps modification time", () => {
+test("sitemap parser keeps the approved original path and modification time", () => {
   const documents = parsePortalSitemap(`
     <urlset>
       <url><loc>http://keskkonnaportaal.ee/et/mets/</loc><lastmod>2026-08-16T12:00:00Z</lastmod></url>
       <url><loc>javascript:alert(1)</loc></url>
     </urlset>`);
   assert.equal(documents.length, 1);
-  assert.equal(documents[0].url, "https://keskkonnaportaal.ee/et/mets");
+  assert.equal(documents[0].url, "https://keskkonnaportaal.ee/et/mets/");
   assert.equal(documents[0].modifiedAt, "2026-08-16T12:00:00.000Z");
   assert.equal(documents[0].sourceTier, "official");
 });
@@ -963,5 +984,106 @@ test("progressive answer endpoint and broad result pagination remain separate co
   assert.doesNotMatch(app, /document\.title = `\$\{result\.answer\.title\}/u);
   assert.match(corpus, /distinctTotal/u);
   assert.match(corpus, /CHECK \(query_source = 'configured-seed'\)/u);
-  assert.match(corpus, /keskkonnaportaal\[\.\]ee\/et\(\/\|\$\)[\s\S]*?<> ALL\(\$10::TEXT\[\]\)/u);
+});
+
+test("identity backfill preserves historical records, is bounded and idempotent, and rolls back over capacity", async () => {
+  const originals = [
+    { id: "41", canonical_url: "https://www.keskkonnaportaal.ee/et/mets?b=2&a=1",
+      content: "Ajaloolise versiooni keha.", content_hash: "old-hash", published_at: "2024-06-10",
+      metadata: { locator: "Tabel 1.1", source_updated_at: "2024-06-12", private_history: { imported: "2024-08-01" } } },
+    { id: "42", canonical_url: "https://keskkonnaagentuur.ee/teema?a=2&a=1",
+      content: "Teine dokument.", content_hash: "second-hash", published_at: null,
+      metadata: { _evidenceVersion: "extract-v2" } },
+  ];
+  let records = structuredClone(originals);
+  let transactionSnapshot;
+  let totalBytes = 900;
+  const batchLengths = [];
+  const client = {
+    async query(sql, values = []) {
+      const text = String(sql).trim();
+      if (text === "BEGIN") transactionSnapshot = structuredClone(records);
+      if (text === "ROLLBACK") records = transactionSnapshot;
+      if (text.startsWith("SELECT id, canonical_url")) {
+        const pending = records.filter((record) => record.metadata.sourceIdentityVersion !== values[0]
+          || !Object.hasOwn(record.metadata, "sourceResourceKey")).slice(0, values[1]);
+        batchLengths.push(pending.length);
+        return { rows: pending.map((record) => ({ ...record, metadata_type: "object" })) };
+      }
+      if (text.startsWith("UPDATE practice_corpus_documents AS document")) {
+        for (const update of JSON.parse(values[0])) {
+          const record = records.find((item) => item.id === update.id);
+          record.metadata.sourceResourceKey = update.resource_key;
+          record.metadata.sourceIdentityVersion = update.identity_version;
+        }
+      }
+      if (text.startsWith("SELECT COALESCE(SUM(pg_column_size")) return { rows: [{ total_bytes: totalBytes }] };
+      return { rows: [] };
+    },
+  };
+  await assert.rejects(backfillCorpusSourceIdentity(client, { batchSize: 1, maximumBytes: 899 }),
+    /exceeds aggregate storage capacity/u);
+  assert.deepEqual(records, originals);
+  const migrated = await backfillCorpusSourceIdentity(client, { batchSize: 1, maximumBytes: 900 });
+  assert.equal(migrated.updatedRows, 2);
+  assert.ok(batchLengths.every((length) => length <= 1));
+  assert.equal(records[0].metadata.sourceResourceKey, "https://keskkonnaportaal.ee/mets?a=1&b=2");
+  assert.equal(records[1].metadata.sourceResourceKey, "https://keskkonnaagentuur.ee/teema?a=2&a=1");
+  const historicalFields = records.map((record) => {
+    const copy = structuredClone(record);
+    delete copy.metadata.sourceResourceKey;
+    delete copy.metadata.sourceIdentityVersion;
+    return copy;
+  });
+  assert.deepEqual(historicalFields, originals);
+  assert.equal((await backfillCorpusSourceIdentity(client, { batchSize: 1, maximumBytes: 900 })).updatedRows, 0);
+  const producer = normalizeOfficialDiscoveryDocuments([{ url: originals[0].canonical_url, title: "Uus kataloogivaade" }])[0];
+  assert.equal(producer.metadata.sourceResourceKey, records[0].metadata.sourceResourceKey);
+  assert.equal(producer.metadata.sourceIdentityVersion, records[0].metadata.sourceIdentityVersion);
+});
+
+test("identity backfill rejects non-object legacy JSON before mutation and preserves its bytes", async () => {
+  for (const metadata of [null, [], ["historical-entry"], "legacy-text", 7, true]) {
+    const original = {
+      id: "51", canonical_url: "https://keskkonnaportaal.ee/et/legacy",
+      content: "Ajalooline tõendikeha.", content_hash: "retained-version",
+      metadata,
+    };
+    let record = structuredClone(original);
+    let transactionSnapshot;
+    let selections = 0;
+    const operations = [];
+    const client = {
+      async query(sql, values = []) {
+        const text = String(sql).trim();
+        operations.push(text);
+        if (text === "BEGIN") transactionSnapshot = structuredClone(record);
+        if (text === "ROLLBACK") record = transactionSnapshot;
+        if (text.startsWith("SELECT id, canonical_url")) {
+          selections += 1;
+          if (selections > 1) throw new Error("Repeated unbackfillable legacy metadata row");
+          const metadataType = record.metadata === null ? "null"
+            : Array.isArray(record.metadata) ? "array" : typeof record.metadata;
+          return { rows: [{ ...record, metadata_type: metadataType }] };
+        }
+        if (text.startsWith("UPDATE practice_corpus_documents AS document")) {
+          const identity = JSON.parse(values[0])[0];
+          // PostgreSQL concatenation cannot turn non-object JSON into an
+          // object; its newly nested keys would remain unreadable by ->>.
+          record.metadata = [
+            ...(Array.isArray(record.metadata) ? record.metadata : [record.metadata]),
+            { sourceResourceKey: identity.resource_key, sourceIdentityVersion: identity.identity_version },
+          ];
+        }
+        if (text.startsWith("SELECT COALESCE(SUM(pg_column_size")) return { rows: [{ total_bytes: 100 }] };
+        return { rows: [] };
+      },
+    };
+    await assert.rejects(backfillCorpusSourceIdentity(client), /requires object metadata \(document 51\)/u);
+    assert.deepEqual(record, original);
+    assert.equal(JSON.stringify(record.metadata), JSON.stringify(metadata));
+    assert.equal(selections, 1);
+    assert.equal(operations.at(-1), "ROLLBACK");
+    assert.equal(operations.some((sql) => sql.startsWith("UPDATE practice_corpus_documents")), false);
+  }
 });

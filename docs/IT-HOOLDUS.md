@@ -1,8 +1,8 @@
 # IT-halduri hooldusjuhend
 
-Uuendatud: 06.10.2026
+Uuendatud: 10.10.2026
 
-Dokumendiversioon: 1.1.0
+Dokumendiversioon: 1.2.1
 
 ## Püsivad lepingud
 
@@ -84,6 +84,9 @@ eraldi lokaalse stack'i leping ega määra selle tootmisrakenduse runtime'i.
    `LLM_ORCHESTRATION=direct`, `LLM_ENABLED=true`, `LLM_REASONING_EFFORT=low`
    ja `LLM_TIMEOUT_MS=14500`. Hoia olemasolevad concurrency-, tokeni-,
    eelarve-, proxy-, andmebaasi- ja privaatsuspiirid alles.
+   Toetatud effort'id on `low` ja `medium`; `minimal` ja `none` peatavad
+   käivituse. 3200 väljundtokeni taotlus on rakenduse eelarvereserv, mitte
+   kontrollitud Codex wire'i jõustatud väljundipiir.
    Eemalda `OPENCODE_GO_API_KEY`, `OPENCODE_ZEN_API_KEY`, `LLM_API_STYLE`
    ja `LLM_FALLBACK_MODEL` runtime'ist: neid enam ei kasutata.
    Ära väljasta võtme väärtust seadistuse või konteineri kontrollimisel.
@@ -105,9 +108,10 @@ eraldi lokaalse stack'i leping ega määra selle tootmisrakenduse runtime'i.
    peab jätma alles viidatud deterministliku vastuse, mitte teise varumudeli.
    Tootmine kasutab olemasolevat otsest mudeliteed: nelja järjestikuse
    mudelikutsena töötav `agents` režiim ületas 06.10.2026 live-kontrollides
-   14,5-sekundilise ajapiiri. Otsene Luna vastus koos serveri viite- ja
-   tõendikontrolliga valmis 6,9 sekundiga. Ära lülita `agents` režiimi sisse
-   enne selle tervikvoo tõendatud mahtumist senisesse otsingueelarvesse.
+   14,5-sekundilise ajapiiri. Üks varasem otsene Luna vastus koos serveri viite-
+   ja tõendikontrolliga valmis 6,9 sekundiga; see ei ole praeguse muudatuse
+   latentsusgarantii. Ära lülita `agents` režiimi sisse enne selle tervikvoo
+   tõendatud mahtumist senisesse otsingueelarvesse.
 
 OpenAI ja gateway logimise, säilitamise ning konto andmetöötlustingimused tuleb
 enne ametlikku kasutuselevõttu kinnitada eraldi; `store: false` ja keelatud SDK
@@ -127,7 +131,25 @@ Avalik avaleht ja health võivad töötada ajal, mil päris brauseri otsing ning
 soovitused saavad 403. Seetõttu kontrolli pärast muudatust mõlemat endpoint'i
 päris sama päritolu brauseripäistega ning kinnita, et võõras päritolu jääb keelatuks.
 
+10.10.2026 kordus sama tõrge pärast proxy taasloomist: rakendus usaldas
+`172.19.0.17/32`, kuid `coolify-proxy` tegelik aadress rakendusega ühises
+`coolify` võrgus oli `172.19.0.6`. Coolify rakenduse 12 runtime-muutuja
+uuendati täpsele `172.19.0.6/32` aadressile. Juurutus 326
+(`a24bda57-418a-45fb-9e58-369bc79c11be`) lõppes `finished` olekus samal
+tootmisrevisjonil `197166c9e7fc2c73eaf377adc7874fea95eeaa5f`; rakenduse koodi
+ei muudetud. Uus konteiner on healthy ning avalik health kinnitas sama SHA.
+`https://praktika.arle.top` päris brauseri `mets` otsing andis viidatud vastuse
+ja 1607 tulemust; soovitused ning sama päritolu JSON-otsing andsid HTTP 200.
+`jäätmete ringlussevõtu määr Eestis 2023` vastas 37,9%. Võõra `Origin`-iga
+otsing ja soovitused andsid endiselt HTTP 403, ka võltsitud `same-origin`
+päisega. Vana `praktika.arleserver.cfd` suunab brauseri kanoonilisele domeenile
+`praktika.arle.top`.
+
 ## Kontroll ja tootmisse viimine
+
+Käivita mõjutatud allika-, grounding'u-, liikmesuse-, graafiku-, cache'i- ja lõppoleku tarbijatestid pärast kõigi ühiste lepingute kooskõlastamist. Alles nende järel käivita terviktestid, build, Sites-tarbijad ja eval'id. Ära pikenda regressiooni kõrvaldamiseks tootmise 15-sekundilist tähtaega, mudeli tail-margin'it ega kvoote. Välise mudeli edukas dispatch ei tõenda `ready` lõppolekut: kontrolli lõppvastuse uut toetatud väidet, nähtavat lokaatorit ning privaatset lõpp-provider/olek kirjet eraldi katse põhjusest. Privaatsed `acceptedClaims`, binding-räsid, pakiversioon ja katseandmed ei tohi jõuda avalikku vastusesse.
+
+Avaliku kasutatud viite `evidenceExcerpt` peab olema sama immutable pack entry täielik `content`, mitte uus 900-märgiline aknavalik. Kontrolli algallika täisväidet koos ühiku, aasta, nimetaja ja kvalifikatsioonidega; kaitstava metsamaa ETAK-i 2024 range kaitse näitaja 16,8% sisaldab projekteeritavaid alasid. Mudeli/local/public piirid jäävad 10/4000/36000 juurde. Cache-envelope on `privacy-safe-v7` ning korduskontrollis peavad säilima sama allika `published`, `updated`, `dataYear`, `dataAsOf` ja locator; tundmatu `checkedAt` jääb `null`.
 
 ```bash
 npm test
@@ -138,9 +160,9 @@ npm run eval:open
 npm run eval:public
 ```
 
-Eraldi ajalooline kontroll `npm run eval:holdout` kasutab külmutatud v1 komplekti ja sisaldab H05 küsimust, mille nõutud allikas on `statistics-pxweb`. Uue välistamispoliitikaga lõpetab see komplekt „unknown source IDs” veaga, mistõttu see ei ole praeguse allikapoliitika läbiv tootmisvärav. Vana ootus jäeti kontrolli ajal muutmata; seda ei tohi raporteerida läbivana ega numbrilist lävendit vähendada. Uue poliitika negatiivsed vastuse-/graafiku- ja filtriproovid on `tests/official-knowledge.test.mjs`, `tests/statistics.test.mjs` ning `tests/retrieval.test.mjs`. Holdout'i edasine muutmine vajab eraldi versioonitud allikapoliitika ülevaatust.
+Eraldi ajalooline kontroll `npm run eval:holdout` kasutab muutmata külmutatud v1 komplekti ja selle algseid lävendeid. H05 nõuab praeguse avaliku poliitikaga välistatud `statistics-pxweb` allikat: evaluator säilitab selle rea, annab `rank: null` ja `excluded-publisher` põhjuse ning arvutab kõik näitajad kõigi 40 algse rea pealt. Muud vanad allikaootused jäävad samuti tegeliku asetuse või puudumisega raportisse; ajaloolist mitteläbimist ei nimetata roheliseks ega leevendata lävendeid. `node scripts/evaluate-relevance-holdout.mjs --dataset=environment_search_holdout_v2.json` on eraldi arenduskomplekt samade 40 küsimusega, mitte v1 asendus või uus pime holdout. Uue poliitika negatiivsed vastuse-/graafiku- ja filtriproovid jäävad tarbijatestidesse.
 
-Seejärel tee diff-review, kontrolli ainult kavandatud faile ja saladuste puudumist, commit'i ning push'i `main` harusse. Valmisolek nõuab kahte sõltumatut tootmistõendit: Coolify kirje peab olema olekus `finished` täpselt `origin/main` commit'i SHA-l ning korduvad API- ja brauseriproovid peavad näitama uue versiooni käitumist. Kontrolli desktopi ja 390 px mobiilivaadet, allikalinke, kuupäevi, filtreid, eestikeelsuse piiri ning värske lehe `scrollY === 0` ja iframe'i mitteaktiivsust.
+Pärast nõutud kontrollide läbimist ja tellija juurutusluba tee üks koondatud diff-review, kontrolli ainult kavandatud faile ja saladuste puudumist ning alles siis commit'i ja push'i `main` harusse. Valmisolek nõuab kahte sõltumatut tootmistõendit: Coolify kirje peab olema olekus `finished` täpselt `origin/main` commit'i SHA-l ning korduvad API- ja brauseriproovid peavad näitama uue versiooni käitumist. Kontrolli desktopi ja 390 px mobiilivaadet, allikalinke, kuupäevi, filtreid, eestikeelsuse piiri ning värske lehe `scrollY === 0` ja iframe'i mitteaktiivsust.
 
 ## Versiooniajalugu
 
@@ -148,3 +170,5 @@ Seejärel tee diff-review, kontrolli ainult kavandatud faile ja saladuste puudum
 |---|---|---|
 | 1.0.0 | 01.10.2026 | Allikahierarhia, korjereeglid ning SMI, aastaraamatu ja puidubilansi hooldusprotsess. |
 | 1.1.0 | 06.10.2026 | Autenditud Codex gateway, GPT-6-Luna, serveripoolne bearer ning Coolify runtime'i ja exact-SHA redeploy kord. |
+| 1.2.0 | 06.10.2026 | Allika võrdlusidentiteet ja lokaatoriga witness, üks muutumatu tõendipakk, semantilise versiooni eristus, lõppvastuse järgi määratud provider/olek ning külmutatud v1 aus raport eraldi v2 arenduskomplektist. |
+| 1.2.1 | 10.10.2026 | Proxy aadressi kordustõrke runtime-parandus ja tootmise brauseri/API turvapiiri kontroll. |

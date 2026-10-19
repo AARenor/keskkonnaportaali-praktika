@@ -18,6 +18,7 @@ import {
   minimizePublicProviderQuery,
 } from "./search.mjs";
 import { sourceEvidenceEligibility } from "./source-registry.mjs";
+import { sameSourceResource } from "./source-identity.mjs";
 
 const PORTAL_BASE = "https://keskkonnaportaal.ee";
 const VPORTAL_SEARCH_BASE = "https://search.service.eu-live.vportal.ee/v1/search";
@@ -366,7 +367,7 @@ export function validatedOfficialUrl(value, base) {
   }
 }
 
-function canonicalHydrationResource(value) {
+function approvedHydrationTransportKey(value) {
   const url = validatedOfficialUrl(value);
   const hostname = url.hostname.replace(/^www\./u, "");
   const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/u, "") : url.pathname;
@@ -375,7 +376,8 @@ function canonicalHydrationResource(value) {
 
 export function hydrationResourceMatches(requestedValue, finalValue) {
   try {
-    return canonicalHydrationResource(requestedValue) === canonicalHydrationResource(finalValue);
+    return approvedHydrationTransportKey(requestedValue) === approvedHydrationTransportKey(finalValue)
+      && sameSourceResource(requestedValue, finalValue);
   } catch {
     return false;
   }

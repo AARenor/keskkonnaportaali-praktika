@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import https from "node:https";
+import { syncBuiltinESMExports } from "node:module";
+import { EventEmitter } from "node:events";
+import { searchEnvironmentLive, draftMatchesListingAndFilters } from "../server/pipeline.mjs";
+import { buildEvidencePack, isEvidencePack } from "../server/evidence-pack.mjs";
+import { sourceIsLinkedToVisibleService } from "../server/source-identity.mjs";
 import {
+  cadastreSourceDocuments,
   composeCadastreAnswer,
   extractCadastreNumber,
   fetchFeatureCollection,
@@ -84,4 +91,82 @@ test("cadastre extract is explicitly informational and unofficial", () => {
   assert.match(`${result.answer.intro} ${result.answer.note}`, /informatiivne/iu);
   assert.match(result.answer.note, /mitteametlik/iu);
   assert.ok(result.sources.every((source) => source.type === "Avalik ruumiandmeteenus"));
+});
+
+test("actual typed spatial pipeline publishes found and outage snapshots without admitting detached capabilities", async (t) => {
+  const listing = { items: cadastreSourceDocuments(), total: 2 };
+  const requests = [];
+  let failing = false;
+  t.mock.method(https, "request", (url, options, receive) => {
+    requests.push({ url: String(url), options });
+    const request = new EventEmitter();
+    request.destroy = (error) => queueMicrotask(() => request.emit("error", error));
+    request.end = () => queueMicrotask(() => {
+      if (failing) {
+        request.emit("error", new Error("fixture upstream unavailable"));
+        return;
+      }
+      const target = new URL(url);
+      const cadastreNumber = target.searchParams.get("CQL_FILTER").match(/\d{5}:\d{3}:\d{4}/u)[0];
+      const features = target.pathname.includes("/kataster/")
+        ? [{ properties: { tunnus: cadastreNumber, pindala: 10_000, l_aadress: "Näidisala", siht1: "MAATULUNDUSMAA" } }]
+        : [{ properties: { id: "fixture-stand", katastri_nr: cadastreNumber, pindala: 1.2, invent_kp: "2024-01-01" } }];
+      const response = new EventEmitter();
+      response.statusCode = 200;
+      response.headers = { "content-type": "application/json" };
+      receive(response);
+      response.emit("data", Buffer.from(JSON.stringify({ type: "FeatureCollection", features })));
+      response.emit("end");
+    });
+    return request;
+  });
+  syncBuiltinESMExports();
+  t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
+
+  for (const scenario of ["found", "unavailable"]) {
+    failing = scenario === "unavailable";
+    const number = failing ? "78404:409:0912" : "78404:409:0911";
+    let recorded;
+    let modelCalls = 0;
+    const response = await searchEnvironmentLive(`Katastriüksuse ${number} metsa andmed`, {
+      useCache: false,
+      searchResults: listing,
+      startedAt: Date.now(),
+      deadlineAt: Date.now() + 3_000,
+      generateAnswer() { modelCalls += 1; throw new Error("typed snapshots must not call the model"); },
+      recordSearch(record) { recorded = record; },
+    });
+    assert.equal(modelCalls, 0);
+    assert.ok(recorded);
+    assert.equal(recorded.answerProvider, "deterministic-current-evidence");
+    assert.equal(recorded.answerStatus, "not-applicable");
+    assert.equal(recorded.attempt.reason, "not-applicable");
+    assert.ok(response.answer.introCitations.length);
+    assert.equal(response.sources.length, 2);
+    assert.doesNotMatch(JSON.stringify(response), /_visibleServiceWitness|sourceEvidencePack|fetchUrl|fixture upstream/u);
+    if (failing) {
+      assert.match(response.answer.intro, /ei saa järeldada/iu);
+      assert.match(response.answer.parts.map((part) => part.text).join(" "), /ei tähenda/iu);
+    } else {
+      assert.match(response.answer.intro, /1 ha/u);
+      assert.match(response.answer.parts.map((part) => part.text).join(" "), /1,2 ha/u);
+    }
+  }
+  assert.equal(requests.length, 4);
+  assert.ok(requests.every(({ url, options }) => new URL(url).origin === "https://gsavalik.envir.ee"
+    && options.signal instanceof AbortSignal && typeof options.lookup === "function"));
+
+  const snapshot = composeCadastreAnswer("78404:409:0913", "78404:409:0913", {
+    extractedAt: new Date().toISOString(),
+    cadastre: { status: "found", areaHectares: 1, address: "Näidisala" },
+    forest: { status: "not_found", count: 0 },
+  });
+  assert.ok(snapshot.sources.every((source) => typeof source.fetchUrl === "string"));
+  assert.ok(draftMatchesListingAndFilters(snapshot, listing));
+  const pack = buildEvidencePack({ sources: snapshot.sources, query: snapshot.query });
+  assert.ok(isEvidencePack(pack));
+  const detached = structuredClone(snapshot);
+  assert.ok(detached.sources.every((source) => !sourceIsLinkedToVisibleService(source, listing.items)));
+  assert.equal(draftMatchesListingAndFilters(detached, listing), false);
+  assert.equal(isEvidencePack(structuredClone(pack)), false);
 });

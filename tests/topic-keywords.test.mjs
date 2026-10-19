@@ -89,7 +89,10 @@ test("answer instructions retain primary-source terminology and source-close wor
   assert.match(text, /SMI.*puidubilans.*aastaraamat/u);
   assert.match(text, /ainult kaasa antud evidence/u);
   assert.match(text, /andmeaasta, mõõtühik, definitsioon ja ebakindlus täpselt/u);
-  assert.equal(forestrySourceClass({ title: "Mets 2023", organization: "Keskkonnaagentuur", url: "https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/Mets2023.pdf" }), "forest-yearbook");
+  const yearbook = officialServiceCatalogueDocuments().find((document) => document.id === "forest-yearbook-2023-fellings");
+  assert.ok(yearbook);
+  assert.equal(forestrySourceClass(yearbook), "forest-yearbook");
+  assert.equal(forestrySourceClass({ ...yearbook, url: "https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/Mets2023.pdf" }), "environment-agency-portal");
   assert.equal(forestrySourceClass({ title: "Metsa aastaraamatud", organization: "Keskkonnaagentuur", url: "https://keskkonnaportaal.ee/et/metsa-aastaraamatud" }), "forest-yearbook");
   assert.equal(forestrySourceClass({ title: "Eesti mets 2023 – kahjustuste seire", organization: "Keskkonnaagentuur", url: "https://keskkonnaportaal.ee/et/metsaseire" }), "environment-agency-portal");
 });

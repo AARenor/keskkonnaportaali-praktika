@@ -399,10 +399,9 @@ test("structured loader uses Keskkonnaagentuur's SMI workbook first and skips St
   assert.equal(response.chart.series[0].id, "smi-1");
   assert.deepEqual(response.chart.series[0].points.map((point) => point.y), kk51._forestSeries.points.map((point) => point.value));
   assert.match(response.chart.caption, /^Keskkonnaagentuur, SMI 2025 tulemuste tööleht 25: metsamaa pindala\./u);
-  // Deduplication may merge the series into the workbook's catalogue entry;
-  // the workbook URL in the results is enough to keep the SMI series first.
+  // A bare workbook listing is not the series' worksheet/row witness.
   const catalogue = { id: "forest-smi-2025-tables", title: "SMI 2025 tulemuste andmetabelid", url: SMI_2025_TABLES_URL };
-  assert.equal(composeForestSeriesResponse(query, [kk51, catalogue], { now: NOW }).sources[0].id, document.id);
+  assert.equal(composeForestSeriesResponse(query, [kk51, catalogue], { now: NOW }).sources[0].id, kk51.id);
   assert.equal(composeForestSeriesResponse(query, [kk51], { now: NOW }).sources[0].id, kk51.id);
 
   const felling = smiForestSeriesDocument("lageraie pindala 2015–2024");
@@ -645,8 +644,12 @@ test("the context chart prefers the SMI workbook and reuses the citation of the 
     evidence: { answerable: true },
   };
   const attached = withForestContextChart(draft, query, [kk51, smi], { now: NOW });
-  assert.equal(attached.chart.citation, 1);
-  assert.equal(attached.sources.length, 1);
+  assert.equal(attached.chart.citation, 2);
+  assert.equal(attached.sources.length, 2);
+  assert.equal(attached.sources[1].locator, smi.locator);
+  const sameWitness = withForestContextChart({ ...draft, sources: [{ ...smi, citation: 1 }] }, query, [smi], { now: NOW });
+  assert.equal(sameWitness.chart.citation, 1);
+  assert.equal(sameWitness.sources.length, 1);
   assert.equal(attached.chart.series[0].id, "smi-1");
   assert.equal(attached.chart.series[0].points.at(-1).y, 2360.2);
 

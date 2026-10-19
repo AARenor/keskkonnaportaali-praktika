@@ -305,9 +305,10 @@ function smiShareChart() {
 export function landUseShareChart(query, documents = [], options = {}) {
   const now = Number.isFinite(Number(options.now)) ? Number(options.now) : Date.now();
   if (!landUseShareIntent(query)) return null;
-  if (smiLandCategoriesValid() && smiWorkbookInResults(documents)) {
+  const expectedSmi = smiLandCategoryDocument();
+  if (smiLandCategoriesValid() && smiWorkbookInResults(documents, expectedSmi)) {
     const smi = (documents || []).find((document) => validatedSmiLandCategoryDocument(query, document, now));
-    return { source: smiTablesSource(options.draftSources) || smi || smiLandCategoryDocument(), chart: smiShareChart() };
+    return { source: smiTablesSource(options.draftSources, expectedSmi) || smi || expectedSmi, chart: smiShareChart() };
   }
   const source = (documents || []).find((document) => validatedLandUseShareProjection(query, document, now));
   if (!source) return null;

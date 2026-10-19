@@ -140,11 +140,13 @@ test("forestry source hierarchy keeps primary national publications ahead of sup
     "eurostat",
     "supplementary",
   ]);
-  assert.equal(forestrySourceClass({ title: "SMI 2025 tulemused", organization: "Keskkonnaagentuur" }), "smi");
-  assert.equal(forestrySourceClass({ title: "Aastaraamat Mets 2023", organization: "Keskkonnaagentuur" }), "forest-yearbook");
-  assert.equal(forestrySourceClass({ title: "Puidubilanss 2023", organization: "Keskkonnaagentuur" }), "wood-balance");
-  assert.equal(forestrySourceClass({ title: "Metsandus", organization: "Kliimaministeerium" }), "climate-ministry");
-  assert.equal(forestrySourceClass({ title: "European Forest Accounts", organization: "Eurostat" }), "eurostat");
+  const directory = officialServiceCatalogueDocuments();
+  for (const [id, expectedClass] of [["smi", "smi"], ["forest-yearbook-overview", "forest-yearbook"], ["wood-balance-overview", "wood-balance"]]) {
+    const source = directory.find((document) => document.id === id);
+    assert.ok(source, id);
+    assert.equal(forestrySourceClass(source), expectedClass, id);
+    assert.equal(forestrySourceClass({ ...source, url: undefined }), "additional-official", id);
+  }
 
   const query = "Kui suur on Eesti metsamaa pindala?";
   const candidate = {
@@ -162,15 +164,8 @@ test("forestry source hierarchy keeps primary national publications ahead of sup
     url: `https://example.invalid/${id}`,
     _forestrySourceClass: id,
   }, 0, NOW));
-  assert.deepEqual(scores.map((score) => score.forestrySourcePriority), [0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]);
-  assert.ok(scores.every((score, index) => index === 0 || scores[index - 1].score > score.score));
-  const ranked = rankPublicSearchCandidates(query, FORESTRY_SOURCE_HIERARCHY.map(({ id }) => ({
-    ...candidate,
-    id,
-    url: `https://example.invalid/${id}`,
-    _forestrySourceClass: id,
-  })), { now: NOW });
-  assert.deepEqual(ranked.map((document) => document.id), FORESTRY_SOURCE_HIERARCHY.map(({ id }) => id));
+  assert.ok(scores.every((score) => score.forestrySourcePriority === 0.3));
+  assert.ok(scores.every((score) => score.score === scores[0].score));
 });
 
 test("reviewed concepts, abbreviations, beetle data and annual publications have strong visible official evidence", async () => {
@@ -223,7 +218,7 @@ test("new forestry knowledge adds no Statistikaamet source", () => {
   for (const document of added) {
     const reviewedAt = Date.parse(document._catalogueReviewedAt);
     assert.ok(Number.isFinite(reviewedAt), document.id);
-    assert.ok(reviewedAt <= NOW && NOW - reviewedAt <= 31 * 24 * 60 * 60 * 1_000, document.id);
+    assert.ok(reviewedAt <= Date.now() && Date.now() - reviewedAt <= 31 * 24 * 60 * 60 * 1_000, document.id);
     assert.equal(document._evidenceStatusAt, document._catalogueReviewedAt, document.id);
     assert.match(document._evidenceVersion, new RegExp(`^catalogue-review-${document._catalogueReviewedAt.slice(0, 10)}:[0-9a-f]{64}$`, "u"), document.id);
     assert.equal(document.sourceProfile.checkedAt, document._catalogueReviewedAt.slice(0, 10), document.id);

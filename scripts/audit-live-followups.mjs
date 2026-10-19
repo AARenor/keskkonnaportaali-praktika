@@ -1,4 +1,4 @@
-import { canonicalResultUrl } from "../server/retrieval.mjs";
+import { publicSourceWitnessKey } from "../server/source-identity.mjs";
 import { requestBoundedAuditJson } from "./audit-http.mjs";
 
 const options = Object.fromEntries(process.argv.slice(2).map((argument) => {
@@ -52,7 +52,7 @@ function validateTurn(id, result) {
   const listing = payload.searchResults || {};
   const items = Array.isArray(listing.items) ? listing.items : [];
   const sources = Array.isArray(payload.sources) ? payload.sources : [];
-  const urls = new Set(items.map((item) => canonicalResultUrl(item.url)));
+  const witnesses = new Set(items.map(publicSourceWitnessKey).filter(Boolean));
   const citations = citationIds(payload);
   check(result.status === 200, "turn did not return HTTP 200", { id, status: result.status });
   check(JSON.stringify(listing.appliedFilters) === JSON.stringify(filters), "filters changed between turns", {
@@ -61,7 +61,7 @@ function validateTurn(id, result) {
   });
   check(items.every((item) => item.sourceTier === "official"), "a visible result escaped the official filter", { id });
   check(sources.every((source) => source.sourceTier === "official"), "an answer source escaped the official filter", { id });
-  check(sources.every((source) => urls.has(canonicalResultUrl(source.url))), "an answer cited a source outside the visible ranked listing", { id });
+  check(sources.every((source) => publicSourceWitnessKey(source) !== null && witnesses.has(publicSourceWitnessKey(source))), "an answer cited a source outside the visible ranked listing", { id });
   check(citations.every((citation) => Number.isInteger(citation) && citation >= 1 && citation <= sources.length), "a citation has no matching source", {
     id,
     citations,

@@ -1,4 +1,4 @@
-import { canonicalResultUrl } from "../server/retrieval.mjs";
+import { publicSourceWitnessKey } from "../server/source-identity.mjs";
 import { requestBoundedAuditJson } from "./audit-http.mjs";
 
 const options = Object.fromEntries(process.argv.slice(2).map((argument) => {
@@ -110,8 +110,8 @@ function listingContract(id, result, filters, { nonempty = true, answer = false 
     sort: filters.sort || "relevance",
   }), "server did not echo the normalized applied filters", { id, appliedFilters: listing?.appliedFilters });
   if (answer) {
-    const visibleUrls = new Set(items.map((item) => canonicalResultUrl(item.url)));
-    check((result.body?.sources || []).every((source) => visibleUrls.has(canonicalResultUrl(source.url))),
+    const visibleWitnesses = new Set(items.map(publicSourceWitnessKey).filter(Boolean));
+    check((result.body?.sources || []).every((source) => publicSourceWitnessKey(source) !== null && visibleWitnesses.has(publicSourceWitnessKey(source))),
       "AI answer cited a source outside the filtered result set", { id });
   }
 }

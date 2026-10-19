@@ -1,3 +1,5 @@
+import { sourceEvidenceBinding } from "./source-identity.mjs";
+
 const CHART_KINDS = new Set(["line", "bar", "share"]);
 const CHART_KEYS = new Set(["kind", "title", "unit", "xLabel", "series", "citation", "caption"]);
 const SERIES_KEYS = new Set(["id", "label", "points"]);
@@ -82,7 +84,12 @@ export function boundedChart(chart) {
 // renumbers both together.
 export function attachChartToDraft(draft, source, chart) {
   const sources = Array.isArray(draft.sources) ? draft.sources : [];
-  const existing = sources.find((candidate) => candidate?.id === source.id);
+  const expected = sourceEvidenceBinding(source);
+  const existing = sources.find((candidate) => {
+    const binding = sourceEvidenceBinding(candidate);
+    return expected.witnessKey !== null && binding.witnessKey === expected.witnessKey
+      && binding.version === expected.version && binding.snapshotHash === expected.snapshotHash;
+  });
   if (existing && Number.isInteger(existing.citation) && existing.citation > 0) {
     return { ...draft, chart: { ...chart, citation: existing.citation } };
   }

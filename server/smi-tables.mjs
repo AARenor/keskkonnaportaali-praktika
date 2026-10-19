@@ -3,16 +3,36 @@
 // Public charts use the primary workbook, not Statistikaamet republications.
 // Missing indicators remain unavailable rather than switching publisher.
 //
-// Values were copied from the workbook published 18.08.2026: worksheet 1
+// Values were copied from the workbook listed as of 18.08.2026: worksheet 1
 // (land categories), 25 (forest land area and stock), 28 (stand area and stock
 // per hectare), 33 and 34 (felling area and volume, all owners).
 
 import { createHash } from "node:crypto";
+import { sameSourceResource, sourceEvidenceBinding } from "./source-identity.mjs";
+import { sourceCanSupportPublicCitation } from "./source-registry.mjs";
 
 export const SMI_2025_TABLES_URL = "https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI%20tulemused%202025/SMI%202025%20tulemused.xlsx";
 export const SMI_2025_ORGANIZATION = "Keskkonnaagentuur / Keskkonnaportaal";
 export const SMI_2025_YEAR = 2025;
-const SMI_2025_PUBLISHED_AT = "2026-08-18";
+const SMI_2025_DATA_AS_OF = "2026-08-18";
+
+// Verified against the official publication list and physical XLSX on 06.10.2026.
+// This checksum identifies the downloaded artifact, never a generated excerpt.
+export const SMI_2025_EDITION = Object.freeze({
+  year: 2025,
+  publishedAt: null,
+  dataAsOf: SMI_2025_DATA_AS_OF,
+  verifiedAt: "2026-10-06",
+  publicationListUrl: "https://keskkonnaportaal.ee/et/teemad/mets/metsastatistika-sh-smi",
+  artifactSha256: "84c46eb2d0846f568bbb8fdf6cca02eca18bb5db34d4286a1259a138c6f0d99e",
+  artifactBytes: 995409,
+  measurementLocator: "Tööleht '1.': B5/C5/D5 (metsamaa, tuhat ha / % / suhteline viga); B20 (Eesti kogupindala). Tööleht '3.': B5:D5 (kogu Eesti, koos suurte järvedega).",
+  historicalReferenceYear: 2024,
+  historicalLocator: "Tööleht '25.': A12='Kokku', AA4=2024, AA12=2350,8188831296102 tuhat ha; AB4=2025, AB12=2360,20037264553 tuhat ha.",
+  // The later edition's historical row differs from the 2024 PDF. The
+  // workbook does not publish a reason; do not invent a methodological change.
+  historicalRevisionReason: null,
+});
 
 const FIRST_YEAR = 1999;
 
@@ -68,20 +88,26 @@ export function smiSeriesPoints(table, indicatorCode, years) {
   return points;
 }
 
-// The SMI workbook entry the answer already cites wins, so the chart reuses
-// its citation number instead of listing the same workbook twice.
-export function smiTablesSource(draftSources = []) {
-  return (draftSources || []).find((document) => document && typeof document === "object"
-    && document.url === SMI_2025_TABLES_URL
+// Resource equality is insufficient: a different worksheet/row at the same
+// workbook URL cannot become a chart's witness.
+function sameSmiWitness(document, expected) {
+  if (!expected || !sourceCanSupportPublicCitation(document).eligible
+    || !sameSourceResource(document.url, SMI_2025_TABLES_URL)) return false;
+  const actualBinding = sourceEvidenceBinding(document);
+  const expectedBinding = sourceEvidenceBinding(expected);
+  return actualBinding.witnessKey !== null
+    && actualBinding.witnessKey === expectedBinding.witnessKey
+    && actualBinding.version === expectedBinding.version
+    && actualBinding.snapshotHash === expectedBinding.snapshotHash;
+}
+
+export function smiTablesSource(draftSources, expected) {
+  return (draftSources || []).find((document) => sameSmiWitness(document, expected)
     && Number.isInteger(document.citation) && document.citation > 0) || null;
 }
 
-// Result deduplication merges every document that points at the workbook into
-// one visible entry, so presence is decided by URL, not by document id. A
-// filter that hides the workbook also removes the SMI chart.
-export function smiWorkbookInResults(documents = []) {
-  return (documents || []).some((document) => document && typeof document === "object"
-    && String(document.url || "").split("#")[0].replace("://www.", "://") === SMI_2025_TABLES_URL);
+export function smiWorkbookInResults(documents, expected) {
+  return (documents || []).some((document) => sameSmiWitness(document, expected));
 }
 
 export function smiStructuredDocument({ id, title, summary, content, locator, topics }) {
@@ -90,7 +116,7 @@ export function smiStructuredDocument({ id, title, summary, content, locator, to
     title,
     organization: SMI_2025_ORGANIZATION,
     type: "Metsastatistika andmetabel",
-    published: "18.08.2026",
+    published: "",
     url: SMI_2025_TABLES_URL,
     locator,
     summary,
@@ -108,7 +134,10 @@ export function smiStructuredDocument({ id, title, summary, content, locator, to
       maxAgeMs: null,
       requiresSourceTimestamp: false,
     },
-    _publishedAt: SMI_2025_PUBLISHED_AT,
+    _publishedAt: null,
+    dataYear: String(SMI_2025_YEAR),
+    dataAsOf: "18.08.2026",
+    _smiEdition: SMI_2025_EDITION,
     _answerEvidenceEligible: true,
     _contentHash: createHash("sha256").update(`${id}\n${content}`).digest("hex"),
   };

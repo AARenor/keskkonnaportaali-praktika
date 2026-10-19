@@ -611,12 +611,30 @@ const UNSUPPORTED_FOREST_AREA_TIME_SERIES_PATTERNS = Object.freeze([
   /\b(?:aastate\s+kaupa|aasta-aastalt|aegrida\w*|ajaloolin\w*|ajalugu\w*|trend\w*|muutus\w*\s+ajas)\b/iu,
 ]);
 
-export function requestsUnsupportedForestAreaTimeSeries(value) {
+// An edition year and one reference-year row are two different dimensions,
+// not a requested time series. This parser grants no privacy/evidence rights.
+export function statisticalReferenceDimensions(value) {
+  const text = normalizeMunicipalityText(value);
+  if (/\b(?:vordl\w*|vorr\w*|compare\w*|comparison|trend\w*|aegrida\w*|series|aastate|muutus\w*)\b/u.test(text)) return null;
+  const editions = [...text.matchAll(/\b((?:19|20)\d{2})\s+(?:aasta\s+)?(?:valjaand\w*|toovihik\w*|edition|workbook|publication)\b/gu)];
+  const rows = [...text.matchAll(/\b((?:19|20)\d{2})\s+(?:aasta\s+)?(?:ajalooline\s+)?(?:reas|real|rida|rea|row)\b/gu)];
+  if (editions.length !== 1 || rows.length !== 1) return null;
+  const edition = editions[0];
+  return {
+    editionYear: Number(edition[1]),
+    referenceYear: Number(rows[0][1]),
+    periodQuery: text.slice(0, edition.index) + text.slice(edition.index + edition[1].length),
+  };
+}
+
+export function requestsUnsupportedForestAreaTimeSeries(value, { referenceRow = false } = {}) {
+  const dimensions = referenceRow ? statisticalReferenceDimensions(value) : null;
+  const periodQuery = dimensions?.periodQuery ?? String(value || "");
   const years = new Set(
-    [...String(value || "").matchAll(/\b(?:19|20)\d{2}\b/gu)].map((match) => match[0]),
+    [...periodQuery.matchAll(/\b(?:19|20)\d{2}\b/gu)].map((match) => match[0]),
   );
   return years.size > 1 || UNSUPPORTED_FOREST_AREA_TIME_SERIES_PATTERNS.some(
-    (pattern) => pattern.test(String(value || "")),
+    (pattern) => pattern.test(periodQuery),
   );
 }
 

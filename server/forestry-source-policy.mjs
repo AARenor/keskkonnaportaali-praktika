@@ -1,3 +1,6 @@
+import { sourceResourceKey } from "./source-identity.mjs";
+import { officialCitationUrlEligibility } from "./citation-policy.mjs";
+
 // Shared forestry-source order. Relevance and claim coverage stay primary;
 // this preference only refines otherwise comparable forestry results.
 export const FORESTRY_SOURCE_HIERARCHY = Object.freeze([
@@ -11,32 +14,37 @@ export const FORESTRY_SOURCE_HIERARCHY = Object.freeze([
   Object.freeze({ id: "supplementary", label: "Taustallikad", score: 0.1 }),
 ]);
 
-const SOURCE_CLASSES = new Set(FORESTRY_SOURCE_HIERARCHY.map((item) => item.id));
 const SOURCE_SCORES = new Map(FORESTRY_SOURCE_HIERARCHY.map((item) => [item.id, item.score]));
 
-function normalizedSourceText(document = {}) {
-  return [
-    document.title,
-    document.organization,
-    document.url,
-    ...(document.tags || []),
-    ...(document.topics || []),
-  ].filter(Boolean).join(" ").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("et");
-}
+const PRIMARY_RESOURCES = new Map([
+  ["https://keskkonnaportaal.ee/et/teemad/mets/metsastatistika-sh-smi", "smi"],
+  ["https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI2024/SMI_2024.pdf", "smi"],
+  ["https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI%20tulemused%202025/SMI%202025%20tulemused.xlsx", "smi"],
+  ["https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI%20tulemused%202025/SMI%202025%20ettekanne.pdf", "smi"],
+  ["https://keskkonnaportaal.ee/sites/default/files/2026-01/SMI%20arendamine%202025%20L%C3%95PPARUANNE_T%C3%9C%20MSI.pdf", "smi"],
+  ["https://keskkonnaportaal.ee/sites/default/files/2021-12/Statistiline%20mets%20-%2020%20aastat%20statistilist%20metsainventeerimist%20Eestis.pdf", "smi"],
+  ["https://keskkonnaportaal.ee/et/metsa-aastaraamatud", "forest-yearbook"],
+  ["https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/Mets%202023.pdf", "forest-yearbook"],
+  ["https://keskkonnaportaal.ee/et/puidubilanss-ulevaade-eesti-puidukasutuse-mahust", "wood-balance"],
+  ["https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/Puidubilanss%202023.pdf", "wood-balance"],
+].map(([url, sourceClass]) => [sourceResourceKey(url), sourceClass]));
 
 export function forestrySourceClass(document = {}) {
-  const explicit = String(document._forestrySourceClass || "").trim();
-  if (SOURCE_CLASSES.has(explicit)) return explicit;
   if (document.sourceTier === "supplementary") return "supplementary";
-  const text = normalizedSourceText(document);
-  if (/\beurostat\b/u.test(text)) return "eurostat";
-  if (/\b(?:aastaraamat\s+[„"“]?mets|metsa aastaraamat\p{L}*|metsaaastaraamat\p{L}*)\b/u.test(text)
-    || /^mets\s*20\d{2}(?:\.pdf)?$/u.test(normalizedSourceText({ title: document.title }))
-    || /\/mets(?:%20|\s)*20\d{2}\.pdf(?:[?#]|$)/iu.test(String(document.url || ""))) return "forest-yearbook";
-  if (/\bpuidubilanss\b/u.test(text)) return "wood-balance";
-  if (/\b(?:smi|statistiline metsainventuur|statistilise metsainventuuri)\b/u.test(text)) return "smi";
-  if (/\bkliimaministeerium\b/u.test(text)) return "climate-ministry";
-  if (/\b(?:keskkonnaagentuur|kaur|keskkonnaportaal)\b/u.test(text)) return "environment-agency-portal";
+  const citation = officialCitationUrlEligibility(document.url);
+  if (!citation.eligible) return "additional-official";
+  const publisher = String(document.organization || "").replace(/\s+/gu, " ").trim();
+  const host = citation.url.hostname.replace(/^www\./u, "");
+  const agencyPublisher = /^(?:Keskkonnaagentuur|KAUR)(?:\s*\/\s*(?:Keskkonnaportaal|Ilmateenistus))?$/iu.test(publisher);
+  const portalPublisher = /^Keskkonnaportaal$/iu.test(publisher);
+  if ((agencyPublisher || portalPublisher) && ["keskkonnaportaal.ee", "keskkonnaagentuur.ee"].includes(host)) {
+    // A primary role is a reviewed publisher/resource pair, never a keyword
+    // or an externally supplied _forestrySourceClass override.
+    return PRIMARY_RESOURCES.get(sourceResourceKey(document.url)) || "environment-agency-portal";
+  }
+  if (/^Kliimaministeerium$/iu.test(publisher)
+    && ["kliimaministeerium.ee", "keskkonnaportaal.ee"].includes(host)) return "climate-ministry";
+  if (/^Eurostat(?:\s*\/.*)?$/iu.test(publisher) && host === "ec.europa.eu") return "eurostat";
   return "additional-official";
 }
 

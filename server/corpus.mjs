@@ -17,6 +17,7 @@ import {
   officialServiceCatalogueDocuments,
 } from "./search.mjs";
 import { specialistSubjectRoot, specialistSubjectVariants } from "./topic-keywords.mjs";
+import { SOURCE_IDENTITY_VERSION, sourceResourceKey, sameSourceResource } from "./source-identity.mjs";
 
 const PORTAL_BASE = "https://keskkonnaportaal.ee";
 const PORTAL_SEARCH = `${PORTAL_BASE}/et/search`;
@@ -136,6 +137,7 @@ const QUERY_STOPWORDS = new Set([
   "täna", "tana", "homme", "homne", "ülehomme", "ulehomme", "reaalajas", "see",
   "seda", "selle", "siis", "suur", "suured", "suurus", "uusim", "uusimad", "värske", "värsked", "või", "ule", "üle", "uks", "üks",
 ]);
+const OFFICIAL_DISCOVERY_ORIGINS = new Set([...OFFICIAL_HOSTS].map((host) => `https://${host}`));
 const SEARCH_FILTER_SOURCES = new Set(["all", "trusted", "official", "reviewed", "supplementary", "other"]);
 let corpusSchemaPromise;
 let backgroundSyncPromise;
@@ -202,15 +204,13 @@ export const CORPUS_OVERFLOW_DELETE_SQL = `
   WHERE document.id = victims.id
 `;
 
-export function canonicalOfficialDiscoveryUrl(value = "") {
+function approvedOfficialDiscoveryUrl(value = "") {
   try {
-    const url = new URL(typeof value === "object" ? value?.url : value);
-    if (url.protocol !== "https:" || !OFFICIAL_HOSTS.has(url.hostname)) return "";
-    url.hash = "";
-    for (const key of [...url.searchParams.keys()]) {
-      if (/^(?:utm_|fbclid|gclid)/iu.test(key)) url.searchParams.delete(key);
-    }
-    url.searchParams.sort();
+    const original = new URL(typeof value === "object" ? value?.url : value);
+    const fragment = original.hash;
+    original.hash = "";
+    const url = validateApprovedPublicHttpsUrl(original, OFFICIAL_DISCOVERY_ORIGINS);
+    if (/\.pdf$/iu.test(url.pathname)) url.hash = fragment;
     return url.toString();
   } catch {
     return "";
@@ -218,7 +218,8 @@ export function canonicalOfficialDiscoveryUrl(value = "") {
 }
 
 function officialDiscoveryQueueKey(document = {}) {
-  return canonicalOfficialDiscoveryUrl(document?.url);
+  const approvedUrl = approvedOfficialDiscoveryUrl(document?.url);
+  return approvedUrl ? sourceResourceKey(approvedUrl) : null;
 }
 
 const officialDiscoveryIndexQueue = createOfficialDiscoveryIndexQueue({
@@ -376,7 +377,6 @@ function canonicalUrl(value, base = PORTAL_BASE) {
       url.protocol = "https:";
     }
     if (url.protocol !== "https:") return null;
-    if (url.hostname === "www.keskkonnaportaal.ee") url.hostname = "keskkonnaportaal.ee";
     const terminalPathSegment = url.pathname.split("/").filter(Boolean).at(-1) || "";
     let decodedTerminalPathSegment = terminalPathSegment;
     try {
@@ -386,11 +386,7 @@ function canonicalUrl(value, base = PORTAL_BASE) {
       // and will be rejected by the downstream HTTPS fetch if unusable.
     }
     if (/^(?:null|undefined)$/iu.test(decodedTerminalPathSegment.normalize("NFKC"))) return null;
-    url.hash = "";
-    for (const key of [...url.searchParams.keys()]) {
-      if (/^(?:utm_|fbclid|gclid)/iu.test(key)) url.searchParams.delete(key);
-    }
-    if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/u, "");
+    if (!/\.pdf$/iu.test(url.pathname)) url.hash = "";
     return url.toString();
   } catch {
     return null;
@@ -398,9 +394,22 @@ function canonicalUrl(value, base = PORTAL_BASE) {
 }
 
 export function hydrationResourceMatches(requestedValue, finalValue) {
-  const requested = canonicalUrl(requestedValue);
-  const finalResource = canonicalUrl(finalValue);
-  return Boolean(requested && finalResource && requested === finalResource);
+  const approvedTarget = canonicalUrl(requestedValue);
+  const approvedFinal = canonicalUrl(finalValue);
+  const transportKey = (value) => {
+    if (!value) return null;
+    const url = new URL(value);
+    url.hash = "";
+    if (url.hostname === "www.keskkonnaportaal.ee") url.hostname = "keskkonnaportaal.ee";
+    for (const key of [...url.searchParams.keys()]) {
+      if (/^(?:utm_|fbclid|gclid)/iu.test(key)) url.searchParams.delete(key);
+    }
+    if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/u, "");
+    return url.toString();
+  };
+  return Boolean(approvedTarget && approvedFinal
+    && transportKey(approvedTarget) === transportKey(approvedFinal)
+    && sameSourceResource(approvedTarget, approvedFinal));
 }
 
 function robotsPatternMatches(pattern, target) {
@@ -601,7 +610,12 @@ function normalizeDocument(document) {
     sourceTier,
     language: boundedText(document.language || "et", 12),
     quality: Math.max(1, Math.min(Number(document.quality) || 1, 5)),
-    metadata: document.metadata && typeof document.metadata === "object" ? document.metadata : {},
+    metadata: {
+      ...(document.metadata && typeof document.metadata === "object" && !Array.isArray(document.metadata)
+        ? document.metadata : {}),
+      sourceResourceKey: sourceResourceKey(url),
+      sourceIdentityVersion: SOURCE_IDENTITY_VERSION,
+    },
   };
   normalized.contentHash = hash(JSON.stringify([
     normalized.title,
@@ -798,6 +812,72 @@ export function pageRobotsPolicy(html = "", headerValue = "") {
   };
 }
 
+export async function backfillCorpusSourceIdentity(client, {
+  signal,
+  batchSize = 250,
+  maximumBytes = CORPUS_MAX_BYTES,
+} = {}) {
+  const boundedBatchSize = Math.max(1, Math.min(Math.trunc(Number(batchSize) || 250), 250));
+  let updatedRows = 0;
+  for (;;) {
+    throwIfCorpusAborted(signal);
+    await client.query("BEGIN");
+    try {
+      await client.query("SET LOCAL statement_timeout = '10000ms'");
+      await client.query("SELECT pg_advisory_xact_lock(hashtext('practice-corpus-retention-capacity'))");
+      const pending = await client.query(`
+        SELECT id, canonical_url, jsonb_typeof(metadata) AS metadata_type
+        FROM practice_corpus_documents
+        WHERE metadata->>'sourceIdentityVersion' IS DISTINCT FROM $1
+          OR NOT (metadata ? 'sourceResourceKey')
+        ORDER BY id
+        LIMIT $2
+        FOR UPDATE
+      `, [SOURCE_IDENTITY_VERSION, boundedBatchSize]);
+      throwIfCorpusAborted(signal);
+      if (!pending.rows.length) {
+        await client.query("COMMIT");
+        return { updatedRows, sourceIdentityVersion: SOURCE_IDENTITY_VERSION };
+      }
+      const invalidMetadataRow = pending.rows.find((row) => row.metadata_type !== "object");
+      if (invalidMetadataRow) {
+        throw new Error(`Corpus source identity migration requires object metadata (document ${invalidMetadataRow.id})`);
+      }
+      // Every row is examined; invalid legacy URLs get an explicit null key,
+      // not a fabricated identity or a silent omission from migration.
+      const identities = pending.rows.map((row) => ({
+        id: row.id,
+        resource_key: sourceResourceKey(row.canonical_url),
+        identity_version: SOURCE_IDENTITY_VERSION,
+      }));
+      await client.query(`
+        UPDATE practice_corpus_documents AS document
+        SET metadata = document.metadata || jsonb_build_object(
+          'sourceResourceKey', item.resource_key,
+          'sourceIdentityVersion', item.identity_version
+        )
+        FROM jsonb_to_recordset($1::JSONB) AS item(
+          id BIGINT, resource_key TEXT, identity_version TEXT
+        )
+        WHERE document.id = item.id
+      `, [JSON.stringify(identities)]);
+      const aggregate = await client.query(`
+        SELECT COALESCE(SUM(pg_column_size(document)), 0)::BIGINT AS total_bytes
+        FROM practice_corpus_documents AS document
+      `);
+      throwIfCorpusAborted(signal);
+      if (Number(aggregate.rows[0]?.total_bytes) > maximumBytes) {
+        throw new Error("Corpus source identity migration exceeds aggregate storage capacity");
+      }
+      await client.query("COMMIT");
+      updatedRows += pending.rows.length;
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    }
+  }
+}
+
 async function ensureCorpusSchema() {
   if (!databaseEnabled()) return false;
   if (!corpusSchemaPromise) {
@@ -959,6 +1039,7 @@ async function ensureCorpusSchema() {
         $$;
       `);
       await enforceCorpusRetention(client);
+      await backfillCorpusSourceIdentity(client);
       return true;
     }).catch((error) => {
       corpusSchemaPromise = undefined;
@@ -1358,7 +1439,7 @@ export function limitOfficialDiscoveryDocuments(
 
 export function normalizeOfficialDiscoveryDocuments(rawDocuments = []) {
   return deduplicateCorpusDocuments(rawDocuments.flatMap((document) => {
-    const url = canonicalOfficialDiscoveryUrl(document?.url);
+    const url = approvedOfficialDiscoveryUrl(document?.url);
     if (!url) return [];
     return [{
       sourceKey: "official-live-search",
@@ -1732,7 +1813,11 @@ export async function persistHydratedCorpusDocument(
           is_available = TRUE
       WHERE canonical_url = $1
       RETURNING id
-    `, [url, title, content, contentHash, metadata, runId, publishedAt, organization]);
+    `, [url, title, content, contentHash, JSON.stringify({
+      ...(typeof metadata === "string" ? JSON.parse(metadata) : metadata),
+      sourceResourceKey: sourceResourceKey(url),
+      sourceIdentityVersion: SOURCE_IDENTITY_VERSION,
+    }), runId, publishedAt, organization]);
     throwIfCorpusAborted(signal);
     if (!updated.rowCount) {
       await client.query("COMMIT");
@@ -2412,8 +2497,8 @@ export async function searchCorpus(query, {
     ? Math.max(0, Math.min(Number(resultOffset), 1_000_000))
     : (safePage - 1) * safePageSize;
   const safeExcludedUrls = [...new Set((Array.isArray(excludeUrls) ? excludeUrls : [])
-    .map((value) => String(value || "").trim())
-    .filter((value) => /^https:\/\//u.test(value)))]
+    .map(sourceResourceKey)
+    .filter(Boolean))]
     .slice(0, 100);
   const appliedFilters = normalizeSearchFilters(filters);
   if (!normalized || !databaseEnabled()) {
@@ -2475,6 +2560,7 @@ export async function searchCorpus(query, {
       safePageSize,
       safeOffset,
       safeExcludedUrls,
+      SOURCE_IDENTITY_VERSION,
     ];
     const [resultState, facetState] = await Promise.allSettled([databaseQuery(`
       WITH parameters AS (
@@ -2526,11 +2612,10 @@ export async function searchCorpus(query, {
           AND ($6::INTEGER IS NULL OR EXTRACT(YEAR FROM document.published_at)::INTEGER = $6::INTEGER)
           AND (
             cardinality($10::TEXT[]) = 0
-            OR regexp_replace(
-              regexp_replace(document.canonical_url, '^https://www[.]', 'https://'),
-              '^https://keskkonnaportaal[.]ee/et(/|$)',
-              'https://keskkonnaportaal.ee/'
-            ) <> ALL($10::TEXT[])
+            OR COALESCE(CASE
+              WHEN document.metadata->>'sourceIdentityVersion' = $11
+                THEN document.metadata->>'sourceResourceKey'
+            END, '') <> ALL($10::TEXT[])
           )
           AND (
             document.search_vector @@ parameters.prefix_query

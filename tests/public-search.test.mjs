@@ -26,7 +26,10 @@ import {
   preparePublicProviderQuery,
   reviewedCatalogueEvidenceVersion,
 } from "../server/search.mjs";
-import { buildBoundedEvidence, buildLlmRequest } from "../server/llm.mjs";
+import { buildLlmRequest } from "../server/llm.mjs";
+import { buildEvidencePack } from "../server/evidence-pack.mjs";
+import { forestrySourceClass } from "../server/forestry-source-policy.mjs";
+import { sourceResourceKey } from "../server/source-identity.mjs";
 import {
   buildOfficialSourceRegistry,
   officialSourceProfile,
@@ -4036,6 +4039,30 @@ test("curated official registry has unique identities and explicit dynamic-sourc
   });
 });
 
+test("source profiles retain unknown review time instead of inventing a review date", () => {
+  const reviewed = officialServiceCatalogueDocuments().find((item) => item.id === "bark-beetle-monitoring-2026");
+  const { _evidenceStatusAt, _catalogueReviewedAt, ...unknown } = reviewed;
+  assert.equal(officialSourceProfile(unknown).checkedAt, null);
+  assert.equal(officialSourceProfile({ ...unknown, _catalogueReviewedAt: "2026-02-31T00:00:00Z" }).checkedAt, null);
+  assert.equal(officialSourceProfile(reviewed).checkedAt, _catalogueReviewedAt.slice(0, 10));
+  assert.equal(officialSourceProfile({ ...reviewed, _evidenceStatusAt: "invalid-status-date" }).checkedAt,
+    _catalogueReviewedAt.slice(0, 10));
+  assert.equal(officialSourceProfile(reviewed).canonicalUrl, reviewed.url);
+  assert.equal(officialSourceProfile(reviewed).resourceKey, sourceResourceKey(reviewed.url));
+});
+
+test("primary forestry authority belongs to the publisher and reviewed resource, not SMI tags", () => {
+  const directory = officialServiceCatalogueDocuments();
+  const rmk = directory.find((item) => item.id === "forest-rmk-data-methods");
+  const smi = directory.find((item) => item.id === "forest-smi-2025-tables");
+  assert.equal(forestrySourceClass(rmk), "additional-official");
+  assert.equal(forestrySourceClass({ ...rmk, _forestrySourceClass: "smi", title: smi.title, tags: smi.tags }), "additional-official");
+  assert.equal(forestrySourceClass(smi), "smi");
+  assert.equal(forestrySourceClass({ ...smi, organization: rmk.organization }), "additional-official");
+  assert.equal(forestrySourceClass({ ...smi, url: rmk.url, _forestrySourceClass: "smi" }), "additional-official");
+  assert.equal(forestrySourceClass({ ...smi, url: "https://keskkonnaportaal.ee/unreviewed-SMI-report.pdf" }), "environment-agency-portal");
+});
+
 test("route-only and unversioned live records cannot cross the answer-evidence boundary", () => {
   const now = Date.parse("2026-08-19T12:05:00Z");
   const routeOnly = {
@@ -4068,11 +4095,10 @@ test("route-only and unversioned live records cannot cross the answer-evidence b
     .map((source) => ({ ...source, _answerEvidenceEligible: officialSourceProfile(source, { now }).evidenceEligible }));
   assert.deepEqual(evidenceDocumentsFromListing({ items: candidates }, { now }), []);
   assert.deepEqual(evidenceDocumentsFromListing({ items: [routeOnly] }, { now }), []);
-  assert.deepEqual(buildBoundedEvidence({
-    evidence: {},
-    answer: { intro: "", introCitations: [], parts: [] },
+  assert.deepEqual(buildEvidencePack({
     sources: [{ ...routeOnly, citation: 1, summary: "Registri maandumisleht." }],
-  }, "registri info"), []);
+    query: "registri info",
+  }).entries, []);
   const bareFederated = {
     ...routeOnly,
     id: "federated-card",
@@ -4754,23 +4780,22 @@ test("forest-register WFS and its documentation have distinct canonical identiti
 });
 
 test("the AI evidence pack carries source role and freshness constraints", () => {
-  const evidence = buildBoundedEvidence({
-    evidence: { kind: "ranked-search-results" },
-    answer: { intro: "", introCitations: [], parts: [] },
+  const evidence = buildEvidencePack({
+    query: "2025. aasta seiretulemused",
     sources: [{
       citation: 1,
       title: "Ametlik aastaaruanne",
       organization: "Keskkonnaagentuur",
       type: "Riiklik aruanne",
       published: "2025",
-      url: "https://example.invalid/report",
+      url: "https://keskkonnaagentuur.ee/aastaaruanne",
       summary: "Aruanne kirjeldab 2025. aasta seiretulemusi.",
       routeClasses: ["official_indicator_or_report"],
       evidencePolicy: "claim-specific",
       _answerEvidenceEligible: true,
       freshness: { class: "annual" },
     }],
-  }, "2025. aasta seiretulemused");
+  }).entries;
   assert.deepEqual(evidence[0].route_classes, ["official_indicator_or_report"]);
   assert.equal(evidence[0].source_type, "Riiklik aruanne");
   assert.equal(evidence[0].evidence_policy, "claim-specific");
@@ -4786,23 +4811,24 @@ test("the AI evidence pack carries source role and freshness constraints", () =>
 
 test("LLM evidence metadata is bounded and counted inside the total character budget", () => {
   const huge = "X".repeat(1_000_000);
-  const evidence = buildBoundedEvidence({
-    evidence: {},
-    answer: { intro: "", introCitations: [], parts: [] },
+  const evidence = buildEvidencePack({
+    query: "seiretulemus",
     sources: [{
       citation: 1,
       title: huge,
       organization: huge,
       type: huge,
       published: huge,
-      locator: huge,
-      url: `https://example.invalid/${huge}`,
+      locator: "Kontrollitud seiretulemuse lõik",
+      url: "https://keskkonnaagentuur.ee/seiretulemus",
       summary: "Ametlik seiretulemus.",
       sourceTier: "official",
       evidencePolicy: "claim-specific",
       _answerEvidenceEligible: true,
+      retrieval: "official-service-directory",
+      _evidenceVersion: "actual-reviewed-fixture-v1",
     }],
-  }, "seiretulemus");
+  }).entries;
   assert.equal(evidence.length, 1);
   assert.ok(evidence[0].title.length <= 500);
   assert.ok(evidence[0].organization.length <= 240);
@@ -4810,4 +4836,11 @@ test("LLM evidence metadata is bounded and counted inside the total character bu
   assert.ok(evidence[0].locator.length <= 1_000);
   assert.ok(evidence[0].url.length <= 2_000);
   assert.ok(JSON.stringify(evidence).length <= 36_000);
+});
+
+test("an oversized unverified locator cannot become a packed witness by metadata clipping", () => {
+  const actual = officialServiceCatalogueDocuments().find((item) => item.id === "forest-area");
+  const pack = buildEvidencePack({ sources: [{ ...actual, citation: 1, locator: "X".repeat(1_000_001) }], query: "metsamaa pindala" });
+  assert.equal(pack.complete, false);
+  assert.deepEqual(pack.entries, []);
 });

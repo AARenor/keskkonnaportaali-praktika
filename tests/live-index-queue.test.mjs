@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canonicalOfficialDiscoveryUrl } from "../server/corpus.mjs";
+import { sourceResourceKey } from "../server/source-identity.mjs";
 import { createOfficialDiscoveryIndexQueue } from "../server/live-index-queue.mjs";
 
 function nextTurn() {
@@ -64,7 +64,7 @@ test("official discovery indexing coalesces URLs and bounds pending batches and 
 test("official discovery canonical identity coalesces reordered query parameters", async () => {
   const written = [];
   const queue = createOfficialDiscoveryIndexQueue({
-    keyOf: (item) => canonicalOfficialDiscoveryUrl(item.url),
+    keyOf: (item) => sourceResourceKey(item.url),
     writeBatch: async (documents) => {
       written.push(...documents);
       return { status: "ready", indexed: documents.length };

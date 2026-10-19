@@ -1,6 +1,6 @@
 # Ametlike allikate ja API-de register
 
-Uuendatud: 01.10.2026
+Uuendatud: 06.10.2026
 
 See register kirjeldab, millised allikad on otsingu päringuteel aktiivsed, millised on kasutajale suunavad kataloogiallikad ning milliseid teenuseid ei kasutata enne eraldi valideeritud adapterit. Ükski allikas ei anna mudelile õigust kasutada üldteadmisi: vastus peab jääma tagastatud tõendite piiresse.
 
@@ -28,6 +28,18 @@ Riigi Teataja kontroll 01.10.2026: **Metsaseadus** jõustunud sõnastusega 01.07
 | [Metsandusteatmik](https://atlex.ee/toode/metsandusteatmik/) | E. Laas, V. Uri; Atlex 2023; 432 lk; ISBN 978-9916-620-22-9 | Paberväljaanne, mille täistekst ei ole veebis. Kirje toetab mõistete ja bibliograafia navigatsiooni, mitte tsitaati teose sisust. |
 
 Need on leheküljeviitega üle vaadatud väljavõtted, mitte automaatselt indekseeritud PDF-ide kogu sisu. Väljavõttele kehtib 31-päevane kordusülevaatuse piir. Faili enda avaldamisaastat ei asendata seda linkiva lehe uuendamiskuupäevaga. Puidubilansi maandumislehe tegelik uuendamiskuupäev kontrolli ajal oli **01.10.2026**.
+
+06.10.2026 eraldi SMI töövihiku kontrollis loeti [SMI 2025 tulemuste XLSX-faili](https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI%20tulemused%202025/SMI%202025%20tulemused.xlsx) tegelikke lahtriväärtusi: töölehe 1 „Metsamaa pindala ja osakaal” B5 sisaldab 2360,1999999999998 tuhat ha, C5 52,056406819666321% ja D5 suhtelist viga 1,2021727079294899%; B20 kogupindala on 4533,9279911811791 tuhat ha. Avalik ümardus on 2360,2 tuhat ha ja 52,1%; nimetaja sisaldab maismaad koos siseveekogudega, mitte ainult maismaad. Töölehe 25 2024. aasta veeru AA12 väärtus 2350,8188831296102 ja 2025. aasta veeru AB12 väärtus 2360,20037264553 kuuluvad sama uuema töövihiku eri aastaridadesse.
+
+SMI 2024 PDF-i 2350,6 tuhat ha ja 51,84% jäävad algse väljaande juurde. Uuema töövihiku 2024. aasta rida on eraldi tagasiulatuv hinnang, mitte vana väljaande numbri asendus ega iseenesest metsa tegeliku muutuse tõend. Ilma vastava metoodikaväiteta ei nimetata erinevuse põhjust. Töövihiku „seisuga” aeg kuvatakse `dataAsOf` väljas; see ei anna faili avaldamispäeva ning avaldamiskuupäev jääb teadmata. See lahtrikontroll ei muuda kogu kataloogi ajaloolist ülevaatuse kuupäeva.
+06.10.2026 võrreldi ka tegelikke SMI, metsandusministeeriumi, registri ja keskkonnaülevaate artikleid. SMI valikuuringu definitsioon ning sellele järgnev kogu Eesti üldistus on eri päris lõigud; mudeli enda seletus ei saa neid asendada. Metsaregistri kinnistuinventuur ja metsateatiste andmed erinevad riiklikust statistilisest hinnangust. Artikli sõna „SMI”, pealkiri või tag ei anna RMK-le primaarse SMI allika staatust.
+
+06.10.2026 kontrolliti eraldi [„SMI: Metsatagavara on stabiilne”](https://keskkonnaagentuur.ee/uudised/smi-metsatagavara-stabiilne) tegelikku artikliteksti. Artikli avaldamine on 18.08.2026 kell 12:47; see ei tõenda SMI töövihiku avaldamispäeva. Seisundi roll reserveerib sama avaldatud allika 2025 metsamaa/puidu mahu, kogutagavara ja hektaritagavara muutuse, liigiliselt mitmekesisemate puistute ning noorte ja vanade metsade pindala muutuse lõigud. Üldist omaloodud mõõtmete loendit ei talletata algallikafaktina. Registri roll nõuab andmekogu ja inventuuri tegelikku kirjeldust koos kinnistu/metsaeraldise ulatusega; ainult kavandatud raiet kirjeldav metsateatise lause ei täida seda rolli.
+
+Kaitstava metsamaa [ETAK-i näitaja](https://keskkonnaportaal.ee/et/metsamaa-sh-kaitsealuse-metsamaa-osakaal-eestis) on avaldatud 12.04.2023 ja uuendatud 07.01.2026; 2024 andmete täpset seisupäeva ei ole avaldatud. Kaitsealust metsamaad on 669 713 ha ehk 28,4% ning range kaitse kogum on 395 687 ha ehk 16,8% metsamaast. Viimane **sisaldab projekteeritavaid alasid**: 358 242 ha kehtestatud ja 37 445 ha projekteeritavat kaitset. Vastus säilitab aasta, ETAK-i, metsamaa nimetaja ja projekteeritavate alade kvalifikatsiooni; täpset ETAK-i kogumetsamaa nimetajat ei asendata SMI pindalaga.
+
+Praegune [keskkonnaülevaade „Mets”](https://keskkonnaportaal.ee/et/keskkonnaulevaade/keskkonnaulevaade-mets) on avaldatud 28.06.2024 ja uuendatud 23.09.2026. Selle praegused näitajad on 52,1% metsamaad ja 47,4% metsaga kaetud maad ning 2025 tagavara 466 mln m³. Varasemaid 51,8%/47,1% väärtusi ei omistata praegusele lehele. [Füüsilise kliimaaruande](https://kliimaministeerium.ee/sites/default/files/documents/2022-01/metsad_ja_kliima_muutused_v3.0_eesti_keelne.pdf) kontrollitud leheküljeväljavõtted toetavad kliima-, kasvukoha- ja taastamisjuhiseid; failinime `v3.0` ega kataloogi `2022-01` ei kasutata semantilise versiooni või avaldamispäevana.
+
 
 ## Metsanduse mõisted ja seosed
 
@@ -114,7 +126,7 @@ Versioonitud metsakorpus sisaldab 16 algallikat ja 21 vastusedokumenti ning sell
 
 ## Kontrollitud kataloogi- ja suunamisallikad
 
-Runtime'i kataloogis on 146 kirjet. Need aitavad valida õige ametliku teenuse ja on nõrga võrguolukorra korral kasutajale suunavad allikad, kuid ei muutu automaatselt konkreetse arvu või õigusliku järelduse tõendiks. 01.10.2026 ametlik allikainventuur hõlmas 8466 Keskkonnaportaali sitemap'i URL-i ning eraldi kontrollitud metsanduse primaarallikaid; varasemad ja lisatud lehed lukustatakse realistliku avaliku eval-maatriksi, FAQ/väärarusaamade, sõnastusvariantide ja teemaliste peibutusallikate vastu.
+Runtime'i kureeritud kataloog aitab valida õige ametliku teenuse ja on nõrga võrguolukorra korral kasutajale suunav, kuid kirje olemasolu ei muutu automaatselt konkreetse arvu või õigusliku järelduse tõendiks. 01.10.2026 ametlik allikainventuur hõlmas 8466 Keskkonnaportaali sitemap'i URL-i ning eraldi kontrollitud metsanduse primaarallikaid; varasemad ja lisatud lehed lukustatakse realistliku avaliku eval-maatriksi, FAQ/väärarusaamade, sõnastusvariantide ja teemaliste peibutusallikate vastu.
 
 Kataloogi allikaprofiil (`server/source-registry.mjs`) määrab eraldi marsruudiklassi, tarneviisi, värskusklassi ja tõendipoliitika. Need väljad ei lähe avalikku API-sse, kuid takistavad teenuse maandumislehte muutumast seal peituva väärtuse tõendiks.
 

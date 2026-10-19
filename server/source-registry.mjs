@@ -1,4 +1,5 @@
 import { officialCitationUrlEligibility } from "./citation-policy.mjs";
+import { sourceResourceKey } from "./source-identity.mjs";
 
 export const OFFICIAL_ROUTE_CLASSES = Object.freeze([
   "official_data_or_api",
@@ -213,7 +214,7 @@ function requiredClaimFreshness(document, { now, futureSkewMs }) {
   }
   const basis = clean(freshness.basis);
   if (basis === "source-version") {
-    const version = clean(document._evidenceVersion);
+    const version = typeof document._evidenceVersion === "string" ? clean(document._evidenceVersion) : "";
     return version && version.length <= 120
       ? { eligible: true, reason: "explicit-version" }
       : { eligible: false, reason: "invalid-source-version" };
@@ -228,6 +229,14 @@ function requiredClaimFreshness(document, { now, futureSkewMs }) {
       return { eligible: false, reason: "stale-or-future-publication" };
     }
     return { eligible: true, reason: "fresh-source-publication" };
+  }
+  if (basis === "service-status-at") {
+    const statusAt = strictTimestamp(document._evidenceStatusAt);
+    const maxAgeMs = boundedPositiveDuration(freshness.maxAgeMs);
+    if (statusAt === null || maxAgeMs === null) return { eligible: false, reason: "invalid-service-status-time" };
+    return statusAt > now + futureSkewMs || now - statusAt > maxAgeMs
+      ? { eligible: false, reason: "stale-or-future-service-status" }
+      : { eligible: true, reason: "fresh-service-status" };
   }
   return { eligible: false, reason: "unsupported-freshness-basis" };
 }
@@ -282,7 +291,7 @@ export function sourceEvidenceEligibility(document = {}, {
     if (document._answerEvidenceEligible !== true) {
       return { eligible: false, policy, reason: "adapter-not-validated" };
     }
-    const version = clean(document._evidenceVersion);
+    const version = typeof document._evidenceVersion === "string" ? clean(document._evidenceVersion) : "";
     if (version && version.length <= 120) {
       if (document.retrieval === "approved-page-hydration"
         || document.freshness?.requiresSourceTimestamp === true) {
@@ -297,15 +306,7 @@ export function sourceEvidenceEligibility(document = {}, {
       }
       return { eligible: true, policy, reason: "explicit-version" };
     }
-    const statusAt = strictTimestamp(document._evidenceStatusAt);
-    const maxAgeMs = boundedPositiveDuration(document.freshness?.maxAgeMs);
-    if (statusAt === null || maxAgeMs === null) {
-      return { eligible: false, policy, reason: "invalid-status-time" };
-    }
-    if (statusAt > now + futureSkewMs || now - statusAt > maxAgeMs) {
-      return { eligible: false, policy, reason: "stale-or-future-status" };
-    }
-    return { eligible: true, policy, reason: "fresh-status" };
+    return { eligible: false, policy, reason: "missing-or-invalid-version" };
   }
   const requiredFreshness = requiredClaimFreshness(document, { now, futureSkewMs });
   if (requiredFreshness) return { ...requiredFreshness, policy };
@@ -329,14 +330,15 @@ export function officialSourceProfile(document = {}, options = {}) {
   const delivery = sourceDelivery(document);
   const evidencePolicy = evidencePolicyFor(document);
   const freshness = freshnessFor(document, delivery);
-  const evidenceCheckedAt = clean(document._evidenceStatusAt || document._catalogueReviewedAt);
-  const evidenceCheckedAtMs = strictTimestamp(evidenceCheckedAt);
+  const evidenceCheckedAtMs = strictTimestamp(clean(document._evidenceStatusAt))
+    ?? strictTimestamp(clean(document._catalogueReviewedAt));
   const checkedAt = evidenceCheckedAtMs === null
-    ? "2026-09-19"
+    ? null
     : new Date(evidenceCheckedAtMs).toISOString().slice(0, 10);
   return Object.freeze({
     id: clean(document.id),
     canonicalUrl: clean(document.url),
+    resourceKey: sourceResourceKey(document.url),
     publisher: clean(document.organization),
     sourceTier: clean(document.sourceTier || "official"),
     delivery,

@@ -850,10 +850,18 @@ function Citation({ number, sources = [] }) {
   );
 }
 
-export function SourceLegend({ sources = [] }) {
+export function SourceLegend({ sources = [], answer, chart }) {
   if (!sources.length) return null;
   const latest = latestSourceUpdates(sources);
+  const usedCitations = new Set([
+    ...(answer?.introCitations || []),
+    ...(answer?.parts || []).flatMap((part) => part.citations || []),
+    ...(chart?.citation ? [chart.citation] : []),
+  ].map(Number));
+  const evidenceSources = sources.filter((source) => usedCitations.has(Number(source.citation))
+    && typeof source.evidenceExcerpt === "string" && source.evidenceExcerpt.trim());
   return (
+    <>
     <ul className="source-legend" aria-label="Allikate värvid ja kuupäevad">
       {sources.map((source) => {
         const row = (
@@ -881,6 +889,20 @@ export function SourceLegend({ sources = [] }) {
         );
       })}
     </ul>
+    {evidenceSources.length > 0 ? (
+      <details className="answer-evidence">
+        <summary>Kasutatud tõendilõigud</summary>
+        {evidenceSources.map((source) => (
+          <section key={source.citation} className="answer-evidence__source">
+            <h3><ExternalAnchor href={source.url}>Allikas {source.citation}: {source.title}</ExternalAnchor></h3>
+            <p className="answer-evidence__meta">{sourceDateMeta(source)}</p>
+            {source.locator ? <p className="answer-evidence__meta">Asukoht: {source.locator}</p> : null}
+            <p className="answer-evidence__text">{source.evidenceExcerpt}</p>
+          </section>
+        ))}
+      </details>
+    ) : null}
+    </>
   );
 }
 
@@ -1199,7 +1221,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
                 ))}
               </div>
               <SourceActions sources={result.sources} />
-              <SourceLegend sources={result.sources} />
+              <SourceLegend sources={result.sources} answer={result.answer} chart={result.chart} />
               {result.answer.note && !isRedundantAnswerNote(result.answer.note) ? <div className="answer-note"><ShieldCheck size={18} /><p>{result.answer.note}</p></div> : null}
               {result.clarification ? (
                 <div className="answer-clarification">
@@ -1222,7 +1244,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
                             <p key={partIndex}>{part.text}{" "}{(part.citations || []).map((citation) => <Citation key={citation} number={citation} sources={turn.result.sources} />)}</p>
                           ))}
                           <SourceActions sources={turn.result.sources} />
-                          <SourceLegend sources={turn.result.sources} />
+                          <SourceLegend sources={turn.result.sources} answer={turn.result.answer} chart={turn.result.chart} />
                         </div>
                       </section>
                     );

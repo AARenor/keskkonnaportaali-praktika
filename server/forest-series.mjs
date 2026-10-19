@@ -650,7 +650,8 @@ export function composeForestSeriesResponse(query, documents = [], options = {})
   // answer and only gain a context chart.
   const intent = resolveForestSeriesIntent(query);
   if (!intent || (intent.years.mode === "context" && intent.table !== "MM03")) return null;
-  const smi = smiWorkbookInResults(documents) ? smiForestSeriesDocument(query) : null;
+  const expectedSmi = smiForestSeriesDocument(query);
+  const smi = expectedSmi && smiWorkbookInResults(documents, expectedSmi) ? expectedSmi : null;
   const source = smi || (documents || []).find((document) => validatedForestSeriesProjection(query, document, now));
   if (!source) return null;
   const projection = source._forestSeries;
@@ -676,9 +677,6 @@ export function composeForestSeriesResponse(query, documents = [], options = {})
         : `${titleLabel} ${projection.years.from}–${projection.years.to}: ${etNumber(first.value, projection.digits)} → ${etNumber(last.value, projection.digits)} ${projection.unit}`,
       intro: isCurrentQuantity
         ? `${origin} järgi oli ${projection.sentenceLabel} ${currentPoint.year}. aastal ${etNumber(currentPoint.value, projection.digits)} ${projection.unit}.`
-          + (intent.years.mode === "year"
-            ? " Allolev diagramm näitab valitud aastat koos eelnevate avaldatud aastatega."
-            : " See on viimane selles allikas avaldatud aasta; allolev diagramm näitab eelnevate aastate konteksti.")
           + (currentPoint.error === undefined ? "" : ` Hinnangu suhteline viga oli ±${etNumber(currentPoint.error, 1)}%.`)
         : source.summary,
       introCitations: [1],
@@ -687,7 +685,12 @@ export function composeForestSeriesResponse(query, documents = [], options = {})
         text: forestSeriesDefinition(projection.table),
         citations: [1],
       }],
-      note: "See on SMI valikuuringu aastahinnangute rida ühe tabeli ja näitaja kohta. See ei ole prognoos, kohaliku omavalitsuse või kinnistu näitaja ega otsus metsamajanduse kestlikkuse kohta.",
+      note: "See on SMI valikuuringu aastahinnangute rida ühe tabeli ja näitaja kohta. See ei ole prognoos, kohaliku omavalitsuse või kinnistu näitaja ega otsus metsamajanduse kestlikkuse kohta."
+        + (isCurrentQuantity
+          ? intent.years.mode === "year"
+            ? " Allolev diagramm näitab valitud aastat koos eelnevate avaldatud aastatega."
+            : ` Allolev diagramm näitab eelnevate aastate konteksti; ${currentPoint.year} on ${projection.sentenceLabel} jaoks viimane selles allikas avaldatud aasta.`
+          : ""),
     },
     sources: [{ ...source, citation: 1, evidenceExcerpt: source.content }],
     related: [...RELATED_QUESTIONS[projection.table]],
@@ -705,8 +708,9 @@ export function forestContextChart(query, documents = [], options = {}) {
   const now = Number.isFinite(Number(options.now)) ? Number(options.now) : Date.now();
   const intent = forestContextSeriesIntent(query);
   if (!intent) return null;
-  const smi = smiWorkbookInResults(documents) ? smiForestSeriesDocument(query) : null;
-  if (smi) return { source: smiTablesSource(options.draftSources) || smi, chart: chartFromProjection(smi._forestSeries) };
+  const expectedSmi = smiForestSeriesDocument(query);
+  const smi = expectedSmi && smiWorkbookInResults(documents, expectedSmi) ? expectedSmi : null;
+  if (smi) return { source: smiTablesSource(options.draftSources, smi) || smi, chart: chartFromProjection(smi._forestSeries) };
   const source = (documents || []).find((document) => validatedForestSeriesProjection(query, document, now));
   if (!source) return null;
   return { source, chart: chartFromProjection(source._forestSeries) };

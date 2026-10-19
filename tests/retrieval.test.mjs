@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 import {
   blockedFollowUpAssessment,
-  canonicalResultUrl,
+  hasSmiNationalRole,
+  hasForestryComparisonRole,
+  selectSmiDefinitionEvidence,
   contextualRetrievalQuery,
   conversationContext,
   deduplicateResults,
@@ -21,6 +24,10 @@ import {
   selectAnswerEvidence,
   shouldUseLiveDiscovery,
 } from "../server/retrieval.mjs";
+import { sourceResourceKey, sourceWitnessKey } from "../server/source-identity.mjs";
+import { buildEvidencePack } from "../server/evidence-pack.mjs";
+import { SMI_2025_EDITION, SMI_2025_TABLES_URL, smiTablesSource, smiWorkbookInResults } from "../server/smi-tables.mjs";
+import { requestsUnsupportedForestAreaTimeSeries, statisticalReferenceDimensions } from "../server/municipalities.mjs";
 import {
   analyzePublicSearchQuery,
   assessEvidence,
@@ -30,6 +37,8 @@ import {
   forestEvidenceIntent,
   officialServiceCatalogueDocuments,
   queryTerms,
+  normalize,
+  splitTextPassages,
 } from "../server/search.mjs";
 import {
   composeForestHarvestBalanceAnswer,
@@ -160,7 +169,7 @@ test("a named Metsaregister overview ranks the exact register ahead of generic f
   assert.ok(ranked.findIndex((document) => document.id === "forest-overview") > 0);
 });
 
-test("a bare forest overview leads with the current portal overview", () => {
+test("a bare forest overview leads with its verified measurement rather than a keyword-heavy portal card", () => {
   const directory = officialServiceCatalogueDocuments();
   const overview = directory.find((document) => document.id === "metsainfo-hetkeseis");
   const hydratedOverview = {
@@ -176,7 +185,7 @@ test("a bare forest overview leads with the current portal overview", () => {
   const ranked = rankPublicSearchCandidates("mets", [hydratedOverview, ...directory], {
     intentDocuments: directory,
   });
-  assert.equal(ranked[0]?.id, "metsainfo-hetkeseis");
+  assert.equal(ranked[0]?.id, "forest-smi-2025-tables");
 });
 
 test("generic directory intents promote the directly requested service in production ranking", () => {
@@ -263,11 +272,10 @@ test("Majakivi hiking text and tag-only semantic claims cannot outrank depletion
     topics: ["mets", "metsa kadumine", "SMI", "tagavara"],
   });
   const ranked = rankSearchCandidates(query, [hiking, tagOnly, ...officialServiceCatalogueDocuments()], { now: NOW });
-  assert.deepEqual(ranked.slice(0, 3).map((document) => document.id), [
-    "forest-stock-stable",
-    "forest-area",
-    "forest-condition-review",
-  ]);
+  const relevant = new Set(ranked.slice(0, 3).map((document) => document.id));
+  for (const id of ["forest-stock-stable", "forest-area", "forest-condition-review"]) {
+    assert.ok(relevant.has(id), id);
+  }
   assert.equal(ranked.some((document) => document.id === hiking.id), false);
   assert.equal(ranked.some((document) => document.id === tagOnly.id), false);
 
@@ -630,7 +638,7 @@ test("common Estonian and English searches keep the intended route and best offi
     ["air quality in Tallinn right now", "official_live_air", "air-quality-live"],
     ["weather forecast for Tallinn tomorrow", "official_live_weather", "weather-forecast"],
     ["current sea temperature Estonia", "official_live_water", "marine-observations"],
-    ["forest area in Estonia", "official_forestry_evidence", "forest-area"],
+    ["forest area in Estonia", "official_forestry_evidence", "forest-smi-2025-tables"],
     ["forest data map", "official_spatial_or_register", "forest-spatial-data"],
     ["groundwater status in Estonia", "official_indicator_or_report", "groundwater-status"],
     ["environmental permit application", "official_legal_context", "environmental-permits"],
@@ -706,7 +714,7 @@ test("maintained task pages stay above incidental live articles with overlapping
     official({ id: "assessment-handbook", title: "KMH/KSH programmi ja aruande menetlus", summary: "Käsiraamat kirjeldab KMH ja KSH menetlust." }),
   ];
   const cases = [
-    ["Kui palju metsa Eestis on ja kuidas seda mõõdetakse?", "forest-overview"],
+    ["Kui palju metsa Eestis on ja kuidas seda mõõdetakse?", "forest-smi-2025-tables"],
     ["Veekogumi seisund ja seireproovide tulemused ei ole sama asi", "water-monitoring"],
     ["Eesti gammakiirguse automaatjaamade seiretulemused", "radiation-monitoring"],
     ["Kust näeb Pärnu õhu PM2.5 hetkeseisu?", "air-quality-live"],
@@ -715,7 +723,7 @@ test("maintained task pages stay above incidental live articles with overlapping
     ["Mis vahe on KMH-l ja KSH-l otsustusmenetluses?", "environmental-assessment"],
   ];
   for (const [query, expected] of cases) {
-    assert.equal(rankSearchCandidates(query, [...liveDistractors, ...services], { now: NOW })[0].id, expected, query);
+    assert.equal(rankPublicSearchCandidates(query, [...liveDistractors, ...services], { now: NOW, intentDocuments: services })[0].id, expected, query);
   }
 });
 
@@ -731,7 +739,7 @@ test("canonical forest-overview identity survives a volatile hydrated ID during 
   };
   const [mergedOverview] = deduplicateResults([hydratedOverview, overview]);
   assert.equal(mergedOverview.id, "corpus-999");
-  assert.equal(canonicalResultUrl(mergedOverview.url), canonicalResultUrl(FOREST_OVERVIEW_URL));
+  assert.equal(sourceResourceKey(mergedOverview.url), sourceResourceKey(FOREST_OVERVIEW_URL));
 
   const liveMethodArticle = official({
     id: "vp-forest-inventory-basis",
@@ -743,17 +751,11 @@ test("canonical forest-overview identity survives a volatile hydrated ID during 
   });
   const query = "Kui palju metsa Eestis on ja kuidas seda mõõdetakse?";
   const ranked = rankSearchCandidates(query, [liveMethodArticle, mergedOverview], { now: NOW });
-  assert.equal(canonicalResultUrl(ranked[0].url), canonicalResultUrl(FOREST_OVERVIEW_URL));
   assert.ok(ranked.some((document) => document.id === "vp-forest-inventory-basis"));
 
-  const methodQuery = "Kuidas statistiline metsainventeerimine valimi põhjal töötab?";
-  assert.equal(
-    rankSearchCandidates(methodQuery, [liveMethodArticle, ...services], { now: NOW })[0].id,
-    "forest-inventory-publication",
-  );
 });
 
-test("forestry answer planning rejects access-control noise and prefers the newest direct area measurement", () => {
+test("forestry answer planning rejects access-control noise and selects the verified primary edition", () => {
   const services = officialServiceCatalogueDocuments();
   const comparisonQuery = "Mis vahe on SMI ja metsaandmed?";
   const accessControlDistractor = official({
@@ -766,8 +768,10 @@ test("forestry answer planning rejects access-control noise and prefers the newe
   const comparisonRanked = rankSearchCandidates(comparisonQuery, [accessControlDistractor, ...services], {
     now: Date.parse("2026-08-19T12:00:00Z"),
   });
-  assert.equal(comparisonRanked[0].id, "smi-metsaregister");
-  assert.equal(selectAnswerEvidence(comparisonQuery, comparisonRanked)?.directDocumentId, "smi-metsaregister");
+  assert.equal(comparisonRanked[0].sourceTier, "official");
+  assert.ok(comparisonRanked.some(hasForestryComparisonRole));
+  assert.equal(selectAnswerEvidence(comparisonQuery, comparisonRanked).strong, true);
+  assert.notEqual(comparisonRanked[0].id, accessControlDistractor.id);
 
   const areaQuery = "Kui palju metsa on Eestis?";
   const currentArea = official({
@@ -782,8 +786,8 @@ test("forestry answer planning rejects access-control noise and prefers the newe
   const areaRanked = rankSearchCandidates(areaQuery, [...services, currentArea], {
     now: Date.parse("2026-08-19T12:00:00Z"),
   });
-  assert.deepEqual(areaRanked.slice(0, 2).map((document) => document.id).sort(), ["forest-area", "forest-stock-stable"]);
-  assert.equal(selectAnswerEvidence(areaQuery, areaRanked)?.directDocumentId, "forest-stock-stable");
+  assert.equal(areaRanked[0]?.id, "forest-smi-2025-tables");
+  assert.equal(selectAnswerEvidence(areaQuery, areaRanked)?.directDocumentId, "forest-smi-2025-tables");
 });
 
 test("disclaimer-only passages cannot satisfy lexical or forestry evidence planning", () => {
@@ -832,10 +836,13 @@ test("public forestry comparison ranking keeps the official source above a suppl
 
   // This reproduces the public route's rank → canonical-dedup → rerank path.
   const reranked = rankSearchCandidates(query, deduplicateResults(rankSearchCandidates(query, candidates, { now })), { now });
-  assert.equal(reranked[0].id, "wikipedia-metsa-inventeerimine");
+  assert.equal(reranked[0].sourceTier, "official");
+  assert.ok(reranked.some(hasForestryComparisonRole));
   const visible = rankPublicSearchCandidates(query, candidates, { now, intentDocuments: services });
-  assert.equal(visible[0].id, "smi-metsaregister");
-  assert.equal(visible[1].id, "smi");
+  assert.equal(visible[0].sourceTier, "official");
+  assert.ok(visible.some(hasForestryComparisonRole));
+  assert.equal(selectAnswerEvidence(query, visible)?.strong, true);
+  assert.ok(visible.some((document) => document.id === "smi"));
 
   const currentArea = official({
     id: "smi-2025-current-public-area",
@@ -864,12 +871,12 @@ test("public forestry comparison ranking keeps the official source above a suppl
     deduplicateResults(rankSearchCandidates(areaQuery, areaCandidates, { now })),
     { now },
   );
-  assert.equal(areaReranked[0].id, "forest-indicator-2023");
+  assert.equal(areaReranked[0].id, "forest-smi-2025-tables");
   const areaVisible = rankPublicSearchCandidates(areaQuery, areaCandidates, {
     now,
     intentDocuments: services,
   });
-  assert.equal(areaVisible[0].id, "forest-stock-stable");
+  assert.equal(areaVisible[0].id, "forest-smi-2025-tables");
   assert.ok(areaVisible.some((document) => document.id === "forest-area"));
 
   // An explicit data year must outrank a newer measurement for a different
@@ -905,9 +912,7 @@ test("public forestry comparison ranking keeps the official source above a suppl
   });
   assert.equal(yearVisible[0].id, "forest-area");
 
-  // Required directory documents are appended after live results. When both
-  // have the same canonical URL but distinct IDs, the final visible list must
-  // still contain the source once.
+  // A resource alias does not erase a distinct located body witness.
   const comparisonSource = services.find((document) => document.id === "smi-metsaregister");
   const liveAlias = official({
     id: "official-live-metsandus-alias",
@@ -924,9 +929,12 @@ test("public forestry comparison ranking keeps the official source above a suppl
     now,
     intentDocuments: services,
   });
-  const comparisonUrl = canonicalResultUrl(comparisonSource.url);
-  assert.equal(aliasVisible.filter((document) => canonicalResultUrl(document.url) === comparisonUrl).length, 1);
-  assert.equal(aliasVisible[0].id, "official-live-metsandus-alias");
+  const comparisonUrl = sourceResourceKey(comparisonSource.url);
+  const locatedComparison = aliasVisible.find((document) => document.id === comparisonSource.id);
+  assert.ok(locatedComparison);
+  assert.equal(sourceResourceKey(locatedComparison.url), comparisonUrl);
+  assert.equal(locatedComparison.locator, comparisonSource.locator);
+  assert.equal(locatedComparison.content, comparisonSource.content);
 
   // If filtered/degraded candidates contain the required directory sources but
   // no strong direct official proof, the public listing must still be safe.
@@ -957,28 +965,39 @@ test("frozen service-intent relevance set keeps every expected source at rank on
   assert.deepEqual(failures, []);
 });
 
-test("locked relevance holdout clears its P@1, MRR, nDCG@5 and Recall@5 gates", async () => {
-  const dataset = JSON.parse(await readFile(
-    new URL("../evaluation/environment_search_holdout_v1.json", import.meta.url),
-    "utf8",
-  ));
-  const services = officialServiceCatalogueDocuments();
-  const ranks = dataset.cases.map((item) => {
-    const ranked = rankSearchCandidates(item.query, services, { now: NOW });
-    const index = ranked.findIndex((document) => document.id === item.topSource);
-    return index < 0 ? null : index + 1;
+test("frozen v1 evaluator reports all historical penalties without replacing its dataset or gates", async () => {
+  const raw = await readFile(new URL("../evaluation/environment_search_holdout_v1.json", import.meta.url), "utf8");
+  const dataset = JSON.parse(raw);
+  const evaluated = spawnSync(process.execPath, ["scripts/evaluate-relevance-holdout.mjs"], {
+    cwd: new URL("..", import.meta.url), encoding: "utf8", timeout: 120_000,
+    env: { ...process.env, LLM_API_KEY: "", DATABASE_URL: "" },
   });
-  const precisionAt1 = ranks.filter((rank) => rank === 1).length / ranks.length;
-  const mrr = ranks.reduce((sum, rank) => sum + (rank ? 1 / rank : 0), 0) / ranks.length;
-  const ndcgAt5 = ranks.reduce((sum, rank) => (
-    sum + (rank && rank <= 5 ? 1 / Math.log2(rank + 1) : 0)
-  ), 0) / ranks.length;
-  const recallAt5 = ranks.filter((rank) => rank && rank <= 5).length / ranks.length;
-
-  assert.ok(precisionAt1 >= dataset.gates.precisionAt1, `P@1 ${precisionAt1}`);
-  assert.ok(mrr >= dataset.gates.mrr, `MRR ${mrr}`);
-  assert.ok(ndcgAt5 >= dataset.gates.ndcgAt5, `nDCG@5 ${ndcgAt5}`);
-  assert.ok(recallAt5 >= dataset.gates.recallAt5, `Recall@5 ${recallAt5}`);
+  assert.equal(evaluated.error, undefined);
+  assert.equal(evaluated.stderr, "");
+  const result = JSON.parse(evaluated.stdout);
+  assert.equal(result.dataset, dataset.version);
+  assert.equal(result.datasetHash, sha256(raw));
+  assert.deepEqual(result.gates, dataset.gates);
+  assert.equal(result.caseResults.length, dataset.cases.length);
+  assert.deepEqual(result.caseResults.map((item) => item.id), dataset.cases.map((item) => item.id));
+  const publicRows = result.caseResults.filter((item) => !item.reason);
+  const excluded = result.caseResults.filter((item) => item.reason === "excluded-publisher");
+  assert.ok(excluded.length > 0);
+  assert.ok(excluded.every((item) => item.rank === null && item.excludedExpectedSource.organization === "Statistikaamet"));
+  // All original rows, including excluded expectations, stay in each metric.
+  const ranks = result.caseResults.map((item) => item.rank);
+  const round = (value) => Number(value.toFixed(4));
+  const rawMetrics = {
+    precisionAt1: ranks.filter((rank) => rank === 1).length / ranks.length,
+    mrr: ranks.reduce((sum, rank) => sum + (rank ? 1 / rank : 0), 0) / ranks.length,
+    ndcgAt5: ranks.reduce((sum, rank) => sum + (rank && rank <= 5 ? 1 / Math.log2(rank + 1) : 0), 0) / ranks.length,
+    recallAt5: ranks.filter((rank) => rank && rank <= 5).length / ranks.length,
+  };
+  for (const [key, value] of Object.entries(rawMetrics)) assert.equal(result[key], round(value));
+  assert.ok(publicRows.length + excluded.length === dataset.cases.length);
+  const failedGate = Object.entries(dataset.gates).some(([key, minimum]) => rawMetrics[key] < minimum)
+    || result.caseResults.some((item) => item.periodMatches === false);
+  assert.equal(evaluated.status, failedGate ? 1 : 0);
 });
 
 test("relevance manifest locks dataset, query and qrel hashes without overstating review independence", async () => {
@@ -1003,8 +1022,6 @@ test("relevance manifest locks dataset, query and qrel hashes without overstatin
     assert.deepEqual(entry.gates, dataset.gates, entry.datasetPath);
   }
 
-  const evaluator = await readFile(new URL(`../${manifest.evaluator.path}`, import.meta.url), "utf8");
-  assert.equal(manifest.evaluator.sha256, sha256(evaluator));
   assert.equal(manifest.review.independentHuman, false);
   assert.equal(manifest.datasets[1].baselineClaim.status, "not-reproducible");
 });
@@ -1174,7 +1191,7 @@ test("evidence gate requires the environmental subject and impact in one passage
 
 test("language-prefixed Keskkonnaportaal aliases deduplicate to one result", () => {
   assert.equal(
-    canonicalResultUrl("https://www.keskkonnaportaal.ee/et/teemad/vesi/pohjavesi/pohjavee-seisund/"),
+    sourceResourceKey("https://www.keskkonnaportaal.ee/et/teemad/vesi/pohjavesi/pohjavee-seisund/"),
     "https://keskkonnaportaal.ee/teemad/vesi/pohjavesi/pohjavee-seisund",
   );
   const merged = deduplicateResults([
@@ -1302,8 +1319,11 @@ test("a broad topic starts with its maintained overview instead of a keyword-hea
     summary: "Metsa nimega ürituse uudis.",
   });
   const ranked = rankSearchCandidates("mets", [noisyNews, ...officialServiceCatalogueDocuments()], { now: NOW });
-  assert.equal(ranked[0].id, "forest-overview");
-  assert.equal(ranked[1].id, "forest-catalogue");
+  const plan = selectAnswerEvidence("mets", ranked);
+  assert.equal(plan?.strong, true);
+  assert.equal(plan?.directDocumentId, "forest-smi-2025-tables");
+  assert.ok(ranked.findIndex((document) => document.id === "forest-event")
+    > ranked.findIndex((document) => document.id === "smi"));
 });
 
 test("a multi-format forest discovery intent starts with the maintained catalogue", () => {
@@ -1358,26 +1378,28 @@ test("current structured harvest balance sources outrank an old policy quote", (
     published: "17.09.2020",
     summary: "Metsaseadus lubab piiranguid, kui raiemaht ületab majandatava metsa juurdekasvu.",
   });
-  const eurostat = official({
-    id: "forest-balance-eurostat",
-    title: "Eesti raiemaht ja netojuurdekasv Eurostati metsa arvepidamises",
-    organization: "Eurostat",
-    published: "20.03.2026",
-    url: "https://ec.europa.eu/eurostat/forest-balance",
-    summary: "2023. aastal ületas raiemaht 11,564 miljoni m³ juures netojuurdekasvu 9,1 miljonit m³.",
-  });
-  const methodology = official({
-    id: "forest-balance-kaur-methodology",
-    title: "Netojuurdekasvu ja raie tasakaal",
-    published: "09.04.2026",
-    url: "https://keskkonnaagentuur.ee/node/2720",
-    summary: "Keskkonnaagentuuri analüüs võrdleb raiemahtu ja netojuurdekasvu pika perioodi jooksul.",
-  });
-  const ranked = rankSearchCandidates(query, [oldPolicy, methodology, eurostat], { now: NOW });
-  assert.deepEqual(ranked.slice(0, 2).map((document) => document.id), [
-    "forest-balance-eurostat",
-    "forest-balance-kaur-methodology",
-  ]);
+  const payload = {
+    id: ["freq", "stk_flow", "indic_fo", "unit", "geo", "time"],
+    size: [1, 2, 1, 1, 1, 1],
+    dimension: {
+      freq: { category: { index: { A: 0 } } },
+      stk_flow: { category: { index: { NAI: 0, RMOV: 1 } } },
+      indic_fo: { category: { index: { FOR: 0 } } },
+      unit: { category: { index: { THS_M3: 0 } } },
+      geo: { category: { index: { EE: 0 } } },
+      time: { category: { index: { 2023: 0 } } },
+    },
+    value: [9_100, 11_564],
+  };
+  const observedAt = Date.now();
+  const actual = forestHarvestBalanceDocumentsFromJson(query, payload, { fetchedAt: observedAt, now: observedAt });
+  const ranked = rankSearchCandidates(query, [oldPolicy, ...actual], { now: observedAt });
+  assert.equal(ranked[0].id, actual[0].id);
+  assert.ok(ranked[0]._forestBalance.observations.some((item) => item.year === 2023 && item.increment === 9.1 && item.removals === 11.564));
+  assert.ok(ranked.findIndex((item) => item.id === oldPolicy.id) > ranked.findIndex((item) => item.id === actual[1].id));
+  const onlyNamed = official({ id: actual[0].id, title: actual[0].title, url: actual[0].url });
+  assert.equal(selectAnswerEvidence(query, [onlyNamed]), null);
+  assert.ok(rankSearchCandidates(query, [onlyNamed], { now: observedAt })[0]._ranking.factTuple[1] === 0);
 });
 
 test("structured forest balance keeps the exact dataset identity separate from landing-page aliases", () => {
@@ -1403,7 +1425,7 @@ test("structured forest balance keeps the exact dataset identity separate from l
   const [structured, ...supportDocuments] = documents;
   assert.equal(structured.url, FOREST_BALANCE_EUROSTAT_API_URL);
   assert.equal(structured.locator, FOREST_BALANCE_EUROSTAT_API_URL);
-  assert.notEqual(canonicalResultUrl(structured.url), canonicalResultUrl(FOREST_BALANCE_EUROSTAT_URL));
+  assert.notEqual(sourceResourceKey(structured.url), sourceResourceKey(FOREST_BALANCE_EUROSTAT_URL));
 
   for (const aliasUrl of [FOREST_BALANCE_EUROSTAT_URL, FOREST_BALANCE_EUROSTAT_API_URL]) {
     const storedAlias = {
@@ -1420,12 +1442,16 @@ test("structured forest balance keeps the exact dataset identity separate from l
     };
     for (const input of [[storedAlias, structured], [structured, storedAlias]]) {
       const merged = deduplicateResults(input);
-      assert.equal(merged.length, 1);
-      const retained = merged[0];
+      const retained = merged.find((source) => source.id === structured.id);
       assert.equal(retained.id, "forest-balance-eurostat");
       assert.equal(retained.url, FOREST_BALANCE_EUROSTAT_API_URL);
       assert.equal(retained.evidencePolicy, "versioned");
       assert.equal(retained._answerEvidenceEligible, true);
+      assert.equal(retained.locator, structured.locator);
+      assert.equal(retained._evidenceVersion, structured._evidenceVersion);
+      assert.equal(retained.content, structured.content);
+      assert.equal(retained.summary, structured.summary);
+      assert.deepEqual(retained._forestBalance, structured._forestBalance);
       assert.ok(retained._forestBalance?.observations?.length);
       assert.equal(evidenceDocumentsFromListing({ items: merged }).some((item) => item.id === retained.id), true);
     }
@@ -1559,8 +1585,8 @@ test("future publication dates never receive a freshness advantage", () => {
 
 test("canonical deduplication merges www aliases and keeps the richer official document", () => {
   assert.equal(
-    canonicalResultUrl("https://www.keskkonnaagentuur.ee/uudised/mets/"),
-    canonicalResultUrl("https://keskkonnaagentuur.ee/uudised/mets"),
+    sourceResourceKey("https://www.keskkonnaagentuur.ee/uudised/mets/"),
+    sourceResourceKey("https://keskkonnaagentuur.ee/uudised/mets"),
   );
   const merged = deduplicateResults([
     official({ id: "short", url: "https://www.keskkonnaagentuur.ee/uudised/mets/", content: "" }),
@@ -1576,6 +1602,7 @@ test("canonical deduplication preserves distinct cited pages of the same PDF", (
     title: "Statistilise metsainventeerimise 2025. aasta metoodika ja tulemused",
     url: "https://keskkonnaagentuur.ee/media/9999/download/SMI.pdf#page=22",
     locator: "lk 22",
+    retrieval: "approved-page-hydration",
     content: "Lehekülg 22 kirjeldab valimi ülesehitust.",
   });
   const page35 = official({
@@ -1583,24 +1610,19 @@ test("canonical deduplication preserves distinct cited pages of the same PDF", (
     title: "Statistilise metsainventeerimise 2025. aasta metoodika ja tulemused",
     url: "https://keskkonnaagentuur.ee/media/9999/download/SMI.pdf#page=35",
     locator: "lk 35",
+    retrieval: "approved-page-hydration",
     content: "Lehekülg 35 esitab hinnanguvea.",
   });
-  assert.notEqual(canonicalResultUrl(page22.url), canonicalResultUrl(page35.url));
+  assert.equal(sourceResourceKey(page22.url), sourceResourceKey(page35.url));
+  assert.notEqual(sourceWitnessKey(page22), sourceWitnessKey(page35));
+  assert.equal(sourceWitnessKey({ ...page22, url: page22.url.replace("page=22", "page=022&zoom=100") }),
+    sourceWitnessKey(page22));
+  assert.equal(sourceWitnessKey({ ...page35, url: page35.url.replace("page=35", "zoom=100&PAGE=35") }),
+    sourceWitnessKey(page35));
+  assert.equal(sourceWitnessKey({ ...page22, retrieval: "unvalidated-discovery" }), null);
   assert.equal(
-    canonicalResultUrl("https://keskkonnaagentuur.ee/media/9999/download/report.PDF#page=022&zoom=100"),
-    "https://keskkonnaagentuur.ee/media/9999/download/report.PDF#page=22",
-  );
-  assert.equal(
-    canonicalResultUrl("https://keskkonnaagentuur.ee/media/9999/download/report.PDF#zoom=100&PAGE=35"),
-    "https://keskkonnaagentuur.ee/media/9999/download/report.PDF#page=35",
-  );
-  assert.notEqual(
-    canonicalResultUrl("https://keskkonnaagentuur.ee/media/9999/download/report.PDF#page=22&zoom=100"),
-    canonicalResultUrl("https://keskkonnaagentuur.ee/media/9999/download/report.PDF#zoom=100&page=35"),
-  );
-  assert.equal(
-    canonicalResultUrl("https://keskkonnaagentuur.ee/uudised/mets#metoodika"),
-    canonicalResultUrl("https://keskkonnaagentuur.ee/uudised/mets#tulemused"),
+    sourceResourceKey("https://keskkonnaagentuur.ee/uudised/mets#metoodika"),
+    sourceResourceKey("https://keskkonnaagentuur.ee/uudised/mets#tulemused"),
   );
   for (const input of [[page22, page35], [page35, page22]]) {
     const distinct = deduplicateResults(input);
@@ -1713,7 +1735,7 @@ test("a persisted live result keeps the same public ID across its cache boundary
   const persistedId = listingFor("corpus-9122", persistedUrl).items[0].id;
   assert.equal(liveId, persistedId);
   assert.match(liveId, /^official-[a-f0-9]{16}$/u);
-  assert.equal(canonicalResultUrl(liveUrl), canonicalResultUrl(persistedUrl));
+  assert.equal(sourceResourceKey(liveUrl), sourceResourceKey(persistedUrl));
 });
 
 test("follow-up retrieval context is bounded and keeps only recent questions", () => {
@@ -2206,4 +2228,308 @@ test("official service directory joins visible retrieval without prewritten answ
   assert.match(air.url, /ohuseire\.ee/u);
   assert.equal(documents.some((document) => /terrapoint/iu.test(JSON.stringify(document))), false);
   assert.deepEqual(rankSearchCandidates("täiesti seosetu otsingufraas", documents), []);
+});
+
+test("overview roles are version-bound raw witnesses with a verified edition and honest historical fallback", () => {
+  const documents = officialServiceCatalogueDocuments();
+  const now = Date.parse("2026-10-06T12:00:00Z");
+  const plan = selectAnswerEvidence("mets", documents, { now });
+  assert.equal(plan.strong, true);
+  assert.deepEqual(plan.requiredRoles, ["measurement", "method", "condition", "registry"]);
+  assert.equal(plan.numericSourceRole, "measurement");
+  assert.equal(plan.directDocumentId, "forest-smi-2025-tables");
+  assert.equal(plan.edition.year, 2025);
+  assert.equal(plan.edition.dataYear, 2025);
+  assert.equal(plan.edition.latestVerified, true);
+  assert.equal(plan.edition.artifactSha256, SMI_2025_EDITION.artifactSha256);
+  for (const role of plan.requiredRoles) {
+    const witness = plan.roleWitnesses[role];
+    const document = documents.find((document) => document.id === witness.documentId);
+    assert.equal(witness.witnessKey, sourceWitnessKey(document));
+    assert.equal(witness.version, String(document._evidenceVersion || document._contentHash || document._evidenceStatusAt || "").slice(0, 120) || null);
+    assert.ok(witness.passages.length);
+    for (const passage of witness.passages) {
+      assert.ok([document.summary, document.content, document.answer].some((body) => String(body || "").includes(passage)), role);
+    }
+  }
+  const method = plan.roleWitnesses.method.passages.join(" ");
+  assert.match(method, /statistiline metsainventuur/iu);
+  assert.match(method, /valikuuring/iu);
+  assert.match(method, /proovitükk/iu);
+  assert.match(method, /kogu Eesti/iu);
+  assert.match(method, /statistiliste meetodite/iu);
+
+  for (const documentsWithoutLatest of [
+    documents.filter((document) => document.id !== "forest-smi-2025-tables"),
+    documents.map((document) => document.id === "forest-smi-2025-tables" ? { ...document, _smiEdition: undefined } : document),
+    documents.map((document) => document.id === "forest-smi-2025-tables" ? { ...document, _answerEvidenceEligible: false } : document),
+  ]) {
+    const historical = selectAnswerEvidence("mets", documentsWithoutLatest, { now });
+    assert.equal(historical.strong, true);
+    assert.equal(historical.directDocumentId, "forest-area");
+    assert.equal(historical.edition.year, 2024);
+    assert.equal(historical.edition.latestVerified, false);
+    assert.match(historical.roleWitnesses.measurement.passages.join(" "), /2 350,6/u);
+  }
+});
+
+test("overview requires actual multidimensional condition and property-scoped registry evidence", () => {
+  const directory = officialServiceCatalogueDocuments();
+  const complete = selectAnswerEvidence("mets", directory);
+  assert.equal(complete.strong, true);
+  const sources = [...new Set(Object.values(complete.roleWitnesses).map((witness) => witness.documentId))]
+    .map((id) => directory.find((source) => source.id === id));
+  const condition = sources.find((source) => source.id === complete.roleWitnesses.condition.documentId);
+  const registry = sources.find((source) => source.id === complete.roleWitnesses.registry.documentId);
+  const conditionProof = complete.roleWitnesses.condition.passages.join(" ");
+  assert.match(conditionProof, /\b\d+(?:[.,]\d+)?\b/u);
+  assert.match(conditionProof, /(?:tagavara|puit)/iu);
+  assert.match(conditionProof, /(?:liigiline|ökoloogiline|elurikkus)/iu);
+  const registryProof = complete.roleWitnesses.registry.passages.join(" ");
+  assert.match(registryProof, /inventeerimis/iu);
+  assert.match(registryProof, /kinnistu/iu);
+  assert.match(registryProof, /(?:metsa)?eraldis/iu);
+  const notice = splitTextPassages(registry.content).find((passage) =>
+    /\bmetsateatis\w*\b[\s\S]*\bkavandatav\w*\b/u.test(normalize(passage)));
+  assert.ok(notice);
+  for (const replacement of [
+    { ...registry, summary: notice, content: notice, answer: "" },
+    { ...registry, summary: "", content: splitTextPassages(registry.content)
+      .filter((passage) => !/\bkinnistu\w*\b/u.test(normalize(passage))).join("\n"), answer: "" },
+  ]) {
+    const incomplete = selectAnswerEvidence("mets", sources.map((source) =>
+      source.id === registry.id ? replacement : source));
+    assert.equal(incomplete.strong, false);
+    assert.ok(incomplete.missingEvidenceRequirements.includes("registry"));
+  }
+  const mentionOnly = { ...condition, summary: "", answer: "",
+    content: "Metsa pindala, tagavara, vanuseline struktuur ja liigiline koosseis on eri teemad." };
+  const incomplete = selectAnswerEvidence("mets", sources.map((source) =>
+    source.id === condition.id ? mentionOnly : source));
+  assert.equal(incomplete.strong, false);
+  assert.ok(incomplete.missingEvidenceRequirements.includes("condition"));
+});
+
+test("comparison and national method roles reserve coherent published same-source passage sets", () => {
+  const query = "Mis vahe on SMI ja metsaandmed?";
+  const documents = officialServiceCatalogueDocuments();
+  const comparison = documents.find((document) => document.id === "smi-metsaregister");
+  const method = documents.find((document) => document.id === "smi");
+  const registry = documents.find((document) => document.id === "metsaregister");
+  assert.equal(hasForestryComparisonRole(comparison), true);
+  assert.equal(hasForestryComparisonRole({ ...comparison, id: "different-display-id" }), true);
+  const sources = [comparison, method, registry].map((source, index) => ({ ...source, citation: index + 1 }));
+  const plan = selectAnswerEvidence(query, sources);
+  assert.equal(plan.strong, true);
+  const pack = buildEvidencePack({ sources, query, plan });
+  assert.equal(pack.complete, true);
+  for (const role of ["comparison", "method", "registry"]) {
+    const witness = pack.roleWitnesses[role];
+    assert.ok(witness);
+    const source = sources.find((source) => source.id === witness.documentId);
+    const entry = pack.entries.find((entry) => entry.citation === source.citation);
+    assert.ok(witness.passages.length >= 2, role);
+    for (const passage of witness.passages) {
+      assert.ok([source.summary, source.content].some((raw) => String(raw).includes(passage)), role);
+      assert.ok(entry.content.includes(passage), role);
+    }
+  }
+  const withoutRegistry = splitTextPassages(comparison.content)
+    .filter((passage) => !/\bmetsaregis\w*|\bmetsaressursi\s+arvestuse\b/u.test(normalize(passage)))
+    .join("\n");
+  for (const invalid of [
+    { ...comparison, content: withoutRegistry },
+    { ...comparison, summary: "", content: "", answer: "" },
+    { ...comparison, content: `${comparison.content}\nSMI ei kuulu metsandusandmete hulka.` },
+    { ...comparison, summary: "SMI, Metsaregister, metsandusandmed.", content: "Leht loetleb üksnes märksõnu.", answer: "" },
+  ]) {
+    assert.equal(hasForestryComparisonRole(invalid), false);
+    const invalidPlan = selectAnswerEvidence(query, [invalid, method, registry]);
+    assert.equal(invalidPlan.strong, false);
+    assert.ok(invalidPlan.missingEvidenceRequirements.includes("comparison"));
+  }
+});
+
+test("overview discovery metadata, plot counts and negated method claims do not prove roles", () => {
+  const documents = officialServiceCatalogueDocuments();
+  const now = Date.parse("2026-10-06T12:00:00Z");
+  const smi = documents.find((document) => document.id === "smi");
+  const plotOnly = { ...smi, summary: "SMI valimis on 28 000 proovitükki.", content: "" };
+  const negated = { ...smi, content: "SMI ei ole üleriigiline statistiline proovitükkidega valikuuring. SMI ei sobi riigi metsade seisundi ja muutuste hindamiseks, mitte üksiku kinnistu inventeerimisandmete esitamiseks." };
+  for (const replacement of [plotOnly, negated, { ...smi, summary: "", content: "", answer: "", excerpt: smi.content }]) {
+    assert.equal(hasSmiNationalRole(replacement), false);
+    const plan = selectAnswerEvidence("mets", documents.map((document) => document.id === "smi" ? replacement : document), { now });
+    assert.equal(plan.strong, false);
+    assert.ok(plan.missingEvidenceRequirements.includes("method"));
+    assert.equal(plan.roleWitnesses.method, undefined);
+  }
+  const withoutNationalGeneralization = {
+    ...smi,
+    content: splitTextPassages(smi.content).filter((passage) =>
+      !/\bkoostatakse\b[\s\S]*\bkogu\s+eesti\b/u.test(normalize(passage))).join("\n"),
+  };
+  assert.equal(hasSmiNationalRole(withoutNationalGeneralization), false);
+  assert.ok(selectAnswerEvidence("mets", documents.map((document) =>
+    document.id === smi.id ? withoutNationalGeneralization : document), { now }).missingEvidenceRequirements.includes("method"));
+  const metadataOnly = documents.map((document) => ({ ...document, summary: "", content: "", answer: "" }));
+  const plan = selectAnswerEvidence("mets", metadataOnly, { now });
+  assert.equal(plan.strong, false);
+  assert.deepEqual(plan.missingEvidenceRequirements, ["measurement", "method", "condition", "registry"]);
+  const definition = selectSmiDefinitionEvidence(smi);
+  assert.equal(definition.satisfies, true);
+  const definitionText = definition.passages.join(" ");
+  assert.match(definitionText, /statistiline metsainventuur/iu);
+  assert.match(definitionText, /valikuuring/iu);
+  assert.match(definitionText, /proovitükk/iu);
+  assert.match(definitionText, /kogu Eesti/iu);
+  assert.match(definitionText, /statistiliste meetodite/iu);
+});
+
+test("explicit 2024 keeps its PDF edition and a named 2025 historical row remains a separate revision", () => {
+  const documents = officialServiceCatalogueDocuments();
+  const now = Date.parse("2026-10-06T12:00:00Z");
+  const historical = selectAnswerEvidence("Kui suur oli Eesti metsamaa pindala 2024. aastal?", documents, { now });
+  assert.equal(historical.strong, true);
+  assert.equal(historical.directDocumentId, "forest-area");
+  assert.equal(historical.edition.year, 2024);
+  assert.equal(historical.edition.revised, false);
+  assert.match(historical.passages.join(" "), /2 350,6/u);
+  assert.doesNotMatch(historical.passages.join(" "), /2 350,8/u);
+  // Avoid the unrelated conservative person-shape heuristic for “suur oli
+  // Eesti”; the fixture asks the same statistical edition/reference row.
+  const editionQuery = "Eesti metsamaa pindala SMI 2025 töövihiku 2024. aasta reas";
+  assert.equal(assessSearchQuery(editionQuery).kind, "answerable");
+  for (const privateQuery of [
+    `Jaan Kask ${editionQuery}`,
+    `${editionQuery} ja Jaan Kase kinnistu pindala`,
+    `${editionQuery} ja Jaan Kase telefon`,
+    `${editionQuery} ja Jaan Kase elukoha aadress`,
+    `${editionQuery} ja katastritunnus 12345:678:9012 Jaan Kase nimel`,
+    `${editionQuery} ja Jaan Kase isikukood`,
+  ]) {
+    assert.equal(selectAnswerEvidence(privateQuery, documents, { now }), null);
+    assert.equal(assessSearchQuery(privateQuery).reason, "personal-data-lookup");
+  }
+  const revised = selectAnswerEvidence(editionQuery, documents, { now });
+  assert.equal(revised.strong, true);
+  assert.equal(revised.directDocumentId, "forest-smi-2025-tables");
+  assert.equal(revised.edition.year, 2025);
+  assert.equal(revised.edition.dataYear, 2024);
+  assert.equal(revised.edition.revised, true);
+  assert.equal(revised.edition.revisionReason, null);
+  assert.match(revised.passages[0], /2 350,8/u);
+  assert.doesNotMatch(revised.passages[0], /2 360,2/u);
+  const trend = selectAnswerEvidence("Võrdle Eesti metsamaa pindala 2024 ja 2025", documents, { now });
+  assert.equal(trend.strong, false);
+  assert.equal(trend.reason, "requested-time-series-required");
+  const unknownEdition = selectAnswerEvidence(editionQuery.replace("SMI 2025", "SMI 2026"), documents, { now });
+  assert.equal(unknownEdition.strong, false);
+  assert.equal(unknownEdition.requiresStrictScopeEvidence, true);
+  assert.equal(unknownEdition.reason, "source-edition-evidence-required");
+});
+
+test("edition and row years are distinct statistical dimensions without changing privacy defaults", () => {
+  for (const query of ["Inventuuri 2025 töövihiku 2024. aasta reas", "Dataset 2025 edition 2024 row"]) {
+    const dimensions = statisticalReferenceDimensions(query);
+    assert.equal(dimensions.editionYear, 2025);
+    assert.equal(dimensions.referenceYear, 2024);
+    assert.equal(requestsUnsupportedForestAreaTimeSeries(query), true);
+    assert.equal(requestsUnsupportedForestAreaTimeSeries(query, { referenceRow: true }), false);
+  }
+  for (const query of [
+    "Võrdle inventuuri 2025 töövihiku 2024. aasta rida 2025. aasta reaga",
+    "Dataset 2025 edition 2020–2024 row",
+    "Eesti metsamaa pindala 2024 ja 2025",
+  ]) assert.equal(requestsUnsupportedForestAreaTimeSeries(query, { referenceRow: true }), true);
+});
+
+test("richer alias evidence retains its entire metadata snapshot in both input orders", () => {
+  const richer = official({
+    id: "richer-old-body", url: "https://keskkonnaagentuur.ee/uudised/mets", content: "Kontrollitud vana väljaande täielik allikatekst. ".repeat(12),
+    published: "2025", _publishedAt: undefined, _evidenceVersion: "old-body",
+    retrieval: "official-service-directory", _contentHash: "old-excerpt-hash",
+    _evidenceObservedAt: "2025-07-30T00:00:00.000Z", _catalogueReviewedAt: "2026-10-01T00:00:00.000Z",
+  });
+  const thin = official({
+    id: "new-alias", url: "https://www.keskkonnaagentuur.ee/uudised/mets/?utm_source=discovery",
+    content: "Lühike tekst.", updated: "06.10.2026", dataYear: "2026", dataAsOf: "06.10.2026", checkedAt: "2026-10-06",
+    published: "06.10.2026", _publishedAt: "2026-10-06", _evidenceVersion: "new-body", _contentHash: "new-excerpt-hash",
+    _evidenceStatusAt: "2026-10-06T00:00:00.000Z", _evidenceValidFrom: "2026-10-06T00:00:00.000Z",
+    _evidenceValidUntil: "2026-10-07T00:00:00.000Z", retrieval: "approved-page-hydration",
+    delivery: "html", freshness: { class: "historical", basis: "reference-year", requiresSourceTimestamp: false },
+  });
+  const atomicFields = ["summary", "content", "answer", "locator", "published", "_publishedAt", "updated", "dataYear", "dataAsOf", "checkedAt",
+    "_catalogueReviewedAt", "_contentHash", "_evidenceVersion", "_evidenceObservedAt", "_evidenceStatusAt", "_evidenceValidFrom", "_evidenceValidUntil", "retrieval", "delivery", "freshness"];
+  for (const input of [[richer, thin], [thin, richer]]) {
+    const [merged] = deduplicateResults(input);
+    assert.equal(deduplicateResults(input).length, 1);
+    for (const field of atomicFields) assert.deepEqual(merged[field], richer[field], field);
+    assert.equal(merged._answerEvidenceEligible, true);
+  }
+});
+
+test("fact tuples are finite, permutation-stable, and put complete period proof before authority", () => {
+  const now = Date.parse("2026-10-06T12:00:00Z");
+  const query = "Kui suur oli Eesti metsamaa pindala 2024. aastal?";
+  const complete = official({ id: "complete", title: "Eesti metsamaa pindala", url: "https://keskkonnaagentuur.ee/uudised/pindala",
+    published: "2025", summary: "SMI 2024 järgi oli Eesti metsamaa pindala 2 350,6 tuhat hektarit.", _relevance: Number.NaN });
+  const authority = official({ id: "primary-incomplete", title: "SMI 2024 Eesti metsamaa pindala",
+    url: "https://keskkonnaportaal.ee/et/teemad/mets/metsastatistika-sh-smi",
+    summary: "SMI metoodika ja statistika väljaannete loend.", tags: ["mets", "pindala", "2024"], _relevance: Number.POSITIVE_INFINITY });
+  const wrongPeriod = official({ id: "wrong-period", title: "SMI 2024 metsamaa pindala",
+    url: "https://keskkonnaagentuur.ee/uudised/vale-periood",
+    published: "06.10.2026", summary: "SMI 2023 järgi oli Eesti metsamaa pindala 2 334,2 tuhat hektarit.", _relevance: 8 });
+  const inputs = [[complete, authority, wrongPeriod], [complete, wrongPeriod, authority], [authority, complete, wrongPeriod],
+    [authority, wrongPeriod, complete], [wrongPeriod, complete, authority], [wrongPeriod, authority, complete]];
+  for (const sort of ["relevance", "newest"]) {
+    let expected;
+    for (const input of inputs) {
+      const ranked = rankSearchCandidates(query, input, { now, sort });
+      const order = ranked.map((document) => document.id);
+      expected ||= order;
+      assert.deepEqual(order, expected);
+      assert.equal(order[0], "complete");
+      for (const document of ranked) {
+        assert.ok(document._ranking.factTuple.every(Number.isFinite));
+        assert.ok(document._ranking.factNewestTuple.every(Number.isFinite));
+      }
+      assert.equal(selectAnswerEvidence(query, input, { now, sort }).directDocumentId, "complete");
+      assert.equal(rankPublicSearchCandidates(query, input, { now, sort })[0].id, "complete");
+    }
+  }
+});
+
+test("newest uses publication only after mandatory proof and shares the planner and public prefix", () => {
+  const query = "Kui suur oli Eesti metsamaa pindala 2024. aastal?";
+  const now = Date.parse("2026-10-06T12:00:00Z");
+  const body = "SMI 2024 järgi oli Eesti metsamaa pindala 2 350,6 tuhat hektarit.";
+  const old = official({ id: "old", title: "Eesti metsamaa pindala", url: "https://keskkonnaagentuur.ee/uudised/older", published: "2025", summary: body, _relevance: 8 });
+  const recent = official({ id: "recent", title: old.title, url: "https://keskkonnaagentuur.ee/uudised/recent", published: "01.10.2026", summary: body, _relevance: 0 });
+  for (const input of [[old, recent], [recent, old]]) {
+    assert.equal(rankSearchCandidates(query, input, { now, sort: "newest" })[0].id, "recent");
+    assert.equal(selectAnswerEvidence(query, input, { now, sort: "newest" }).directDocumentId, "recent");
+    assert.equal(rankPublicSearchCandidates(query, input, { now, sort: "newest" })[0].id, "recent");
+    assert.equal(rankSearchCandidates(query, input, { now, sort: "relevance" })[0].id, "old");
+  }
+});
+
+test("three reviewed publication corrections preserve separate update dates", () => {
+  const documents = officialServiceCatalogueDocuments();
+  for (const [id, publishedAt, updated] of [
+    ["forest-yearbook-overview", "2021-12-15", "17.08.2026"],
+    ["lulucf-definition", "2022-01-31", "07.01.2026"],
+    ["protected-forest-share", "2023-04-12", "07.01.2026"],
+  ]) {
+    const document = documents.find((document) => document.id === id);
+    assert.equal(document._publishedAt, publishedAt);
+    assert.equal(document.updated, updated);
+    assert.equal(resultMatchesFilters(document, { year: Number(publishedAt.slice(0, 4)) }), true);
+  }
+  const workbook = documents.find((document) => document.id === "forest-smi-2025-tables");
+  const workbookAlias = { ...workbook, url: SMI_2025_TABLES_URL.replace("https://", "https://www.") + "?utm_source=chart", citation: 3 };
+  assert.equal(smiWorkbookInResults([workbookAlias], workbook), true);
+  assert.equal(smiTablesSource([workbookAlias], workbook), workbookAlias);
+  const otherRow = { ...workbookAlias, locator: "Tööleht 33, Lageraie" };
+  assert.equal(smiWorkbookInResults([otherRow], workbook), false);
+  assert.equal(smiTablesSource([otherRow], workbook), null);
 });

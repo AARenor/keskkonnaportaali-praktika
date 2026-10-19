@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import { publicSourceAllowed } from "./citation-policy.mjs";
+import { sameSourceResource, sourceComparisonWitnessKey, sourceEvidenceBinding, sourceResourceKey, sourceWitnessKey } from "./source-identity.mjs";
+import { SMI_2025_EDITION, SMI_2025_TABLES_URL } from "./smi-tables.mjs";
 import { isClimateDailyMeanQuery } from "./climate.mjs";
 import { isEelisEmajogiPublicWatercourseQuery, isEelisNaturaSiteQuery } from "./eelis.mjs";
 import {
@@ -39,6 +41,7 @@ import {
   passageDisclaimsEvidence,
   queryRootVariants,
   queryTerms,
+  sanitizeLlmEvidenceText,
   russianKeywordRoots,
   scoreDocument,
   splitTextPassages,
@@ -55,6 +58,7 @@ import {
   requestsUnsupportedForestAreaBreakdown,
   requestsUnsupportedForestAreaTimeSeries,
   requestsUnsupportedForestAreaUnit,
+  statisticalReferenceDimensions,
 } from "./municipalities.mjs";
 import {
   isStatisticsHazardousWasteQuery,
@@ -90,9 +94,9 @@ function clean(value = "") {
 
 export function stablePublicResultId(document = {}) {
   const id = clean(document.id);
-  const canonicalUrl = canonicalResultUrl(document.url);
-  if (!VOLATILE_RESULT_ID.test(id) || !canonicalUrl) return id;
-  return `official-${createHash("sha256").update(canonicalUrl).digest("hex").slice(0, 16)}`;
+  const witnessKey = sourceWitnessKey(document);
+  if (!VOLATILE_RESULT_ID.test(id) || !witnessKey) return id;
+  return `official-${createHash("sha256").update(witnessKey).digest("hex").slice(0, 16)}`;
 }
 
 export function parsePublicSearchFilters(value = {}, currentYear = new Date().getUTCFullYear()) {
@@ -121,30 +125,6 @@ export function parsePublicSearchFilters(value = {}, currentYear = new Date().ge
   };
 }
 
-export function canonicalResultUrl(value) {
-  try {
-    const url = new URL(value);
-    // Ordinary page anchors are display state and should deduplicate. A PDF
-    // page fragment identifies the exact cited evidence location, however;
-    // collapsing page 22 and page 35 lets one page's body inherit the other
-    // page's public URL during merge/cache binding.
-    const pdfPage = pdfPageNumber(url);
-    url.hash = pdfPage === null ? "" : `#page=${pdfPage}`;
-    if (url.hostname.startsWith("www.")) url.hostname = url.hostname.slice(4);
-    if (url.hostname === "keskkonnaportaal.ee") {
-      if (url.pathname === "/et") url.pathname = "/";
-      else if (url.pathname.startsWith("/et/")) url.pathname = url.pathname.slice(3);
-    }
-    for (const key of [...url.searchParams.keys()]) {
-      if (/^(?:utm_|fbclid|gclid)/iu.test(key)) url.searchParams.delete(key);
-    }
-    url.searchParams.sort();
-    if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/u, "");
-    return url.toString();
-  } catch {
-    return clean(value).toLocaleLowerCase("et");
-  }
-}
 
 function pdfPageNumber(value) {
   try {
@@ -165,7 +145,7 @@ function normalizedTitleKey(value) {
 
 function resultHost(value) {
   try {
-    return new URL(canonicalResultUrl(value)).hostname;
+    return new URL(sourceResourceKey(value)).hostname;
   } catch {
     return "";
   }
@@ -180,7 +160,7 @@ function distinctPdfPageLocations(left, right) {
     if (leftPage === null || rightPage === null || leftPage === rightPage) return false;
     leftUrl.hash = "";
     rightUrl.hash = "";
-    return canonicalResultUrl(leftUrl.toString()) === canonicalResultUrl(rightUrl.toString());
+    return sameSourceResource(leftUrl.toString(), rightUrl.toString());
   } catch {
     return false;
   }
@@ -190,6 +170,8 @@ function nearDuplicateTitle(left, right) {
   // Two citations to different pages of one PDF are distinct evidence
   // locations even when their titles and publication dates are identical.
   if (distinctPdfPageLocations(left.url, right.url)) return false;
+  if (sameSourceResource(left.url, right.url)
+    && !sameDisplayWitness(left, right)) return false;
   if (resultHost(left.url) !== resultHost(right.url)) return false;
   const leftTitle = normalizedTitleKey(left.title);
   const rightTitle = normalizedTitleKey(right.title);
@@ -227,10 +209,22 @@ function isExplicitNavigationAlias(document) {
     && document?._answerEvidenceEligible === false;
 }
 
+function sameDisplayWitness(left, right) {
+  const key = sourceComparisonWitnessKey(left);
+  if (key !== null && key === sourceComparisonWitnessKey(right)) return true;
+  if (!sameSourceResource(left.url, right.url) || distinctPdfPageLocations(left.url, right.url)) return false;
+  // A known disabled, locationless navigation card may be coalesced with a
+  // validated witness. Its body and capabilities are never transferred.
+  const locationlessNavigation = (source) => isExplicitNavigationAlias(source)
+    && sourceComparisonWitnessKey(source) === sourceResourceKey(source.url);
+  return (locationlessNavigation(left) && sourceWitnessKey(right) !== null)
+    || (locationlessNavigation(right) && sourceWitnessKey(left) !== null);
+}
+
 function hasValidatedForestBalanceProjection(document) {
   const contentHash = clean(document?._contentHash);
   const exactDataset = [document?.url, document?.locator]
-    .some((value) => canonicalResultUrl(value) === canonicalResultUrl(FOREST_BALANCE_EUROSTAT_API_URL));
+    .some((value) => sameSourceResource(value, FOREST_BALANCE_EUROSTAT_API_URL));
   return document?.id === "forest-balance-eurostat"
     && ["official-eurostat-json", "reviewed-official-eurostat-snapshot"].includes(clean(document?.retrieval))
     && hasIndependentEvidenceCapability(document)
@@ -286,12 +280,12 @@ function mergeDuplicate(current, candidate) {
       ? candidatePriority > currentPriority ? candidate : current
       : identityQuality(candidate) > identityQuality(current) ? candidate : current);
   const fallback = preferred === candidate ? current : candidate;
-  const sameCanonicalUrl = canonicalResultUrl(current.url) === canonicalResultUrl(candidate.url);
+  const sameWitness = sameDisplayWitness(current, candidate);
   // A similar title is a display-level duplicate, not proof that both records
   // have the same provenance. Keep the winning URL, summary and evidence text
   // atomic so content from page B can never be cited as page A. Field-level
   // enrichment is allowed only for true canonical-URL aliases.
-  if (!sameCanonicalUrl) {
+  if (!sameWitness) {
     return {
       ...preferred,
       ...retainedForestBalanceFields(preferred),
@@ -338,9 +332,17 @@ function mergeDuplicate(current, candidate) {
     excerpt: richerEvidence.excerpt,
     content: richerEvidence.content,
     answer: richerEvidence.answer,
-    locator: richerEvidence.locator || preferred.locator || fallback.locator,
+    locator: richerEvidence.locator,
+    fetchUrl: richerEvidence.fetchUrl,
+    citationUrl: richerEvidence.citationUrl,
     published: richerEvidence.published,
     _publishedAt: richerEvidence._publishedAt,
+    updated: richerEvidence.updated,
+    dataYear: richerEvidence.dataYear,
+    dataAsOf: richerEvidence.dataAsOf,
+    checkedAt: richerEvidence.checkedAt,
+    _catalogueReviewedAt: richerEvidence._catalogueReviewedAt,
+    _smiEdition: richerEvidence._smiEdition,
     _contentHash: richerEvidence._contentHash,
     _evidenceObservedAt: richerEvidence._evidenceObservedAt,
     _evidenceValidFrom: richerEvidence._evidenceValidFrom,
@@ -354,6 +356,13 @@ function mergeDuplicate(current, candidate) {
     // through the fallback spread above.
     retrieval: richerEvidence.retrieval,
     delivery: richerEvidence.delivery,
+    routeClasses: richerEvidence.routeClasses,
+    organization: richerEvidence.organization,
+    _forestrySourceClass: richerEvidence._forestrySourceClass,
+    _forestSeries: richerEvidence._forestSeries,
+    _landUseShare: richerEvidence._landUseShare,
+    _harvestShare: richerEvidence._harvestShare,
+    ...Object.fromEntries([...ADAPTER_BOUND_PROJECTION_FIELDS.values()].map((field) => [field, richerEvidence[field]])),
     // Spreads above can inherit an invalid structured projection from either
     // alias. Assign this field explicitly so a failed version/schema check
     // removes it instead of letting another alias confer eligibility on it.
@@ -372,7 +381,7 @@ function mergeDuplicate(current, candidate) {
     tags: preserveValidatedEvidence
       ? [...new Set(richerEvidence.tags || richerEvidence.topics || [])].slice(0, 12)
       : [...new Set([...(preferred.tags || preferred.topics || []), ...(fallback.tags || fallback.topics || [])])].slice(0, 12),
-    sourceTier: preferred.sourceTier === "official" || fallback.sourceTier === "official" ? "official" : preferred.sourceTier,
+    sourceTier: richerEvidence.sourceTier,
     _relevance: Math.max(Number(preferred._relevance) || 0, Number(fallback._relevance) || 0),
   };
 }
@@ -411,10 +420,9 @@ const AUXILIARY_QUERY_ROOTS = new Set([
 
 function evidenceSourcePassages(document = {}) {
   const seen = new Set();
-  // Prefer full text over a search-engine excerpt. The latter can begin in
-  // the middle of a sentence and would make a literal deterministic fallback
-  // misleading even though the complete official passage is available.
-  return [document.content, document.summary, document.excerpt, document.answer]
+  // Evidence is raw source prose only; search-engine excerpts and discovery
+  // metadata never become claim-bearing passages.
+  return [document.content, document.summary, document.answer]
     .filter(Boolean)
     .flatMap(splitTextPassages)
     .map(clean)
@@ -465,7 +473,19 @@ function uniquePassages(values = [], limit = 3) {
 }
 
 function requestedQueryYear(query) {
-  return normalize(query).match(/\b((?:19|20)\d{2})\b/u)?.[1] || "";
+  return normalize(requestedPeriodQuery(query)).match(/\b((?:19|20)\d{2})\b/u)?.[1] || "";
+}
+
+function requestsSmi2025HistoricalRow(query) {
+  const dimensions = statisticalReferenceDimensions(query);
+  return /\bsmi\b/iu.test(String(query))
+    && dimensions?.editionYear === SMI_2025_EDITION.year
+    && dimensions.referenceYear === SMI_2025_EDITION.historicalReferenceYear;
+}
+
+// A reviewed edition is not a second reference period.
+function requestedPeriodQuery(query) {
+  return statisticalReferenceDimensions(query)?.periodQuery ?? query;
 }
 
 function containsEvidenceYear(value, year) {
@@ -473,24 +493,6 @@ function containsEvidenceYear(value, year) {
   return new RegExp(`\\b${year}\\b`, "u").test(normalize(value));
 }
 
-// Publication date is not necessarily the data year. Prefer an explicit year
-// in the titled/summarised measurement or its direct passage, while retaining
-// the rank-time signal when this selector receives already ranked documents.
-function requestedEvidenceYearMatch(document, year, passages = []) {
-  if (!year) return 0;
-  const titleMatch = containsEvidenceYear(document?.title, year);
-  const summaryMatch = containsEvidenceYear(document?.summary, year);
-  const passageMatch = passages.some((passage) => containsEvidenceYear(passage, year));
-  const contentMatch = containsEvidenceYear(document?.content, year);
-  const rankingMatch = Math.max(0, Number(document?._ranking?.yearMatch) || 0);
-  return Math.max(
-    rankingMatch,
-    (titleMatch ? 60 : 0)
-      + (summaryMatch ? 40 : 0)
-      + (passageMatch ? 30 : 0)
-      + (contentMatch ? 8 : 0),
-  );
-}
 
 function measurementPassagesContainRequestedYear(passages = [], year = "") {
   return !year || passages.some((passage) => containsEvidenceYear(passage, year));
@@ -501,10 +503,11 @@ function areaMeasurementKey(value = "") {
   return match ? `${match[1].replace(/[\s\u00A0]/gu, "").replace(",", ".")}:${normalize(match[2])}` : "";
 }
 
-function forestAreaEvidence(document) {
+function forestAreaEvidence(document, year = "") {
   const matches = claimBearingEvidenceSourcePassages(document)
     .map((passage, index) => ({ passage, index, ...forestAreaPassageEvidence(passage) }))
     .filter((candidate) => candidate.score > 0)
+    .filter((candidate) => !year || (candidate.satisfies && containsEvidenceYear(candidate.passage, year)))
     .sort((left, right) => right.score - left.score || left.index - right.index);
   const best = matches[0];
   if (!best) return { satisfies: false, score: 0, passages: [] };
@@ -526,10 +529,11 @@ function forestAreaEvidence(document) {
   };
 }
 
-function forestAreaOnlyEvidence(document) {
+function forestAreaOnlyEvidence(document, year = "") {
   const matches = claimBearingEvidenceSourcePassages(document)
     .map((passage, index) => ({ passage, index, ...forestAreaPassageEvidence(passage) }))
     .filter((candidate) => candidate.satisfies)
+    .filter((candidate) => measurementPassagesContainRequestedYear([candidate.passage], year))
     // A composite area-and-method answer must not inherit a neighboring stock
     // or harvest observation merely because it appears in the same source.
     .filter((candidate) => !/\b(?:tagavara\w*|raiemaht\w*|m[³3]\b|tihumeet\w*|kuupmeet\w*)/iu
@@ -544,7 +548,8 @@ function forestAreaOnlyEvidence(document) {
 }
 
 function forestMeasurementMethodEvidence(document) {
-  const matches = claimBearingEvidenceSourcePassages(document)
+  const passages = claimBearingEvidenceSourcePassages(document);
+  const matches = passages
     .map((passage, index) => {
       const text = normalize(passage);
       const hasSmi = /\b(?:smi|statistiline\s+metsainvent\w*)\b/u.test(text);
@@ -552,7 +557,8 @@ function forestMeasurementMethodEvidence(document) {
       const hasSamplePlots = /\bproovitukk\w*\b/u.test(text);
       const hasNationalGeneralization = /\b(?:kogu\s+eesti\w*|uleriigil\w*|uldistat\w*)\b/u.test(text);
       const explainsGeneralization = /\b(?:kogu\s+eesti\w*|uldistat\w*)\b/u.test(text);
-      const satisfies = hasSmi && hasSampleStudy && hasSamplePlots && hasNationalGeneralization;
+      const satisfies = hasSmi && hasSampleStudy && hasSamplePlots && hasNationalGeneralization
+        && !/\b(?:smi|statistiline\s+metsainvent\w*)\b[\s\S]{0,120}\b(?:ei\s+ole|pole)\b/u.test(text);
       return {
         passage,
         index,
@@ -568,10 +574,16 @@ function forestMeasurementMethodEvidence(document) {
     .filter((candidate) => candidate.satisfies)
     .sort((left, right) => right.score - left.score || left.index - right.index);
   const best = matches[0] || null;
+  const generalization = passages.find((passage) => {
+    const text = normalize(passage);
+    return /\bstatistili\w*/u.test(text) && /\b(?:kogu\s+eesti|uleriigil\w*)\b/u.test(text)
+      && /\buldistat\w*\s+hinnang\w*/u.test(text)
+      && !/\bei\s+(?:koostata|anna|uldistata)\w*\b/u.test(text);
+  });
   return {
-    satisfies: Boolean(best),
-    score: best?.score || 0,
-    passages: best ? [best.passage] : [],
+    satisfies: Boolean(best && generalization),
+    score: best && generalization ? best.score : 0,
+    passages: best && generalization ? uniquePassages([best.passage, generalization]) : [],
   };
 }
 
@@ -579,73 +591,349 @@ function forestDepletionEvidence(document) {
   const passages = claimBearingEvidenceSourcePassages(document);
   const statusPassage = passages.find((passage) => {
     const text = normalize(passage);
-    const hasForestStock = /\b(?:kasvava\s+metsa\s+tagavara|metsa\s+tagavara|metsavaru)\w*/u.test(text);
+    const hasForestStock = /\b(?:kasvava\s+metsa\s+tagavara|metsa\s+(?:kogu)?tagavara|metsatagavara|metsavaru)\w*/u.test(text);
     const hasMeasuredDirection = /\b(?:stabiil\w*|pusi\w*|suuren\w*|vahen\w*|kahan\w*|lang\w*)\b/u.test(text);
     return hasForestStock && hasMeasuredDirection;
   });
   const area = forestAreaEvidence(document);
-  const contextPassage = passages.find((passage) => {
-    const text = normalize(passage);
-    const dimensions = [
-      /\bpindala\w*/u,
-      /\btagavara\w*/u,
-      /\bvanus\w*|vanuselis\w*/u,
-      /\bkahjust\w*/u,
-      /\belurikk\w*/u,
-      /\bkaits\w*/u,
-      /\bkliima\w*|risk\w*/u,
-    ].filter((pattern) => pattern.test(text)).length;
-    return /\bmets\w*/u.test(text) && dimensions >= 3;
-  });
+  const context = overviewConditionEvidence(document);
   const roles = [
     statusPassage ? "status" : null,
     area.satisfies ? "area" : null,
-    contextPassage ? "context" : null,
+    context.satisfies ? "context" : null,
   ].filter(Boolean);
   return {
     satisfies: roles.length > 0,
     score: (statusPassage ? 100 : 0)
       + (area.satisfies ? 70 : 0)
-      + (contextPassage ? 55 : 0),
+      + (context.satisfies ? 55 : 0),
     passages: uniquePassages([
       statusPassage,
       ...(area.passages || []),
-      contextPassage,
-    ].filter(Boolean), 3),
+      ...context.passages,
+    ].filter(Boolean), 6),
     roles,
   };
 }
 
-function forestDataSourcesEvidence(document) {
-  const passages = claimBearingEvidenceSourcePassages(document);
-  const text = passages.join("\n");
-  const hasSmi = /\b(?:smi|statistilise\s+metsainvent\w*)/iu.test(text);
-  const hasRegister = /\bmetsaregis\w*|metsaressursi\s+arvestuse\s+riiklik/iu.test(text);
-  const hasData = /\b(?:metsa|metsandus|metsainventeerimis)andm\w*|inventeerimisandm\w*/iu.test(text);
-  const hasSmiRole = /\b(?:valikuuring\w*|proovitükk\w*|statistilis\w*|üleriigil\w*|riiklik\s+(?:statistiline|hinnang)|metsade\s+seisund)/iu.test(text);
-  const hasRegisterRole = /\b(?:kinnistu\w*|metsaeraldis\w*|eraldis\w*|inventeerimisandm\w*|registrisse\s+koond|metsateatis\w*)/iu.test(text);
-  const hasMultipleSources = /\b(?:mitmel\s+viisil|eri(?:nevate)?\s+andmeallik\w*|eri\s+allik\w*|metsaandmed\s+on\s+(?:mitme|eri))/iu.test(text);
-  const accessOnlyContext = /\b(?:juurdep[aä]äsupiirang\w*|koordinaat\w*|kährik\w*|kaitstud\s+(?:liik|objekt)|salastatud\w*)/iu.test(text);
-  const smiPassage = passages.find((passage) => /\b(?:smi|statistilise\s+metsainvent\w*)/iu.test(passage)
-    && /\b(?:valikuuring\w*|proovitükk\w*|statistilis\w*|üleriigil\w*|metsade\s+seisund)/iu.test(passage))
-    || passages.find((passage) => /\b(?:smi|statistilise\s+metsainvent\w*)/iu.test(passage));
-  const registerPassage = passages.find((passage) => /\bmetsaregis\w*|metsaressursi\s+arvestuse\s+riiklik/iu.test(passage)
-    && /\b(?:kinnistu\w*|eraldis\w*|inventeerimisandm\w*|metsateatis\w*)/iu.test(passage))
-    || passages.find((passage) => /\bmetsaregis\w*|metsaressursi\s+arvestuse\s+riiklik/iu.test(passage));
-  const dataPassage = passages.find((passage) => /\b(?:mitmel\s+viisil|eri(?:nevate)?\s+andmeallik\w*|eri\s+allik\w*|metsaandmed\s+on\s+(?:mitme|eri))/iu.test(passage))
-    || passages.find((passage) => /\b(?:metsa|metsandus|metsainventeerimis)andm\w*|inventeerimisandm\w*/iu.test(passage));
-  const satisfies = hasSmi && hasRegister && (hasMultipleSources || (hasSmiRole && hasRegisterRole)) && !accessOnlyContext;
-  return {
-    satisfies,
-    score: (satisfies ? 70 : 0)
-      + (hasData ? 8 : 0)
-      + (hasSmiRole ? 14 : 0)
-      + (hasRegisterRole ? 14 : 0)
-      + (hasMultipleSources ? 18 : 0)
-      - (accessOnlyContext ? 80 : 0)
-      + (!satisfies && hasSmi && hasData ? 4 : 0),
-    passages: uniquePassages([dataPassage, smiPassage, registerPassage], 3),
+function comparisonSourcePassages(source = {}) {
+  return [source.summary, source.answer, source.content].filter(Boolean)
+    .flatMap((value) => splitTextPassages(sanitizeLlmEvidenceText(value)));
+}
+
+function forestComparisonEvidence(source) {
+  const passages = comparisonSourcePassages(source);
+  const excludes = (value) => {
+    const passage = normalize(value);
+    return /\b(?:metsa|metsandus|metsainventeerimis)andm\w*/u.test(passage)
+      && /\b(?:smi|statistilise\s+metsainvent|metsaregis\w*)/u.test(passage)
+      && /\b(?:ei\s+kuulu|pole\s+osa|ei\s+ole\s+(?:osa|allik\w*)|pole\s+(?:osa|allik\w*))/u.test(passage);
   };
+  const denies = (value) => /\b(?:ei\s+(?:utle|kinnita|naita)|ei\s+tahenda)\b[\s\S]{0,180}\b(?:smi|statistilise\s+metsainvent|metsaregis\w*)\b[\s\S]{0,180}\b(?:kuulub|on\s+neist|on\s+uks)/u.test(normalize(value))
+    || /\b(?:uksnes|ainult)\s+loetleb\b[\s\S]{0,180}\bmarkson\w*/u.test(normalize(value));
+  if (passages.some(excludes) || passages.some(denies)) return { satisfies: false, passages: [] };
+  const umbrella = passages.find((value) => {
+    const text = normalize(value);
+    return /\b(?:metsa|metsandus)andm\w*/u.test(text)
+      && /\b(?:kogutakse|kogumine)\b/u.test(text) && /\bmitmel\s+viisil\b/u.test(text)
+      && !/\bei\s+koguta\b/u.test(text);
+  });
+  const nationalSummary = passages.find((value) => {
+    const text = normalize(value);
+    return /\bstatistili\w*\b/u.test(text) && /\b(?:kokkuvot\w*|hinnang\w*)\b/u.test(text)
+      && /\beesti\s+mets\w*/u.test(text) && /\bmuutus\w*/u.test(text)
+      && !/\bei\s+(?:koosta|anna|kirjelda)\w*\b/u.test(text);
+  });
+  const smi = passages.find((value) => /\bstatistili\w*\s+metsainvent\w*/u.test(normalize(value))
+    && /\bsmi\b/u.test(normalize(value)));
+  const propertyRegistry = passages.find((value) => {
+    const text = normalize(value);
+    return /\bkinnistu\w*\b/u.test(text) && /\binventeerimis\w*|metsainventeerimis\w*/u.test(text)
+      && /\b(?:metsaregis\w*|metsaressursi\s+arvestuse\s+riiklik\w*\s+registr\w*)/u.test(text)
+      && /\b(?:registreeritud|koondatakse|sisaldab)\b/u.test(text)
+      && !/\bei\s+(?:ole\s+registreeritud|koondat\w*|sisalda)\b/u.test(text);
+  });
+  const satisfies = Boolean(umbrella && nationalSummary && smi && propertyRegistry);
+  return { satisfies, passages: satisfies ? uniquePassages([umbrella, nationalSummary, smi, propertyRegistry], 4) : [] };
+}
+
+export function hasForestryComparisonRole(source) {
+  return forestComparisonEvidence(source).satisfies;
+}
+
+function forestRegisterEvidence(source) {
+  // These are necessary body concepts, not authority/role admission. Avoid
+  // sanitizing every unrelated catalogue article for a registry role it cannot
+  // satisfy; a possible match still crosses the complete sanitizer and guards.
+  const raw = normalize([source.summary, source.answer, source.content].filter(Boolean).join(" ").normalize("NFKC"));
+  if (!/\bmetsaregis\w*/u.test(raw)
+    || !/\b(?:metsainventeerimis|inventeerimis)\w*/u.test(raw)
+    || !/\bkinnistu\w*/u.test(raw)
+    || !/\b(?:metsaeraldis|eraldis)\w*/u.test(raw)) return { satisfies: false, passages: [] };
+  const passages = comparisonSourcePassages(source);
+  const registry = "(?:metsaregis\\w*|registri\\s+andmestik)";
+  const affirmative = (value) => {
+    const passage = normalize(value);
+    return new RegExp(`\\b(?:${registry}|register)\\b[\\s\\S]{0,160}\\b(?:sisaldab|koondab|koondatakse|kuuluvad|sobib)\\b`, "u").test(passage)
+      && !new RegExp(`\\b(?:${registry}|register)\\b[\\s\\S]{0,160}\\b(?:ei\\s+sisalda|pole\\s+(?:osa|allik))\\b`, "u").test(passage);
+  };
+  const identity = passages.find((value) => /\bmetsaregis\w*\b/u.test(normalize(value))
+    && /\b(?:riiklik\s+andmekogu|metsaressursi\s+arvestuse\s+riiklik\w*\s+registr\w*)/u.test(normalize(value)));
+  const contents = passages.find((value) => affirmative(value) && /\b(?:metsainventeerimis|inventeerimis)\w*/u.test(normalize(value))
+    && /\bmetsateatis\w*/u.test(normalize(value)));
+  const scope = passages.find((value) => {
+    const text = normalize(value);
+    return /\bkinnistu\w*/u.test(text) && /\b(?:metsaeraldis\w*|eraldis\w*)/u.test(text)
+      && (affirmative(value) || /\basukohakirjeldus\b/u.test(text))
+      && !/\bei\s+(?:sisalda|kirjelda|sobi)\b/u.test(text);
+  });
+  const satisfies = Boolean(identity && contents && scope);
+  return { satisfies, passages: satisfies ? uniquePassages([identity, contents, scope]) : [] };
+}
+
+export function hasForestRegisterRole(source) {
+  return forestRegisterEvidence(source).satisfies;
+}
+
+
+const FOREST_OVERVIEW_ROLES = Object.freeze(["measurement", "method", "condition", "registry"]);
+const SMI_2024_PDF_URL = "https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI2024/SMI_2024.pdf";
+const retainedOverviewPlans = new WeakMap();
+
+function retainOverviewPlan(value, query, plan, sort = "relevance") {
+  if (plan?.kind !== "forest-overview" || !plan.strong || !plan.edition?.latestVerified) return;
+  for (const witness of Object.values(plan.roleWitnesses)) {
+    Object.freeze(witness.passages);
+    Object.freeze(witness);
+  }
+  Object.freeze(plan.roleWitnesses);
+  Object.freeze(plan.requiredRoles);
+  Object.freeze(plan.edition);
+  Object.freeze(plan);
+  retainedOverviewPlans.set(value, { query, sort, plan });
+}
+
+// This is computation reuse, not a new evidence capability. A copied listing
+// has no retained plan, and changed body/policy/date/locator/edition or expired
+// eligibility forces the ordinary planner to run again.
+export function currentListingEvidencePlan(value, query, documents = value?.items || [], sort = "relevance") {
+  const retained = retainedOverviewPlans.get(value);
+  if (!retained || retained.query !== query || retained.sort !== sort) return null;
+  const plan = retained.plan;
+  if (!FOREST_OVERVIEW_ROLES.every((role) => {
+    const witness = plan.roleWitnesses[role];
+    const matches = documents.filter((source) => source.id === witness.documentId);
+    if (matches.length !== 1 || !sourceCanSupportPublicCitation(matches[0]).eligible) return false;
+    const source = matches[0];
+    if (role === "measurement" && !verifiedSmi2025Edition(source)) return false;
+    const binding = sourceEvidenceBinding(source);
+    return binding.witnessKey === witness.witnessKey && binding.version === witness.version
+      && binding.snapshotHash === witness.snapshotHash;
+  })) return null;
+  return plan;
+}
+
+function smiNationalEvidence(source) {
+  const passages = claimBearingEvidenceSourcePassages(source);
+  const smiName = "(?:smi|statistilise\\s+metsainvent)";
+  if (passages.some((raw) => new RegExp(`\\b${smiName}\\w*\\s+(?:ei\\s+ole|pole|ei\\s+sobi|ei\\s+anna|ei\\s+kirjelda|ei\\s+hinda)\\b`, "u")
+    .test(normalize(raw)))) return { satisfies: false, passages: [] };
+  const method = forestMeasurementMethodEvidence(source);
+  const scope = passages.find((raw) => {
+    const passage = normalize(raw);
+    const generalized = /\b(?:koostatakse|annab|kirjeldab|hindab|sobib)\b/u.test(passage)
+      && /\b(?:kogu\s+eesti|riigi\s+mets\w*)/u.test(passage)
+      && (/\buldistat\w*\s+hinnang\w*/u.test(passage)
+        || (/\bseisundi\w*/u.test(passage) && /\bmuutus\w*/u.test(passage)));
+    return generalized && !/\bei\s+(?:koostata|sobi|anna|kirjelda|hinda)\w*\b/u.test(passage);
+  });
+  const satisfies = method.satisfies && Boolean(scope);
+  return { satisfies, score: satisfies ? method.score : 0, passages: satisfies ? uniquePassages([...method.passages, scope]) : [] };
+}
+
+export function hasSmiNationalRole(source) {
+  return smiNationalEvidence(source).satisfies;
+}
+
+function forestComparisonRolesEvidence(document) {
+  const roleEvidence = {
+    comparison: forestComparisonEvidence(document),
+    method: smiNationalEvidence(document),
+    registry: forestRegisterEvidence(document),
+  };
+  const roles = Object.keys(roleEvidence).filter((role) => roleEvidence[role].satisfies);
+  return { satisfies: roles.length > 0, score: roles.length * 100, roles, roleEvidence,
+    passages: uniquePassages(roles.flatMap((role) => roleEvidence[role].passages), 6) };
+}
+
+function isSmiDefinitionPassage(passage) {
+  const text = normalize(passage);
+  return /\bstatistiline\s+metsainvent\w*\b/u.test(text) && /\bsmi\b/u.test(text)
+    && /\bvalikuuring\w*\b/u.test(text) && /\bproovitukk\w*\b/u.test(text)
+    && !/\b(?:ei\s+ole|pole)\b/u.test(text);
+}
+
+export function selectSmiDefinitionEvidence(source) {
+  const passages = claimBearingEvidenceSourcePassages(source);
+  const definition = passages.find(isSmiDefinitionPassage);
+  const national = smiNationalEvidence(source);
+  const scope = national.passages.find((passage) => !isSmiDefinitionPassage(passage));
+  const uncertainty = passages.find((passage) => /\bstatistili\w*\b/u.test(normalize(passage))
+    && /\bviga\b/u.test(normalize(passage)) && /\b(?:smi|hinnang\w*|naitaj\w*)\b/u.test(normalize(passage)));
+  return { satisfies: Boolean(definition && national.satisfies),
+    passages: uniquePassages([definition, scope, uncertainty].filter(Boolean), 3) };
+}
+
+function overviewMethodEvidence(document) {
+  const definition = selectSmiDefinitionEvidence(document);
+  const measurementMethod = forestMeasurementMethodEvidence(document);
+  const satisfies = definition.satisfies && measurementMethod.satisfies;
+  return { satisfies, passages: satisfies ? definition.passages : [] };
+}
+
+function overviewConditionEvidence(document) {
+  const passages = claimBearingEvidenceSourcePassages(document);
+  const dimensions = [/\bpindala\w*|metsamaa\w*/u, /\b(?:metsa)?tagavara\w*/u,
+    /\bvanus\w*|vanuselis\w*/u, /\bkahjust\w*/u, /\belurikk\w*|okoloogili\w*/u,
+    /\bkaits\w*/u, /\bkliima\w*|risk\w*/u];
+  const measuredStock = passages.find((raw) => {
+    const text = normalize(raw);
+    return /\b(?:19|20)\d{2}\b/u.test(text) && /\bmetsamaa\s+pindala\b/u.test(text)
+      && /\d[\s\S]{0,60}\bhektar\w*/u.test(text)
+      && /\d[\s\S]{0,40}\b(?:m3|tihumeet\w*)[\s\S]{0,30}\bpuit\w*/u.test(text);
+  });
+  const stockChange = passages.find((raw) => {
+    const text = normalize(raw);
+    return /\b(?:kogu|hektari)?tagavara\w*/u.test(text)
+      && /\b(?:vahen\w*|suuren\w*|stabiil\w*|muutusi\s+pole\s+olnud)\b/u.test(text);
+  });
+  const composition = passages.find((raw) => {
+    const text = normalize(raw);
+    return /\b(?:puist\w*|mets\w*)/u.test(text)
+      && /\bliigili\w*\s+mitmekesis\w*/u.test(text)
+      && /\b(?:suuren\w*|vahen\w*)/u.test(text)
+      && !/\bei\s+(?:suurene|vahene)\w*/u.test(text);
+  });
+  const age = passages.find((raw) => {
+    const text = normalize(raw);
+    return /\bnoor\w*/u.test(text) && /\bvan\w*/u.test(text) && /\bmets\w*/u.test(text)
+      && /\bpindala\w*/u.test(text) && /\b(?:suuren\w*|vahen\w*)/u.test(text)
+      && !/\bei\s+(?:suurene|vahene)\w*/u.test(text);
+  });
+  if (measuredStock && stockChange && composition && age) {
+    return { satisfies: true, passages: uniquePassages([measuredStock, stockChange, composition, age], 4) };
+  }
+  const measured = passages.find((raw) => {
+    const text = normalize(raw);
+    return /\b(?:metsa)?tagavara\w*/u.test(text) && /\b(?:vahen\w*|kasvan\w*|suuren\w*)\b/u.test(text)
+      && /\d/u.test(text) && !/\bei\s+(?:vahen|kasva|suuren)\w*\b/u.test(text);
+  });
+  const ecology = passages.find((raw) => {
+    const text = normalize(raw);
+    return /\bokoloogili\w*\s+seisund\w*/u.test(text) && /\b(?:looduslik\w*|elurikk\w*)/u.test(text)
+      && /\b(?:majanduslik\w*|okosusteem\w*)/u.test(text)
+      && !/\bei\s+(?:naita|kirjelda)\w*\b/u.test(text);
+  });
+  const pressures = passages.find((raw) => {
+    const text = normalize(raw);
+    return /\bmets\w*/u.test(text) && /\b(?:kliima\w*|kahjust\w*|poud\w*)/u.test(text)
+      && /\b(?:vanuselis\w*|liigilis\w*)/u.test(text) && /\b(?:vahen\w*|mojut\w*|muutu\w*)/u.test(text)
+      && !/\bei\s+(?:vahen|mojuta|muutu)\w*\b/u.test(text);
+  });
+  const witnesses = [measured, ecology, pressures].filter(Boolean);
+  const text = normalize(witnesses.join(" "));
+  const satisfies = witnesses.length === 3 && dimensions.filter((pattern) => pattern.test(text)).length >= 3;
+  return { satisfies, passages: satisfies ? uniquePassages(witnesses) : [] };
+}
+
+function overviewRegistryEvidence(document) {
+  const register = forestRegisterEvidence(document);
+  if (!register.satisfies) return { satisfies: false, passages: [] };
+  const passages = claimBearingEvidenceSourcePassages(document);
+  const intention = passages.find((raw) => {
+    const text = normalize(raw);
+    return /\bmetsateatis\w*\b/u.test(text)
+      && /\b(?:ei\s+ole\s+koiki|ei\s+ole[\s\S]{0,60}realiseer\w*|ei\s+toenda[\s\S]{0,60}(?:tehtud|toimun\w*)|kavandatav\w*)\b/u.test(text);
+  });
+  const distribution = passages.find((raw) => {
+    const text = normalize(raw);
+    return /\bmetsaregis\w*/u.test(text) && /\b(?:metsaportaal\w*|geoserver\w*|wms|wfs)\b/u.test(text);
+  });
+  return { satisfies: true,
+    passages: uniquePassages([...register.passages, intention, distribution].filter(Boolean), 5) };
+}
+
+function verifiedSmi2025Edition(document) {
+  return sameSourceResource(document?.url, SMI_2025_TABLES_URL)
+    && document?._smiEdition?.artifactSha256 === SMI_2025_EDITION.artifactSha256
+    && document?._smiEdition?.verifiedAt === SMI_2025_EDITION.verifiedAt
+    && clean(document?.dataAsOf) === "18.08.2026"
+    && hasIndependentEvidenceCapability(document) && sourceWitnessKey(document) !== null;
+}
+
+function measurementEdition(query, documents, now = Date.now()) {
+  const year = requestedQueryYear(query);
+  const revised = requestsSmi2025HistoricalRow(query);
+  const workbook = documents.find((document) => verifiedSmi2025Edition(document)
+    && resultPublishedAt(document) <= now
+    && forestAreaOnlyEvidence(document, revised ? "2024" : "2025").satisfies);
+  if (workbook && (!year || year === "2025" || revised)) return {
+    year: 2025, dataYear: revised ? 2024 : 2025, revised,
+    publishedAt: SMI_2025_EDITION.publishedAt, dataAsOf: SMI_2025_EDITION.dataAsOf,
+    latestVerified: !year && !revised, artifactSha256: SMI_2025_EDITION.artifactSha256,
+    locator: revised ? SMI_2025_EDITION.historicalLocator : SMI_2025_EDITION.measurementLocator,
+    revisionReason: null, resourceKey: sourceResourceKey(workbook.url),
+  };
+  const historical = documents.find((document) => sameSourceResource(document?.url, SMI_2024_PDF_URL)
+    && hasIndependentEvidenceCapability(document) && forestAreaOnlyEvidence(document).satisfies);
+  if (historical && (!year || year === "2024") && !revised) return {
+    year: 2024, dataYear: 2024, revised: false, latestVerified: false,
+    publishedAt: clean(historical.published), dataAsOf: clean(historical.dataAsOf) || null,
+    locator: historical.locator || null, resourceKey: sourceResourceKey(historical.url),
+  };
+  return null;
+}
+
+function overviewEvidenceForDocument(document, edition = null) {
+  const measurement = forestAreaOnlyEvidence(document, edition ? String(edition.dataYear) : "");
+  const measurementPassage = measurement.passages.find((passage) => {
+    const text = normalize(passage);
+    return /\beesti\w*\b/u.test(text) && /\bmetsamaa\w*\b/u.test(text)
+      && /\b(?:19|20)\d{2}\b/u.test(text)
+      && (!edition || (sameSourceResource(document.url, edition.resourceKey)
+        && containsEvidenceYear(passage, String(edition.dataYear))))
+      && (/\b(?:kogu\s+eesti|eesti)[\s\S]{0,100}\bpindala\w*\b/u.test(text)
+        || (edition?.revised && /\bmetsamaa\s+pindala\b/u.test(text)));
+  });
+  const roleEvidence = {
+    measurement: { satisfies: Boolean(measurementPassage), passages: measurementPassage ? [measurementPassage] : [] },
+    method: overviewMethodEvidence(document),
+    condition: overviewConditionEvidence(document),
+    registry: overviewRegistryEvidence(document),
+  };
+  const roles = FOREST_OVERVIEW_ROLES.filter((role) => roleEvidence[role].satisfies);
+  return { satisfies: roles.length > 0, score: roles.length * 100, roles, roleEvidence,
+    passages: uniquePassages(roles.flatMap((role) => roleEvidence[role].passages), 8) };
+}
+
+function evidenceVersion(document) {
+  return sourceEvidenceBinding(document).version;
+}
+
+function finiteMetric(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function compareForestryFacts(left, right, sort = "relevance") {
+  const leftTuple = sort === "newest" ? left._ranking.factNewestTuple : left._ranking.factTuple;
+  const rightTuple = sort === "newest" ? right._ranking.factNewestTuple : right._ranking.factTuple;
+  for (let index = 0; index < leftTuple.length; index += 1) {
+    if (leftTuple[index] !== rightTuple[index]) return rightTuple[index] > leftTuple[index] ? 1 : -1;
+  }
+  return clean(left.title).normalize("NFKC").localeCompare(clean(right.title).normalize("NFKC"), "et")
+    || clean(left.id).localeCompare(clean(right.id), "et")
+    || clean(sourceWitnessKey(left)).localeCompare(clean(sourceWitnessKey(right)), "et")
+    || clean(evidenceVersion(left)).localeCompare(clean(evidenceVersion(right)), "et");
 }
 
 function genericForestryEvidence(intent, document) {
@@ -724,17 +1012,64 @@ function beetlePassageMatchesYear(passage, year) {
   });
 }
 
-function intentEvidenceForDocument(intent, document) {
-  if (intent?.kind === "forest-area") return forestAreaEvidence(document);
+function intentEvidenceForDocument(intent, document, edition = null, year = "") {
+  if (intent?.kind === "smi-definition") {
+    const definition = selectSmiDefinitionEvidence(document);
+    return { ...definition, score: definition.satisfies ? 100 : 0, roles: definition.satisfies ? ["method"] : [] };
+  }
+  if (intent?.kind === "forest-overview") return overviewEvidenceForDocument(document, edition);
+  if (intent?.kind === "forest-area") return forestAreaEvidence(document, year || (edition ? String(edition.dataYear) : ""));
+  if (intent?.kind === "forest-area-method") {
+    const area = forestAreaOnlyEvidence(document);
+    const method = smiNationalEvidence(document);
+    const roles = [area.satisfies ? "measurement" : null, method.satisfies ? "method" : null].filter(Boolean);
+    return { satisfies: roles.length > 0, score: area.score + method.score, roles,
+      passages: uniquePassages([...area.passages, ...method.passages], 4) };
+  }
   if (intent?.kind === "forest-depletion") return forestDepletionEvidence(document);
-  if (intent?.kind === "forest-data-sources") return forestDataSourcesEvidence(document);
+  if (intent?.kind === "forest-data-sources") return forestComparisonRolesEvidence(document);
   return genericForestryEvidence(intent, document);
+}
+
+function forestBalanceClaimEvidence(query, document) {
+  const projection = hasValidatedForestBalanceProjection(document) ? validatedForestBalanceProjection(document) : null;
+  if (projection) {
+    const year = requestedQueryYear(query);
+    const count = /\b(?:viimase\s+(?:5|viie)|5\s+aasta|viie\s+aasta|viis\s+aastat)\b/iu.test(String(query)) ? 5 : 1;
+    const cohort = year ? projection.observations.filter((item) => item.year === Number(year))
+      : projection.observations.slice(-count);
+    const complete = cohort.length === (year ? 1 : count)
+      && cohort.every((item) => item.increment !== null && item.removals !== null);
+    return {
+      satisfies: true, score: 0, roles: complete ? ["measurement", "cohort"] : ["availability"],
+      passages: claimBearingEvidenceSourcePassages(document),
+    };
+  }
+  const passages = claimBearingEvidenceSourcePassages(document);
+  const method = passages.find((value) => {
+    const text = normalize(value);
+    return /\bnetojuurdekasv\w*/u.test(text) && /\b(?:maha|lahutat\w*|arvat\w*)\b/u.test(text)
+      && /\bsuremus\w*|suremis\w*/u.test(text);
+  });
+  const definition = passages.find((value) => {
+    const text = normalize(value);
+    return /\bremovals\b/u.test(text) && /\belusa\w*/u.test(text) && /\bsurnud\b/u.test(text)
+      && /\bkoorega\b/u.test(text)
+      && !/\b(?:ei\s+sisalda|ei\s+holma|pole)\b/u.test(text);
+  });
+  const qualifier = passages.find((value) => {
+    const text = normalize(value);
+    return /\bremovals\b/u.test(text) && /\bsmi\b/u.test(text)
+      && /\b(?:ei\s+ole|ei\s+vordu)\b/u.test(text);
+  });
+  const witnesses = uniquePassages([method, ...(definition && qualifier ? [definition, qualifier] : [])].filter(Boolean));
+  return { satisfies: witnesses.length > 0, score: 0, roles: witnesses.length ? ["method"] : [], passages: witnesses };
 }
 
 // This is deliberately a semantic contract rather than a prewritten answer:
 // an answer is eligible only when one current result itself contains the
 // quantity or both forestry data sources needed by the user’s question.
-export function selectAnswerEvidence(query, documents = []) {
+export function selectAnswerEvidence(query, documents = [], rankingOptions = {}) {
   // Privacy is normally enforced before retrieval. Recheck it here so a
   // future caller cannot obtain claim-bearing evidence for a named person's
   // property or ownership association by invoking the planner directly.
@@ -746,13 +1081,13 @@ export function selectAnswerEvidence(query, documents = []) {
   const beetleCountyCase = hasBeetleSubject && normalize(query).split(/\s+/u).some((word) =>
     /maa(?:le|lt|l|s|st|ga)$/u.test(word)
       && isReviewedEstonianCountyIdentity(word.replace(/(?:le|lt|st|ga|l|s)$/u, "")));
-  const numericForestAreaIntent = ["forest-area", "forest-covered-area", "forest-area-method"]
+  const numericForestAreaIntent = ["forest-area", "forest-covered-area", "forest-area-method", "forest-overview"]
     .includes(intent.kind);
   const geographyScope = classifyForestryGeographyScope(query);
   const unsupportedAreaBreakdown = numericForestAreaIntent
     && requestsUnsupportedForestAreaBreakdown(query);
   const unsupportedAreaTimeSeries = numericForestAreaIntent
-    && requestsUnsupportedForestAreaTimeSeries(query);
+    && requestsUnsupportedForestAreaTimeSeries(requestedPeriodQuery(query));
   const unsupportedAreaUnit = numericForestAreaIntent
     && requestsUnsupportedForestAreaUnit(query);
   const queryBoundGeography = [
@@ -813,41 +1148,113 @@ export function selectAnswerEvidence(query, documents = []) {
     };
   }
   const queryYear = requestedQueryYear(query);
+  const eligibleDocuments = (documents || []).filter((document) => sourceCanSupportPublicCitation(document).eligible);
+  const edition = measurementEdition(query, eligibleDocuments, rankingOptions.now);
+  const dimensions = statisticalReferenceDimensions(query);
+  if (numericForestAreaIntent && dimensions && /\bsmi\b/iu.test(String(query))
+    && (!edition || edition.year !== dimensions.editionYear || edition.dataYear !== dimensions.referenceYear)) {
+    return {
+      kind: intent.kind, strong: false, requiresStrictScopeEvidence: true,
+      directDocumentId: null, supportingDocumentIds: [], passages: [], passagesByDocument: {},
+      evidenceGroups: [], evidenceRoles: null,
+      reason: "source-edition-evidence-required",
+      missingEvidenceRequirements: ["verified-source-edition-reference-row"],
+    };
+  }
+  const rankedDocuments = rankingOptions.preRanked === true && eligibleDocuments.every((document) => document._ranking)
+    ? eligibleDocuments
+    : rankSearchCandidates(query, eligibleDocuments, rankingOptions);
+  if (intent.kind === "smi-definition") {
+    const direct = rankedDocuments.find((document) => selectSmiDefinitionEvidence(document).satisfies);
+    const passages = direct ? selectSmiDefinitionEvidence(direct).passages : [];
+    return {
+      kind: intent.kind, strong: Boolean(direct), evidenceGroups: [],
+      requiredRoles: ["method"], requiredOnly: true,
+      roleWitnesses: direct ? { method: { documentId: direct.id, ...sourceEvidenceBinding(direct), passages } } : {},
+      directDocumentId: direct?.id || null, supportingDocumentIds: direct ? [direct.id] : [],
+      passages, passagesByDocument: direct ? { [direct.id]: passages } : {},
+      missingEvidenceRequirements: direct ? [] : ["method"],
+    };
+  }
+  if (intent.kind === "forest-data-sources") {
+    const candidates = rankedDocuments.map((document) => ({
+      document, evidence: forestComparisonRolesEvidence(document),
+    }));
+    const definitions = {};
+    const usedResources = new Set();
+    const usedWitnesses = new Set();
+    for (const role of ["comparison", "method", "registry"]) {
+      const candidate = candidates.find(({ document, evidence }) => evidence.roleEvidence[role].satisfies
+        && !usedResources.has(sourceResourceKey(document.url))
+        && !usedWitnesses.has(sourceWitnessKey(document)));
+      if (!candidate) continue;
+      definitions[role] = { document: candidate.document, passages: candidate.evidence.roleEvidence[role].passages };
+      usedResources.add(sourceResourceKey(candidate.document.url));
+      usedWitnesses.add(sourceWitnessKey(candidate.document));
+    }
+    const comparison = definitions.comparison?.document;
+    const requiredRoles = ["comparison", "method", "registry"];
+    const roleWitnesses = Object.fromEntries(requiredRoles.filter((role) => definitions[role]).map((role) => {
+      const { document, passages } = definitions[role];
+      return [role, { documentId: document.id, ...sourceEvidenceBinding(document), passages }];
+    }));
+    const missingEvidenceRequirements = requiredRoles.filter((role) => !roleWitnesses[role]);
+    const supportingDocumentIds = [...new Set(Object.values(roleWitnesses).map((witness) => witness.documentId))];
+    return {
+      kind: intent.kind, strong: missingEvidenceRequirements.length === 0, requiresStrictScopeEvidence: true,
+      requiredRoles, roleWitnesses, missingEvidenceRequirements,
+      directDocumentId: comparison?.id || null, supportingDocumentIds,
+      passages: definitions.comparison?.passages || [],
+      passagesByDocument: Object.fromEntries(supportingDocumentIds.map((id) => [id,
+        uniquePassages(Object.values(roleWitnesses).filter((witness) => witness.documentId === id).flatMap((witness) => witness.passages), 10)])),
+      evidenceRoles: Object.fromEntries(requiredRoles.map((role) => [role, roleWitnesses[role]?.documentId || null])),
+    };
+  }
+  if (intent.kind === "forest-overview") {
+    const candidates = rankedDocuments.filter((document) => hasIndependentEvidenceCapability(document)
+      && sourceWitnessKey(document) !== null)
+      .map((document) => ({ document, evidence: overviewEvidenceForDocument(document, edition) }));
+    const roleWitnesses = {};
+    for (const role of FOREST_OVERVIEW_ROLES) {
+      const candidate = candidates.find((candidate) => candidate.evidence.roleEvidence[role].satisfies
+        && (role !== "measurement" || edition !== null));
+      if (!candidate) continue;
+      roleWitnesses[role] = { documentId: candidate.document.id,
+        ...sourceEvidenceBinding(candidate.document),
+        passages: candidate.evidence.roleEvidence[role].passages };
+    }
+    const missingEvidenceRequirements = FOREST_OVERVIEW_ROLES.filter((role) => !roleWitnesses[role]);
+    const supportingDocumentIds = [...new Set(Object.values(roleWitnesses).map((witness) => witness.documentId))];
+    const passagesByDocument = Object.fromEntries(supportingDocumentIds.map((id) => [
+      id, uniquePassages(Object.values(roleWitnesses).filter((witness) => witness.documentId === id)
+        .flatMap((witness) => witness.passages), 10),
+    ]));
+    return { kind: intent.kind, strong: missingEvidenceRequirements.length === 0,
+      requiredRoles: [...FOREST_OVERVIEW_ROLES], roleWitnesses, numericSourceRole: "measurement", edition,
+      directDocumentId: roleWitnesses.measurement?.documentId || null,
+      passages: roleWitnesses.measurement?.passages || [], supportingDocumentIds, passagesByDocument,
+      evidenceGroups: [], evidenceRoles: null, missingEvidenceRequirements,
+      reason: missingEvidenceRequirements.length ? "forest-overview-roles-required" : undefined };
+  }
   if (intent.kind === "forest-area-method") {
     const requiredIds = new Set(intent.serviceDocumentIds || []);
-    const candidates = (documents || [])
+    const candidates = rankedDocuments
       .filter((document) => requiredIds.has(document?.id))
       .map((document, index) => ({
         document,
         index,
         publishedAt: Number(document?._ranking?.publishedAt) || resultPublishedAt(document) || 0,
-        area: forestAreaOnlyEvidence(document),
-        method: forestMeasurementMethodEvidence(document),
+        area: forestAreaOnlyEvidence(document, queryYear || (edition ? String(edition.dataYear) : "")),
+        method: smiNationalEvidence(document),
       }));
     const area = candidates
       .filter((candidate) => candidate.area.satisfies
         && measurementPassagesContainRequestedYear(candidate.area.passages, queryYear))
-      .map((candidate) => ({
-        ...candidate,
-        requestedYearMatch: requestedEvidenceYearMatch(
-          candidate.document,
-          queryYear,
-          candidate.area.passages,
-        ),
-      }))
-      .sort((left, right) => (queryYear
-        ? right.requestedYearMatch - left.requestedYearMatch
-          || right.area.score - left.area.score
-          || right.publishedAt - left.publishedAt
-        : right.publishedAt - left.publishedAt
-          || right.area.score - left.area.score)
-        || left.index - right.index)[0] || null;
+      .sort((left, right) => compareForestryFacts(left.document, right.document, rankingOptions.sort))[0] || null;
     const method = candidates
       .filter((candidate) => candidate.document.id !== area?.document?.id
         && candidate.method.satisfies)
-      .sort((left, right) => right.method.score - left.method.score
-        || right.publishedAt - left.publishedAt
-        || left.index - right.index)[0] || null;
+      .sort((left, right) => compareForestryFacts(left.document, right.document, rankingOptions.sort))[0] || null;
     const strong = Boolean(area && method);
     const supportingDocumentIds = strong
       ? [area.document.id, method.document.id]
@@ -859,6 +1266,14 @@ export function selectAnswerEvidence(query, documents = []) {
     return {
       kind: intent.kind,
       strong,
+      edition,
+      requiredRoles: ["measurement", "method"],
+      requiredOnly: true,
+      roleWitnesses: {
+        ...(area ? { measurement: { documentId: area.document.id, ...sourceEvidenceBinding(area.document), passages: area.area.passages } } : {}),
+        ...(method ? { method: { documentId: method.document.id, ...sourceEvidenceBinding(method.document), passages: method.method.passages } } : {}),
+      },
+      numericSourceRole: "measurement",
       evidenceGroups: [],
       directDocumentId: strong ? area.document.id : null,
       passages: strong ? area.area.passages : [],
@@ -879,12 +1294,12 @@ export function selectAnswerEvidence(query, documents = []) {
     };
   }
   if (!["forest-area", "forest-covered-area", "forest-depletion", "forest-data-sources"].includes(intent.kind)) {
-    const candidates = (documents || [])
+    const candidates = rankedDocuments
       .map((document, index) => ({ document, index, ...genericForestryEvidence(intent, document) }))
       .filter((candidate) => candidate.score > 0
         && (!candidate.document.dataYear || beetleYears.every((year) => year === String(candidate.document.dataYear)))
         && beetleYears.every((year) => candidate.passages.some((passage) => beetlePassageMatchesYear(passage, year))))
-      .sort((left, right) => right.score - left.score || left.index - right.index);
+      .sort((left, right) => compareForestryFacts(left.document, right.document, rankingOptions.sort));
     const requiredGroupCount = intent.evidenceGroups?.length || 0;
     const uncovered = new Set(Array.from({ length: requiredGroupCount }, (_value, index) => index));
     const supporting = [];
@@ -915,8 +1330,18 @@ export function selectAnswerEvidence(query, documents = []) {
     return {
       kind: intent.kind,
       strong,
+      ...(intent.kind === "protected-forest-share" && strong && supporting.length === 1 ? {
+        requiredRoles: ["protection-measure-and-scope"],
+        roleWitnesses: {
+          "protection-measure-and-scope": {
+            documentId: direct.document.id,
+            ...sourceEvidenceBinding(direct.document),
+            passages: direct.passages,
+          },
+        },
+      } : {}),
       evidenceGroups: intent.evidenceGroups.map((group) => [...group]),
-      requiresStrictScopeEvidence: beetleYears.length > 0,
+      requiresStrictScopeEvidence: intent.kind === "protected-forest-share" || beetleYears.length > 0,
       directDocumentId: direct?.document?.id || null,
       passages: direct?.passages || [],
       supportingDocumentIds: supporting.map((candidate) => candidate.document.id),
@@ -931,32 +1356,22 @@ export function selectAnswerEvidence(query, documents = []) {
         : [],
     };
   }
-  const candidates = (documents || [])
+  const candidates = rankedDocuments
     .map((document, index) => {
-      const evidence = intentEvidenceForDocument(intent, document);
+      const evidence = intentEvidenceForDocument(intent, document, edition, queryYear);
       return {
         document,
         index,
         publishedAt: Number(document?._ranking?.publishedAt) || resultPublishedAt(document) || 0,
         ...evidence,
-        requestedYearMatch: numericForestAreaIntent
-          ? requestedEvidenceYearMatch(document, queryYear, evidence.passages)
-          : 0,
         requestedYearClaimMatch: numericForestAreaIntent
           ? measurementPassagesContainRequestedYear(evidence.passages, queryYear)
+            && document._ranking.factTuple[0] === 1
           : true,
       };
     })
     .filter((candidate) => candidate.score > 0)
-    .sort((left, right) => (numericForestAreaIntent
-      ? (queryYear
-        ? Number(right.requestedYearMatch > 0) - Number(left.requestedYearMatch > 0)
-          || right.requestedYearMatch - left.requestedYearMatch
-          || right.score - left.score
-          || right.publishedAt - left.publishedAt
-        : right.publishedAt - left.publishedAt || right.score - left.score)
-      : right.score - left.score || right.publishedAt - left.publishedAt)
-      || left.index - right.index);
+    .sort((left, right) => compareForestryFacts(left.document, right.document, rankingOptions.sort));
   const depletionStatusId = intent.kind === "forest-depletion"
     ? candidates.find((candidate) => candidate.roles?.includes("status"))?.document?.id || null
     : null;
@@ -992,6 +1407,7 @@ export function selectAnswerEvidence(query, documents = []) {
   return {
     kind: intent.kind,
     strong,
+    edition: numericForestAreaIntent ? edition : null,
     directDocumentId: direct?.document?.id || null,
     passages: direct?.passages || [],
     supportingDocumentIds,
@@ -1140,7 +1556,7 @@ function isMiningWaterImpactIntent(roots) {
 
 function isForestOverviewDocument(document) {
   return document?.id === "forest-overview"
-    || canonicalResultUrl(document?.url) === canonicalResultUrl(FOREST_OVERVIEW_URL);
+    || sameSourceResource(document?.url, FOREST_OVERVIEW_URL);
 }
 
 function serviceIntentPriority(query, roots, document, analysis = analyzePublicSearchQuery(query)) {
@@ -1451,8 +1867,11 @@ export function resultMatchesFilters(document, rawFilters = {}) {
   return true;
 }
 
-export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date.now(), analysis = analyzePublicSearchQuery(query)) {
+export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date.now(), analysis = analyzePublicSearchQuery(query), context = {}) {
   if (!publicSourceAllowed(document)) return { score: -Infinity, eligible: false };
+  const forestryIntent = forestEvidenceIntent(query);
+  const balanceIntent = isForestHarvestBalanceQuery(query);
+  const forestryFact = Boolean(forestryIntent || balanceIntent);
   const prepared = {
     ...document,
     tags: document.tags || document.topics || [],
@@ -1523,7 +1942,7 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
   const conflictingTitleYear = queryYear && titleYears.length > 0 && !titleYears.includes(queryYear) ? 12 : 0;
   const roundupPenalty = titleCoverage < 0.5 && /\b(?:nadala eelinfo|uudiskiri)\b/u.test(titleText) ? 18 : 0;
   const completeness = clean(document.content).length >= 180 ? 0.7 : clean(document.summary).length >= 100 ? 0.3 : 0;
-  const upstreamSignal = Math.max(0, 1.2 - sourceRank * 0.04);
+  const upstreamSignal = Math.max(0, 1.2 - (forestryFact ? 0 : sourceRank) * 0.04);
   const sqlSignal = Math.max(0, Math.min(Number(document._relevance) || 0, 8)) * 0.22;
   const liveService = liveServiceIntentScore(query, roots, document, analysis);
   const cadastreService = CADASTRE_PATTERN.test(query) && CADASTRE_SERVICE_IDS.has(document.id);
@@ -1559,8 +1978,8 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
     && !/\b(?:ets|hks|jjm|prognoos\w*|eesmark\w*|kliimapoliitik\w*)\b/u.test(normalize(query))
     ? 24
     : 0;
-  const forestryIntent = forestEvidenceIntent(query);
-  const intentEvidence = intentEvidenceForDocument(forestryIntent, document);
+  const intentEvidence = balanceIntent ? forestBalanceClaimEvidence(query, document)
+    : intentEvidenceForDocument(forestryIntent, document, context.edition || null, queryYear);
   const forestryHierarchy = forestryIntent || isForestHarvestBalanceQuery(query)
     ? forestrySourcePreference(document)
     : 0;
@@ -1587,7 +2006,7 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
     "kinnistu", "keskkonnaluba", "menetlus", "piirang", "lubatavus", "taotlemine",
   ].includes(root));
   const primaryTopic = primarySubjectTopic || analysis.domainRoots[0] || assessSearchQuery(query).topic;
-  const primaryIntentMatched = !primaryTopic
+  const lexicalPrimaryIntentMatched = !primaryTopic
     || fieldHasRoot(searchableText, primaryTopic)
     || liveService > 0
     || servicePriority >= 3
@@ -1602,14 +2021,13 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
     + servicePriority
     + routeClassScore
     + (cadastreService ? 48 : 0)
-    + authorityScore(document.sourceTier)
+    + (forestryFact ? 0 : authorityScore(document.sourceTier))
     + freshness
     + yearMatch
     + completeness
     + upstreamSignal
     + sqlSignal
     + intentEvidence.score
-    + forestryHierarchy
     + (directMatch ? 4 : 0)
     - conflictingTitleYear
     - roundupPenalty
@@ -1617,13 +2035,57 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
     - broadGatewayPenalty
     - (futureDated ? 0.6 : 0)
     + (Number(document._cataloguePriority) || 0) * 2;
+  const claimEligible = sourceCanSupportPublicCitation(document).eligible;
+  const geographicScope = classifyForestryGeographyScope(query);
+  const numericIntent = ["forest-area", "forest-area-method", "forest-covered-area", "forest-overview"].includes(forestryIntent?.kind);
+  const area = numericIntent ? forestAreaOnlyEvidence(document, queryYear || (context.edition ? String(context.edition.dataYear) : "")) : null;
+  const measurementCandidate = numericIntent && forestAreaOnlyEvidence(document).satisfies;
+  const beetleSubject = roots.some((root) => ["urask", "feromoon", "puunispuu"].includes(root));
+  const explicitPeriodMatch = beetleSubject
+    ? (!queryYear || ((!document.dataYear || String(document.dataYear) === queryYear)
+      && intentEvidence.passages.some((passage) => beetlePassageMatchesYear(passage, queryYear))))
+    : !numericIntent || !measurementCandidate || (
+      measurementPassagesContainRequestedYear(area.passages, queryYear)
+      && (!context.edition || (sameSourceResource(document.url, context.edition.resourceKey)
+        && area.passages.some((passage) => containsEvidenceYear(passage, String(context.edition.dataYear)))))
+    );
+  const scopeMatch = claimEligible && forestryRestrictionMatched
+    && !forestryIntent?.requiresQueryBoundObservation
+    && !["reviewed-municipality", "unknown-locality", "estonian-region", "foreign-or-other-region"].includes(geographicScope.kind)
+    && (!numericIntent || (!requestsUnsupportedForestAreaBreakdown(query)
+      && !requestsUnsupportedForestAreaTimeSeries(requestedPeriodQuery(query))
+      && !requestsUnsupportedForestAreaUnit(query))) && explicitPeriodMatch
+    && (!balanceIntent || intentEvidence.satisfies);
+  // Scoped claim-bearing role/group proof is itself a retrieval match.
+  // Catalogue membership alone cannot bypass eligibility or scope guards.
+  const provenIntentMatch = Boolean((forestryIntent || balanceIntent) && scopeMatch
+    && (intentEvidence.satisfies || intentEvidence.roles?.length
+      || intentEvidence.matchedGroupIndexes?.length));
+  const primaryIntentMatched = lexicalPrimaryIntentMatched || provenIntentMatch;
+  const roleCount = forestryIntent?.kind === "forest-overview" ? FOREST_OVERVIEW_ROLES.length
+    : forestryIntent?.kind === "forest-area-method" ? 2
+      : balanceIntent || ["forest-depletion", "forest-data-sources"].includes(forestryIntent?.kind)
+        ? 3 : Math.max(1, forestryIntent?.evidenceGroups?.length || 1);
+  const roleCoverage = intentEvidence.roles?.length
+    || intentEvidence.matchedGroupIndexes?.length || (intentEvidence.satisfies ? 1 : 0);
+  const prefix = [Number(scopeMatch),
+    Number(claimEligible && intentEvidence.satisfies === true),
+    claimEligible ? Math.min(1, finiteMetric(roleCoverage / roleCount)) : 0,
+    Math.max(0, Math.min(1, finiteMetric(coherentCoverage))),
+    Math.max(0, Math.min(1, finiteMetric(coreCoverage))),
+    finiteMetric(forestryHierarchy), Number(!futureDated)];
+  const baseRelevance = finiteMetric(score);
+  const strictPublishedAt = finiteMetric(publishedAt);
   return {
     score,
+    forestryFact,
+    factTuple: [...prefix, baseRelevance, strictPublishedAt],
+    factNewestTuple: [...prefix, strictPublishedAt, baseRelevance],
     matched: forestryRestrictionMatched
       && primaryIntentMatched
       && semanticIntentMatched
       && specializedDirectoryIntentMatched
-      && (semantic > 0 || coveredRoots > 0 || sqlSignal > 0 || liveService > 0 || cadastreService),
+      && (provenIntentMatch || semantic > 0 || coveredRoots > 0 || sqlSignal > 0 || liveService > 0 || cadastreService),
     servicePriority,
     directMatch,
     coreCoverage,
@@ -1644,12 +2106,14 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
   };
 }
 
-export function rankSearchCandidates(query, documents = [], { sort = "relevance", now = Date.now() } = {}) {
+export function rankSearchCandidates(query, documents = [], { sort = "relevance", now = Date.now(), reuseRankings } = {}) {
   const analysis = analyzePublicSearchQuery(query);
+  const edition = measurementEdition(query, documents, now);
   return documents
     .map((document, index) => ({
       ...document,
-      _ranking: scoreSearchCandidate(query, document, index, now, analysis),
+      _ranking: reuseRankings?.has(document) ? document._ranking
+        : scoreSearchCandidate(query, document, index, now, analysis, { edition }),
     }))
     // A reviewed, intent-specific service route is itself a deterministic
     // match signal. Do not discard it merely because a terse directory card
@@ -1657,6 +2121,7 @@ export function rankSearchCandidates(query, documents = [], { sort = "relevance"
     .filter((document) => document._ranking.matched
       && (document._ranking.score > 0 || document._ranking.servicePriority > 0))
     .sort((left, right) => {
+      if (left._ranking.forestryFact && right._ranking.forestryFact) return compareForestryFacts(left, right, sort);
       if (sort === "newest") {
         return right._ranking.answerEvidencePriority - left._ranking.answerEvidencePriority
           || right._ranking.servicePriority - left._ranking.servicePriority
@@ -1676,47 +2141,43 @@ export function rankSearchCandidates(query, documents = [], { sort = "relevance"
 }
 
 function rankAndDeduplicate(query, documents, options = {}) {
-  const ranked = rankSearchCandidates(query, documents, options);
-  return rankSearchCandidates(query, deduplicateResults(ranked), options);
+  const now = options.now ?? Date.now();
+  const ranked = rankSearchCandidates(query, documents, { ...options, now });
+  const deduplicated = deduplicateResults(ranked);
+  const forestry = Boolean(forestEvidenceIntent(query));
+  if (forestry && deduplicated.length === ranked.length && deduplicated.every((source, index) => source === ranked[index])) return ranked;
+  // Forestry scoring has no upstream position bonus. Unchanged source objects
+  // keep their score; only an actual merged body needs another semantic pass.
+  const sameEdition = JSON.stringify(measurementEdition(query, ranked, now))
+    === JSON.stringify(measurementEdition(query, deduplicated, now));
+  const reuseRankings = forestry && sameEdition ? new Set(ranked) : undefined;
+  return rankSearchCandidates(query, deduplicated, { ...options, now, reuseRankings });
 }
 
-function ensureForestryIntentCandidates(query, ranked = [], available = []) {
+function ensureForestryIntentCandidates(query, ranked = [], available = [], options = {}) {
   const requiredIds = forestryIntentServiceDocumentIds(query);
-  if (!requiredIds.length) return ranked;
-  const rankedAvailable = rankSearchCandidates(query, available);
-  // Intent recognition may succeed on a synonym or a one-edit typo that the
-  // lexical ranker gives no score. Keep the reviewed required records
-  // reachable from the complete directory, then let passage-level evidence
-  // validation decide whether they may support an answer.
-  const byId = new Map([...available, ...rankedAvailable, ...ranked].map((document) => [document.id, document]));
+  if (!requiredIds.length) return { ranked, plan: null };
+  const byId = new Map([...available, ...ranked].map((document) => [document.id, document]));
   const required = requiredIds.map((id) => byId.get(id)).filter(Boolean);
-  if (!required.length) return ranked;
-
-  // Lead with the single best *official* semantic proof, not merely the
-  // highest general relevance score. For an unqualified forest-area question
-  // selectAnswerEvidence already prefers the newest dated direct measurement;
-  // for the SMI/Metsaregister comparison it prefers the strongest role-aware
-  // comparison. Supplementary broad matches cannot displace that lead.
-  const officialPlan = selectAnswerEvidence(
-    query,
-    ranked.filter((document) => document.sourceTier === "official"),
-  );
-  const methodQuestion = queryTerms(query).includes("mootmine")
-    && /\b(?:kuidas|metood\w*|moot\w*|mõõt\w*|hinnat\w*)\b/iu.test(String(query || ""));
-  const officialLead = methodQuestion
-    ? ranked[0]
-    : ranked.find((document) => document.id === officialPlan?.directDocumentId
-      && document.sourceTier === "official");
+  const missing = required.filter((source) => !ranked.includes(source));
+  const combined = missing.length ? rankAndDeduplicate(query, [...ranked, ...missing], options) : ranked;
+  const plan = currentListingEvidencePlan(options.previouslyRanked, query, combined, options.sort || "relevance")
+    || selectAnswerEvidence(query, combined.filter((document) => document.sourceTier === "official"), { ...options, preRanked: true });
+  const lead = combined.find((document) => document.id === plan?.directDocumentId) || combined[0];
+  const roleIds = new Set(plan?.supportingDocumentIds || []);
+  const witnesses = combined.filter((document) => roleIds.has(document.id));
   const seen = new Set();
-  return [officialLead, ...required, ...ranked].filter(Boolean).filter((document) => {
-    const key = canonicalResultUrl(document.url) || document.id;
+  const visible = [lead, ...witnesses, ...combined, ...required].filter(Boolean).filter((document) => {
+    const key = sourceWitnessKey(document) || document.id;
     if (!key || seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+  return { ranked: visible, plan };
 }
 
 function ensureDirectDirectoryCandidates(query, ranked = [], available = []) {
+  if (forestEvidenceIntent(query) || isForestHarvestBalanceQuery(query)) return ranked;
   const preferredIds = directDirectoryDocumentIds(query);
   if (!preferredIds.length) return ranked;
   const byId = new Map([...available, ...ranked].map((document) => [document.id, document]));
@@ -1726,7 +2187,7 @@ function ensureDirectDirectoryCandidates(query, ranked = [], available = []) {
   if (!preferred.length) return ranked;
   const seen = new Set();
   return [...preferred, ...ranked].filter((document) => {
-    const key = canonicalResultUrl(document.url) || document.id;
+    const key = sourceWitnessKey(document) || document.id;
     if (!key || seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -1770,27 +2231,38 @@ export function rankPublicSearchCandidates(query, documents = [], {
   intentDocuments = [],
   ...rankingOptions
 } = {}) {
-  return ensureForestSeriesCandidates(
+  const forestry = ensureForestryIntentCandidates(query, rankAndDeduplicate(query, documents, rankingOptions), intentDocuments, rankingOptions);
+  const result = ensureForestSeriesCandidates(
     query,
     ensureDirectDirectoryCandidates(
       query,
-      ensureForestryIntentCandidates(
-        query,
-        rankAndDeduplicate(query, documents, rankingOptions),
-        intentDocuments,
-      ),
+      forestry.ranked,
       [...intentDocuments, ...documents],
     ),
     Number.isFinite(Number(rankingOptions.now)) ? Number(rankingOptions.now) : Date.now(),
   ).filter(publicSourceAllowed);
+  retainOverviewPlan(result, query, forestry.plan, rankingOptions.sort || "relevance");
+  return result;
 }
 
 export function deduplicateResults(documents = []) {
   const byUrl = new Map();
   for (const document of documents) {
     if (!document?.url || !document?.title) continue;
-    const key = canonicalResultUrl(document.url);
-    const current = byUrl.get(key);
+    const key = sourceComparisonWitnessKey(document);
+    if (!key) {
+      byUrl.set(document, document);
+      continue;
+    }
+    let current = byUrl.get(key);
+    if (!current) {
+      for (const [storedKey, stored] of byUrl) {
+        if (!sameDisplayWitness(stored, document)) continue;
+        current = stored;
+        byUrl.delete(storedKey);
+        break;
+      }
+    }
     if (!current) {
       byUrl.set(key, document);
       continue;
@@ -1818,6 +2290,11 @@ export function deduplicateResults(documents = []) {
     }
     const current = distinct[currentIndex];
     if (distinctPdfPageLocations(current.url, document.url)) {
+      distinct.push(document);
+      continue;
+    }
+    if (sameSourceResource(current.url, document.url)
+      && sourceComparisonWitnessKey(current) !== sourceComparisonWitnessKey(document)) {
       distinct.push(document);
       continue;
     }
@@ -1928,6 +2405,33 @@ export async function prepareRankedSearchResults(query, {
   }
   throwIfRetrievalClosed(signal, deadlineAt);
   const prefixLocalLimit = 50;
+  const directory = shouldUseLiveDiscovery(safePage)
+    ? officialServiceCatalogueDocuments().filter((document) => resultMatchesFilters(document, appliedFilters))
+    : [];
+  const localRequest = searchCorpus(acceptedQuery, {
+    page: 1, pageSize: prefixLocalLimit, includeContent: true,
+    preferSnapshot: false, filters: appliedFilters, signal, deadlineAt,
+  });
+  const reviewedDirectory = forestEvidenceIntent(query)?.kind === "forest-overview"
+    ? rankPublicSearchCandidates(query, directory, { sort: appliedFilters.sort, intentDocuments: directory })
+    : null;
+  const reviewedPlan = currentListingEvidencePlan(reviewedDirectory, query, reviewedDirectory || [], appliedFilters.sort);
+  let reviewedRankedPrefix = null;
+  if (reviewedPlan) {
+    const local = await localRequest.catch(() => null);
+    throwIfRetrievalClosed(signal, deadlineAt);
+    const ranked = local?.items?.length
+      ? rankPublicSearchCandidates(query, [...local.items, ...directory], {
+          sort: appliedFilters.sort, intentDocuments: directory, previouslyRanked: reviewedDirectory,
+        })
+      : reviewedDirectory;
+    // Reuse only the unchanged actual role set. A changed required snapshot
+    // runs the ordinary planner and retains normal retrieval even if it passes.
+    if (currentListingEvidencePlan(ranked, query, ranked.slice(0, safePageSize), appliedFilters.sort) === reviewedPlan) {
+      reviewedRankedPrefix = ranked;
+    }
+  }
+  const reviewedOverviewReady = reviewedRankedPrefix !== null;
   // Discovery providers reject foreign-script queries outright, so build
   // discovery terms from the raw query: the Russian bridge and dictionary
   // roots translate Cyrillic intent into searchable Estonian/English terms.
@@ -1937,23 +2441,15 @@ export async function prepareRankedSearchResults(query, {
   // hydrology PostgREST endpoint can take roughly four seconds, so keep each
   // structured fetch bounded at 5.5 s inside the stream's 7.5 s listing half.
   const structuredTimeout = Math.max(250, Math.min(5_500, remaining(deadlineAt, 9_000)));
-  const liveDiscovery = shouldUseLiveDiscovery(safePage)
+  const liveDiscovery = !reviewedOverviewReady && shouldUseLiveDiscovery(safePage)
     ? discoveryQueries.map((discoveryQuery) => searchOfficialSites(discoveryQuery, 6, {
       timeoutMs: discoveryTimeout,
       signal,
     }))
     : [];
   const [localResult, structuredResult, ...officialResults] = await Promise.allSettled([
-    searchCorpus(acceptedQuery, {
-      page: 1,
-      pageSize: prefixLocalLimit,
-      includeContent: true,
-      preferSnapshot: false,
-      filters: appliedFilters,
-      signal,
-      deadlineAt,
-    }),
-    loadStructuredIndicatorDocuments(acceptedQuery, {
+    localRequest,
+    reviewedOverviewReady ? Promise.resolve([]) : loadStructuredIndicatorDocuments(acceptedQuery, {
       timeoutMs: structuredTimeout,
       signal,
     }),
@@ -1970,20 +2466,17 @@ export async function prepareRankedSearchResults(query, {
   const structured = structuredResult.status === "fulfilled" ? structuredResult.value : [];
   const filteredLive = live.filter((document) => resultMatchesFilters(document, appliedFilters));
   const filteredStructured = structured.filter((document) => resultMatchesFilters(document, appliedFilters));
-  const directory = shouldUseLiveDiscovery(safePage)
-    ? officialServiceCatalogueDocuments().filter((document) => resultMatchesFilters(document, appliedFilters))
-    : [];
   enqueueOfficialDiscoveryDocuments(filteredLive, { signal, clientKey });
   // acceptedQuery is homoglyph-folded: Cyrillic queries lose their script
   // here ('сортировка мусора' -> 'coptиpoвka муcopa'), so ranking must use
   // the raw query whose analysis merges the Russian keyword bridge.
-  const rankedPrefix = rankPublicSearchCandidates(query, [...(local.items || []), ...filteredStructured, ...filteredLive, ...directory], {
+  const rankedPrefix = reviewedRankedPrefix || rankPublicSearchCandidates(query, [...(local.items || []), ...filteredStructured, ...filteredLive, ...directory], {
     sort: appliedFilters.sort,
     intentDocuments: directory,
   });
-  const localUrls = new Set((local.items || []).map((document) => canonicalResultUrl(document.url)));
-  const facetExtras = rankAndDeduplicate(acceptedQuery, [...filteredStructured, ...filteredLive, ...directory])
-    .filter((document) => !localUrls.has(canonicalResultUrl(document.url)));
+  const localUrls = new Set((local.items || []).map((document) => sourceWitnessKey(document)));
+  const facetExtras = (reviewedRankedPrefix || rankAndDeduplicate(acceptedQuery, [...filteredStructured, ...filteredLive, ...directory]))
+    .filter((document) => !localUrls.has(sourceWitnessKey(document)));
   let selected = rankedPrefix.slice(offset, offset + safePageSize);
   const missing = safePageSize - selected.length;
   if (missing > 0) {
@@ -1999,7 +2492,7 @@ export async function prepareRankedSearchResults(query, {
       preferSnapshot: false,
       filters: appliedFilters,
       resultOffset: tailOffset,
-      excludeUrls: rankedPrefix.map((document) => canonicalResultUrl(document.url)),
+      excludeUrls: rankedPrefix.map((document) => sourceResourceKey(document.url)).filter(Boolean),
       signal,
       deadlineAt,
     }).catch(() => null);
@@ -2007,7 +2500,7 @@ export async function prepareRankedSearchResults(query, {
     selected = deduplicateResults([...selected, ...((tail && tail.items) || [])]).slice(0, safePageSize);
   }
   const total = Math.max(Number(local.total || 0), rankedPrefix.length);
-  return {
+  const listing = {
     status: rankedPrefix.length || selected.length ? "ready" : local.status,
     mode: live.length ? "current-hybrid" : local.mode || "local-index",
     total,
@@ -2020,6 +2513,9 @@ export async function prepareRankedSearchResults(query, {
     appliedFilters,
     updatedAt: new Date().toISOString(),
   };
+  const plan = currentListingEvidencePlan(reviewedRankedPrefix, query, selected, appliedFilters.sort);
+  retainOverviewPlan(listing, query, plan, appliedFilters.sort);
+  return listing;
 }
 
 export function publicSearchListing(listing = {}) {
@@ -2054,9 +2550,6 @@ export function evidenceDocumentsFromListing(listing = {}, options = {}) {
     .map((item) => ({
       ...item,
       tags: item.topics || item.tags || [],
-      retrieval: item.retrieval === "approved-page-hydration"
-        ? "approved-page-hydration"
-        : "ranked-search-result",
     }));
 }
 
@@ -2119,12 +2612,14 @@ export function isSafeEllipticalFollowUp(value) {
     || new RegExp(`^(?:aga\\s+)?kui\\s+suur\\s+${pronoun}\\s+(?:on|oli)$`, "u").test(normalized)
     || new RegExp(`^(?:aga\\s+)?kuidas\\s+${pronoun}\\s+(?:(?:arvutatakse|hinnatakse|mõõdetakse|võrreldakse|saadi)|(?:on|oli)\\s+(?:muutunud|arenenud))$`, "u").test(normalized)
     || new RegExp(`^(?:aga\\s+)?(?:selgita|seleta)\\s+(?:${pronoun}|täpsemalt|rohkem|veel|üksikasjalikult)(?:\\s+(?:täpsemalt|rohkem|veel|üksikasjalikult))?$`, "u").test(normalized)
-    || new RegExp(`^(?:aga\\s+)?millal\\s+${pronoun}\\s+(?:muutus|hakkas\\s+kehtima|kehtima\\s+hakkas)$`, "u").test(normalized)
+    || new RegExp(`^(?:aga\\s+)?millal\\s+${pronoun}\\s+(?:muutus|hakkas\\s+kehtima|kehtima\\s+hakkas|hakkas\\s+kehtima)$`, "u").test(normalized)
     || new RegExp(`^(?:aga\\s+)?kas\\s+${pronoun}\\s+(?:on|oli|kehtib|muutus|suurenes|vähenes|kasvas)$`, "u").test(normalized)
     || new RegExp(`^(?:aga\\s+)?(?:mida|mis)\\s+${pronoun}\\s+(?:(?:viimase|eelneva)\\s+(?:[1-9]|10|ühe|kahe|kolme|nelja|viie|kuue|seitsme|kaheksa|üheksa|kümne)\\s+aasta\\s+jooksul|(?:19|20)\\d{2}\\s+aastaga\\s+võrreldes)\\s+(?:tähendab|näitab)$`, "u").test(normalized)
     || new RegExp(`^(?:aga\\s+)?millise\\s+aja(?:vahemiku|perioodi)(?:ga)?\\s+${pronoun}(?:\\s+muutusi)?\\s+(?:võrreldakse|hõlmab|katab)$`, "u").test(normalized);
 }
 
+// A follow-up that carries no environment vocabulary of its own still inherits
+// the accepted root's scope, but only while every content token is a neutral
 // A follow-up that carries no environment vocabulary of its own still inherits
 // the accepted root's scope, but only while every content token is a neutral
 // elaboration word, a number, a reviewed acronym the conversation defines, or

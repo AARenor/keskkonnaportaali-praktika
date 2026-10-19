@@ -53,8 +53,8 @@ Tervisekontroll: `GET /api/health`.
 `LLM_BASE_URL=https://terrapoint.arle.top/v1`,
 `LLM_MODEL=openai-codex/gpt-6-luna`, `LLM_REASONING_EFFORT=low` ja
 `LLM_TIMEOUT_MS=14500`, `LLM_ORCHESTRATION=direct`. Otsene mudelikõne hoiab
-alles viite- ja tõendikontrollid ning mahub senisesse 15-sekundilisse eelarvesse;
-neljakutseline `agents` režiim ületas live-kontrollis ajapiiri.
+alles viite- ja tõendikontrollid ning kasutab senist 15-sekundilist eelarvet;
+neljakutseline `agents` režiim ületas varasemas live-kontrollis ajapiiri.
 Transport on alati Responses API; teist varumudelit ei kasutata.
 `LLM_API_KEY` saab ainult serveri runtime-keskkonnas
 gateway bearer'i; `.env.example` ei sisalda võtit. Võtmeta lokaalse käivituse
@@ -64,6 +64,19 @@ Mudel töötleb OpenAI teenuses piiratud avalikku küsimust ja valitud tõendeid
 gateway nime jagamine Terrapointiga ei anna mudelile Terrapointi andmeid.
 Allika-, viite-, privaatsus- ja eelarvekontrollid jäävad samaks ning mudelitõrke
 korral säilib deterministlik allikapõhine vastus, mitte teine mudel.
+
+Allikakeskne päringutee kasutab üht muutumatut `rawEvidencePack`-i: kuni
+10 allikat, 4000 märki allika kohta ja 36 000 märki kogu serialiseeritud pakile.
+Planeerija reserveerib täielikud nõutud rollid enne valikulisi lõike. Mudel,
+kohalik grounding ja avaliku kasutatud viite väljavõte näevad sama paki sisu;
+pealkiri, tag ega varasem vastus ei ole tõend. `DeliveredOutcome` määrab
+AI märgise ja privaatse lõpp-provider/oleku alles avaldatud uue toetatud väite
+järgi, mitte provider-katse edu järgi. Cache `privacy-safe-v7` säilitab sama
+allika publication/update/data-period väljad, mitte mudeliproosat või toorpäringut.
+Üldise metsavaate täielik praegune nelja rolliga läbi vaadatud tõend võib
+jätta tarbetu live-avastuse ootamise ära; puuduv/aegunud roll või sobimatu
+filter säilitab tavapärase ühendotsingu. Roll tähendab avaldatud faktilõike:
+registri roll vajab kinnistu/metsaeraldise ulatust, mitte üksnes raiekavatsust.
 
 Tootmine kasutab Coolify **Dockerfile** build pack'i, mitte Compose'i runtime'i.
 Runtime-muutujad tuleb seetõttu muuta ka Coolifys enne `main` push'i käivitatavat

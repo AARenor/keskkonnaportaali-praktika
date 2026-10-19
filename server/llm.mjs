@@ -1,5 +1,7 @@
 import { jsonrepair } from "jsonrepair";
 import { createHmac, randomBytes } from "node:crypto";
+import { acceptedClaim } from "./delivered-outcome.mjs";
+import { evidencePackMatchesSources } from "./evidence-pack.mjs";
 import {
   agentOrchestrationEnabled,
   runGroundedSearchOrchestration,
@@ -27,8 +29,7 @@ import {
   resolveLlmClientBudget,
   settleLlmReservation,
 } from "./llm-budget.mjs";
-import { sourceEvidenceEligibility } from "./source-registry.mjs";
-import { LLM_GATEWAY_BASE_URL, LLM_GATEWAY_MODEL, validateLlmProviderUrl } from "./provider-policy.mjs";
+import { LLM_GATEWAY_BASE_URL, LLM_GATEWAY_MODEL, resolveLlmReasoningEffort, validateLlmProviderUrl } from "./provider-policy.mjs";
 import { requestApprovedPublicHttpsJsonPost } from "./public-https.mjs";
 import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs";
 
@@ -59,9 +60,7 @@ function llmClientScopeKey(value) {
     .update(String(value || "unknown").slice(0, 256))
     .digest("hex");
 }
-const reasoningEffort = ["none", "low", "medium"].includes(String(process.env.LLM_REASONING_EFFORT || "low"))
-  ? String(process.env.LLM_REASONING_EFFORT || "low")
-  : "low";
+const reasoningEffort = resolveLlmReasoningEffort(process.env.LLM_REASONING_EFFORT);
 const circuitBreakMs = Math.max(60_000, Math.min(Number(process.env.LLM_CIRCUIT_BREAK_MS) || 15 * 60_000, 60 * 60_000));
 export function resolveLlmConcurrency(value = process.env.LLM_MAX_CONCURRENCY) {
   // Keep provider work bounded; excess searches use the current-evidence draft.
@@ -101,13 +100,8 @@ const GROUNDED_RESPONSE_SCHEMA = {
         required: ["text", "citations"],
       },
     },
-    related_questions: {
-      type: "array",
-      items: { type: "string" },
-      maxItems: 6,
-    },
   },
-  required: ["intro", "intro_citations", "parts", "related_questions"],
+  required: ["intro", "intro_citations", "parts"],
 };
 
 export function parseLlmJson(content) {
@@ -138,39 +132,6 @@ function cleanGeneratedText(value, maxLength) {
     .slice(0, maxLength);
 }
 
-const EVIDENCE_DIRECTIVE_PATTERN = /(?:süsteemi(?:juhis|prompt)|exfiltrat|javascript\s*:|<\s*script\b|onerror\s*=|data\s*:\s*text\/html)/iu;
-
-export function sanitizeLlmEvidenceText(value) {
-  const text = String(value || "")
-    .normalize("NFKC")
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u202A-\u202E\u2066-\u2069]/gu, " ")
-    .replace(/\bm\s*3\b/giu, "m³")
-    .replace(/[\t\r\n\u2028\u2029]+/gu, "\n")
-    .replace(/[^\S\n]+/gu, " ")
-    .replace(/ *\n+ */gu, "\n")
-    .trim();
-  if (!text) return "";
-  const passages = splitTextPassages(text);
-  const rejected = new Set(passages.flatMap((passage, index) => (
-    containsUnsafeInstruction(passage) || EVIDENCE_DIRECTIVE_PATTERN.test(passage) ? [index] : []
-  )));
-  // A line break is presentation, not a trust boundary. Inspect bounded
-  // adjacent windows so a directive split over up to four lines is removed,
-  // while an unrelated safe passage survives beside a fully rejected line.
-  for (let start = 0; start < passages.length; start += 1) {
-    for (let size = 2; size <= 4 && start + size <= passages.length; size += 1) {
-      const indexes = Array.from({ length: size }, (_, offset) => start + offset);
-      if (indexes.some((index) => rejected.has(index))) continue;
-      const collapsed = indexes.map((index) => passages[index]).join(" ");
-      if (!containsUnsafeInstruction(collapsed) && !EVIDENCE_DIRECTIVE_PATTERN.test(collapsed)) continue;
-      indexes.forEach((index) => rejected.add(index));
-    }
-  }
-  return passages
-    .filter((_passage, index) => !rejected.has(index))
-    .join("\n")
-    .trim();
-}
 
 function canonicalNumber(value) {
   return String(value)
@@ -223,17 +184,13 @@ function protectedDirectIntro(draft, query, sourceCount) {
     : null;
 }
 
-function sourceEvidence(draft, citations, query = "", validationContext) {
+function sourceEvidence(evidencePack, citations, query = "", validationContext) {
   const allowed = new Set(citations);
   const cacheKey = `${[...allowed].sort((left, right) => left - right).join(",")}\0${query}`;
   if (validationContext?.evidenceCache?.has(cacheKey)) {
     return validationContext.evidenceCache.get(cacheKey);
   }
-  // The model and the validator must see the exact same sanitized,
-  // query-ranked windows; validating against an older generic truncation can
-  // reject a correctly grounded current answer or, worse, validate a claim
-  // against evidence the model did not receive.
-  const evidence = buildBoundedEvidence(draft, query, { includeDraftClaims: false })
+  const evidence = evidencePack.entries
     .filter((source) => allowed.has(Number(source.citation)))
     // Citation metadata helps users identify a source, but it is not factual
     // evidence. Validate generated claims only against the bounded body that
@@ -266,8 +223,9 @@ function groundingWorkloadError() {
   return error;
 }
 
-function groundingValidationContext() {
+function groundingValidationContext(evidencePack) {
   return {
+    evidencePack,
     evidenceCache: new Map(),
     numericClaims: 0,
     numericWork: 0,
@@ -299,7 +257,7 @@ function consumeGroundingWork(context, claimCount, evidenceCount, passageCount, 
     || context.semanticWork > MAX_SEMANTIC_BINDING_WORK) throw groundingWorkloadError();
 }
 
-function claimTokens(value) {
+export function claimTokens(value) {
   return (String(value || "").normalize("NFKC").toLocaleLowerCase("et").match(/[a-zõäöüšž]+/giu) || [])
     .filter((token) => token.length >= 3 && !CLAIM_STOPWORDS.has(token))
     .map((token) => {
@@ -310,7 +268,7 @@ function claimTokens(value) {
     });
 }
 
-function tokensShareStem(left, right) {
+export function tokensShareStem(left, right) {
   if (left === right) return true;
   if (left.length < 6 || right.length < 6) return false;
   const prefixLength = Math.min(8, left.length - 1, right.length - 1);
@@ -1318,8 +1276,15 @@ function sensitiveClaimIsVerbatim(sentence, trustedEvidence, query = "") {
   // row label still leaves a byte-for-byte suffix of the cited table. Numeric
   // "verbatim" claims therefore pass through the same per-value tuple binder
   // as paraphrases; only non-numeric polarity wording may use plain inclusion.
-  return !numberOccurrences(sentence).length
-    || sensitiveClaimMatchesReference(sentence, trustedEvidence, query);
+  const claims = numberOccurrences(sentence);
+  if (!claims.length) return true;
+  const candidates = numberOccurrences(trustedEvidence);
+  if (!numericWorkloadWithinLimit(claims.length, candidates.length)) return false;
+  return claims.every((claim) => candidates.some((candidate) => (
+    candidate.number === claim.number
+      && unitsExactlyMatch(claim.units, candidate.units, claim.number)
+      && numericBindingMatches(claim, sentence, candidate, trustedEvidence, candidates, query)
+  )));
 }
 
 function unitsExactlyMatch(left, right, number = "") {
@@ -1337,17 +1302,6 @@ function unitsExactlyMatch(left, right, number = "") {
   return leftUnits.size === rightUnits.size && [...leftUnits].every((unit) => rightUnits.has(unit));
 }
 
-function sensitiveClaimMatchesReference(sentence, reference, query = "") {
-  const claims = numberOccurrences(sentence);
-  if (!claims.length) return semanticClaimMatchesReference(sentence, reference, query);
-  const referenceOccurrences = numberOccurrences(reference);
-  if (!numericWorkloadWithinLimit(claims.length, referenceOccurrences.length)) return false;
-  return claims.every((claim) => referenceOccurrences.some((candidate) => (
-    candidate.number === claim.number
-      && unitsExactlyMatch(claim.units, candidate.units, claim.number)
-      && numericBindingMatches(claim, sentence, candidate, reference, referenceOccurrences, query)
-  )));
-}
 
 function sensitiveClaimMatchesEvidence(sentence, evidenceText, query = "") {
   const claims = numberOccurrences(sentence);
@@ -1417,11 +1371,20 @@ function safeForestDepletionInference(sentence, trustedEvidence, query) {
   const evidence = normalize(trustedEvidence);
   const boundedConclusion = /\bpraegus\w*[\s\S]{0,120}\bei\s+(?:viita|naita|toeta|kinnita)\w*[\s\S]{0,120}\b(?:otsa\s+(?:saam\w*|saada|saavat)|saaks\s+(?:(?:peagi|lahiajal)\s+)?otsa|kadum\w*|havim\w*)\b/u.test(claim)
     || /\bei\s+(?:viita|naita|toeta|kinnita)\w*[\s\S]{0,100}\b(?:peatset?|lahiaja\w*)\s+(?:metsa\s+)?(?:kadum|havim)\w*/u.test(claim);
+  const dimensions = [/\bpindala\w*/u, /\btagavara\w*/u, /\bvanus\w*|vanuselis\w*/u];
+  const multipleIndicators = /\b(?:pusi\w*|seisund\w*)\b/u.test(claim)
+    && /\bei\s+kirjelda\w*[\s\S]{0,40}\buks\s+naitaj\w*/u.test(claim)
+    && dimensions.every((pattern) => pattern.test(claim) && pattern.test(evidence))
+    && /\bokoloogili\w*\s+seisund\w*/u.test(evidence);
+  const measurementScope = /\b(?:mootmis\w*|moodet\w*|naitaj\w*)\b/u.test(claim)
+    && /\b(?:andmeaast\w*|hetkeseis\w*)\b/u.test(claim)
+    && /\b(?:mitte\s+kindlat\s+tulevikuprognoos\w*|ega\s+anna\s+uksinda\s+kindlat\s+prognoos\w*)\b/u.test(claim)
+    && /\b(?:19|20)\d{2}\b/u.test(evidence);
   const categoricalForecast = /\b(?:kunagi|kindlasti|alati|voimatu|mitte\s+mingil\s+juhul)\b/u.test(claim)
     || /\bmets\w*\s+ei\s+saa\s+otsa\b/u.test(claim);
-  const stableStock = /\b(?:kasvava\s+metsa\s+tagavara|metsa\s+tagavara|metsavaru)\w*[\s\S]{0,100}\b(?:stabiil\w*|pusi\w*)\b/u.test(evidence);
+  const stableStock = /\b(?:kasvava\s+metsa\s+tagavara|metsa\s+(?:kogu)?tagavara|metsatagavara|metsavaru)\w*[\s\S]{0,100}\b(?:stabiil\w*|pusi\w*)\b/u.test(evidence);
   const measuredArea = /\bmetsamaa\w*[\s\S]{0,140}\b\d+(?:\s+\d+)?\s*(?:protsent|miljon\w*\s+hektar\w*|hektar\w*)\b/u.test(evidence);
-  return boundedConclusion && !categoricalForecast && stableStock && measuredArea;
+  return (boundedConclusion || multipleIndicators || measurementScope) && !categoricalForecast && stableStock && measuredArea;
 }
 
 function safeTaxonomyNegationInference(sentence, trustedEvidence, query) {
@@ -1433,7 +1396,7 @@ function safeTaxonomyNegationInference(sentence, trustedEvidence, query) {
   return requestedComparison && boundedConclusion && broaderEvidence && /\bsmi\b/u.test(evidence);
 }
 
-function safeSemanticInference(sentence, trustedEvidence, query) {
+export function safeSemanticInference(sentence, trustedEvidence, query) {
   return safeForestDepletionInference(sentence, trustedEvidence, query)
     || safeTaxonomyNegationInference(sentence, trustedEvidence, query);
 }
@@ -1444,17 +1407,24 @@ function assertClaimGrounding(
   draft,
   label,
   query = "",
-  sensitiveReference = "",
-  validationContext = groundingValidationContext(),
+  validationContext,
 ) {
   if (!citations.length) throw new Error(`LLM ${label} has no citations`);
   if (!hasCompleteSentenceEnding(text)) throw new Error(`LLM ${label} ends with an incomplete sentence`);
-  const trustedEvidence = sourceEvidence(draft, citations, query, validationContext);
+  const trustedEvidence = sourceEvidence(validationContext.evidencePack, citations, query, validationContext);
   const evidenceSentences = splitTextPassages(trustedEvidence);
   const claimSentences = splitTextPassages(text);
   const claims = numberOccurrences(text);
+  if (forestEvidenceIntent(query)?.kind === "protected-forest-share" && claims.length) {
+    const claim = normalize(text);
+    const strictMeasure = /\brang\w*\s+kaits\w*/u.test(claim);
+    const projectedScope = /\bprojekteeritav\w*\s+al\w*/u.test(claim)
+      && !/\b(?:ei\s+holma|ei\s+sisalda|ilma|valja\s+arvatud)\b[\s\S]{0,80}\bprojekteeritav\w*/u.test(claim);
+    if (strictMeasure && /\bprojekteeritav\w*/u.test(normalize(trustedEvidence)) && !projectedScope) {
+      throw new Error(`LLM ${label} omits or reverses the strict-protection measure's projected-area scope`);
+    }
+  }
   const evidence = claims.length ? numberOccurrences(trustedEvidence) : [];
-  const referenceEvidence = claims.length ? numberOccurrences(sensitiveReference) : [];
   const semanticUnits = claimSentences.reduce((total, sentence) => {
     const modalUnits = coordinatedModalClauses(sentence).filter((clause) => (
       hasModalPolarity(sentencePolarity(clause))
@@ -1464,7 +1434,7 @@ function assertClaimGrounding(
   consumeGroundingWork(
     validationContext,
     claims.length,
-    Math.max(evidence.length, referenceEvidence.length),
+    evidence.length,
     evidenceSentences.length,
     semanticUnits,
   );
@@ -1473,7 +1443,6 @@ function assertClaimGrounding(
   // for the actual contradiction rather than as a generic paraphrase miss.
   const ordinaryClaimSentences = claimSentences.filter((sentence) => (
     !safeSemanticInference(sentence, trustedEvidence, query)
-      && !safeSemanticInference(sentence, sensitiveReference, query)
   ));
   const modalClaimSentences = ordinaryClaimSentences.filter((sentence) => (
     hasModalPolarity(sentencePolarity(sentence))
@@ -1485,8 +1454,7 @@ function assertClaimGrounding(
   }
   assertFactualNegationParity(ordinaryClaimSentences, evidenceSentences, label);
   for (const sentence of claimSentences) {
-    if (safeSemanticInference(sentence, trustedEvidence, query)
-      || safeSemanticInference(sentence, sensitiveReference, query)) continue;
+    if (safeSemanticInference(sentence, trustedEvidence, query)) continue;
     const polarity = sentencePolarity(sentence);
     polarity.qualities = sentenceQualities(sentence);
     if (!hasSemanticPolarity(polarity)) continue;
@@ -1519,20 +1487,14 @@ function assertClaimGrounding(
   for (const sentence of claimSentences) {
     if (isSensitiveClaim(sentence)
       && !sensitiveClaimIsVerbatim(sentence, trustedEvidence, query)
-      && !sensitiveClaimIsVerbatim(sentence, sensitiveReference, query)
-      && !sensitiveClaimMatchesEvidence(sentence, trustedEvidence, query)
-      && !sensitiveClaimMatchesReference(sentence, sensitiveReference, query)) {
+      && !sensitiveClaimMatchesEvidence(sentence, trustedEvidence, query)) {
       throw new Error(`LLM ${label} rewrites a sensitive numeric or comparative claim`);
     }
   }
   for (const claim of claims) {
     const clause = numericClause(text, claim);
-    const groundedVerbatim = sensitiveClaimIsVerbatim(clause, trustedEvidence, query)
-      || sensitiveClaimIsVerbatim(clause, sensitiveReference, query);
-    const groundedByProtectedReference = referenceEvidence.some((candidate) => candidate.number === claim.number
-      && unitsExactlyMatch(claim.units, candidate.units, claim.number)
-      && numericBindingMatches(claim, text, candidate, sensitiveReference, referenceEvidence, query));
-    const grounded = groundedVerbatim || groundedByProtectedReference || evidence.some((candidate) => candidate.number === claim.number
+    const groundedVerbatim = sensitiveClaimIsVerbatim(clause, trustedEvidence, query);
+    const grounded = groundedVerbatim || evidence.some((candidate) => candidate.number === claim.number
       && unitsExactlyMatch(claim.units, candidate.units, claim.number)
       && numericBindingMatches(claim, text, candidate, trustedEvidence, evidence, query));
     if (!grounded) throw new Error(`LLM ${label} contains an ungrounded numeric claim (${claim.number})`);
@@ -1553,8 +1515,7 @@ function assertClaimGrounding(
     // bounded interpretation rather than a verbatim sentence in an SMI
     // table. Permit only that narrow inference, and only when the cited
     // evidence itself contains both stable stock and measured forest area.
-    if (safeSemanticInference(sentence, trustedEvidence, query)
-      || safeSemanticInference(sentence, sensitiveReference, query)) continue;
+    if (safeSemanticInference(sentence, trustedEvidence, query)) continue;
     const polarity = sentencePolarity(sentence);
     const compoundModal = hasModalPolarity(polarity)
       && coordinatedModalClauses(sentence).filter((clause) => (
@@ -1593,7 +1554,7 @@ function assertClaimGrounding(
   }
 }
 
-function rebindGroundedCitations(text, citations, draft, label, query = "") {
+function rebindGroundedCitations(text, citations, draft, label, query, evidencePack) {
   let retained = [...new Set((citations || []).map(Number).filter((citation) => (
     Number.isInteger(citation) && citation > 0
   )))].slice(0, 10);
@@ -1606,17 +1567,14 @@ function rebindGroundedCitations(text, citations, draft, label, query = "") {
     if (probes >= 64) return false;
     probes += 1;
     try {
-      // A protected deterministic statement can validate the aggregate model
-      // proposal, but it must never make an unrelated individual citation
-      // appear to support that public claim.
+      // Every attribution is checked against the same raw-source windows.
       assertClaimGrounding(
         candidateText,
         candidateCitations,
         draft,
         `${label} citation binding`,
         query,
-        "",
-        groundingValidationContext(),
+        groundingValidationContext(evidencePack),
       );
       supportCache.set(cacheKey, true);
       return true;
@@ -1648,17 +1606,46 @@ function rebindGroundedCitations(text, citations, draft, label, query = "") {
   return retained.length && supports(retained) ? retained : [];
 }
 
+function hasNationalSampleMethod(text) {
+  const passage = normalize(text);
+  return /\bvalikuuring\w*\b/u.test(passage)
+    && /\bproovitukk\w*\b/u.test(passage)
+    && /\bstatistili\w*\b/u.test(passage)
+    && /\b(?:uleriigil\w*|ule\s+eestilin\w*|kogu\s+eesti\w*|uldistat\w*)\b/u.test(passage)
+    && !/\b(?:ei\s+ole|pole)\b[\s\S]{0,100}\b(?:valikuuring|proovitukk|statistili)\w*/u.test(passage);
+}
+
 export function assertAnswerAddressesQuery(text, query, label = "answer") {
   const answerIntent = forestEvidenceIntent(query);
   const roots = queryTerms(query).slice(0, 6);
   if (!roots.length) return true;
   const answer = normalize(text);
-  if (answerIntent?.kind === "forest-area") {
+  if (answerIntent?.kind === "protected-forest-share") {
+    const hasMeasure = numberOccurrences(text).some((occurrence) => occurrence.units.has("percent") || occurrence.units.has("area"));
+    const hasScope = /\betak\b/u.test(answer) && /\bmetsamaa\w*/u.test(answer)
+      && /\b(?:19|20)\d{2}\b/u.test(answer)
+      && /\bprojekteeritav\w*\s+al\w*/u.test(answer);
+    const wrongScope = /\b(?:eesti\s+)?(?:territoorium\w*|maisma\w*|kogupindal\w*)\b/u.test(answer)
+      || /\b(?:mittemajandatav\w*|majanduspiirang\w*)\b/u.test(answer)
+      || /\b(?:ei\s+holma|ei\s+sisalda|ilma|valja\s+arvatud)\b[\s\S]{0,80}\bprojekteeritav\w*/u.test(answer)
+      || /\b(?:ainult|uksnes)\b[\s\S]{0,60}\b(?:kehtestatud|olemasolev\w*)\b/u.test(answer);
+    if (!hasMeasure || !hasScope || wrongScope) {
+      throw new Error(`LLM ${label} omits the protection measure's year, ETAK forest-land scope or projected-area qualification`);
+    }
+    return true;
+  }
+  if (["forest-area", "forest-area-method"].includes(answerIntent?.kind)) {
     const hasAreaConcept = /\b(?:metsamaa\w*|metsaga\s+kaetud|metsasus\w*|metsa\s+pindala|metsade\s+pindala)\b/iu.test(text);
     const hasAreaMeasurement = numberOccurrences(text)
       .some((occurrence) => occurrence.units.has("area") || occurrence.units.has("percent"));
     if (!hasAreaConcept || !hasAreaMeasurement) {
       throw new Error(`LLM ${label} does not give the requested forest-area measurement`);
+    }
+    if (answerIntent.kind === "forest-area-method") {
+      if (!hasNationalSampleMethod(text)) {
+        throw new Error(`LLM ${label} does not explain the requested national sample method`);
+      }
+      return true;
     }
   }
   if (answerIntent?.kind === "forest-data-sources") {
@@ -1708,8 +1695,10 @@ export function assertAnswerAddressesQuery(text, query, label = "answer") {
 function answerPartAddressesQuery(part, query) {
   const roots = queryTerms(query).slice(0, 6);
   if (!roots.length) return true;
-  const text = `${part?.title || ""} ${part?.text || ""}`;
-  return roots.some((root) => textHasQueryRoot(text, root));
+  const text = String(part?.text || "");
+  const intent = forestEvidenceIntent(query);
+  return (["forest-area", "forest-area-method"].includes(intent?.kind) && hasNationalSampleMethod(text))
+    || roots.some((root) => textHasQueryRoot(text, root));
 }
 
 function preserveReviewedDefinitions(intro, parts, draft) {
@@ -1732,8 +1721,8 @@ function preserveReviewedDefinitions(intro, parts, draft) {
   return merged.filter((part, index) => merged.findIndex((candidate) => candidate.text === part.text) === index).slice(0, 5);
 }
 
-export function validateGroundedAnswer(payload, draft, query) {
-  const validationContext = groundingValidationContext();
+function validateGroundedProposal(payload, draft, query, evidencePack) {
+  const validationContext = groundingValidationContext(evidencePack);
   const sourceCount = draft.sources.length;
   const suppliedIntroCitations = validCitations(payload?.intro_citations, sourceCount);
   const introCitations = suppliedIntroCitations.length
@@ -1767,7 +1756,6 @@ export function validateGroundedAnswer(payload, draft, query) {
       draft,
       "proposed introduction",
       query,
-      protectedIntro.intro,
       validationContext,
     );
   }
@@ -1795,13 +1783,14 @@ export function validateGroundedAnswer(payload, draft, query) {
   let groundedIntroCitations = [];
   let introError;
   try {
-    assertClaimGrounding(evaluatedIntro, effectiveIntroCitations, draft, "introduction", query, "", validationContext);
+    assertClaimGrounding(evaluatedIntro, effectiveIntroCitations, draft, "introduction", query, validationContext);
     groundedIntroCitations = rebindGroundedCitations(
       evaluatedIntro,
       effectiveIntroCitations,
       draft,
       "introduction",
       query,
+      evidencePack,
     );
     if (!groundedIntroCitations.length) {
       throw new Error("LLM introduction has no individually attributable citations");
@@ -1812,7 +1801,6 @@ export function validateGroundedAnswer(payload, draft, query) {
       && !directDraftCitations.some((citation) => groundedIntroCitations.includes(citation))) {
       throw new Error("LLM introduction loses the directly matched current source after citation binding");
     }
-    assertAnswerAddressesQuery(evaluatedIntro, query, "introduction");
     groundedIntro = true;
   } catch (error) {
     if (error?.code === "LLM_GROUNDING_WORK_LIMIT") throw error;
@@ -1820,8 +1808,8 @@ export function validateGroundedAnswer(payload, draft, query) {
   }
   const groundedParts = parts.flatMap((part) => {
     try {
-      assertClaimGrounding(part.text, part.citations, draft, "part", query, "", validationContext);
-      const citations = rebindGroundedCitations(part.text, part.citations, draft, "part", query);
+      assertClaimGrounding(part.text, part.citations, draft, "part", query, validationContext);
+      const citations = rebindGroundedCitations(part.text, part.citations, draft, "part", query, evidencePack);
       return citations.length ? [{ ...part, citations }] : [];
     } catch (error) {
       if (error?.code === "LLM_GROUNDING_WORK_LIMIT") throw error;
@@ -1832,18 +1820,9 @@ export function validateGroundedAnswer(payload, draft, query) {
   // direct source must still answer the user's actual question before it can
   // enter the public response.
   const queryRelevantParts = groundedParts.filter((part) => answerPartAddressesQuery(part, query));
-  const promotableParts = queryRelevantParts.filter((part) => {
-    if (directDraftCitations.length
-      && !directDraftCitations.some((citation) => part.citations.includes(citation))) {
-      return false;
-    }
-    try {
-      assertAnswerAddressesQuery(`${part.title}. ${part.text}`, query, "part");
-      return true;
-    } catch {
-      return false;
-    }
-  });
+  const promotableParts = queryRelevantParts.filter((part) => (
+    !directDraftCitations.length || directDraftCitations.some((citation) => part.citations.includes(citation))
+  ));
   if (!groundedIntro && !promotableParts.length) throw introError || new Error("LLM answer has no supported claims");
   const proposedTitle = String(draft.answer.title || query).trim().slice(0, 180);
   const promotedPart = groundedIntro ? null : promotableParts[0];
@@ -1852,258 +1831,54 @@ export function validateGroundedAnswer(payload, draft, query) {
   const remainingGroundedParts = promotedPart
     ? queryRelevantParts.filter((part) => part !== promotedPart)
     : queryRelevantParts;
-  const fallbackParts = groundedIntro
-    ? (draft.answer.parts || []).filter((part) => answerPartAddressesQuery(part, query))
+  const groundRetainedPart = (part) => {
+    try {
+      assertClaimGrounding(part.text, part.citations, draft, "retained part", query, validationContext);
+      const citations = rebindGroundedCitations(part.text, part.citations, draft, "retained part", query, evidencePack);
+      return citations.length ? [{ ...part, citations }] : [];
+    } catch (error) {
+      if (error?.code === "LLM_GROUNDING_WORK_LIMIT") throw error;
+      return [];
+    }
+  };
+  const fallbackParts = groundedIntro && !remainingGroundedParts.length
+    ? (draft.answer.parts || []).filter((part) => answerPartAddressesQuery(part, query)).flatMap(groundRetainedPart)
     : [];
-  const candidateParts = remainingGroundedParts.length
-    ? remainingGroundedParts
-    : fallbackParts;
-  const finalParts = preserveReviewedDefinitions(finalIntro, candidateParts || [], draft);
+  const candidateParts = remainingGroundedParts.length ? remainingGroundedParts : fallbackParts;
+  const finalParts = preserveReviewedDefinitions(finalIntro, candidateParts, draft)
+    .flatMap((part) => candidateParts.includes(part) ? [part] : groundRetainedPart(part));
+  // Query coverage belongs to the complete independently grounded answer.
+  // A measured lead need not repeat a method that its retained part explains;
+  // rejected fields, headings and notes cannot supply the missing facet.
+  assertAnswerAddressesQuery([finalIntro, ...finalParts.map((part) => part.text)].join(" "), query);
 
-  return {
-    eyebrow: "AI koondvastus",
+  const answer = {
+    eyebrow: "Allikapõhine kokkuvõte",
     title: proposedTitle,
     intro: finalIntro,
     introCitations: finalIntroCitations,
     parts: finalParts,
     note: String(draft.answer.note || "").trim().slice(0, 700),
   };
+  const acceptedClaims = [
+    ...(groundedIntro && !protectedIntro ? [acceptedClaim(finalIntro, finalIntroCitations, evidencePack)] : []),
+    ...(promotedPart ? [acceptedClaim(promotedPart.text, promotedPart.citations, evidencePack)] : []),
+    ...remainingGroundedParts.map((part) => acceptedClaim(part.text, part.citations, evidencePack)),
+  ].filter(Boolean).slice(0, 6);
+  return { answer, acceptedClaims, rejectionReason: acceptedClaims.length ? null : "no-new-contribution" };
 }
 
-const LEGACY_MAX_EVIDENCE_SOURCES = 8;
-const LEGACY_MAX_EVIDENCE_CHARS = 10_000;
-const QUERY_AWARE_MAX_EVIDENCE_SOURCES = 10;
-const QUERY_AWARE_MAX_EVIDENCE_CHARS = 36_000;
-const QUERY_AWARE_PER_SOURCE_LIMIT = 4_000;
-const EVIDENCE_METADATA_LIMITS = Object.freeze({
-  title: 500,
-  organization: 240,
-  sourceType: 160,
-  published: 120,
-  locator: 1_000,
-  freshnessClass: 120,
-  timestamp: 120,
-  version: 120,
-  url: 2_000,
-});
-
-function boundedEvidenceMetadata(value, limit) {
-  return sanitizeLlmEvidenceText(value).slice(0, limit);
+export function validateGroundedAnswer(payload, draft, query, evidencePack) {
+  if (!evidencePackMatchesSources(evidencePack, draft?.sources)) {
+    return { answer: null, acceptedClaims: [], rejectionReason: "evidence-insufficient" };
+  }
+  try {
+    return validateGroundedProposal(payload, draft, query, evidencePack);
+  } catch {
+    return { answer: null, acceptedClaims: [], rejectionReason: "local-rejected" };
+  }
 }
 
-function fitEvidenceToSerializedBudget(entries, maxChars) {
-  let serializedLength = JSON.stringify(entries).length;
-  let guard = 0;
-  while (serializedLength > maxChars && entries.length && guard < 80) {
-    guard += 1;
-    const target = entries.reduce((longest, entry) => (
-      String(entry.content || "").length > String(longest?.content || "").length ? entry : longest
-    ), null);
-    if (target?.content) {
-      const excess = serializedLength - maxChars;
-      const current = String(target.content);
-      target.content = current.slice(0, Math.max(0, current.length - Math.max(excess, Math.ceil(current.length / 5))));
-    } else if (entries.length > 1) {
-      entries.pop();
-    } else {
-      break;
-    }
-    serializedLength = JSON.stringify(entries).length;
-  }
-  return entries;
-}
-
-function evidenceWindowScore(passage, query, intent) {
-  const text = normalize(passage);
-  const roots = queryTerms(query);
-  const matched = roots.filter((root) => textHasQueryRoot(text, root)).length;
-  let score = matched * 14 + (matched && matched === roots.length ? 10 : 0);
-  if (intent?.kind === "forest-area") {
-    if (/\b(?:metsamaa|metsaga\s+kaetud|metsasus|metsa\s+pindala|metsade\s+pindala)\b/iu.test(passage)) score += 20;
-    if (/\b\d+(?:[.,]\d+)?\s*(?:%|protsent(?:i|ides|ides?)?|ha\b|hektar(?:it|i)?|miljonit?\s+hektarit?)/iu.test(passage)) score += 24;
-    if (/\b(?:smi|statistilise\s+metsainvent)/iu.test(passage)) score += 8;
-  }
-  if (intent?.kind === "forest-data-sources") {
-    const hasSmi = /\b(?:smi|statistilise\s+metsainvent\w*)/iu.test(passage);
-    const hasRegister = /\bmetsaregis\w*|metsaressursi\s+arvestuse\s+riiklik/iu.test(passage);
-    const hasData = /\b(?:metsa|metsandus|metsainventeerimis)andm\w*|inventeerimisandm\w*/iu.test(passage);
-    score += (hasSmi ? 20 : 0) + (hasRegister ? 20 : 0) + (hasData ? 10 : 0);
-  }
-  if (intent?.kind === "forest-depletion") {
-    const hasStockDirection = /\b(?:metsa\s+tagavara|kasvava\s+metsa\s+tagavara|metsavaru)\w*[\s\S]{0,100}\b(?:stabiil\w*|pusi\w*|suuren\w*|vahen\w*|lang\w*)\b/iu.test(passage);
-    const hasArea = /\b(?:metsamaa\w*|metsasus\w*|metsa\s+pindala)\b/iu.test(passage);
-    const conditionDimensions = [
-      /\btagavara\w*/iu,
-      /\bvanus\w*|vanuselis\w*/iu,
-      /\bkahjust\w*/iu,
-      /\belurikk\w*/iu,
-      /\bkaits\w*/iu,
-    ].filter((pattern) => pattern.test(passage)).length;
-    score += (hasStockDirection ? 34 : 0) + (hasArea ? 20 : 0) + conditionDimensions * 5;
-  }
-  return score;
-}
-
-function selectEvidenceWindows(source, query, reviewedText, limit) {
-  const intent = forestEvidenceIntent(query);
-  const fields = [
-    { value: source.summary, priority: 6 },
-    { value: source.answer, priority: 8 },
-    { value: source.content, priority: 2 },
-    { value: reviewedText, priority: 30 },
-  ];
-  const seen = new Set();
-  const candidates = [];
-  let order = 0;
-  for (const field of fields) {
-    const safe = sanitizeLlmEvidenceText(field.value);
-    for (const passage of splitTextPassages(safe)) {
-      const cleanPassage = passage.replace(/\s+/gu, " ").trim();
-      const key = normalize(cleanPassage);
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      candidates.push({
-        passage: cleanPassage,
-        score: evidenceWindowScore(cleanPassage, query, intent) + field.priority,
-        order: order += 1,
-      });
-    }
-  }
-  const selected = [];
-  let used = 0;
-  for (const candidate of candidates.sort((left, right) => right.score - left.score || left.order - right.order)) {
-    const separator = selected.length ? 1 : 0;
-    if (used + separator + candidate.passage.length > limit) continue;
-    selected.push(candidate);
-    used += separator + candidate.passage.length;
-  }
-  // Preserve the document’s original progression after choosing the most
-  // relevant windows. It makes a compact evidence pack easier to interpret
-  // while the selection above prevents a long generic preamble from crowding
-  // out the sentence that actually supports the answer.
-  return selected.sort((left, right) => left.order - right.order).map((candidate) => candidate.passage).join("\n");
-}
-
-export function buildBoundedEvidence(draft, query = "", options = {}) {
-  const queryAware = Boolean(String(query || "").trim());
-  const maxSources = queryAware ? QUERY_AWARE_MAX_EVIDENCE_SOURCES : LEGACY_MAX_EVIDENCE_SOURCES;
-  const maxChars = queryAware ? QUERY_AWARE_MAX_EVIDENCE_CHARS : LEGACY_MAX_EVIDENCE_CHARS;
-  const sources = (Array.isArray(draft?.sources) ? draft.sources : [])
-    .filter((source) => sourceEvidenceEligibility(source).eligible)
-    .slice(0, maxSources);
-  const preparedSources = [];
-  let metadataChars = 2;
-  for (const source of sources) {
-    const eligibility = sourceEvidenceEligibility(source);
-    const routeClasses = (Array.isArray(source.routeClasses) ? source.routeClasses : [])
-      .filter((value) => /^official_[a-z_]{3,60}$/u.test(String(value)))
-      .slice(0, 4);
-    const metadata = {
-      citation: Number(source.citation),
-      title: boundedEvidenceMetadata(source.title, EVIDENCE_METADATA_LIMITS.title),
-      organization: boundedEvidenceMetadata(source.organization, EVIDENCE_METADATA_LIMITS.organization),
-      source_type: boundedEvidenceMetadata(source.type, EVIDENCE_METADATA_LIMITS.sourceType) || null,
-      published: boundedEvidenceMetadata(source.published, EVIDENCE_METADATA_LIMITS.published),
-      locator: boundedEvidenceMetadata(source.locator, EVIDENCE_METADATA_LIMITS.locator) || null,
-      route_classes: routeClasses,
-      evidence_policy: eligibility.policy,
-      freshness_class: boundedEvidenceMetadata(
-        source.freshness?.class || source.sourceProfile?.freshnessClass,
-        EVIDENCE_METADATA_LIMITS.freshnessClass,
-      ) || null,
-      observed_at: boundedEvidenceMetadata(source._evidenceObservedAt, EVIDENCE_METADATA_LIMITS.timestamp) || null,
-      valid_from: boundedEvidenceMetadata(source._evidenceValidFrom, EVIDENCE_METADATA_LIMITS.timestamp) || null,
-      valid_until: boundedEvidenceMetadata(source._evidenceValidUntil, EVIDENCE_METADATA_LIMITS.timestamp) || null,
-      version: boundedEvidenceMetadata(
-        source._evidenceVersion || source._evidenceStatusAt,
-        EVIDENCE_METADATA_LIMITS.version,
-      ) || null,
-      url: boundedEvidenceMetadata(source.url, EVIDENCE_METADATA_LIMITS.url),
-      content: "",
-    };
-    const cost = JSON.stringify(metadata).length + (preparedSources.length ? 1 : 0);
-    if (metadataChars + cost + 200 > maxChars) break;
-    metadataChars += cost;
-    preparedSources.push({ source, metadata });
-  }
-  let remaining = Math.max(0, maxChars - metadataChars);
-  const perSourceLimit = queryAware
-    ? Math.min(QUERY_AWARE_PER_SOURCE_LIMIT, Math.max(1_000, Math.floor(remaining / Math.max(1, preparedSources.length))))
-    : preparedSources.length === 1
-      ? 2_000
-      : Math.min(2_200, Math.max(750, Math.floor(remaining / Math.max(1, preparedSources.length))));
-  const includeDraftClaims = options.includeDraftClaims !== false && !draft.evidence?.syntheticFallback;
-  const entries = preparedSources.map(({ source, metadata }, index) => {
-    const citation = Number(source.citation);
-    const reviewedClaims = [];
-    if (includeDraftClaims && (draft.answer?.introCitations || []).map(Number).includes(citation)) {
-      // The answer title is usually the raw user query. It is navigation text,
-      // not evidence, and must never manufacture an entity anchor for a number.
-      reviewedClaims.push(draft.answer.intro);
-    }
-    if (includeDraftClaims) {
-      for (const part of draft.answer?.parts || []) {
-        if ((part.citations || []).map(Number).includes(citation)) {
-          reviewedClaims.push(part.title, part.text);
-        }
-      }
-    }
-    const reviewedText = reviewedClaims.length
-      ? `Läbi vaadatud ja selle allikaga viidatud väited: ${reviewedClaims.join(" ")}`
-      : "";
-    const sourcesLeft = preparedSources.length - index;
-    const sourceLimit = Math.max(0, Math.min(perSourceLimit, Math.floor(remaining / Math.max(1, sourcesLeft))));
-    const content = query
-      ? selectEvidenceWindows(source, query, reviewedText, sourceLimit)
-      : sanitizeLlmEvidenceText([
-        source.summary,
-        source.answer,
-        source.content,
-        reviewedText,
-      ]
-        .filter(Boolean)
-        .join("\n"))
-        .slice(0, sourceLimit);
-    remaining -= content.length;
-    return {
-      ...metadata,
-      content,
-    };
-  });
-  return fitEvidenceToSerializedBudget(entries, maxChars);
-}
-
-export function validateRelatedQuestions(payload, draft, query) {
-  const original = String(query || "").normalize("NFKC").toLocaleLowerCase("et").replace(/[^0-9a-zõäöüšž]+/giu, " ").trim();
-  const evidenceText = [
-    draft.answer?.title,
-    draft.answer?.intro,
-    ...(draft.answer?.parts || []).flatMap((part) => [part.title, part.text]),
-    ...(draft.sources || []).map((source) => [
-    source.title,
-    source.summary,
-    source.content,
-    source.answer,
-    ...(source.tags || []),
-    ].filter(Boolean).join(" ")),
-  ].filter(Boolean).join(" ");
-  const allowedTokens = new Set(claimTokens(`${query} ${evidenceText}`));
-  const seen = new Set();
-  return (Array.isArray(payload?.related_questions) ? payload.related_questions : [])
-    .flatMap((value) => {
-      let question = cleanGeneratedText(value, 160);
-      if (!question || containsUnsafeInstruction(question)
-        || /(?:https?:\/\/|api\s*võti|parool|süsteemijuhis)/iu.test(question)) return [];
-      if (!/[?]$/u.test(question)) question = `${question.replace(/[.!]+$/u, "")}?`;
-      const normalized = question.normalize("NFKC").toLocaleLowerCase("et").replace(/[^0-9a-zõäöüšž]+/giu, " ").trim();
-      if (!normalized || normalized === original || seen.has(normalized)) return [];
-      const tokens = claimTokens(question);
-      if (!tokens.some((token) => allowedTokens.has(token))) return [];
-      seen.add(normalized);
-      return [question];
-    })
-    .slice(0, 6);
-}
 
 export function buildLlmRequest({
   selectedModel,
@@ -2148,6 +1923,8 @@ export function buildLlmRequest({
   const answerIntent = forestEvidenceIntent(safeQuery);
   const intentDirective = answerIntent?.kind === "forest-area"
     ? "Küsimus küsib metsamaa hulka: nimeta tõendis olev aasta, pindala või osakaal ja ühik; ära vasta kataloogi või teenuse kirjeldusega."
+    : answerIntent?.kind === "forest-overview"
+      ? "Koosta Eesti metsast sidus mitme allika ülevaade. Säilita outputContract.intro täpselt antud kujul: selle mõõtetulemust ei ole vaja ümber sõnastada ega kõrvalnäitajaga laiendada. Lisa kaks lühikest viidatud parts-osa: selgita SMI üleriigilist statistilist valikuuringut ning Metsaregistri kinnistu/metsaeraldise andmete rolli; selgita ka avaldatud seisundit tegelike mõõtmiste ja muutuste, näiteks tagavara, liigilisuse ning noorte/vanade metsade pindala kaudu. Pelk mõõtmete nimede loend ei ole seisundi selgitus. Kõik neli rolli peavad tulema nende tegelikust evidence.content toest, mitte pealkirjast või marsruudiklassist. Seo eri allikate toetatud faktid uueks loetavaks narratiiviks, mitte muutmata lõikude loendiks. Tervikvastuse siht on ligikaudu 100–120 sõna."
     : answerIntent?.kind === "forest-data-sources"
       ? "Küsimus võrdleb SMI-d metsaandmete või Metsaregistriga: selgita, et metsaandmed ei ole SMI sünonüüm, ning erista SMI statistilist/üleriigilist rolli ja registri või muu metsaandmeallika kinnistu-, eraldise- või andmekogumise rolli ainult tõendis olevate sõnade ja faktidega."
       : answerIntent?.kind === "forest-depletion"
@@ -2163,10 +1940,9 @@ export function buildLlmRequest({
     "Ära lisa tõendita fakte, numbreid ega õiguslikke järeldusi. Säilita arvväärtus, andmeaasta, mõõtühik, definitsioon ja ebakindlus täpselt; aastaarvu ümber võib muuta ainult grammatilist sõnastust.",
     "Selgita esmakordsel kasutamisel tõendis defineeritud lühendeid, näiteks SMI-d, lihtsas keeles.",
     intentDirective,
-    "Iga faktiline väide vajab evidence citation numbrit. Ära viita allikale, mis väidet ei toeta.",
+    "Iga faktiline väide vajab evidence citation numbrit. Ära viita allikale, mis väidet ei toeta. Pane viitenumbrid ainult intro_citations ja parts.citations väljadele, mitte proosasse.",
     "Conversation context aitab ainult jätkuküsimuse mõtet täpsustada: see ei ole tõend. Iga väide peab tulema käesoleva päringu evidence'ist.",
-    `Tagasta struktureeritud JSON. ${singleSource ? "Ühe allika korral kirjuta 3–5 sisukat lauset, üldjuhul 70–130 sõna, ja jäta parts tühjaks." : "Kirjuta 2–4-lauseline otsene intro ning 2–4 lühikest parts-osa; kogu vastuse siht on üldjuhul 100–190 sõna."} Pikkus peab tulema uuest viidatud selgitusest, piirangust või praktilisest kontrollsammust; kui evidence seda ei toeta, vasta lühemalt ja ära lisa täidet.`,
-    "Paku kuni kuus seotud küsimust ainult tõendites esinevate teemade põhjal.",
+    `Tagasta struktureeritud JSON. ${singleSource ? "Ühe allika korral kirjuta 3–5 sisukat lauset, üldjuhul 70–130 sõna, ja jäta parts tühjaks." : answerIntent?.kind === "forest-overview" ? "Kopeeri antud intro muutmata ja kirjuta kaks lühikest sidusat parts-osa." : "Kirjuta 2–4-lauseline otsene intro ning 2–4 lühikest parts-osa; kogu vastuse siht on üldjuhul 100–190 sõna."} Pikkus peab tulema uuest viidatud selgitusest, piirangust või praktilisest kontrollsammust; kui evidence seda ei toeta, vasta lühemalt ja ära lisa täidet.`,
     singleSource ? "Intro ja iga parts.text faktilised laused vali evidence.content lausete hulgast ning jäta nende sõnastus muutmata. Võid tõendilauseid valida ja järjestada, kuid ära lisa parafraase, analoogiaid ega tõendist tuletatud järeldusi. Lühendi selgituseks kasuta ainult tõendi enda definitsioonilauset. Viitenumbrid pane ainult intro_citations ja parts.citations väljadele, mitte teksti." : "",
   ].join(" ");
   const user = JSON.stringify({
@@ -2176,7 +1952,9 @@ export function buildLlmRequest({
     outputContract: {
       intro: requiredIntroCitations.length ? directIntro : "",
       intro_citations: requiredIntroCitations.length ? requiredIntroCitations : evidenceCitations.slice(0, 1),
-      intro_requirement: "Säilita antud sissejuhatuse tõendatud väide muutmata ning lisa sellele vajadusel tõendatud sidus selgitus.",
+      intro_requirement: answerIntent?.kind === "forest-overview" && requiredIntroCitations.length
+        ? "Tagasta antud intro täpselt muutmata. Kõik uued selgitused kuuluvad parts-väljadesse."
+        : "Säilita antud sissejuhatuse tõendatud väide muutmata ning lisa sellele vajadusel tõendatud sidus selgitus.",
       citation_fields: ["intro_citations", "parts.citations"],
       prose_fields: ["intro", "parts.text"],
       parts: singleSource ? "empty" : "cited_synthesis",
@@ -2224,24 +2002,32 @@ export function extractLlmBudgetUsage(payload, apiStyle) {
 }
 
 export async function generateGroundedAnswer(query, draft, options = {}) {
+  const attemptedProvider = `${agentOrchestrationEnabled() ? "openai-agents" : "codex-gateway"}/${model}`;
+  const rejected = (status, reason) => ({
+    answer: null,
+    acceptedClaims: [],
+    attempt: { provider: attemptedProvider, status, reason },
+  });
+  const evidencePack = options.evidencePack;
+  if (!evidencePackMatchesSources(evidencePack, draft?.sources)) return rejected("degraded", "evidence-insufficient");
   if (!apiKey || String(process.env.LLM_ENABLED || "true").toLowerCase() === "false") {
-    return { answer: null, status: "disabled", provider: "deterministic-current-evidence" };
+    return rejected("disabled", "disabled");
   }
   if (Date.now() < circuitOpenUntil) {
-    return { answer: null, status: "circuit-open", provider: "deterministic-current-evidence" };
+    return rejected("circuit-open", "capacity");
   }
   if (activeRequests >= maxConcurrentRequests) {
-    return { answer: null, status: "capacity-fallback", provider: "deterministic-current-evidence" };
+    return rejected("capacity-fallback", "capacity");
   }
 
   activeRequests += 1;
   try {
     const clientScopeKey = llmClientScopeKey(options.clientKey);
-    const evidence = buildBoundedEvidence(draft, query);
+    const evidence = evidencePack.entries;
     const singleSource = evidence.length === 1;
     const requestTimeoutMs = Math.max(250, Math.min(Number(options.timeoutMs) || timeoutMs, timeoutMs));
     if (requestTimeoutMs < 500 || options.signal?.aborted) {
-      return { answer: null, status: "degraded", provider: "deterministic-current-evidence", error: "LLM request budget was exhausted" };
+      return rejected("degraded", "budget");
     }
     const request = buildLlmRequest({
       selectedModel: model,
@@ -2263,12 +2049,7 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
         inputBytes: Buffer.byteLength(requestBody, "utf8"),
       }));
       if (!reservation.ok) {
-        return {
-          answer: null,
-          status: "budget-exhausted",
-          provider: "deterministic-current-evidence",
-          error: reservation.reason,
-        };
+        return rejected("budget-exhausted", "budget");
       }
     }
 
@@ -2331,14 +2112,21 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
         }
         parsed = parseLlmJson(extractLlmText(payload));
       }
-      const answer = validateGroundedAnswer(parsed, draft, query);
-      const related = validateRelatedQuestions(parsed, draft, query);
+      const validated = validateGroundedAnswer(parsed, draft, query, evidencePack);
       consecutiveTimeouts = 0;
-      return { answer, related, status: "ready", provider: `${orchestrated ? "openai-agents" : "codex-gateway"}/${model}` };
+      return {
+        answer: validated.answer,
+        acceptedClaims: validated.acceptedClaims,
+        attempt: {
+          provider: `${orchestrated ? "openai-agents" : "codex-gateway"}/${model}`,
+          status: validated.answer ? "ready" : "degraded",
+          reason: validated.rejectionReason || "none",
+        },
+      };
     } catch (error) {
       const denial = llmBudgetDenial(error);
       if (denial) {
-        return { answer: null, status: "budget-exhausted", provider: "deterministic-current-evidence", error: denial };
+        return rejected("budget-exhausted", "budget");
       }
       const locallyTimedOut = error.name === "AbortError"
         && controller.signal.aborted
@@ -2354,7 +2142,8 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
       } else if (error.name !== "AbortError") {
         consecutiveTimeouts = 0;
       }
-      return { answer: null, status: "degraded", provider: "deterministic-current-evidence", error: error.message };
+      return rejected("degraded", locallyTimedOut ? "timeout"
+        : /invalid JSON|return JSON/iu.test(error.message) ? "invalid-output" : "provider-error");
     } finally {
       if (reservation) {
         settleLlmReservation(reservation, observedUsage, {

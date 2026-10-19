@@ -3,6 +3,9 @@ import test from "node:test";
 import { sourceDateMeta, sourceOrganizationLabel } from "../src/source-label.js";
 import * as labels from "../src/source-label.js";
 import { readFile } from "node:fs/promises";
+import { sanitizeCachedResponse, restoreCachedResponse } from "../server/database.mjs";
+import { publicResponse } from "../server/pipeline.mjs";
+import { officialServiceCatalogueDocuments } from "../server/search.mjs";
 
 test("legend source numbers are readable without relying on color or hover", async () => {
   const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
@@ -54,4 +57,44 @@ test("other publishers keep their own name", () => {
   assert.equal(sourceOrganizationLabel({ organization: "Eesti Keskkonnauuringute Keskus", url: "https://keskkonnaportaal.ee/sites/default/files/seire.pdf" }), "Eesti Keskkonnauuringute Keskus");
   assert.equal(sourceOrganizationLabel({ organization: "Statistikaamet", url: "https://andmed.stat.ee" }), "Statistikaamet");
   assert.equal(sourceOrganizationLabel({}), "");
+});
+
+test("cold and restored source labels retain publication, update and reference-period semantics", () => {
+  const original = officialServiceCatalogueDocuments().find((item) => item.id === "forest-area");
+  assert.ok(original);
+  const snapshot = {
+    ...original,
+    citation: 1,
+    published: "2024",
+    updated: "03.09.2026",
+    dataYear: "2024",
+    dataAsOf: "31.12.2024",
+    locator: "Tabel 1.1",
+  };
+  const response = {
+    query: "roostiku ülevaade",
+    total: 1,
+    answer: {
+      eyebrow: "Allikapõhine kokkuvõte",
+      title: "Metsamaa andmed",
+      intro: "Andmete vaatlusperiood ei ole lehe uuendamise kuupäev.",
+      introCitations: [1],
+      parts: [],
+      note: "",
+    },
+    sources: [snapshot],
+    evidence: { kind: "reviewed-official-source", answerable: true },
+    attempt: { provider: "private-provider", status: "degraded", reason: "timeout" },
+  };
+  const cold = publicResponse(response);
+  const envelope = sanitizeCachedResponse(response, response.query);
+  assert.ok(envelope);
+  const warm = publicResponse(restoreCachedResponse(envelope, response.query));
+  assert.equal(sourceDateMeta(warm.sources[0]), sourceDateMeta(cold.sources[0]));
+  assert.equal(sourceDateMeta(warm.sources[0]),
+    "Andmed: 2024 (seisuga 31.12.2024) · Uuendatud: 03.09.2026 · Allikas: Keskkonnaagentuur");
+  assert.equal(warm.sources[0].published, "2024");
+  assert.equal(warm.sources[0].locator, "Tabel 1.1");
+  assert.doesNotMatch(JSON.stringify(envelope), /private-provider|"attempt"/u);
+  assert.doesNotMatch(JSON.stringify(warm), /private-provider|"attempt"|_evidenceVersion/u);
 });

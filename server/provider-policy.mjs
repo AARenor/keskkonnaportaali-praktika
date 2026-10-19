@@ -1,6 +1,13 @@
 export const LLM_GATEWAY_BASE_URL = "https://terrapoint.arle.top/v1";
 export const LLM_GATEWAY_MODEL = "openai-codex/gpt-6-luna";
 
+export function resolveLlmReasoningEffort(value = "low") {
+  if (value !== "low" && value !== "medium") {
+    throw new Error("LLM_REASONING_EFFORT must be low or medium");
+  }
+  return value;
+}
+
 export function validateLlmProviderUrl(value) {
   let url;
   try {

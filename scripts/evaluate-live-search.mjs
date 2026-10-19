@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { canonicalResultUrl } from "../server/retrieval.mjs";
+import { publicSourceWitnessKey } from "../server/source-identity.mjs";
 import { hasCompleteSentenceEnding } from "../server/search.mjs";
 import { rankOneSearchResultId, requestBoundedAuditText } from "./audit-http.mjs";
 
@@ -99,9 +99,9 @@ function assertPublicContract(item, result) {
       partIndex,
     });
   }
-  const visibleUrls = new Set((body.searchResults?.items || []).map((source) => canonicalResultUrl(source.url)));
+  const visibleWitnesses = new Set((body.searchResults?.items || []).map(publicSourceWitnessKey).filter(Boolean));
   for (const source of body.sources || []) {
-    check(visibleUrls.has(canonicalResultUrl(source.url)), "answer source is outside the visible result snapshot", {
+    check(publicSourceWitnessKey(source) !== null && visibleWitnesses.has(publicSourceWitnessKey(source)), "answer source is outside the visible result snapshot", {
       id: item.id,
       sourceId: source.id,
     });

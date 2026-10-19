@@ -1,3 +1,4 @@
+import { bindSourceToVisibleService } from "./source-identity.mjs";
 import { createHash } from "node:crypto";
 import { specialistSubjectRoot, specialistSubjectVariants } from "./topic-keywords.mjs";
 import { cadastreSourceDocuments } from "./cadastre.mjs";
@@ -1773,6 +1774,32 @@ export function splitTextPassages(value = "") {
 
 export function hasCompleteSentenceEnding(value = "") {
   return /[.!?](?:[”"'’)\]]*)$/u.test(String(value || "").trim());
+}
+const EVIDENCE_DIRECTIVE_PATTERN = /(?:süsteemi(?:juhis|prompt)|exfiltrat|javascript\s*:|<\s*script\b|onerror\s*=|data\s*:\s*text\/html)/iu;
+export function sanitizeLlmEvidenceText(value) {
+  const text = String(value || "")
+    .normalize("NFKC")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u202A-\u202E\u2066-\u2069]/gu, " ")
+    .replace(/\bm\s*3\b/giu, "m³")
+    .replace(/[\t\r\n\u2028\u2029]+/gu, "\n")
+    .replace(/[^\S\n]+/gu, " ")
+    .replace(/ *\n+ */gu, "\n")
+    .trim();
+  if (!text) return "";
+  const passages = splitTextPassages(text);
+  const rejected = new Set(passages.flatMap((passage, index) => (
+    containsUnsafeInstruction(passage) || EVIDENCE_DIRECTIVE_PATTERN.test(passage) ? [index] : []
+  )));
+  for (let start = 0; start < passages.length; start += 1) {
+    for (let size = 2; size <= 4 && start + size <= passages.length; size += 1) {
+      const indexes = Array.from({ length: size }, (_, offset) => start + offset);
+      if (indexes.some((index) => rejected.has(index))) continue;
+      const collapsed = indexes.map((index) => passages[index]).join(" ");
+      if (!containsUnsafeInstruction(collapsed) && !EVIDENCE_DIRECTIVE_PATTERN.test(collapsed)) continue;
+      indexes.forEach((index) => rejected.add(index));
+    }
+  }
+  return passages.filter((_passage, index) => !rejected.has(index)).join("\n").trim();
 }
 
 const STOP_WORDS = new Set([
@@ -7616,7 +7643,7 @@ export function assessSearchQuery(query, options = {}) {
   }
   if (nationalForestAreaScope
     && ["forest-area", "forest-covered-area"].includes(forestryIntent?.kind)
-    && requestsUnsupportedForestAreaTimeSeries(cleanQuery)) {
+    && requestsUnsupportedForestAreaTimeSeries(cleanQuery, { referenceRow: true })) {
     return {
       kind: "needs-clarification",
       topic: "mets",
@@ -8020,11 +8047,11 @@ const OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     dataAsOf: "18.08.2026",
     url: "https://keskkonnaportaal.ee/et/teemad/mets/metsastatistika-sh-smi",
     tags: ["mets", "SMI", "metsainventeerimine", "statistika", "metoodika"],
-    summary: "SMI on üleriigiliste proovitükkidega valikuuring, mille põhjal koostatakse statistiliste meetoditega kogu Eesti metsade üldistatud hinnang.",
-    content: "Statistiline metsainventuur ehk SMI on üleriigiliste proovitükkidega valikuuring. SMI põhjal koostatakse statistiliste meetoditega kogu Eesti metsade üldistatud hinnang ning näitajaga kaasneb statistiline viga. Keskkonnaagentuur koostab SMI põhjal iga-aastase metsade statistilise kokkuvõtte. SMI 2025 tulemused ja ettekanne avaldati seisuga 18. august 2026. SMI tagavara on valimi põhjal arvutatud statistiline hinnang koos veaga, mitte üks kindel vaieldamatu number. SMI sobib riigi metsade seisundi ja muutuste hindamiseks, mitte üksiku kinnistu inventeerimisandmete esitamiseks. Lausmetsakorralduse inventeerimisandmed kirjeldavad mõõdetud kinnistuid ja metsaeraldisi ega kata tingimata sama üldkogumit või ajaseisu. Valimi suurus üksi ei määra hinnangu täpsust: olulised on ka valikukava, proovitükkide esinduslikkus, mõõtmiskvaliteet ja avaldatud veahinnang. Erinevus lausmetsakorralduse registriandmetest ei tõenda iseenesest, et SMI tagavara oleks üle hinnatud; enne tuleb võrrelda üldkogumit, definitsiooni, andmeaastat ja ebakindlust.",
-    locator: "SMI kui üleriigiline proovitükkidega valikuuring ning kogu Eesti üldistatud statistiline hinnang koos veahinnanguga.",
+    summary: "Statistiline metsainventuur (SMI; ingl National Forest Inventory, NFI) on valikuuring, mille raames mõõdetakse üleriigiliselt proovitükke.",
+    content: "Statistiline metsainventuur (SMI; ingl National Forest Inventory, NFI) on valikuuring, mille raames mõõdetakse üleriigiliselt proovitükke. Saadud andmete ja statistiliste meetodite alusel koostatakse metsaressursi üldistatud hinnangud kogu Eesti kohta.\nLisaks metsade kohta kogutavale teabele registreeritakse andmeid näiteks maa kõlvikulise jaotuse, bioloogilise mitmekesisuse, mittemetsamaade puidutagavara ja metsastumise kohta. Lisaks hindab SMI eri maakasutuskategooriate pindalasid ja nende muutusi.\nAndmeid metsavarude kohta kogutakse metsade inventeerimisega. Traditsioonilise, kõiki metsaeraldusi kirjeldava lausinventeerimisega koguti andmeid kõikide metsade kohta kuni 1992. aastani. Sellest ajast alates on ainult riigimetsi suudetud inventeerida klassikalise 10-aastase tsükliga, erametsi aga on inventeeritud vastavalt nende registreerimisele maakatastris ning riigi rahalistele võimalustele. See on tekitanud olukorra, kus lausinventeerimise andmed suure osa metsade kohta on aegunud, paiguti on andmed nüüdseks enam kui 20 aastat vanad.\nKuna SMI on valikuuring, kaasneb statistilisel uuringul proovitükkide karakteristikute alusel tehtud üldkogumi mingi tunnuse hinnanguga alati tõenäosuslikust valikust tulenev viga. Seega võib näitajate tegelik väärtus esitatust statistilise vea võrra erineda.\nSMI 2025 tulemused.xlsx (seisuga 18. august 2026)",
+    locator: "Statistiline metsainventuur ehk SMI: definitsioon, kogu Eesti üldistatud hinnang, statistiline viga; Ülevaade metsastatistikast: lausinventeerimise katvus ja andmete vanus.",
     _publishedAt: "2022-06-02",
-    _catalogueReviewedAt: "2026-10-01T00:00:00.000Z",
+    _catalogueReviewedAt: "2026-10-06T17:40:06.000Z",
   },
   {
     id: "forest-area",
@@ -8048,9 +8075,12 @@ const OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     published: "18.08.2026",
     url: "https://keskkonnaagentuur.ee/uudised/smi-metsatagavara-stabiilne",
     tags: ["mets", "SMI", "tagavara", "metsade seisund", "trend", "vanusjaotus", "puuliik", "enamuspuuliik", "kaasik", "männik", "okaspuumets", "raiemaht"],
-    summary: "SMI 2025 järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast ning kasvava metsa tagavara püsis stabiilsena 466 miljoni m³ juures.",
-    content: "Keskkonnaagentuuri SMI 2025 tulemuste järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast. Kasvava metsa tagavara püsis stabiilsena 466 miljoni m³ juures ja ligikaudu 20% metsamaast oli mittemajandatav. Enamuspuuliigi järgi on metsadest suurima pindalaga kaasikud (0,71 miljonit ha) ja männikud (0,70 miljonit ha), okaspuu enamusega metsade osakaal metsade kogupindalast on 48% (1,13 miljonit hektarit). Kasvava metsa tagavarast moodustavad okaspuu enamusega metsad 53% (247 miljonit m³). Viimase kümne aastaga (2016–2025) on okaspuumetsade pindala vähenenud 32 000 ha võrra (2016. aastal 1,17 miljonit ha). Puistutes on suurenenud puude liigiline mitmekesisus: vähenenud on monokultuursete ning suurenenud kolmest ja enamast puuliigist koosnevate puistute pindala. Jätkuvalt suurenes nii noorte kui ka vanade metsade pindala: noorte metsade kasvu seostati raie ja metsastumisega ning vanade metsade kasvu mittemajandatava metsamaa ja metsaomanike valikutega. Raiemahu eksperthinnangu alusel raiuti Eestis 2025. aastal metsa 11 miljonit m³ ning viimaste aastate tase on ligikaudu 11–12 miljonit m³. Metsa pindala, tagavara, vanuseline struktuur, puuliigiline koosseis ja raiemaht kirjeldavad eri tahke ega ole omavahel asendatavad näitajad.",
+    summary: "2025. aastal oli metsamaa pindala 2,36 miljonit hektarit, millel kasvas 466 miljonit m3 puitu.",
+    content: "Eesti metsavarude viimased andmed näitavad, et metsamaa moodustab jätkuvalt üle poole riigi pindalast. Metsatagavara on viimastel aastatel püsinud stabiilne.\nKeskkonnaagentuuri täna avaldatud uue statistilise metsainventeerimise (SMI) andmete kohaselt moodustab Eesti pindalast metsamaa 52,1%. Kõige metsarikkamad maakonnad on Hiiumaa, Valgamaa ja Ida-Virumaa, kus metsasus ulatub üle 60%.\n2025. aastal oli metsamaa pindala 2,36 miljonit hektarit, millel kasvas 466 miljonit m3 puitu. Võrreldes varasemate aastatega metsa kogutagavaras olulisi muutusi pole olnud, samas hektaritagavara on natuke vähenenud. Metsa pindala kasv on aidanud tasakaalustada keskmise hektaritagavara vähenemise mõju. Mittemajandatava metsamaa pindala oli 2025. aastal kasvanud 476 000 ha ehk 20%ni kogumetsamaast.\nPuistutes on suurenenud puude liigiline mitmekesisus ehk vähenenud on monokultuursete ning suurenenud kolmest ja enamast puuliigist koosnevate puistute pindala. Suurima pindalaga on kaasikud (0,71 miljonit ha) ja männikud (0,70 miljonit ha). Okaspuu enamusega metsade osakaal metsade kogupindalast on 48% (1,13 miljonit hektarit), kuid kasvava metsa tagavara osas moodustavad need 53% (247 miljonit m3). Probleemiks tuleb kindlasti pidada okaspuumetsade vähenemise trendi, viimase kümne aastaga (2016–2025) on nende metsade pindala vähenenud 32 000 ha võrra (1,17 miljonit ha aastal 2016).\nKeskkonnaagentuuri direktor Taimar Ala: „Metsade käekäiku tuleb vaadata pikemas vaates ja laiemas kontekstis, arvestades inimeste ootusi metsale kui loodushüvede pakkujale. Kliimamuutused muudavad metsade kasvutingimusi ning panevad nende vastupanuvõime üha suurema surve alla. Sarnaste muutustega puutuvad praegu kokku paljud Euroopa riigid. Seega peame Eestis metsade tuleviku üle arutades arvestama ka muutuvate keskkonnatingimustega ja ühiskonna ootustega ning vaatama pikki andmeridu muutuste mõistmiseks ja tulevikuotsuste tegemiseks.“\n2025. aastal oli majandatava metsa netojuurdekasvuks 4,9 m3/ha aastas. Metsa juurdekasv ja suremus on pidevas muutumises. Loomulikult mõjutab juurdekasvu metsa vanuseline jaotus, kuid lühiajaliste kõikumiste üheks põhjustajaks võib pidada muutlikke ilmastikuolusid. Metsa kasvu pärssivaks teguriks on eelkõige põud. 2018. – 2019. aasta põua suuremast mõjust oleme taastunud, kuid juurdekasv veel sellele eelnevate aastate tasemel pole. Sarnaseid muutusi on näha ka mujal Põhja-Euroopas. Juurdekasvu muutustel on mõistlik silm peal hoida, kuid tähelepanu tuleb suunata eelkõige asjadele, mida inimesel on võimalik muuta. Majandusmetsades tuleb juurdekasvu soodustamiseks eelkõige tagada metsa uuenemine sobivate puuliikidega ning tähelepanu tuleb pöörata ka õigeaegsele kahjustuste likvideerimisele.\nJätkuvalt suureneb nii noorte kui vanade metsade pindala. Noorte metsade pindala kasvu põhjustab raie ja metsastumine. Vanade metsade pindala suurenemise taga on nii mittemajandatava metsamaa pindala kasv kui ka metsaomanike valikud majandamise osas.\nRaiemaht on püsinud viimastel aastatel ca 11–12 miljoni tihumeetri tasemel. Raiemahu eksperthinnangu alusel oli 2025. aasta raiemaht 11 miljonit m3. Pikemas vaates hakkab see langema, kuid languse kiirus sõltub eelkõige sellest, kui aktiivselt metsaomanikud oma metsa majandavad. Enamuspuuliigilises vaates väheneb kuusikute raie, männikute raiemaht võib püsida samal tasemel veel paar aastakümmet ning kaasikute raiemahul on ruumi ka tõusuks.",
     locator: "SMI 2025 põhinäitajad: metsamaa pindala, tagavara, vanusjaotus, puuliigid, juurdekasv ja raiemahu eksperthinnang.",
+    dataYear: "2025",
+    _publishedAt: "2026-08-18",
+    _catalogueReviewedAt: "2026-10-06T20:43:17.106Z",
   },
   {
     id: "forest-condition-review",
@@ -8061,10 +8091,11 @@ const OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     updated: "23.09.2026",
     url: "https://keskkonnaportaal.ee/et/keskkonnaulevaade/keskkonnaulevaade-mets",
     tags: ["mets", "metsade seisund", "kahjustused", "elurikkus", "kliimarisk", "trend"],
-    summary: "Keskkonnaülevaade käsitleb metsa pindala, tagavara, vanuselist struktuuri, kahjustusi, elurikkust, kaitset ja kliimariski eraldi näitajatena ning eristab metsamaad metsaga kaetud pindalast.",
-    content: "Metsa püsimist ja seisundit ei kirjelda üks näitaja. Keskkonnaülevaate järgi moodustas metsamaa 51,8% Eesti pindalast, kuid metsaga kaetud pindala ehk puistute pindala 47,1%; need on eri näitajad. 2024. aasta ruumianalüüsi järgi oli kaitse all 28,4% Eesti metsadest ja rangelt kaitstav 16,8% metsamaast; neid õigusliku kaitse näitajaid ei tohi samastada SMI majanduskategooriatega. Ülevaade käsitleb eraldi metsa pindala, tagavara ja vanuselist struktuuri ning metsade kahjustusi, elurikkust, kaitset ja kliimaga seotud riske. Kliimamuutuse mõjud ei ole ühesuunalised: põuad, soojemad talved, haigustekitajad ja kahjurid võivad juurdekasvu vähendada ning puid kahjustada. Kuuse-kooreüraski kahjustuskollete laienemist hinnati 2019.–2024. aastal ligikaudu 22 500 hektarile. Raiemahu mõju sõltub metsa asukohast, vanusest, koosseisust, elupaikadest, mullast ja veerežiimist, mistõttu väide, et kõik lageraied on alati ühesuguse keskkonnamõjuga, ei ole mõõdetav üksikfakt, ning mõju tuleb hinnata konkreetse ala elupaikade, mulla, veerežiimi ja taastumise järgi, mitte tuletada seda ainult lageraie liigist või ühest pindala- või mahuarvust. Ülevaate järgi on raiemaht viimasel kümnendil püsinud ligikaudu 10–12 miljoni m³ tasemel, kuid pikaajalise võrdluse jaoks tuleb kasutada sama definitsiooni ja metoodikaga aegrida. Viimase aasta hinnang ja viie aasta keskmine ei näita iseenesest, kas praegu raiutakse rohkem kui täpselt 20 aastat tagasi. Vastuseks on vaja sama metoodikaga 20-aastast aegrida.",
-    locator: "Metsamaa ja metsaga kaetud pindala, kaitse näitajad, vanuseline struktuur, kliimamõjud, kahjustused, elurikkus ning raiemahu pikaajaline kontekst.",
+    summary: "Ökoloogiline seisund näitab antud lähenemise puhul looduslikkuse gradienti – mida parem seisund, seda kõrgem looduslikkus, mis samas ei pruugi tähendada puistu kõrget majanduslikku väärtust.",
+    content: "Metsamaa katab 52,1% Eesti maismaast, 47,4% on kaetud metsaga ja 4,6% on metsata metsamaa. Allikas: Keskkonnaagentuur, 2026\n2025. aastal kasvas Eestis 2,36 miljonil hektaril 466 mln m3 tüvepuitu. Metsatagavara on viie aastaga (2021-2025) vähenenud ligikaudu 1,4 % (6,6 mln m3) ning viimastel aastatel pisut kasvanud. Allikas: Keskkonnaagentuur, 2026\nSuurenenud on vana ja noore metsa osakaal. Näiteks on 40% puistutest üle 60 aasta vanad.\nÖkoloogiline seisund näitab antud lähenemise puhul looduslikkuse gradienti – mida parem seisund, seda kõrgem looduslikkus, mis samas ei pruugi tähendada puistu kõrget majanduslikku väärtust.\nMetsa juurdekasv on viimastel aastatel vähenenud nii Eestis kui mujal Põhja-Euroopas, mis on tõenäoliselt tingitud põudadest ja teistest kliimamuutustega võimendunud teguritest, aga ka metsade liigilise ja vanuselise struktuuri muutumisest.\nKliima muutumisel prognoositakse invasiivsete haigustekitajate (näiteks saaresurm, punavöötaud, pruunvöötaud, okaspuu võrsevähk) ja metsakahjurite (näiteks käsnalainelane, lepapoi) leviku kasvu.\nPerioodil 2019-2024 laienes üraskikahjustustega metsa pindala ligikaudu 22 500 ha võrra. Üraskite levikut soodustavad muuhulgas põuad ning soojemaks muutunud kevad-talved.\nPeamine metsade seisundi mõjutaja on selle majandamine, sealhulgas raie.\nRaiemaht on viimasel kümnendil püsinud 10-12 mln m3 tasemel, kuid pikas perspektiivis see langeb.\nKuivendamisel langeb mulla põhjaveetase ja paranevad puude kasvutingimused, näiteks juurestike õhustatus ning paraneb puude kasv. Ent kuivendamisel on mõju ka metsale kui ökosüsteemile, näiteks võivad kaduda kraavitatud elupaigast märgadele metsadele omased liigid.\nMittemajandatava metsamaa osakaal on suurenenud nii pikaajaliselt kui viimasel seitsmel aastal. Mittemajandatavad metsad paiknevad valdavalt riigimetsades.",
+    locator: "Seisund, Mõjurid, Surve ja Meetmed: metsamaa ning metsaga kaetud maa, 2025 tagavara, vanuseline struktuur, ökoloogiline seisund, kliima, kahjustused ja majandamine.",
     _publishedAt: "2024-06-28",
+    _catalogueReviewedAt: "2026-10-06T17:40:06.000Z",
   },
   {
     id: "metsainfo-hetkeseis",
@@ -8075,33 +8106,39 @@ const OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     updated: "07.01.2026",
     url: "https://keskkonnaportaal.ee/et/teemad/mets/metsainfo-hetkeseis",
     tags: ["mets", "metsaandmed", "metsateatis", "metsaregister", "RMK", "inventeerimine"],
-    summary: "Koondvaade eristab metsateatisi, RMK hallatavate metsade takseerandmeid ja Metsaregistri inventeerimisandmeid.",
-    content: "Metsainfo hetkeseis koondab eraldi vaated metsateatistele, RMK hallatavate metsade takseerandmetele ja Metsaregistri ülepinnalise takseerimisega kogutud inventeerimisandmetele. RMK vaade kirjeldab ainult RMK hallatavaid metsi RMK takseerandmete põhjal ning uueneb jooksvalt; SMI on kogu Eesti kohta koostatav perioodiline statistiline valikuuring. Metsaregistri inventeerimisandmed kehtivad kümme aastat ja kehtivad kirjed katavad ligi kolmveerandi Eesti metsamaast. Metsateatised kirjeldavad lubava märke saanud kavatsusi ning kõiki teatisi ei ole looduses realiseeritud. Kaitsealadel kuvatud teatised ja registreeritud raied ei tõenda tehtud raietöid. Nendel vaadetel on erinev katvus, ajaseis ja tähendus, mistõttu nende numbrid ei pea kattuma ning neid ei tohi käsitada ühe ja sama näitajana.",
-    locator: "Eraldi vaated metsateatistele, RMK hallatavate metsade takseerandmetele ja Metsaregistri inventeerimisandmetele.",
+    summary: "Töölehtedel on ülevaade metsaressursi arvestuse riiklikus registris (metsaregistris) hoitavatest metsainventeerimisandmetest, mida kogutakse metsade ülepinnalise takseerimisega.",
+    content: "Töölehel on välja toodud Keskkonnaameti lubava märke saanud metsateatised tükiarvu, tihumeetrite ja pindala järgi.\nAndmeid vaadates peab arvestama asjaoluga, et alusandmed metsaregistri serveris uuenevad jooksvalt. Keskkond kuvab igaöise uuendusena Keskkonnaameti poolt metsaregistrisse sisestatud andmeid. Ühelgi varasemal aastal ei ole kõiki lubava märke saanud metsateatisi looduses realiseeritud.\nAndmed kajastavad metsaregistris registreeritud raieid, läbi viidud raietööde kohta andmed puuduvad.\nRiigimetsa Majandamise Keskuse (RMK) hallatavate metsade olemi ülevaates on välja toodud metsade jaotus majandatava ja kaitstava metsa lõikes.\nJoonised kuvavad RMK takseerandmete infot RMK andmebaasist. Andmed uuenevad jooksvalt (kord ööpäevas).\nTöölehtedel on ülevaade metsaressursi arvestuse riiklikus registris (metsaregistris) hoitavatest metsainventeerimisandmetest, mida kogutakse metsade ülepinnalise takseerimisega. Inventeerimisandmed kehtivad kümme aastat alates nende kandmisest metsaregistrisse. Kehtivad inventeerimisandmed katavad ligi ¾ kogu Eesti metsamaast.\nAvalehel on ülevaade kõikidest metsaregistris hoitavatest inventeerimisandmetest - kehtivad ja aegunud andmed (vanemad kui kümme aastat).",
+    locator: "Metsateatised ja Metsateatised kaitsealadel: registreeritud kavatsused, puuduvad tööde andmed; RMK metsade olem; Metsainventeerimisandmed: kümneaastane kehtivus ja katvus.",
+    _catalogueReviewedAt: "2026-10-06T17:40:06.000Z",
   },
   {
     id: "metsaregister",
     title: "Metsaregistri andmestikud",
     organization: "Keskkonnaagentuur / Keskkonnaportaal",
     type: "Andmekataloog",
-    published: "jooksev",
+    published: "25.05.2026",
+    updated: "26.05.2026",
     url: "https://keskkonnaportaal.ee/et/avaandmed/metsaregistri-andmestikud",
     tags: ["mets", "metsaandmed", "metsaregister", "inventeerimine", "metsateatis", "WMS", "WFS"],
-    summary: "Metsaregistri andmekataloog eristab inventeerimis-, metsateatise ja välitööde andmestikke ning nende avalikke ruumiandmete levitusi.",
-    content: "Metsaregister on riiklik andmekogu, mille andmestike hulka kuuluvad inventeerimis-, metsateatise ja välitööde andmed. Avalikke Metsaregistri ruumiandmeid levitatakse Metsaportaalis ning WMS- ja WFS-teenustena. Registri andmestik sobib kinnistu- ja metsaeraldisepõhiste andmete vaatamiseks.",
-    locator: "Metsaregistri inventeerimis-, metsateatise ja välitööde andmestikud; Metsaportaal ning WMS/WFS levitused.",
+    summary: "Metsaregister on Eesti riiklik andmekogu, kuhu kogutakse ja säilitatakse andmeid metsa paiknemise, pindala, tagavara, kasutamise ja seisundi kohta.",
+    content: "Metsaregister on Eesti riiklik andmekogu, kuhu kogutakse ja säilitatakse andmeid metsa paiknemise, pindala, tagavara, kasutamise ja seisundi kohta. Register sisaldab metsainventeerimise, metsateatiste, metsauuenduse, metsakaitseekspertiiside ja välitööde andmeid. Andmestik võimaldab saada ülevaate Eesti metsade seisundist ja metsamajandamisest.\nmetsaeraldise asukohakirjeldus, mis sisaldab maakonna, valla ja kinnistu nime või lähiaadressi ning katastritunnust\nMetsateatis esitatakse kavandatavate raiete kohta, välja arvatud valgustusraie ning metsaregistrisse kandmata oluliste metsakahjustuste kohta.\nMetsaregistri andmeid saab Metsaportaalis vaadata või kasutada GeoServeri kaudu WMS/WFS teenuseid.\nMetsaregistri kehtiva staatusega eraldised.",
+    locator: "Kirjeldus; Metsanduslike välitööde andmestiku metsaeraldise asukohakirjeldus; Metsateatise andmestik; Levitused ja andmete allalaadimine.",
+    _publishedAt: "2026-05-25",
+    _catalogueReviewedAt: "2026-10-06T17:40:06.000Z",
   },
   {
     id: "smi-metsaregister",
     title: "Metsandus: SMI ja Metsaregister",
     organization: "Kliimaministeerium",
     type: "Selgitus",
-    published: "07.04.2021",
+    published: "",
+    updated: "07.04.2026",
     url: "https://kliimaministeerium.ee/elurikkus-keskkonnakaitse/metsandus",
     tags: ["mets", "metsandusandmed", "SMI", "metsaregister", "metsainventeerimine"],
-    summary: "Metsaandmed on mitmel viisil kogutavate andmete katusmõiste: SMI ja kinnistute inventeerimisandmeid koondav Metsaregister on eri ametlikud allikad.",
-    content: "Metsaandmed on mitmel viisil kogutavate andmete katusmõiste. Statistilise metsainventuuriga ehk SMI-ga koostatakse statistiline kokkuvõte Eesti metsade seisundist, kasutamisest ja muutustest ajas. Metsaregister sisaldab kinnistute metsainventeerimise andmeid ning lisaks metsateatiste, metsakaitseekspertiiside ja metsauuendusekspertiiside andmeid. Eri ametlike allikate arvud võivad erineda, sest nende katvus, üldkogum, andmeaasta, ajaseis, definitsioon ja mõõtmismeetod on erinevad; võrdlus vajab enne nende tingimuste ühtlustamist.",
-    locator: "Metsandusandmete kogumise viisid; SMI tulemused ning Metsaregistri inventeerimis- ja metsateatise andmed.",
+    summary: "Eestis kogutakse metsandusandmeid mitmel viisil, tagamaks andmete täpsus, ajas võrreldavus, kvaliteet ja usaldusväärsus.",
+    content: "Eestis kogutakse metsandusandmeid mitmel viisil, tagamaks andmete täpsus, ajas võrreldavus, kvaliteet ja usaldusväärsus.\nKeskkonnaagentuur koostab iga-aastase metsade statistilise kokkuvõtte, mis annab põhjaliku ülevaate Eesti metsade seisundist, kasutamisest ja muutustest ajas. Statistilise metsainventuuriga (SMI) alustati Eestis 1999. aastal.\nRiigi ja teiste metsomanike poolt tellitud kinnistute metsainventeerimiseandmed on registreeritud metsaressursi arvestuse riiklikus registris (Metsaregister). Metsaregistrisse koondatakse lisaks andmed metsateatiste, metsakaitseekspertiiside ja metsauuendusekspertiiside kohta.\nArendamisel on ka kaugseire meetodid, et kasutada metsanduses satelliitide ja lennukite abil tehtavaid mõõtmisi, erinevate metsakaartide koostamisel ning hinnangute andmisel. Kaugseire andmed võimaldavad saada üldisema ülevaate metsade hetke seisundist ja muutustest.",
+    locator: "Eesti metsandusandmed: mitmed kogumisviisid, Keskkonnaagentuuri iga-aastane statistiline kokkuvõte ja SMI, tellitud kinnistute inventeerimisandmed Metsaregistris ning kaugseire.",
+    _catalogueReviewedAt: "2026-10-06T17:40:06.000Z",
   },
 ];
 
@@ -8173,12 +8210,13 @@ function withReviewedCatalogueEvidence(document, { forceRouteOnly = false } = {}
   };
 }
 
-function reviewedNavigationCitationSource(source, citation) {
+function reviewedNavigationCitationSource(source, citation, visibleService = source) {
   const reviewedAt = source._evidenceStatusAt || CATALOGUE_REVIEWED_AT;
   const reviewed = {
     ...source,
     evidencePolicy: "versioned",
     _answerEvidenceEligible: true,
+    retrieval: "reviewed-official-navigation-procedure",
     _evidenceStatusAt: reviewedAt,
     freshness: source.freshness?.basis === "reviewed-at" ? source.freshness : {
       class: "reviewed-navigation-procedure",
@@ -8187,12 +8225,19 @@ function reviewedNavigationCitationSource(source, citation) {
       requiresSourceTimestamp: true,
     },
   };
-  return {
+  return bindSourceToVisibleService({
     ...reviewed,
     citation,
     evidenceExcerpt: source.summary,
     _evidenceVersion: source._evidenceVersion || reviewedCatalogueEvidenceVersion(reviewed),
-  };
+  }, visibleService);
+}
+
+export function officialSourceSelectionExclusions() {
+  return [...SEARCH_DOCUMENTS, ...ADDITIONAL_OFFICIAL_SERVICE_DOCUMENTS,
+    ...OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS, ...ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS]
+    .filter((source) => !publicSourceAllowed(source))
+    .map(({ id, organization, url }) => ({ id, organization, url }));
 }
 
 export function officialServiceCatalogueDocuments() {
@@ -8534,7 +8579,7 @@ export function composeWasteFacilitiesNavigationResponse(query, documents = [], 
   const citedSource = reviewedNavigationCitationSource({
     ...source,
     tags: [...(source.tags || source.topics || [])].slice(0, 5),
-  }, 1);
+  }, 1, listingWitness);
   const location = county || "soovitud asukoht";
   return {
     query: cleanQuery,
@@ -8586,7 +8631,7 @@ export function composeTopicDataOverviewResponse(query, documents = [], options 
   const citedSource = reviewedNavigationCitationSource({
     ...source,
     tags: [...(source.tags || [])].slice(0, 5),
-  }, 1);
+  }, 1, witness);
   const publicInput = canonicalizePublicSearchQuery(options.publicQuery || canonicalInput.query);
   return {
     query: publicInput.ok ? publicInput.query : canonicalInput.query,
@@ -8641,7 +8686,7 @@ export function composeOfficialServiceNavigationResponse(query, documents = [], 
   const citedSource = reviewedNavigationCitationSource({
     ...source,
     tags: [...(source.tags || [])].slice(0, 5),
-  }, 1);
+  }, 1, visible.find((witness) => witness.id === source.id && witness.url === source.url));
   return {
     query: cleanQuery,
     total: Number.isFinite(options.total) ? options.total : 1,

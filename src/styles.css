@@ -2042,6 +2042,46 @@ h3 {
 
 .source-legend__date { font-weight: 400; }
 
+.answer-evidence {
+  max-width: 780px;
+  margin: 16px 0;
+  padding: 12px 16px;
+  border: 1px solid #c9dde5;
+  border-radius: 5px;
+  color: #263d50;
+  overflow-wrap: anywhere;
+}
+
+.answer-evidence summary {
+  min-height: 32px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.answer-evidence__source {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #dce8ed;
+}
+
+.answer-evidence__source h3 {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+}
+
+.answer-evidence__meta {
+  margin: 4px 0;
+  color: #435568;
+  font-size: 0.8rem;
+}
+
+.answer-evidence__text {
+  margin: 12px 0 0;
+  white-space: pre-wrap;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
 .answer-note {
   max-width: 780px;
   gap: 9px;

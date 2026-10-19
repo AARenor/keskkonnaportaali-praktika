@@ -1742,14 +1742,14 @@ export function composeForestHarvestBalanceAnswer(query, sources = [], controlQu
     || requestedObservation.increment === null
     || requestedObservation.removals === null)) {
     const missingYearExplanation = [
-      methodCitation ? "Netojuurdekasv arvestab juurdekasvust maha loodusliku suremuse." : "",
+      methodCitation ? "Netojuurdekasv on kogu juurdekasv pärast loodusliku suremuse mahaarvamist." : "",
       handbookCitation ? "Eurostati käsiraamatu järgi näitab sama aasta eemaldamise ja netojuurdekasvu võrdlus, kas eemaldamine ületab juurdekasvu või jääb sellest alla." : "",
     ].filter(Boolean).join(" ");
     return {
       answer: {
         eyebrow: "Allikapõhine koondvastus",
         title: `${explicitYear}. aasta kohta võrreldav paar puudub`,
-        intro: `Kasutatud Eurostati metsa arvepidamise väljavõttes ei ole ${explicitYear}. aasta kohta korraga avaldatud nii Eesti netojuurdekasvu kui ka puidu eemaldamise (removals) väärtust. Seetõttu ei saa selle andmerea põhjal nende suhet sel aastal hinnata.`,
+        intro: `Kasutatud Eurostati metsa arvepidamise väljavõttes ei ole ${explicitYear}. aasta kohta korraga avaldatud nii Eesti netojuurdekasvu kui ka puidu eemaldamise (removals) väärtust.`,
         introCitations: [eurostatCitation],
         parts: missingYearExplanation ? [{
           title: "Miks ma puuduvat väärtust ei asenda",
@@ -1815,7 +1815,7 @@ export function composeForestHarvestBalanceAnswer(query, sources = [], controlQu
         title: incompleteWindow
           ? `${startYear}–${endYear} viie aasta kohta ei saa lünkade tõttu täielikku trendi anda`
           : `Viie värskeima võrdlusaasta reas oli ${latestWindow.year}. aastal eemaldamine netojuurdekasvust ${latestWindowRelation}`,
-        intro: `„Viimased viis aastat” tähendab siin Eurostati kasutatud väljavõtte viit värskeimat allikas olevat aastat (${startYear}–${endYear}); ${nextUnavailableYear}. aasta rida selles väljavõttes veel ei ole. Avaldatud on need võrreldavad paarid: ${availableWindow || "ühtegi täielikku paari ei ole"}. ${relations ? `${relations}.` : ""}${missingWindow.length ? ` Aastate ${missingWindow.join(" ja ")} kohta puudub vähemalt üks võrreldav väärtus, seega ei moodusta need punktid täielikku viie aasta trendi.` : ""}${forestObservationStatusSentence(comparableWindow)}`,
+        intro: `Kasutatud väljavõtte aastad on ${startYear}–${endYear}; ${nextUnavailableYear}. aasta rida selles väljavõttes veel ei ole. Avaldatud on need võrreldavad paarid: ${availableWindow || "ühtegi täielikku paari ei ole"}. ${relations ? `${relations}.` : ""}${missingWindow.length ? ` Mõlemat võrreldavat väärtust ei ole aastate ${missingWindow.join(", ")} kohta avaldatud.` : ""}${forestObservationStatusSentence(comparableWindow)}`,
         introCitations: [eurostatCitation],
         parts: [
           ...(handbookCitation ? [{
@@ -1825,8 +1825,8 @@ export function composeForestHarvestBalanceAnswer(query, sources = [], controlQu
           }] : []),
           ...(fiveYearCitation ? [{
             title: "Keskkonnaagentuuri eraldi viie raiehooaja vaade",
-            text: "Keskkonnaagentuuri 2024. aasta SMI ülevaates oli 2018/2019–2022/2023 viie raiehooaja keskmine raiemaht 11,2 miljonit tihumeetrit; 2021. aasta hinnang oli 10,0 ja 2022. aasta hinnang 12,1 miljonit tihumeetrit. See ei ole sama ajavahemik ega üks-ühele sama näitaja kui Eurostati removals-rida.",
-            citations: [fiveYearCitation],
+            text: "Viimase viie raiehooaja 2018/2019–2022/2023 keskmine raiemaht oli 11,2 miljonit tihumeetrit; 2021. aasta hinnang oli 10,0 ja 2022. aasta hinnang 12,1 miljonit tihumeetrit. See ei ole sama ajavahemik ega üks-ühele sama näitaja kui Eurostati removals-rida.",
+            citations: [fiveYearCitation, handbookCitation].filter(Boolean),
           }] : []),
           ...(methodCitation ? [{
             title: "Pikem võrdlus annab teise vaate",
