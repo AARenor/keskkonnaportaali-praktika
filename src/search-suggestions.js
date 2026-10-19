@@ -46,6 +46,9 @@ export const REVIEWED_ENVIRONMENT_SEARCH_SUGGESTIONS = Object.freeze([
   "Kuidas kontrollida KOTKAS keskkonnaloa menetluse staatust?",
   "Kust leida KESE keskkonnaseire mõõtmistulemusi?",
   "Mis on Eesti jäätmete ringlussevõtu määr?",
+  "Mis oli 2024. aasta keskmine õhutemperatuur Eestis?",
+  "Kust leida üleujutusohu prognoosid?",
+  "Kust leida merevee taseme mõõtmisandmeid?",
 ]);
 
 export const REVIEWED_SEARCH_SUGGESTIONS = Object.freeze([
@@ -74,6 +77,15 @@ const REVIEWED_SOURCE_CODE_ALIASES = new Map([
   ["susinikujalajalg", ["Kuidas arvutada ettevõtte süsinikujalajälge?"]],
   ["susinikujalajalge", ["Kuidas arvutada ettevõtte süsinikujalajälge?"]],
   ["murakaart", ["Kust näeb Tallinna mürakaarti?"]],
+  ["mura", ["Kust näeb Tallinna mürakaarti?"]],
+  ["mura tase", ["Kust näeb Tallinna mürakaarti?"]],
+  ["kliima", ["Mis oli 2024. aasta keskmine õhutemperatuur Eestis?"]],
+  ["uputus", ["Kust leida üleujutusohu prognoosid?"]],
+  ["uleujutus", ["Kust leida üleujutusohu prognoosid?"]],
+  ["ohukvaliteet", ["Milline on õhukvaliteet Tallinnas praegu?"]],
+  ["meri", ["Kust leida merevee taseme mõõtmisandmeid?"]],
+  ["mereveetase", ["Kust leida merevee taseme mõõtmisandmeid?"]],
+  ["merevee tase", ["Kust leida merevee taseme mõõtmisandmeid?"]],
   ["tiik", ["Kas väikese tiigi rajamiseks on luba vaja?"]],
   ["parnu rand", ["Kas Pärnu rannas võib ujuda?"]],
 ]);

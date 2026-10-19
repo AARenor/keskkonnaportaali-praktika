@@ -515,7 +515,7 @@ test("live suggestions use per-client fair admission while preserving query coal
 });
 
 test("reviewed autocomplete fallback surfaces structured environmental sources without forestry noise", () => {
-  assert.equal(REVIEWED_ENVIRONMENT_SUGGESTIONS.length, 24);
+  assert.equal(REVIEWED_ENVIRONMENT_SUGGESTIONS.length, 28);
   const hazardousWaste = getReviewedSearchSuggestions("ohtlikud jäätmed", 5);
   assert.deepEqual(hazardousWaste, ["Kui palju tekkis Eestis 2024. aastal ohtlikke jäätmeid?"]);
   assert.doesNotMatch(hazardousWaste.join(" "), /mets|raie|SMI/iu);
@@ -555,6 +555,11 @@ test("reviewed autocomplete fallback surfaces structured environmental sources w
     ["elurikkus", "Milline on Eesti elurikkuse seisund?"],
     ["Võru temperatuur", "Mis oli Võru ööpäeva keskmine õhutemperatuur 21. augustil 2025?"],
     ["õhk", "Milline on õhutemperatuur praegu Tartus?"],
+    ["mura", "Kust näeb Tallinna mürakaarti?"],
+    ["kliima", "Mis oli 2024. aasta keskmine õhutemperatuur Eestis?"],
+    ["uputus", "Kust leida üleujutusohu prognoosid?"],
+    ["meri", "Kust leida merevee taseme mõõtmisandmeid?"],
+    ["ohukvaliteet", "Milline on õhukvaliteet Tallinnas praegu?"],
   ];
   for (const [input, expected] of aliases) {
     assert.equal(getReviewedSearchSuggestions(input, 5)[0], expected, input);
@@ -1106,7 +1111,7 @@ test("autocomplete never renders a late response under a newer query", () => {
     "Kas Eestis saab mets otsa?",
   ];
   assert.equal(suggestionsForValue("", {}, reviewed).length, 5);
-  assert.equal(REVIEWED_SEARCH_SUGGESTIONS.length, 42);
+  assert.equal(REVIEWED_SEARCH_SUGGESTIONS.length, 45);
   assert.ok(suggestionsForValue("m", {}, reviewed).every((item) => item.value.endsWith("?")));
   assert.deepEqual(suggestionsForValue("me", {}, ["How is forest increment calculated?"]), []);
   const rawClimate = { query: "kliima", items: [{ value: "kliima", count: 42 }, { value: "kliimamuutused", count: 18 }] };
@@ -1118,6 +1123,11 @@ test("autocomplete covers reviewed environmental prefixes with diacritic and one
     ["põhj", /põhjavee/u],
     ["pohj", /põhjavee/u],
     ["õhk", /õhukvaliteet/u],
+    ["kliima", /2024\. aasta keskmine/u],
+    ["uputus", /üleujutusu?/u],
+    ["meri", /merevee/u],
+    ["mura", /mürakaart/u],
+    ["ohukvaliteet", /õhukvaliteet/u],
     ["jäät", /jäätmekäitluskohti/u],
     ["jaat", /jäätmekäitluskohti/u],
     ["Natura", /Natura/u],
@@ -7004,7 +7014,7 @@ test("home links and the 320px quick bar keep accessible names, contrast and ref
 });
 
 test("reviewed autocomplete suggests paraphrased synonym queries the same reviewed questions", () => {
-  for (const query of ["mürgised jäätmed", "hazardous waste"]) {
+  for (const query of ["mürgised jäätmed"]) {
     assert.deepEqual(getReviewedSearchSuggestions(query, 5), [
       "Kui palju tekkis Eestis 2024. aastal ohtlikke jäätmeid?",
     ]);

@@ -29,6 +29,10 @@ export const REVIEWED_ENVIRONMENT_SUGGESTIONS = Object.freeze([
   "Kust leida KESE keskkonnaseire mõõtmistulemusi?",
   "Mis on Eesti jäätmete ringlussevõtu määr?",
   "Kust leida keskkonnaandmete API-d?",
+  "Milline on õhukvaliteet Tallinnas praegu?",
+  "Mis oli 2024. aasta keskmine õhutemperatuur Eestis?",
+  "Kust leida üleujutusohu prognoosid?",
+  "Kust leida merevee taseme mõõtmisandmeid?",
 ]);
 
 const REVIEWED_SOURCE_CODE_ALIASES = new Map([
@@ -55,7 +59,15 @@ const REVIEWED_SOURCE_CODE_ALIASES = new Map([
   ["tiik", ["Kas väikese tiigi rajamiseks on luba vaja?"]],
   ["parnu rand", ["Kas Pärnu rannas võib ujuda?"]],
   ["ohk", ["Milline on õhutemperatuur praegu Tartus?", "Milline on homne ilmaprognoos Eestis?"]],
-  ["ohukvaliteet", ["Milline on õhutemperatuur praegu Tartus?", "Milline on homne ilmaprognoos Eestis?"]],
+  ["ohukvaliteet", ["Milline on õhukvaliteet Tallinnas praegu?"]],
+  ["mura", ["Kust näeb Tallinna mürakaarti?"]],
+  ["mura tase", ["Kust näeb Tallinna mürakaarti?"]],
+  ["kliima", ["Mis oli 2024. aasta keskmine õhutemperatuur Eestis?"]],
+  ["uputus", ["Kust leida üleujutusohu prognoosid?"]],
+  ["uleujutus", ["Kust leida üleujutusohu prognoosid?"]],
+  ["meri", ["Kust leida merevee taseme mõõtmisandmeid?"]],
+  ["mereveetase", ["Kust leida merevee taseme mõõtmisandmeid?"]],
+  ["merevee tase", ["Kust leida merevee taseme mõõtmisandmeid?"]],
 ]);
 
 const REVIEWED_ALIAS_SURFACE_PATTERN = /^[a-z0-9õäöüšž]+(?:[ _-][a-z0-9õäöüšž]+)*$/iu;

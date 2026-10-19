@@ -495,7 +495,7 @@ test("all 30 supplied forestry misconceptions and FAQs have an explicit public r
 
 test("every visible reviewed suggestion leads to a deterministic answer or the intended municipality clarification", () => {
   assert.equal(REVIEWED_FORESTRY_SEARCH_SUGGESTIONS.length, 18);
-  assert.equal(REVIEWED_SEARCH_SUGGESTIONS.length, 42);
+  assert.equal(REVIEWED_SEARCH_SUGGESTIONS.length, 45);
   assert.deepEqual(
     suggestionsForValue("", {}, REVIEWED_SEARCH_SUGGESTIONS, 8).map((item) => item.value),
     REVIEWED_FORESTRY_SEARCH_SUGGESTIONS.slice(0, 8),
