@@ -2395,7 +2395,7 @@ function topicRoot(word) {
   if (word.startsWith("pestitsiid") || word.startsWith("taimekaitsevah")) return "pestitsiid";
   if (word.startsWith("nitraat")) return "nitraat";
   if (word.startsWith("veekaits")) return "veekaitse";
-  if (word.startsWith("veelo") || word.startsWith("veeloa")) return "vesi";
+  if (word.startsWith("veelo") || word.startsWith("veeloa") || word.startsWith("veelub")) return "vesi";
   if (word.startsWith("pinnave")) return "vesi";
   if (word.startsWith("pohjave")) return "pohjavesi";
   if (word.startsWith("puurkaev") || word.startsWith("puurauk") || word.startsWith("salvkaev") || word.startsWith("kaevu")) return "puurkaev";
