@@ -49,6 +49,7 @@ const OFFICIAL_SITEMAP_SOURCES = Object.freeze([
   { url: "https://rmk.ee/wp-sitemap.xml", sourceKey: "official-sitemap" },
   { url: "https://www.ilmateenistus.ee/sitemap_index.xml", sourceKey: "official-sitemap" },
   { url: "https://terviseamet.ee/sitemap.xml", sourceKey: "official-sitemap" },
+  { url: "https://keskkonnaharidus.ee/et/sitemap", sourceKey: "official-sitemap" },
   { url: "https://kik.ee/sitemap.xml", sourceKey: "official-sitemap" },
 ]);
 const MAX_OFFICIAL_SITEMAP_DOCUMENTS = 50_000;
@@ -834,7 +835,26 @@ export function parsePortalSitemap(xml) {
 // policy intact while letting the corpus cover the same public pages the
 // reviewed source catalogue already cites.
 export function parseOfficialSitemapDocument(xml) {
-  const $ = load(String(xml || ""), { xmlMode: true });
+  const source = String(xml || "");
+  if (!/<(?:urlset|sitemapindex)\b/iu.test(source)) {
+    const $ = load(source);
+    const links = $("a[href]").map((_, element) => {
+      const value = $(element).attr("href");
+      try {
+        const url = canonicalCatalogueUrl(new URL(value, "https://keskkonnaharidus.ee/").toString());
+        if (!url) return null;
+        const parsedUrl = new URL(url);
+        if (!OFFICIAL_HOSTS.has(parsedUrl.hostname)) return null;
+        if (/^\/(?:en|ru|sv|fi|de|lv|lt)\//u.test(parsedUrl.pathname)) return null;
+        return { url, lastmod: null };
+      } catch {
+        return null;
+      }
+    }).get().filter(Boolean);
+    const entries = [...new Map(links.map((entry) => [entry.url, entry])).values()];
+    return { indexUrls: [], entries, entryCount: links.length, rejectedCount: links.length - entries.length };
+  }
+  const $ = load(source, { xmlMode: true });
   const sitemapEntries = $("sitemap");
   const indexUrls = sitemapEntries.map((_, element) => {
     const value = cleanText($(element).find("loc").text());
