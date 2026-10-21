@@ -1838,6 +1838,59 @@ h3 {
   line-height: 1.5;
 }
 
+.answer-chart__mismatch {
+  position: relative;
+  display: inline-block;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.answer-chart__mismatch-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #c62828;
+  color: var(--white);
+  font: 700 0.75rem/1 inherit;
+  cursor: help;
+}
+
+.answer-chart__mismatch-icon:focus-visible {
+  outline: 2px solid var(--brand-700);
+  outline-offset: 2px;
+}
+
+.answer-chart__mismatch-tip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: -6px;
+  z-index: 5;
+  width: max-content;
+  max-width: min(280px, 80vw);
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: var(--ink);
+  color: var(--white);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.answer-chart__mismatch:hover .answer-chart__mismatch-tip,
+.answer-chart__mismatch-icon:focus-visible + .answer-chart__mismatch-tip,
+.answer-chart__mismatch-icon:focus + .answer-chart__mismatch-tip {
+  opacity: 1;
+  visibility: visible;
+}
+
 .answer-chart__share {
   display: flex;
   flex-wrap: wrap;

@@ -5,6 +5,27 @@ const HEIGHT = 260;
 const MARGIN = { top: 16, right: 20, bottom: 36, left: 56 };
 const SERIES_COLORS = ["var(--brand-700)", "var(--green)", "var(--purple)"];
 const TOOLTIP_WIDTH = 176;
+export const SOURCE_MISMATCH_NOTE = "Tekst ja graafik kasutavad eri allikaid ning eri tõlgenduste tõttu võivad numbrid erineda.";
+
+// The text answer and the chart are built from separately validated sources, so
+// their numbers can legitimately disagree; say so where the reader compares them.
+function SourceMismatchNote() {
+  return (
+    <span className="answer-chart__mismatch" role="note">
+      <button aria-label={SOURCE_MISMATCH_NOTE} className="answer-chart__mismatch-icon" type="button">!</button>
+      <span aria-hidden="true" className="answer-chart__mismatch-tip">{SOURCE_MISMATCH_NOTE}</span>
+    </span>
+  );
+}
+
+function ChartCaption({ chart, citation, sourceDiffers }) {
+  return (
+    <p className="answer-chart__caption">
+      {chart.caption ? `${chart.caption} ` : ""}{citation}
+      {sourceDiffers ? <SourceMismatchNote /> : null}
+    </p>
+  );
+}
 
 function useContainerWidth(fallback = 640) {
   const ref = useRef(null);
@@ -27,7 +48,7 @@ function valueWithError(point, unit, digits) {
   return point.error === undefined ? base : `${base} (±${formatChartValue(point.error, 1)}%)`;
 }
 
-function SeriesChart({ chart, citation = null }) {
+function SeriesChart({ chart, citation = null, sourceDiffers = false }) {
   const [frameRef, width] = useContainerWidth();
   const [activeYear, setActiveYear] = useState(null);
   const titleId = useId();
@@ -226,7 +247,7 @@ function SeriesChart({ chart, citation = null }) {
           </tbody>
         </table>
       </div>
-      <p className="answer-chart__caption">{chart.caption ? `${chart.caption} ` : ""}{citation}</p>
+      <ChartCaption chart={chart} citation={citation} sourceDiffers={sourceDiffers} />
     </figure>
   );
 }
@@ -267,7 +288,7 @@ function shareLabelLines(label) {
   return second ? [first, second] : [first];
 }
 
-function ShareChart({ chart, citation = null }) {
+function ShareChart({ chart, citation = null, sourceDiffers = false }) {
   const titleId = useId();
   const descId = useId();
   const points = chart.series[0].points;
@@ -352,7 +373,7 @@ function ShareChart({ chart, citation = null }) {
           </tbody>
         </table>
       </div>
-      <p className="answer-chart__caption">{chart.caption ? `${chart.caption} ` : ""}{citation}</p>
+      <ChartCaption chart={chart} citation={citation} sourceDiffers={sourceDiffers} />
     </figure>
   );
 }
@@ -361,8 +382,22 @@ function ShareChart({ chart, citation = null }) {
 // know; showing nothing is better than drawing it with the wrong geometry.
 const KNOWN_CHART_KINDS = new Set(["line", "bar", "share"]);
 
-export default function AnswerChart({ chart, citation = null }) {
+// True when the chart cites a source the text answer does not cite. An answer
+// without any citations gives nothing to compare against, so it never warns.
+export function chartSourceDiffers(answer, chart, sources = []) {
+  if (!chart?.citation || !answer) return false;
+  const textCitations = new Set([
+    ...(answer.introCitations || []),
+    ...(answer.parts || []).flatMap((part) => part.citations || []),
+  ]);
+  if (!textCitations.size || textCitations.has(chart.citation)) return false;
+  const urlOf = (number) => sources.find((source) => source.citation === number)?.url;
+  const chartUrl = urlOf(chart.citation);
+  return !chartUrl || ![...textCitations].some((number) => urlOf(number) === chartUrl);
+}
+
+export default function AnswerChart({ chart, citation = null, sourceDiffers = false }) {
   if (!chart || !KNOWN_CHART_KINDS.has(chart.kind)) return null;
-  if (chart.kind === "share") return <ShareChart chart={chart} citation={citation} />;
-  return <SeriesChart chart={chart} citation={citation} />;
+  if (chart.kind === "share") return <ShareChart chart={chart} citation={citation} sourceDiffers={sourceDiffers} />;
+  return <SeriesChart chart={chart} citation={citation} sourceDiffers={sourceDiffers} />;
 }

@@ -34,7 +34,7 @@ import {
   suggestionsForValue,
 } from "./search-suggestions.js";
 import { readSearchStream } from "./search-stream.js";
-import AnswerChart from "./AnswerChart.jsx";
+import AnswerChart, { chartSourceDiffers } from "./AnswerChart.jsx";
 import { APP_BUILD_MISMATCH_EVENT, noteServerBuild } from "./app-build.js";
 
 const SOURCE = "https://keskkonnaportaal.ee";
@@ -1191,7 +1191,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
                 {result.answer.intro}{" "}
                 {(result.answer.introCitations || []).map((citation) => <Citation key={citation} number={citation} sources={result.sources} />)}
               </p>
-              {result.chart ? <AnswerChart chart={result.chart} citation={<Citation number={result.chart.citation} sources={result.sources} />} key={`${result.chart.title}-${result.chart.series.map((series) => series.id).join("|")}`} /> : null}
+              {result.chart ? <AnswerChart chart={result.chart} citation={<Citation number={result.chart.citation} sources={result.sources} />} sourceDiffers={chartSourceDiffers(result.answer, result.chart, result.sources)} key={`${result.chart.title}-${result.chart.series.map((series) => series.id).join("|")}`} /> : null}
               <div className="answer-parts">
                 {(result.answer.parts || []).map((part, index) => (
                   <section key={index}>
@@ -1219,7 +1219,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
                           <span>Koondvastus</span>
                           <h2 id={`followup-${turnIndex + 1}-title`} tabIndex={-1}>{turn.result.answer.title}</h2>
                           <p>{turn.result.answer.intro}{" "}{(turn.result.answer.introCitations || []).map((citation) => <Citation key={citation} number={citation} sources={turn.result.sources} />)}</p>
-                          {turn.result.chart ? <AnswerChart chart={turn.result.chart} citation={<Citation number={turn.result.chart.citation} sources={turn.result.sources} />} key={`${turn.result.chart.title}-${turn.result.chart.series.map((series) => series.id).join("|")}`} /> : null}
+                          {turn.result.chart ? <AnswerChart chart={turn.result.chart} citation={<Citation number={turn.result.chart.citation} sources={turn.result.sources} />} sourceDiffers={chartSourceDiffers(turn.result.answer, turn.result.chart, turn.result.sources)} key={`${turn.result.chart.title}-${turn.result.chart.series.map((series) => series.id).join("|")}`} /> : null}
                           {(turn.result.answer.parts || []).map((part, partIndex) => (
                             <p key={partIndex}>{part.text}{" "}{(part.citations || []).map((citation) => <Citation key={citation} number={citation} sources={turn.result.sources} />)}</p>
                           ))}
