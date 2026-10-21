@@ -257,11 +257,13 @@ export function directEvidenceExtract(query, document, plannedEvidence = null, {
   const actionTerms = terms.filter((term) => term.length >= 5 && /(?:da|ma|mine|takse|tud|nud)$/u.test(term)
     && !term.endsWith("maa")
     && !genericContext.has(term));
+  const stateTerms = terms.filter((term) => /^(?:haig|vigast|surnud|hukkunud)/u.test(term));
   const primarySubject = [...terms]
     .filter((term) => !genericContext.has(term))
     .sort((left, right) => (Number(rootIsDomain(right)) - Number(rootIsDomain(left))) || right.length - left.length)[0] || null;
   const passageAnswersSubject = (passage) => (!primarySubject || textHasQueryRoot(passage, primarySubject))
-    && actionTerms.every((term) => textHasActionRoot(passage, term));
+    && actionTerms.every((term) => textHasActionRoot(passage, term))
+    && stateTerms.every((term) => textHasQueryRoot(passage, term));
   const stablePublicationText = (value) => {
     const published = /^\d{2}\.\d{2}\.\d{4}$/u.test(String(document?.published || "").trim())
       ? String(document.published).trim()

@@ -8194,6 +8194,7 @@ export function assessEvidence(query, documents = []) {
     || ["touseb", "tousnud", "tous", "tarbib", "tarbimine", "muutub", "muutunud", "vaheneb", "suureneb", "kahaneb", "kasvab"]
       .includes(term))
     .filter((term) => !GENERIC_QUERY_CONTEXT_TERMS.has(term));
+  const stateTerms = terms.filter((term) => /^(?:haig|vigast|surnud|hukkunud)/u.test(term));
   const broadDocument = (strong || asksForMeasurement || broadGenericIntent || !preferredSubject)
     ? null
     : perDocument.find((match, index) => {
@@ -8214,6 +8215,7 @@ export function assessEvidence(query, documents = []) {
             ? explicitSubjects.every((subject) => textHasExplicitSubject(passage, subject))
             : broadDomainTerms.every((term) => passageMatches.includes(term)))
           && actionTerms.every((term) => textHasActionRoot(passage, term))
+          && stateTerms.every((term) => textHasQueryRoot(passage, term))
           && passageMatches.some((term) => !GENERIC_QUERY_CONTEXT_TERMS.has(term));
       });
     });
