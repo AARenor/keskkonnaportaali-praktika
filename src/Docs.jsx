@@ -71,7 +71,7 @@ export default function Docs({ pathname = globalThis.location?.pathname || "/doc
           ) : (
             <>
               <p className="docs-lead">Kuidas allikapõhist keskkonnaotsingut kasutada ja kuidas see Keskkonnaportaali süsteemiga ühendada.</p>
-              <div className="docs-notice">Praktikaversioon, mitte ametlik tootmisteenus. Juhendid kirjeldavad 02.10.2026 kontrollitud lahendust; portaali integratsioon ei ole veel tehtud.</div>
+              <div className="docs-notice">Praktikaversioon, mitte ametlik tootmisteenus. Juhendid kirjeldavad 21.10.2026 kontrollitud lahendust; portaali integratsioon ei ole veel tehtud.</div>
               <div className="docs-guides">
                 <a href="/docs/kasutajale" className="docs-guide-link">
                   <h2>Kasutajale</h2>
