@@ -1229,6 +1229,27 @@ export async function createPortalDraft(query, {
       };
     }
   }
+  const intentNormalized = normalize(query);
+  const firePreventionIntent = /(?:metsa)?poleng|tulekahju|tuleoht/u.test(intentNormalized)
+    && /(?:hoida|valtida|ennetada|kaitsta|ennetus|torje)/u.test(intentNormalized);
+  const fellingProcedureIntent = /eraldis/u.test(intentNormalized)
+    && /(?:taotle|taotlus|taotlemine|raie)/u.test(intentNormalized);
+  const intentAnswer = normalize(draft.answer?.intro || "");
+  const intentCovered = !firePreventionIntent && !fellingProcedureIntent
+    || (firePreventionIntent && /(?:poleng|tulekahju|tuleoht)/u.test(intentAnswer))
+    || (fellingProcedureIntent && /(?:eraldis|taotl|metsateatis)/u.test(intentAnswer));
+  if (!intentCovered) {
+    draft.answer = {
+      eyebrow: "Vajan täpsustust",
+      title: draft.answer?.title || query,
+      intro: "Leitud allikad ei kata küsimuse konkreetset tegevust piisavalt täpselt. Ma ei esita sama teema üldist statistikat vastusena.",
+      introCitations: [],
+      parts: [],
+      note: "",
+    };
+    draft.clarification = "Täpsusta tegevust või objekti; praegused allikad kirjeldavad teist teemat.";
+    draft.evidence.answerable = false;
+  }
   const evidencePack = buildEvidencePack({ sources: draft.sources, query: retrievalQuery, plan: packPlan });
   draft.evidence.sourceEvidencePack = evidencePack;
   return draft.evidence?.answerable === true

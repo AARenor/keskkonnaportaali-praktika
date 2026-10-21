@@ -158,6 +158,7 @@ export function forestSeriesIntent(query) {
   if (typeof query !== "string" || query.length > MAX_QUERY_LENGTH) return null;
   const text = normalize(query);
   if (!text || isUnsupportedForestScope(text)) return null;
+  if (/\btaotl\w*|\btaotle\w*/u.test(text)) return null;
   const hasRaie = mentionsFelling(text);
   // No leading boundary: "netojuurdekasv" must also route to the Eurostat adapter.
   const hasIncrement = /juurdekasv\w*/u.test(text);
@@ -218,6 +219,7 @@ export function forestContextSeriesIntent(query) {
   if (forestSeriesIntent(query)) return null;
   const text = normalize(query);
   if (!text || isUnsupportedForestScope(text) || PERIOD_SIGNAL.test(text) || TREND_WORDS.test(text)) return null;
+  if (/\btaotl\w*|\btaotle\w*/u.test(text)) return null;
   const hasRaie = mentionsFelling(text);
   const hasIncrement = /juurdekasv\w*/u.test(text);
   const hasRemovals = /\beemalda\w*/u.test(text);

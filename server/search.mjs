@@ -8991,6 +8991,19 @@ export function composeTopicDataOverviewResponse(query, documents = [], options 
   };
 }
 
+function specificQuestionMismatch(query, text) {
+  const cleanQuery = normalize(query);
+  const sourceText = normalize(text);
+  if (/(?:metsa)?poleng|tulekahju|tuleoht/u.test(cleanQuery)
+    && /(?:hoida|valtida|ennetada|kaitsta|ennetus|torje)/u.test(cleanQuery)) {
+    return !/(?:poleng|tulekahju|tuleoht)/u.test(sourceText);
+  }
+  if (/eraldis/u.test(cleanQuery) && /(?:taotle|taotlus|taotlemine)/u.test(cleanQuery)) {
+    return !/(?:eraldis|taotl|metsateatis)/u.test(sourceText);
+  }
+  return false;
+}
+
 // A reviewed route card may safely tell the user where an official service
 // lives even when its changing contents cannot support a current factual
 // claim. The immutable catalogue extract, never live alias prose, is cited.
@@ -9013,6 +9026,7 @@ export function composeOfficialServiceNavigationResponse(query, documents = [], 
     return quality.strong ? [reviewed] : [];
   })[0];
   if (!source) return null;
+  if (specificQuestionMismatch(cleanQuery, [source.title, source.summary, source.answer].filter(Boolean).join(" "))) return null;
 
   const citedSource = reviewedNavigationCitationSource({
     ...source,
@@ -9063,6 +9077,7 @@ export function composeAmbiguousDomainGuidanceResponse(query, documents = [], op
   const catalogue = [...SEARCH_DOCUMENTS, ...ADDITIONAL_OFFICIAL_SERVICE_DOCUMENTS];
   const source = catalogue.find((document) => document.id === witness.id && document.url === witness.url);
   if (!source) return null;
+  if (specificQuestionMismatch(cleanQuery, [source.title, source.summary, source.answer].filter(Boolean).join(" "))) return null;
 
   const citedSource = reviewedNavigationCitationSource({
     ...source,
