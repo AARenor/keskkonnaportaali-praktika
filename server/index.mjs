@@ -8,6 +8,7 @@ import {
   closeCorpusStatsBackendAdmission,
   corpusStats,
   scheduleOfficialDiscoveryMaintenance,
+  refreshReviewedCatalogue,
   startContinuousCorpusBackfill,
   startCorpusSyncIfStale,
   stopOfficialDiscoveryIndexing,
@@ -1138,6 +1139,7 @@ server.listen(port, "0.0.0.0", () => {
   corpusRefreshInterval = setInterval(refreshCorpus, 60 * 60 * 1_000);
   corpusRefreshInterval.unref();
   continuousCorpusBackfillTimer = startContinuousCorpusBackfill();
+  void refreshReviewedCatalogue().catch(() => undefined);
   scheduleOfficialDiscoveryMaintenance();
   officialDiscoveryMaintenanceTimer = setInterval(
     () => scheduleOfficialDiscoveryMaintenance(),

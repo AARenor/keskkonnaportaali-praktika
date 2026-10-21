@@ -2194,6 +2194,24 @@ export function reviewedCatalogueCorpusRecords() {
   return [...byUrl.values()];
 }
 
+// Reviewed catalogue rows are versioned seeds, not crawl results. Refresh
+// them on every process start so a deploy cannot leave old identities or an
+// expired review window in the database until the next 24-hour crawl.
+export async function refreshReviewedCatalogue() {
+  if (!databaseEnabled()) return { status: "disabled", seeded: 0 };
+  await ensureCorpusSchema();
+  return withDatabaseClient(async (client) => {
+    const lock = await client.query("SELECT pg_try_advisory_lock(hashtext('practice-corpus-sync')) AS locked");
+    if (!lock.rows[0]?.locked) return { status: "busy", seeded: 0 };
+    try {
+      const seeded = await seedReviewedCatalogueDocuments(client, null);
+      return { status: "ready", ...seeded };
+    } finally {
+      await client.query("SELECT pg_advisory_unlock(hashtext('practice-corpus-sync'))").catch(() => undefined);
+    }
+  });
+}
+
 // The portal crawl is a mirror, not the complete reviewed source registry.
 // Persist reviewed catalogue documents that have no portal row so a database
 // search can also reach external laws, UN terminology and file-only sources.
@@ -2267,6 +2285,7 @@ async function seedReviewedCatalogueDocuments(client, runId) {
       is_available = TRUE
     WHERE current.content = ''
       OR current.source_key IN ('portal-catalog', 'portal-sitemap')
+      OR current.source_key = 'reviewed-catalogue-source'
   `, [JSON.stringify(records), runId]);
   // Retire pre-hash reviewed identities left by the earlier `reviewed:<id>`
   // scheme. Their slashed URL may also differ from the canonical row, so
