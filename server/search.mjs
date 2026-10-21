@@ -8198,7 +8198,7 @@ export function assessEvidence(query, documents = []) {
     ? null
     : perDocument.find((match, index) => {
       const document = candidates[index];
-      if (document._answerEvidenceEligible === false || document.evidencePolicy === "route-only" || document.delivery) return false;
+      if (document._answerEvidenceEligible === false || document.evidencePolicy === "route-only" || document.delivery === "structured-or-download") return false;
       if (!documentCanDirectlyAnswerQuery(query, document)) return false;
       const primarySubject = [...match.matchedTerms]
         .filter((term) => !GENERIC_QUERY_CONTEXT_TERMS.has(term))
