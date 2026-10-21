@@ -1882,7 +1882,7 @@ function specificTopicMismatch(query, payload) {
     return !/(?:poleng|tulekahju|tuleoht)/u.test(intro);
   }
   if (/eraldis/u.test(cleanQuery) && /(?:taotle|taotlus|taotlemine)/u.test(cleanQuery)) {
-    return !/(?:eraldis|taotl|metsateatis)/u.test(intro);
+    return !(/(?:eraldis|raie|metsateatis)/u.test(intro) && /taotl/u.test(intro));
   }
   return false;
 }

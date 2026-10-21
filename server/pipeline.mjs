@@ -1237,7 +1237,7 @@ export async function createPortalDraft(query, {
   const intentAnswer = normalize(draft.answer?.intro || "");
   const intentCovered = !firePreventionIntent && !fellingProcedureIntent
     || (firePreventionIntent && /(?:poleng|tulekahju|tuleoht)/u.test(intentAnswer))
-    || (fellingProcedureIntent && /(?:eraldis|taotl|metsateatis)/u.test(intentAnswer));
+    || (fellingProcedureIntent && /(?:eraldis|raie|metsateatis)/u.test(intentAnswer) && /taotl/u.test(intentAnswer));
   if (!intentCovered) {
     draft.answer = {
       eyebrow: "Vajan täpsustust",
