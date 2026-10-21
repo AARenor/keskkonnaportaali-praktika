@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { buildEvidencePack } from "../server/evidence-pack.mjs";
 import {
@@ -95,7 +96,7 @@ async function sourceFiles(directory) {
 }
 
 test("hand-written Estonian output never uses a glossary-rejected translation", async () => {
-  const files = [...await sourceFiles(new URL("../server/", import.meta.url).pathname), ...await sourceFiles(new URL("../src/", import.meta.url).pathname)];
+  const files = [...await sourceFiles(fileURLToPath(new URL("../server/", import.meta.url))), ...await sourceFiles(fileURLToPath(new URL("../src/", import.meta.url)))];
   const offenders = [];
   for (const file of files) {
     const hits = glossaryAvoidHits(await readFile(file, "utf8"));
