@@ -701,6 +701,62 @@ test("evidence quality requires one source to cover the question and requested y
   }]).strong, true);
 });
 
+test("qualitative questions gain a cited answer from one relevant official passage without weakening measurement gates", () => {
+  const mold = assessEvidence("Kuidas hoida ära hallitust kodus?", [{
+    id: "indoor",
+    score: 12,
+    title: "Sisekliima ja hallitus",
+    summary: "Hallituse vältimiseks tuleb hoida ruum kuivana ja ventileerida.",
+    content: "Hallituse vältimiseks tuleb hoida ruum kuivana ja ventileerida.",
+  }]);
+  assert.equal(mold.strong, false);
+  assert.equal(mold.broad, true);
+  assert.equal(mold.answerable, true);
+
+  const wrongAction = assessEvidence("Kuidas istutada metsa?", [{
+    id: "camping",
+    score: 30,
+    title: "Metsas liikumine",
+    summary: "Metsas tohib telkida igaüheõiguse piires ja lõket teha tähistatud kohas.",
+    content: "Metsas tohib telkida igaüheõiguse piires ja lõket teha tähistatud kohas.",
+  }]);
+  assert.equal(wrongAction.answerable, false, "an unrelated action on a matching domain must not answer");
+
+  const nationalWater = assessEvidence("missugune on vee kvaliteet Emajões?", [{
+    id: "national-water",
+    score: 30,
+    title: "Pinnavee seisund",
+    summary: "Pinnaveekogumite seisundit hinnatakse riiklikult veekogumite kaupa.",
+    content: "Pinnaveekogumite seisundit hinnatakse riiklikult veekogumite kaupa.",
+  }]);
+  assert.equal(nationalWater.answerable, false, "a named water body needs its own evidence");
+  assert.equal(assessEvidence("Emajõe vee kvaliteet?", [{
+    id: "national-water-first",
+    score: 30,
+    title: "Pinnavee seisund",
+    summary: "Pinnaveekogumite seisundit hinnatakse riiklikult veekogumite kaupa.",
+    content: "Pinnaveekogumite seisundit hinnatakse riiklikult veekogumite kaupa.",
+  }]).answerable, false, "a leading named subject must not be dropped as a question word");
+
+  const localWater = assessEvidence("missugune on vee kvaliteet Emajões?", [{
+    id: "emajogi",
+    score: 30,
+    title: "Emajõe seisund",
+    summary: "Emajõe seisundit hinnati 2025. aastal heaks.",
+    content: "Emajõe seisundit hinnati 2025. aastal heaks.",
+  }]);
+  assert.equal(localWater.answerable, true);
+
+  const measurement = assessEvidence("Kui palju jäätmeid tekib Eestis aastas?", [{
+    id: "waste",
+    score: 30,
+    title: "Jäätmete teke",
+    summary: "Jäätmeid tekib Eestis palju.",
+    content: "Jäätmeid tekib Eestis palju.",
+  }]);
+  assert.equal(measurement.answerable, false, "a quantity question without a quantity stays unanswered");
+});
+
 test("official source catalogue covers monitoring, APIs, spatial data, weather, air, water, waste and statistics", () => {
   assert.ok(SEARCH_DOCUMENTS.length >= 40);
   const ids = new Set(SEARCH_DOCUMENTS.map((source) => source.id));
@@ -807,7 +863,7 @@ test("researched official source expansion covers twenty-five previously missing
     assert.equal(assessEvidence(query, [tagOnly]).strong, false, `${expectedId} tags alone cannot authorize an answer`);
   }
 
-  const staleAt = Date.parse("2026-11-02T00:00:01Z");
+  const staleAt = Date.parse("2027-10-22T00:00:01Z");
   for (const [, expectedId] of cases) {
     const source = byId.get(expectedId);
     assert.equal(sourceEvidenceEligibility(source, { now: staleAt }).eligible, false, `${expectedId} expires closed`);

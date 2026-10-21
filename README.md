@@ -3,7 +3,8 @@
 Keskkonnaportaali visuaalsel keelel põhinev praktikaprojekt, mille põhiosad on:
 
 - vastus-enne-allikaid otsing, kus vastuse koostamine ja tõendikontroll kasutavad sama päringu värsket, filtreeritud ja järjestatud tõendipakki ning lisavad nummerdatud viited;
-- PostgreSQL-i korpus koos portaali sitemapilehtede, otsingukaartide ja valitud täistekstidega; tulemusi täiendavad ametlikud otsinguliidesed, kontrollitud ilma-, hüdroloogia- ja kliimaandmed ning valitud EELISe registrikirjed. Statistikaamet on avalikust allikavalikust välistatud;
+- PostgreSQL-i korpus, mis koondab portaali sitemapilehed, otsingukaardid, valitud täistekstid ning heakskiidetud ametlike väljaandjate (Keskkonnaagentuur, Keskkonnaamet, Kliimaministeerium, RMK, Ilmateenistus, Terviseamet, KIK) eestikeelsed sitemap-URL-id. Lehetekst hüdratiseeritakse kõigilt lubatud ametlikelt hostidelt ning täissünkroonimiste vahel jätkab piiratud taustapartii tühjade ja aegunud leheteksti ridade täitmist; tulemusi täiendavad ametlikud otsinguliidesed, kontrollitud ilma-, hüdroloogia- ja kliimaandmed ning valitud EELISe registrikirjed. Statistikaamet on avalikust allikavalikust välistatud;
+- avatud kvalitatiivsele küsimusele võib vastuse anda üks asjakohane viidatud ametlik lõik; arvu, aastat, nimetatud kohta või tegevust küsiv vastus nõuab endiselt täpset tõendit ning mudeli tõrke korral kuvatakse sama tõendi viidatud väljavõte;
 - allika-, sisutüübi-, aasta- ja järjestusfiltrid ning kuni neli iga kord uue tõendiotsingu tegevat viidatud jätkuküsimust;
 - toetatud metsaküsimustele Keskkonnaagentuuri kontrollitud esmased SMI töövihiku aegread koos viidatud diagrammiga; sobiva esmase andmerea puudumisel diagrammi ei kuvata;
 - metsa osakaalu küsimusele („kui suur osa Eestist on mets”) SMI 2025 maakategooriate jaotus sektordiagrammina;

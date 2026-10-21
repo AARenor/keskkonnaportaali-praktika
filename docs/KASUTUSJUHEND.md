@@ -1,6 +1,6 @@
 # Keskkonnaportaali otsingu kasutusjuhend
 
-Uuendatud: 02.10.2026
+Uuendatud: 21.10.2026
 
 Täielik sirvitav juhend koos peatükilinkidega:
 [praktika.arle.top/docs/kasutajale](https://praktika.arle.top/docs/kasutajale).
@@ -24,7 +24,8 @@ ega pärast uuesti laadimist; küsimused püsivad ainult avatud lehe mälus.
 3. Tulemuse metaandmetes tähendab **Allikas:** sisu väljaandjat. Keskkonnaagentuuri koostatud materjal kuvatakse nimega „Keskkonnaagentuur”, mitte lühendiga.
 4. **Andmed:** näitab eraldi andmeaastat ja vajadusel andmete täpset seisu. **Uuendatud:** näitab allikalehel avaldatud viimast muutmiskuupäeva; kui seda pole, kuvatakse **Avaldatud:**. Reaalaja seireallikate puhul küljes olev kellaaeg on vaatlusaeg, mitte lehe avaldamisaeg: seda näidatakse kui **Andmete seis: pp.kk.aaaa tt:mm UTC**. Näiteks puidubilansi juures kuvatakse „Andmed: 2023 (seisuga 18.03.2026) · Uuendatud: 01.10.2026”, et lehe muutmise aega ei peetaks ekslikult andmeaastaks.
 5. „Ametlik” ei tähenda automaatselt, et iga sama lehe lause tõendab küsitud arvu. Vastus kasutab ainult küsimust otseselt katvat lõiku või valideeritud andmerida.
-6. Viitenumbril ja allikate kompaktsel legendil on sama värv; allika eristamiseks on alati ka number ja nimi. **Legendi iga rida on link:** number, väljaandaja ja kuupäev avavad algallika uuel vahelehel — ka siis, kui vastus jättis intro ossa ilma viiteta (näiteks teate „nähtavad tõendilõigud ei kata küsimust” puhul). Numberlingi hüpikvihje on ainult lühike eelvaate. **Uusim leheuuendus** võrdleb üksnes teadaolevaid lehe muutmise kuupäevi, mitte andmeaastaid ega meie kontrollimise aega. Teadmata kuupäevaga allikale värskust juurde ei omistata.
+6. Viitenumbril ja allikate kompaktsel legendil on sama värv; allika eristamiseks on alati ka number ja nimi. **Legendi iga rida on link:** number, väljaandja ja kuupäev avavad algallika uuel vahelehel — ka siis, kui vastus jättis intro ossa ilma viiteta (näiteks teate „nähtavad tõendilõigud ei kata küsimust” puhul). Numberlingi hüpikvihje on ainult lühike eelvaade. **Uusim leheuuendus** võrdleb üksnes teadaolevaid lehe muutmise kuupäevi, mitte andmeaastaid ega meie kontrollimise aega. Teadmata kuupäevaga allikale värskust juurde ei omistata.
+7. Avatud kvalitatiivsele küsimusele (näiteks „miks…”, „kuidas…”, „mida teeb…”) võib vastuse anda üks asjakohane ametlik lõik, kui see katab küsimuse põhisubjekti ning allikas mainib ka nimetatud kohta või osalejat. Arvu, aastat, konkreetset kohta või tegevust küsiv vastus nõuab endiselt täpset tõendit. Kui mudel ei ole kättesaadav, kuvatakse sama tõendi viidatud väljavõte, mitte üldteadmine.
 
 „Ülevaade” üksi ei ole teemaväline päring: otsing palub valida keskkonnateema. „Metsa ülevaade” või „Põhjavesi andmed Eestis” annavad täpsema lähtekoha.
 

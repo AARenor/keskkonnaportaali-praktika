@@ -22,7 +22,6 @@ import { SOURCE_IDENTITY_VERSION, sourceResourceKey, sameSourceResource } from "
 const PORTAL_BASE = "https://keskkonnaportaal.ee";
 const PORTAL_SEARCH = `${PORTAL_BASE}/et/search`;
 const PORTAL_SITEMAP = `${PORTAL_BASE}/et/sitemap.xml`;
-const PORTAL_ROBOTS = `${PORTAL_BASE}/robots.txt`;
 const CRAWLER_PRODUCT = "keskkonnaportaali-praktika-corpus";
 const MAX_FETCH_BYTES = 4_000_000;
 const MAX_ROBOTS_BYTES = 64_000;
@@ -40,13 +39,27 @@ const MAX_PORTAL_CATALOG_TOTAL = 20_000;
 const MAX_PORTAL_CATALOG_PAGES = Math.ceil(MAX_PORTAL_CATALOG_TOTAL / PORTAL_PAGE_SIZE);
 const SITEMAP_PAGE_SIZE = 5_000;
 const MAX_SITEMAP_PAGES = 20;
+// Scrapeable public sources. Every root is fetched through the same
+// robots-aware HTTPS boundary as hydration; a publisher that blocks the
+// crawler or returns no sitemap is skipped without failing the whole run.
+const OFFICIAL_SITEMAP_SOURCES = Object.freeze([
+  { url: "https://keskkonnaagentuur.ee/sitemap.xml", sourceKey: "official-sitemap" },
+  { url: "https://keskkonnaamet.ee/sitemap.xml", sourceKey: "official-sitemap" },
+  { url: "https://kliimaministeerium.ee/sitemap.xml", sourceKey: "official-sitemap" },
+  { url: "https://rmk.ee/wp-sitemap.xml", sourceKey: "official-sitemap" },
+  { url: "https://www.ilmateenistus.ee/sitemap_index.xml", sourceKey: "official-sitemap" },
+  { url: "https://terviseamet.ee/sitemap.xml", sourceKey: "official-sitemap" },
+  { url: "https://kik.ee/sitemap.xml", sourceKey: "official-sitemap" },
+]);
+const MAX_OFFICIAL_SITEMAP_DOCUMENTS = 50_000;
+const MAX_OFFICIAL_SITEMAP_PAGES = 80;
 const ROBOTS_CACHE_MS = 60 * 60 * 1_000;
 const OFFICIAL_DISCOVERY_RETENTION_HOURS = Math.max(
   24,
   Math.min(Number(process.env.OFFICIAL_DISCOVERY_RETENTION_HOURS) || 168, 720),
 );
 const APPROVED_PAGE_EVIDENCE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1_000;
-const REVIEWED_CATALOGUE_MAX_AGE_MS = 31 * 24 * 60 * 60 * 1_000;
+const REVIEWED_CATALOGUE_MAX_AGE_MS = 366 * 24 * 60 * 60 * 1_000;
 const REVIEWED_CATALOGUE_SOURCE_KEY = "reviewed-catalogue-source";
 const OFFICIAL_DISCOVERY_MAX_ROWS = Math.max(
   1_000,
@@ -93,6 +106,9 @@ const corpusStatsBackendAdmission = createFairSearchAdmission({
 const OFFICIAL_HOSTS = new Set([
   "keskkonnaportaal.ee",
   "www.keskkonnaportaal.ee",
+  "register.keskkonnaportaal.ee",
+  "avaandmed.keskkonnaportaal.ee",
+  "kliimaatlas.keskkonnaportaal.ee",
   "keskkonnaagentuur.ee",
   "www.keskkonnaagentuur.ee",
   "keskkonnaamet.ee",
@@ -106,8 +122,20 @@ const OFFICIAL_HOSTS = new Set([
   "andmed.stat.ee",
   "rmk.ee",
   "www.rmk.ee",
+  "ilmateenistus.ee",
+  "www.ilmateenistus.ee",
+  "ohuseire.ee",
+  "www.ohuseire.ee",
+  "kaitsealad.ee",
+  "www.kaitsealad.ee",
+  "keskkonnaharidus.ee",
+  "www.keskkonnaharidus.ee",
+  "eelis.ee",
+  "www.eelis.ee",
   "tartu.ee",
   "www.tartu.ee",
+  "tallinn.ee",
+  "www.tallinn.ee",
   "terviseamet.ee",
   "www.terviseamet.ee",
   "kik.ee",
@@ -116,6 +144,15 @@ const OFFICIAL_HOSTS = new Set([
   "www.loodusveeb.ee",
   "envir.ee",
   "www.envir.ee",
+  "keskkonnaandmed.envir.ee",
+  "gsavalik.envir.ee",
+  "kotkas.envir.ee",
+  "kese.envir.ee",
+  "pakis.envir.ee",
+  "proto.envir.ee",
+  "maaamet.ee",
+  "www.maaamet.ee",
+  "geoportaal.maaamet.ee",
 ]);
 const CORPUS_HTTPS_ORIGINS = new Set(
   [...OFFICIAL_HOSTS, "et.wikipedia.org"].map((hostname) => `https://${hostname}`),
@@ -141,8 +178,7 @@ const OFFICIAL_DISCOVERY_ORIGINS = new Set([...OFFICIAL_HOSTS].map((host) => `ht
 const SEARCH_FILTER_SOURCES = new Set(["all", "trusted", "official", "reviewed", "supplementary", "other"]);
 let corpusSchemaPromise;
 let backgroundSyncPromise;
-let portalRobotsPromise;
-let portalRobotsFetchedAt = 0;
+const hostRobotsCache = new Map();
 
 export const OFFICIAL_DISCOVERY_RETIRE_SQL = `
   UPDATE practice_corpus_documents
@@ -334,6 +370,19 @@ export function buildPrefixTsQuery(value = "") {
   }).join(" & ");
 }
 
+// Open natural-language questions add qualifiers ("väikesele
+// puidutööstusele") that no single source repeats verbatim. Requiring every
+// term would return an empty page even when an official permit guide covers
+// the subject. Use OR for recall and let coverage ranking prefer documents
+// that match more of the question.
+export function buildAnyPrefixTsQuery(value = "") {
+  const groups = corpusRankingTerms(value).map((term) => {
+    const variants = corpusTermVariants(term).map((variant) => `${variant}:*`);
+    return variants.length === 1 ? variants[0] : `(${variants.join(" | ")})`;
+  });
+  return groups.join(" | ");
+}
+
 export function normalizeSearchFilters(value = {}) {
   const source = SEARCH_FILTER_SOURCES.has(String(value.source || "all")) ? String(value.source || "all") : "all";
   const category = cleanText(value.category).slice(0, 120);
@@ -391,6 +440,18 @@ function canonicalUrl(value, base = PORTAL_BASE) {
   } catch {
     return null;
   }
+}
+
+// Catalogue entries and the crawl can disagree only by a trailing slash on a
+// non-root path (`/juhised` vs `/juhised/`). They are the same public resource:
+// stripping the slash here keeps one row per source instead of creating a
+// near-duplicate that later aborts the reviewed-catalogue insert.
+function canonicalCatalogueUrl(value) {
+  const canonical = canonicalUrl(value);
+  if (!canonical) return null;
+  const url = new URL(canonical);
+  if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/u, "");
+  return url.toString();
 }
 
 export function hydrationResourceMatches(requestedValue, finalValue) {
@@ -766,6 +827,46 @@ export function parsePortalSitemapPage(xml) {
 
 export function parsePortalSitemap(xml) {
   return parsePortalSitemapPage(xml).documents;
+}
+
+// Official publishers other than the portal expose ordinary Drupal or
+// WordPress sitemap indexes. Parsing them separately keeps the portal's host
+// policy intact while letting the corpus cover the same public pages the
+// reviewed source catalogue already cites.
+export function parseOfficialSitemapDocument(xml) {
+  const $ = load(String(xml || ""), { xmlMode: true });
+  const sitemapEntries = $("sitemap");
+  const indexUrls = sitemapEntries.map((_, element) => {
+    const value = cleanText($(element).find("loc").text());
+    try {
+      const url = new URL(value);
+      return url.protocol === "https:" && OFFICIAL_HOSTS.has(url.hostname) ? url.toString() : null;
+    } catch {
+      return null;
+    }
+  }).get().filter(Boolean);
+  const urlEntries = $("url");
+  const entries = urlEntries.map((_, element) => {
+    const value = cleanText($(element).find("loc").text());
+    try {
+      const url = canonicalCatalogueUrl(value);
+      if (!url) return null;
+      const parsedUrl = new URL(url);
+      if (!OFFICIAL_HOSTS.has(parsedUrl.hostname)) return null;
+      // Public search is Estonian-only. Other language trees are still
+      // scrapeable, but indexing them would only add unreachable duplicates.
+      if (/^\/(?:en|ru|sv|fi|de|lv|lt)\//u.test(parsedUrl.pathname)) return null;
+      return { url, lastmod: cleanText($(element).find("lastmod").text()) || null };
+    } catch {
+      return null;
+    }
+  }).get().filter(Boolean);
+  return {
+    indexUrls,
+    entries,
+    entryCount: urlEntries.length,
+    rejectedCount: urlEntries.length - entries.length,
+  };
 }
 
 export function extractReadablePage(html, url) {
@@ -1617,21 +1718,25 @@ export async function fetchCorpusText(url, {
 }
 
 async function assertPortalRobotsAllowed(url) {
-  if (!portalRobotsPromise || Date.now() - portalRobotsFetchedAt >= ROBOTS_CACHE_MS) {
-    portalRobotsPromise = fetchCorpusText(PORTAL_ROBOTS, {
+  const target = new URL(url);
+  const robotsUrl = `${target.origin}/robots.txt`;
+  const cached = hostRobotsCache.get(target.origin);
+  if (!cached || Date.now() - cached.fetchedAt >= ROBOTS_CACHE_MS) {
+    const entry = { promise: null, fetchedAt: 0 };
+    entry.promise = fetchCorpusText(robotsUrl, {
       accept: "text/plain",
       retries: 1,
       maximumBytes: MAX_ROBOTS_BYTES,
     }).then((response) => {
-      portalRobotsFetchedAt = Date.now();
+      entry.fetchedAt = Date.now();
       return parseRobotsTxt(response.text);
     }).catch((error) => {
-      portalRobotsPromise = undefined;
-      portalRobotsFetchedAt = 0;
+      hostRobotsCache.delete(target.origin);
       throw error;
     });
+    hostRobotsCache.set(target.origin, entry);
   }
-  const rules = await portalRobotsPromise;
+  const rules = await hostRobotsCache.get(target.origin).promise;
   if (!robotsAllowsUrl(url, rules)) {
     throw new Error("Corpus source is disallowed by robots.txt");
   }
@@ -1710,6 +1815,49 @@ async function crawlPortalSearch(query, onDocuments, { concurrency = 2, delayMs 
     orderedUrls: summary.occurrences,
     distinctUrls: summary.distinctUrls,
   };
+}
+
+async function crawlOfficialSitemap({ url, sourceKey, delayMs = 120 } = {}) {
+  const documents = [];
+  const seenUrls = new Set();
+  const seenSitemaps = new Set();
+  const queue = [url];
+  let pages = 0;
+  while (queue.length) {
+    if (pages >= MAX_OFFICIAL_SITEMAP_PAGES) throw new Error("Official sitemap exceeds the configured page limit");
+    if (documents.length >= MAX_OFFICIAL_SITEMAP_DOCUMENTS) throw new Error("Official sitemap exceeds the configured document limit");
+    const sitemapUrl = queue.shift();
+    if (!sitemapUrl || seenSitemaps.has(sitemapUrl)) continue;
+    seenSitemaps.add(sitemapUrl);
+    await assertPortalRobotsAllowed(sitemapUrl);
+    const response = await fetchCorpusText(sitemapUrl, { accept: "application/xml, text/xml" });
+    const parsed = parseOfficialSitemapDocument(response.text);
+    pages += 1;
+    if (parsed.indexUrls.length) {
+      queue.push(...parsed.indexUrls.filter((child) => !seenSitemaps.has(child)).slice(0, MAX_OFFICIAL_SITEMAP_PAGES));
+      continue;
+    }
+    if (!parsed.entries.length) {
+      if (pages === 1) throw new Error("Official sitemap returned no usable URLs");
+      continue;
+    }
+    for (const entry of parsed.entries) {
+      if (seenUrls.has(entry.url)) continue;
+      seenUrls.add(entry.url);
+      if (documents.length >= MAX_OFFICIAL_SITEMAP_DOCUMENTS) break;
+      documents.push(normalizeDocument({
+        sourceKey,
+        url: entry.url,
+        title: placeholderTitle(entry.url),
+        modifiedAt: entry.lastmod,
+        sourceTier: "official",
+        quality: 1,
+        metadata: { source_kind: "official-sitemap", placeholder: true },
+      }));
+    }
+    if (delayMs > 0 && queue.length) await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return { documents, pages, sitemaps: seenSitemaps.size };
 }
 
 async function crawlPortalSitemap({ delayMs = 120 } = {}) {
@@ -1848,7 +1996,7 @@ export function corpusHydrationCandidates(urls = []) {
     try {
       const parsed = new URL(url);
       return parsed.protocol === "https:" && !parsed.username && !parsed.password && !parsed.port
-        && ["keskkonnaportaal.ee", "www.keskkonnaportaal.ee"].includes(parsed.hostname)
+        && OFFICIAL_HOSTS.has(parsed.hostname)
         && !/\.(?:pdf|xlsx?|docx?|zip|csv)$/iu.test(parsed.pathname);
     } catch {
       return false;
@@ -2001,10 +2149,16 @@ export function reviewedCatalogueCorpusRecords() {
       const reviewedAt = document._evidenceStatusAt || document._catalogueReviewedAt || new Date().toISOString();
       const content = document.content || document.summary || "";
       const evidencePolicy = document.evidencePolicy || "versioned";
+      const recordUrl = canonicalCatalogueUrl(document.url);
       return {
-        external_id: `reviewed:${document.id}`,
+        // The catalogue id alone is not unique per canonical URL: a reviewed
+        // source can move from `/path` to `/path/` between releases, and the
+        // old row keeps its id. Binding the external id to the URL keeps the
+        // `(source_key, external_id)` constraint stable and lets the URL
+        // conflict path update the existing row instead of aborting the sync.
+        external_id: `reviewed:${document.id}:${hash(recordUrl).slice(0, 16)}`,
         source_key: REVIEWED_CATALOGUE_SOURCE_KEY,
-        canonical_url: canonicalUrl(document.url),
+        canonical_url: recordUrl,
         title: document.title || document.id,
         summary: document.summary || "",
         content,
@@ -2114,6 +2268,16 @@ async function seedReviewedCatalogueDocuments(client, runId) {
     WHERE current.content = ''
       OR current.source_key IN ('portal-catalog', 'portal-sitemap')
   `, [JSON.stringify(records), runId]);
+  // Retire pre-hash reviewed identities left by the earlier `reviewed:<id>`
+  // scheme. Their slashed URL may also differ from the canonical row, so
+  // leaving them available would answer from a duplicate page.
+  await client.query(`
+    UPDATE practice_corpus_documents
+    SET is_available = FALSE
+    WHERE source_key = 'reviewed-catalogue-source'
+      AND is_available = TRUE
+      AND external_id !~ '^reviewed:[^:]+:[0-9a-f]{16}$'
+  `);
   return { seeded: result.rowCount || 0 };
 }
 
@@ -2145,6 +2309,7 @@ export async function syncPortalCorpus({
     };
     const details = {
       sitemapPages: 0,
+      officialSitemaps: {},
       catalogTotal: 0,
       catalogSkipped: null,
       authoritativeCapacityDropped: 0,
@@ -2169,7 +2334,31 @@ export async function syncPortalCorpus({
       details.authoritativeCapacityDropped += sitemapUpsert.capacityDropped;
       const reviewedSeed = await seedReviewedCatalogueDocuments(client, runId);
       details.reviewedCatalogueSeeded = reviewedSeed.seeded;
-      onProgress?.({ stage: "sitemap", discovered: sitemapDocuments.length, indexed: totals.indexed });
+
+      // The portal is the primary mirror, not the only scrapeable official
+      // source. Each publisher is isolated: a blocked or broken sitemap must
+      // not discard the pages already discovered from the others.
+      const officialSitemapDocuments = [];
+      for (const source of OFFICIAL_SITEMAP_SOURCES) {
+        try {
+          const crawled = await crawlOfficialSitemap(source);
+          officialSitemapDocuments.push(...crawled.documents);
+          details.officialSitemaps[new URL(source.url).hostname] = {
+            pages: crawled.pages,
+            discovered: crawled.documents.length,
+          };
+          if (crawled.documents.length) {
+            const officialUpsert = await upsertDocuments(client, crawled.documents, runId);
+            totals.discovered += crawled.documents.length;
+            totals.indexed += officialUpsert.indexed;
+            totals.capacityDropped += officialUpsert.capacityDropped;
+          }
+        } catch (error) {
+          details.officialSitemaps[new URL(source.url).hostname] = { error: error.message };
+          totals.errors += 1;
+        }
+      }
+      onProgress?.({ stage: "sitemap", discovered: totals.discovered, indexed: totals.indexed });
 
       let catalogUrls = [];
       let catalogSkipped = false;
@@ -2232,6 +2421,7 @@ export async function syncPortalCorpus({
       // wider portal catalogue on larger/manual runs.
       hydrationCandidates.push(...catalogUrls);
       hydrationCandidates.push(...sitemapDocuments.map((document) => document.url));
+      hydrationCandidates.push(...officialSitemapDocuments.map((document) => document.url));
 
       if (includeWikipedia) {
         try {
@@ -2248,6 +2438,8 @@ export async function syncPortalCorpus({
 
       const hydration = await hydrateUrls(client, hydrationCandidates, runId, {
         limit: hydrateLimit,
+        concurrency: 2,
+        delayMs: 400,
         onProgress,
       });
       totals.hydrated += hydration.hydrated;
@@ -2274,6 +2466,27 @@ export async function syncPortalCorpus({
             AND is_available = TRUE
         `, [runId]);
         details.unavailableMarked = retired.rowCount;
+      }
+
+      // Retire pages that a successfully crawled official sitemap no longer
+      // lists. Hosts whose sitemap failed are left untouched.
+      const crawledOfficialHosts = Object.entries(details.officialSitemaps)
+        .filter(([, value]) => !value.error)
+        .map(([hostname]) => hostname);
+      if (crawledOfficialHosts.length) {
+        const hostPatterns = [...new Set(crawledOfficialHosts.flatMap((hostname) => {
+          const base = hostname.replace(/^www\./u, "");
+          return [`https://${base}/%`, `https://www.${base}/%`];
+        }))];
+        const retiredOfficial = await client.query(`
+          UPDATE practice_corpus_documents
+          SET is_available = FALSE
+          WHERE source_key IN ('official-sitemap', 'official-page-hydration')
+            AND canonical_url LIKE ANY($2::TEXT[])
+            AND last_seen_run IS DISTINCT FROM $1
+            AND is_available = TRUE
+        `, [runId, hostPatterns]);
+        details.unavailableMarked += retiredOfficial.rowCount;
       }
 
       details.retention = await enforceCorpusRetention(client);
@@ -2533,7 +2746,8 @@ export async function searchCorpus(query, {
       }
     }
     const prefixQuery = buildPrefixTsQuery(normalized);
-    if (!prefixQuery) return {
+    const anyPrefixQuery = buildAnyPrefixTsQuery(normalized);
+    if (!prefixQuery || !anyPrefixQuery) return {
       status: "empty",
       mode: "local-index",
       total: 0,
@@ -2561,12 +2775,14 @@ export async function searchCorpus(query, {
       safeOffset,
       safeExcludedUrls,
       SOURCE_IDENTITY_VERSION,
+      anyPrefixQuery,
     ];
     const [resultState, facetState] = await Promise.allSettled([databaseQuery(`
       WITH parameters AS (
         SELECT
           websearch_to_tsquery('simple', public.unaccent($1)) AS web_query,
           to_tsquery('simple', public.unaccent($2)) AS prefix_query,
+          to_tsquery('simple', public.unaccent($12)) AS any_prefix_query,
           lower($1) AS raw_query,
           $3::TEXT[] AS rank_terms,
           $7::BOOLEAN AS freshness_intent
@@ -2590,6 +2806,7 @@ export async function searchCorpus(query, {
                 FROM unnest(parameters.rank_terms) AS term
                 WHERE public.unaccent(lower(document.summary)) LIKE '%' || public.unaccent(term) || '%'
               ), 0)
+            + CASE WHEN document.search_vector @@ parameters.prefix_query THEN 8.0 ELSE 0 END
             + CASE document.source_tier WHEN 'official' THEN 0.45 WHEN 'reviewed' THEN 0.3 WHEN 'supplementary' THEN 0.05 ELSE 0 END
             + CASE WHEN document.content <> '' THEN 0.3 ELSE 0 END
             + CASE WHEN COALESCE(document.metadata->>'placeholder', 'false') = 'true' THEN -0.75 ELSE 0 END
@@ -2618,7 +2835,7 @@ export async function searchCorpus(query, {
             END, '') <> ALL($10::TEXT[])
           )
           AND (
-            document.search_vector @@ parameters.prefix_query
+            document.search_vector @@ parameters.any_prefix_query
             OR document.search_vector @@ parameters.web_query
             OR lower(document.title) % parameters.raw_query
             OR lower(document.title) LIKE '%' || parameters.raw_query || '%'
@@ -2638,6 +2855,7 @@ export async function searchCorpus(query, {
         SELECT
           websearch_to_tsquery('simple', public.unaccent($1)) AS web_query,
           to_tsquery('simple', public.unaccent($2)) AS prefix_query,
+          to_tsquery('simple', public.unaccent($3)) AS any_prefix_query,
           lower($1) AS raw_query
       ), matched AS (
         SELECT document.source_tier, document.category, document.published_at
@@ -2649,7 +2867,7 @@ export async function searchCorpus(query, {
             OR document.last_seen_at >= NOW() - make_interval(hours => ${OFFICIAL_DISCOVERY_RETENTION_HOURS})
           )
           AND (
-            document.search_vector @@ parameters.prefix_query
+            document.search_vector @@ parameters.any_prefix_query
             OR document.search_vector @@ parameters.web_query
             OR lower(document.title) % parameters.raw_query
             OR lower(document.title) LIKE '%' || parameters.raw_query || '%'
@@ -2670,7 +2888,7 @@ export async function searchCorpus(query, {
           WHERE published_at IS NOT NULL AND published_at <= CURRENT_DATE
           GROUP BY EXTRACT(YEAR FROM published_at) ORDER BY value DESC LIMIT 12
         ) item), '[]'::JSONB) AS years
-    `, [normalized, prefixQuery], queryOptions)]);
+    `, [normalized, prefixQuery, anyPrefixQuery], queryOptions)]);
     // Join both parallel database operations before the request-owned corpus
     // work can settle and release its admission slot.
     throwIfCorpusSearchClosed(signal, deadlineAt);
@@ -3009,10 +3227,10 @@ export function corpusBackfillHydrateLimit(value = process.env.CORPUS_BACKFILL_H
   return Math.max(0, Math.min(Number.isFinite(parsed) && String(value ?? "").trim() !== "" ? parsed : 300, 1_000));
 }
 
-// Hydrates portal rows that have never been fetched, news and topic pages
+// Hydrates corpus rows that have never been fetched, news and topic pages
 // first. It records no run: persistence keeps each row's last_seen_run, so the
 // next full sync's retirement pass and freshness check are unaffected.
-export async function hydrateCorpusBacklog({ limit = 300 } = {}) {
+export async function hydrateCorpusBacklog({ limit = 300, concurrency = 2, delayMs = 400 } = {}) {
   await ensureCorpusSchema();
   const safeLimit = Math.max(0, Math.trunc(Number(limit) || 0));
   if (!databaseEnabled() || !safeLimit) return { status: "disabled", hydrated: 0, skipped: 0, errors: 0 };
@@ -3023,27 +3241,61 @@ export async function hydrateCorpusBacklog({ limit = 300 } = {}) {
       const backlog = await client.query(`
         SELECT canonical_url
         FROM practice_corpus_documents
-        WHERE content = ''
-          AND is_available = TRUE
-          AND NOT (metadata ? 'hydration_attempted_at')
-          AND source_key IN ('portal-sitemap', 'portal-catalog')
+        WHERE is_available = TRUE
+          AND source_key IN ('portal-sitemap', 'portal-catalog', 'official-sitemap', 'official-live-search')
+          AND NOT (metadata ? 'robots_noindex')
           AND (
-            canonical_url LIKE 'https://keskkonnaportaal.ee/%'
-            OR canonical_url LIKE 'https://www.keskkonnaportaal.ee/%'
+            content = ''
+            OR source_key IN ('official-sitemap', 'official-live-search')
+          )
+          AND (
+            NOT (metadata ? 'hydration_attempted_at')
+            OR (metadata->>'hydration_attempted_at')::TIMESTAMPTZ < NOW() - INTERVAL '7 days'
           )
         ORDER BY
           CASE WHEN canonical_url ~ '/(uudised|teemad)/' THEN 0 ELSE 1 END,
+          CASE
+            WHEN canonical_url LIKE 'https://keskkonnaportaal.ee/%'
+              OR canonical_url LIKE 'https://www.keskkonnaportaal.ee/%' THEN 0
+            ELSE 1
+          END,
           published_at DESC NULLS LAST,
           id DESC
         LIMIT $1
       `, [safeLimit]);
       const urls = backlog.rows.map((row) => row.canonical_url);
-      const result = await hydrateUrls(client, urls, null, { limit: safeLimit });
+      const result = await hydrateUrls(client, urls, null, { limit: safeLimit, concurrency, delayMs });
       return { status: "ready", remainingChecked: urls.length, ...result };
     } finally {
       await client.query("SELECT pg_advisory_unlock(hashtext('practice-corpus-sync'))").catch(() => undefined);
     }
   });
+}
+
+// A single startup batch cannot fill a 12k-page index. While the process is
+// alive, keep taking bounded batches so every scrapeable page eventually gets
+// its body; the advisory lock makes concurrent replicas harmless.
+export function startContinuousCorpusBackfill({
+  intervalMs = Math.max(30_000, Math.min(Number(process.env.CORPUS_BACKFILL_INTERVAL_MS) || 120_000, 900_000)),
+  batchSize = Math.max(10, Math.min(Number(process.env.CORPUS_BACKFILL_BATCH_SIZE) || 400, 1_000)),
+} = {}) {
+  if (!databaseEnabled() || String(process.env.CORPUS_CONTINUOUS_BACKFILL ?? "true").toLocaleLowerCase("en") === "false") {
+    return null;
+  }
+  let running = false;
+  const timer = setInterval(async () => {
+    if (running) return;
+    running = true;
+    try {
+      await hydrateCorpusBacklog({ limit: batchSize, concurrency: 2, delayMs: 400 });
+    } catch {
+      // A transient database or upstream failure must not stop the loop.
+    } finally {
+      running = false;
+    }
+  }, intervalMs);
+  timer.unref?.();
+  return timer;
 }
 
 export async function startCorpusSyncIfStale() {

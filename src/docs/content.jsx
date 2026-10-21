@@ -25,6 +25,7 @@ export const userGuide = {
         <p>Tulemused võivad ilmuda enne vastuse valmimist. Otsingu ajal ei pea lehte uuesti laadima.</p>
         <p>„Tühjenda otsing” eemaldab sisestatud teksti, kuid ei kustuta juba kuvatud tulemusi. Uus küsimus käivitab uue otsingu.</p>
         <p>Otsing töötab praegu eesti keeles. Konto loomist ega sisselogimist selle otsingu kasutamiseks ei ole.</p>
+        <p>Allikakiht hõlmab Keskkonnaportaali ja heakskiidetud ametlike väljaandjate (Keskkonnaagentuur, Keskkonnaamet, Kliimaministeerium, RMK, Ilmateenistus, Terviseamet, KIK) avalikke sitemap-lehti. Lehetekst täidetakse järk-järgult ka täissünkroonimiste vahel, seega võib üksiku lehe sisu jõuda otsingusse mõne tunni jooksul pärast esmakordset avastamist.</p>
       </>,
     },
     {
@@ -54,6 +55,7 @@ export const userGuide = {
           <li><strong>Legendi read on lingid:</strong> iga allika number, nimi ja kuupäev avaneb kohe algallikas uuel vahelehel — ka siis, kui vastus ei mahtunud ühtegi viidet intro alla.</li>
           <li><strong>„Andmed:”</strong> näitab andmeaastat; <strong>„Uuendatud:”</strong> lehe teadaolevat muutmisaega ning selle puudumisel <strong>„Avaldatud:”</strong> avaldamisaega. Reaalaja seireallika kellaaeg on vaatlusaeg ja kuvatakse kui <strong>„Andmete seis:”</strong>.</li>
         </ul>
+        <p>Avatud küsimusele („miks…”, „kuidas…”, „mida teeb…”) võib vastuse anda üks asjakohane ametlik lõik, kui see katab küsimuse põhisubjekti ja nimetatud tegevuse. Arvu, aastat, konkreetset kohta või tegevust küsiv vastus nõuab endiselt täpset tõendit; sobiva lõigu puudumisel kuvatakse allikad või palutakse täpsustust. Kui mudel ei ole kättesaadav, näidatakse sama allika viidatud väljavõtet.</p>
         <p>„Uusim leheuuendus” tähendab võrdlust teadaolevate lehe uuendamiskuupäevade vahel. See ei tähenda, et kõik selles allikas esitatud andmed oleksid sama aasta kohta.</p>
         <p>Olulise arvu juures kontrolli algallikast aastat, ühikut ja mõistet. Näiteks metsamaa pindala ei ole sama mis metsaga kaetud metsamaa ehk puistute pindala.</p>
       </>,
@@ -107,6 +109,7 @@ export const userGuide = {
           <li><strong>Tulemused on olemas, kuid vastust pole:</strong> allikad ei pruugi küsimust piisavalt täpselt katta. Ava sobiv allikas või küsi konkreetsemalt.</li>
           <li><strong>Tulemusi pole:</strong> eemalda filtrid, kontrolli kirjapilti ja proovi eestikeelset teemanimetust.</li>
           <li><strong>Küsitakse täpsustust:</strong> lisa soovitud aasta, näitaja või koht. Ära lisa isikuandmeid.</li>
+          <li><strong>Juhendi vastus puudub:</strong> kontrollitud juhendi- ja kataloogiväljavõtted kehtivad 12 kuud. Kui allikas on aegunud, ei kasutata seda vastuses; ava algallikas või küsi teemakohast teenust.</li>
           <li><strong>Otsing on ajutiselt hõivatud või ebaõnnestub:</strong> oota veidi ja proovi uuesti. Otsing ei muuda ametlikke andmeid.</li>
           <li><strong>Leht palub uuendada:</strong> laadi see uuesti, et kasutada uut otsinguversiooni. Vajadusel sisesta küsimus pärast laadimist uuesti.</li>
         </ul>
@@ -287,6 +290,8 @@ const result = await response.json();
       id: "kaivitamine",
       title: "Lokaalne käivitus ja juurutamine",
       content: <>
+        <p>Korpuse sünkroonimine loeb 24-tunnise vahega portaali sitemap'i ja heakskiidetud ametlike väljaandjate sitemap'e (keskkonnaagentuur.ee, keskkonnaamet.ee, kliimaministeerium.ee, rmk.ee, www.ilmateenistus.ee, terviseamet.ee, kik.ee). Iga hosti <code>robots.txt</code> kontrollitakse enne lugemist; ühe allika tõrge ei katkesta teisi. Leheteksti täidab taustapartii, mida juhivad <code>CORPUS_CONTINUOUS_BACKFILL</code>, <code>CORPUS_BACKFILL_INTERVAL_MS</code> ja <code>CORPUS_BACKFILL_BATCH_SIZE</code>. Katvust saab kontrollida <CodeLink path="scripts/audit-corpus-coverage.mjs" /> skriptiga; see teeb ainult kirjutuskaitstud päringuid.</p>
+        <p>Otsing kasutab range sõnarühma <code>AND</code>-päringut täpsussignaalina ja laiemat põhimõistete <code>OR</code>-päringut avatud küsimuste leidmiseks; järjestus lisab katvuse ning pealkirja/kokkuvõtte vaste. Avatud kvalitatiivsele küsimusele võib vastata üks ametlik lõik, arvu- ja aastaküsimused jäävad range tõendivärava taha. Avalik vastus ei sisalda sisemist <code>evidenceCandidates</code> välja ega kogu korpuse teksti.</p>
         <p>Dockerfile'i lähtekoht on Node.js 24. Sõltuvused on lukustatud <code>package-lock.json</code> failis. Minimaalne arenduse kontroll ilma vastuse koostamise teenuse ja püsiva vahemäluta:</p>
         <Code>{`npm ci
 npm run build

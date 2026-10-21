@@ -1,8 +1,12 @@
 # Ametlike allikate ja API-de register
 
-Uuendatud: 06.10.2026
+Uuendatud: 21.10.2026
 
 See register kirjeldab, millised allikad on otsingu päringuteel aktiivsed, millised on kasutajale suunavad kataloogiallikad ning milliseid teenuseid ei kasutata enne eraldi valideeritud adapterit. Ükski allikas ei anna mudelile õigust kasutada üldteadmisi: vastus peab jääma tagastatud tõendite piiresse.
+
+Korpuse sünkroonimine ei piirdu Keskkonnaportaali sitemap'iga. Iga 24-tunnine jooks loeb ka heakskiidetud ametlike väljaandjate avalikke sitemap'e: keskkonnaagentuur.ee, keskkonnaamet.ee, kliimaministeerium.ee, rmk.ee (`wp-sitemap.xml`), www.ilmateenistus.ee (`sitemap_index.xml`), terviseamet.ee ja kik.ee. Järgitakse portaali sitemap'i Drupal'i `?page=`-leheküljestamist ja ametlike sitemap'ide indekseid; avalik otsing on eestikeelne, seetõttu jäetakse kõrvalkeelte URL-i harud välja ning iga hosti `robots.txt`-i reegleid kontrollitakse enne päringut. Ühe allika blokeering või katkine sitemap ei katkesta teiste omade jooksu.
+
+Leheteksti hüdratiseeritakse kõigilt lubatud ametlikelt hostidelt, mitte ainult portaalist. Täissünkroonimiste vahel täidab piiratud taustapartii veel tühje või aegunud leheteksti ridu (`CORPUS_CONTINUOUS_BACKFILL`, `CORPUS_BACKFILL_INTERVAL_MS`, `CORPUS_BACKFILL_BATCH_SIZE`); sama nõuandelukk hoiab kõrvuti töötavad replikad ohutuna.
 
 ## Metsandusallikate prioriteet
 
@@ -27,7 +31,7 @@ Riigi Teataja kontroll 01.10.2026: **Metsaseadus** jõustunud sõnastusega 01.07
 | [FAO FRA 2025 Terms and Definitions](https://openknowledge.fao.org/server/api/core/bitstreams/a6e225da-4a31-4e06-818d-ca3aeadfd635/content) | FRA 2025 terminoloogia, Rooma 2023 | Ptk 1a, 1d ja 2a: metsa ja muu puittaimestikuga maa rahvusvaheline määratlus, kasvav tagavara, metsastumine, raadamine ja metsapindala netomuutus. |
 | [Metsandusteatmik](https://atlex.ee/toode/metsandusteatmik/) | E. Laas, V. Uri; Atlex 2023; 432 lk; ISBN 978-9916-620-22-9 | Paberväljaanne, mille täistekst ei ole veebis. Kirje toetab mõistete ja bibliograafia navigatsiooni, mitte tsitaati teose sisust. |
 
-Need on leheküljeviitega üle vaadatud väljavõtted, mitte automaatselt indekseeritud PDF-ide kogu sisu. Väljavõttele kehtib 31-päevane kordusülevaatuse piir. Faili enda avaldamisaastat ei asendata seda linkiva lehe uuendamiskuupäevaga. Puidubilansi maandumislehe tegelik uuendamiskuupäev kontrolli ajal oli **01.10.2026**.
+Need on leheküljeviitega üle vaadatud väljavõtted, mitte automaatselt indekseeritud PDF-ide kogu sisu. Väljavõttele kehtib 12-kuuline kordusülevaatuse piir; 31-päevane piir aegus 20.10.2026 ja muutis muidu kehtiva juhendi vastuse keelamiseks, seega pikenes see ühe aastani. Faili enda avaldamisaastat ei asendata seda linkiva lehe uuendamiskuupäevaga. Puidubilansi maandumislehe tegelik uuendamiskuupäev kontrolli ajal oli **01.10.2026**.
 
 06.10.2026 eraldi SMI töövihiku kontrollis loeti [SMI 2025 tulemuste XLSX-faili](https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI%20tulemused%202025/SMI%202025%20tulemused.xlsx) tegelikke lahtriväärtusi: töölehe 1 „Metsamaa pindala ja osakaal” B5 sisaldab 2360,1999999999998 tuhat ha, C5 52,056406819666321% ja D5 suhtelist viga 1,2021727079294899%; B20 kogupindala on 4533,9279911811791 tuhat ha. Avalik ümardus on 2360,2 tuhat ha ja 52,1%; nimetaja sisaldab maismaad koos siseveekogudega, mitte ainult maismaad. Töölehe 25 2024. aasta veeru AA12 väärtus 2350,8188831296102 ja 2025. aasta veeru AB12 väärtus 2360,20037264553 kuuluvad sama uuema töövihiku eri aastaridadesse.
 
@@ -77,7 +81,7 @@ Diagrammi pealkiri ja legend nimetavad tabeli 25 näitajat metsamaa kasvava mets
 
 | Allikas | Väljaandja | Ligipääs | Kasutus ja piirang | Puhver | Eval-kate |
 |---|---|---|---|---|---|
-| PostgreSQL-i sisukorpus | Keskkonnaportaal ja viidatud avalikud allikad | Saidikaardi- ja otsingukataloogi kirjed, valitud HTML-täistekstid ning auditi-snapshot'id; 01.10.2026 sünkrooni sitemap'is 8466 URL-i | Lai tulemuste loend ning sama loendi ametlike AI-tõendite leidmine; URL-i leidmine ei tõenda täisteksti olemasolu ega kogu portaali katvust; vana snapshot'i järjekord ei asenda relevantsusjärjestust | Püsiv korpus, 24 h sünkroniseerimispoliitika; enne portaali lugemist jõustatakse live `robots.txt` | Parseri-, robots-, deduplikatsiooni-, filtri-, relevantsus- ja avaliku lepingu testid |
+| PostgreSQL-i sisukorpus | Keskkonnaportaal ja viidatud avalikud allikad | Portaali ja heakskiidetud ametlike väljaandjate sitemap'id, otsingukataloogi kirjed, valitud HTML-täistekstid ning auditi-snapshot'id; 01.10.2026 portaali sitemap'is 8466 URL-i | Lai tulemuste loend ning sama loendi ametlike AI-tõendite leidmine; URL-i leidmine ei tõenda täisteksti olemasolu ega kogu portaali katvust; vana snapshot'i järjekord ei asenda relevantsusjärjestust | Püsiv korpus, 24 h sünkroniseerimispoliitika; enne iga hosti lugemist jõustatakse live `robots.txt` | Parseri-, robots-, deduplikatsiooni-, filtri-, relevantsus- ja avaliku lepingu testid |
 | Kureeritud eestikeelne Vikipeedia | Wikimedia kogukond | MediaWiki Action API, kaheksa valitud mõisteartiklit | Ainult täiendav mõistetaust; ei tõenda üksinda ametlikku arvu, õigust ega hetkeolukorda | PostgreSQL-i korpus | Allikatase välistab selle ametliku tõendi rollist |
 | Keskkonnaportaali otsing | Keskkonnaagentuur | `https://keskkonnaportaal.ee/et/search?search_api_fulltext=...` | Dokumenteerimata HTML-discovery. Tulemuste HTML-i ei renderdata; server eraldab ainult pealkirja, puhta teksti, URL-i ja metaandmed | 5 min, stale-if-error kuni 24 h | Keskkonnateema positiivsed juhud; teemaväline ja null-vastete negatiivsed juhud |
 | Valitsusportaali ühine otsing | Keskkonnaamet, Keskkonnaagentuur, Kliimaministeerium | `https://search.service.eu-live.vportal.ee/v1/search/{index}`; indeksid `keskkonnaamet`, `keskkonnaagentuur`, `kliimamin` | Ametlike veebide täistekstiotsing. Päring kasutab `sort_by=score`, eesti keelt, kuni kuut vastet saidi kohta ja vajadusel kuni kolme intent-laiendust. Sisend on tõend, mitte mudelijuhis. Teenus jättis kontrolli ajal TLS-i vahesertifikaadi saatmata; rakendus lisab Let’s Encrypti ametliku avaliku YR1/YR2 ahela, kuid ei lülita sertifikaadikontrolli välja. Coolify IPv4-only võrgus sunnitakse selle hosti ühendus IPv4-le, et Node ei jääks töötut IPv6 ühendust ootama | 5 min, stale-if-error kuni 24 h | Jäätmete põletamine, Tallinna õhk, metsa vanusetrend, tuleviku raiemaht, load, vesi ja negatiivsed teemavälised juhud |
@@ -226,6 +230,8 @@ Teine uurimisring lisas 25 otseselt kontrollitud ametlikku püsilehte. Kõik kas
 ## Uue allika vastuvõtukriteeriumid
 
 Uus allikas lubatakse vastuse koostamisse alles siis, kui on dokumenteeritud väljaandja, URL/endpoint, litsents või avaliku kasutuse alus, skeem, autentimine, mahu- ja kiiruspiirid, uuendussagedus, cache-poliitika, isikuandmete risk ning vähemalt üks positiivne ja üks negatiivne eval-juht. Allika tõrge peab andma oleku `unavailable`, mitte väite, et otsitavat nähtust ei ole.
+
+Uus ametlik host lubatakse korpusesse alles siis, kui see on lisatud HTTPS-hostide allowlisti ja sitemap-allikate loendisse ning selle `robots.txt`, eestikeelsed URL-i harud ja sitemap'i struktuur on kontrollitud. Sitemap'i kuulumine ei tõenda üksikväidet: tõendivaliku määrab allikaregistri roll ja tõendipoliitika.
 
 Kolm kaevandamisallikat on avalikud ametiasutuste HTML-lehed, ei vaja autentimist ega sisalda päringupõhist isikuandmete töötlemist. Neile rakenduvad sama HTTPS-hostide allowlist, live-hüdratsiooni 2 MB ja korpusesünkrooni 4 MB vastusepiir, kontrollitud ümbersuunamine, päringuaeg ning 24 tunni korpusevärskendus nagu teistele ametlikele lehtedele. Menetluse- ja keeldumisjuhend suunavad kasutaja õige menetluskonteksti juurde, kuid ei tõenda konkreetset keskkonnamõju; Ida-Viru põhjavee piirkondlik seisundiallikas ja projektipõhised eelhinnangud/KMH-d jäävad faktiväidete eraldi tõenditeks. KOTKAS kuvatakse menetluse avamise toimingulingina, samal ajal kui nummerdatud viide avab väidet kandva Keskkonnaameti juhendi.
 

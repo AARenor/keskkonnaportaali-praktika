@@ -60,8 +60,10 @@ import {
   hasCompleteSentenceEnding,
   normalize,
   queryTerms,
+  rootIsDomain,
   sanitizeLlmEvidenceText,
   splitTextPassages,
+  textHasActionRoot,
   textHasQueryRoot,
 } from "./search.mjs";
 import { sourceCanSupportPublicCitation } from "./source-registry.mjs";
@@ -92,7 +94,7 @@ function conventionalEvidenceDocumentsFromListing(listing) {
   // retrieval class and remains available to its dedicated planner below.
   const conventionalListing = {
     ...(listing || {}),
-    items: (listing?.items || [])
+    items: (listing?.evidenceCandidates || listing?.items || [])
       .filter((document) => !QUERY_BOUND_ADAPTER_RETRIEVALS.has(document.retrieval)),
   };
   return evidenceDocumentsFromListing(conventionalListing);
@@ -144,6 +146,15 @@ function passageDirectness(query, passage) {
     const hasForestAge = text.includes("mets") && /\b(?:noor|vanus|vana)\w*/u.test(text);
     const hasDirection = /\b(?:suuren|vahen|lang|kahan|pusi)\w*/u.test(text);
     return yearScore + (hasForestAge && hasDirection ? 20 : 0);
+  }
+  // Guidance questions need an instruction, not a description of the page.
+  const guidanceQuestion = /\b(?:kuidas|mida\s+teha|mida\s+peab|kuhu|kus\s+saab|millised\s+on\s+nouded|kuidas\s+valtida|kuidas\s+taotleda)\b/u.test(normalize(query))
+    && !/\b(?:kui\s+palju|kui\s+suur|pindala|osakaal|muutunud|muutus|trend|aastatel|arv|kogus|protsent)\b/u.test(normalize(query));
+  if (guidanceQuestion) {
+    const advice = /\b(?:tuleb|peab|soovita\w*|valdi\w*|valtida|eemalda\w*|kuivata\w*|tuuluta\w*|puhasta\w*|kontrolli\w*|taotle\w*|esita\w*|hoia\w*|vaheta\w*|paranda\w*|koguge|vii\b|viia\b|registreeri\w*)\b/u.test(text);
+    const meta = /\b(?:kasitleb|sisaldab|annab\s+ulevaate|on\s+puhendatud|tutvustab|leiad|naed)\b/u.test(text);
+    const chrome = /\b(?:avakuva|infosusteem|menuu|otsing|avaandmed|juhatus)\b/u.test(text);
+    return yearScore + (advice ? 14 : 0) - (meta ? 16 : 0) - (chrome ? 10 : 0);
   }
   return yearScore;
 }
@@ -230,8 +241,21 @@ export function condenseRedundantSentences(value = "", { mergeDefinitions = fals
   return condensed.join(" ");
 }
 
-export function directEvidenceExtract(query, document, plannedEvidence = null) {
+export function directEvidenceExtract(query, document, plannedEvidence = null, { requireSubject = false } = {}) {
   const subjects = queryTerms(query).filter((root) => specialistSubjectVariants(root));
+  // The generic extract must answer the same subject the broad evidence gate
+  // accepted. Without this, an advice-heavy sentence about a different object
+  // on the same page ("vana külmik") could become the answer to "biojäätmed".
+  const terms = queryTerms(query);
+  const genericContext = new Set(["andmed", "keskkond", "seire"]);
+  const actionTerms = terms.filter((term) => term.length >= 5 && /(?:da|ma|mine|takse|tud|nud)$/u.test(term)
+    && !term.endsWith("maa")
+    && !genericContext.has(term));
+  const primarySubject = [...terms]
+    .filter((term) => !genericContext.has(term))
+    .sort((left, right) => (Number(rootIsDomain(right)) - Number(rootIsDomain(left))) || right.length - left.length)[0] || null;
+  const passageAnswersSubject = (passage) => (!primarySubject || textHasQueryRoot(passage, primarySubject))
+    && actionTerms.every((term) => textHasActionRoot(passage, term));
   const stablePublicationText = (value) => {
     const published = /^\d{2}\.\d{2}\.\d{4}$/u.test(String(document?.published || "").trim())
       ? String(document.published).trim()
@@ -268,6 +292,7 @@ export function directEvidenceExtract(query, document, plannedEvidence = null) {
     .map(stablePublicationText)
     .map((value) => value.replace(/\s+/gu, " ").trim())
     .filter((value) => subjects.every((root) => textHasQueryRoot(value, root)))
+    .filter((value) => !requireSubject || passageAnswersSubject(value))
     .filter((value) => value.length >= 35 && value.length <= 520 && hasCompleteSentenceEnding(value));
   return passages
     .map((passage, index) => ({
@@ -927,7 +952,7 @@ export function retainSearchPersistence(operation, onBackgroundCleanup) {
 export function shouldGenerateGroundedAnswer(draft) {
   return Boolean(
     draft?.sources?.length
-    && ["ranked-search-results", "reviewed-official-source"].includes(draft?.evidence?.kind)
+    && ["ranked-search-results", "reviewed-official-source", "broad-grounded-answer"].includes(draft?.evidence?.kind)
     && draft?.evidence?.answerable === true,
   );
 }
@@ -1001,6 +1026,7 @@ export async function createPortalDraft(query, {
     ? {
       ...conventionalQuality,
       strong: true,
+      answerable: true,
       directDocumentId: directOverview.id,
       answerIntent: "portal-overview",
       supportingDocumentIds: [directOverview.id],
@@ -1009,6 +1035,7 @@ export async function createPortalDraft(query, {
     ? {
       ...conventionalQuality,
       strong: true,
+      answerable: true,
       directDocumentId: plannedEvidence.directDocumentId,
       answerIntent: plannedEvidence.kind,
       supportingDocumentIds: plannedEvidence.supportingDocumentIds,
@@ -1028,7 +1055,7 @@ export async function createPortalDraft(query, {
   // must report that no suitable official evidence exists at all. The visible
   // listing counts too: it is the set the user can open.
   const subjectCovered = Boolean(forestBalance)
-    || quality.strong
+    || quality.answerable
     || rankedSetCoversSubject(query, [
       ...reranked,
       ...conventionalEvidenceDocumentsFromListing(listing),
@@ -1062,12 +1089,12 @@ export async function createPortalDraft(query, {
     ? answerDocuments.findIndex((document) => document.id === direct.id) + 1
     : 0;
   const draft = composeSearchResponse(query, answerDocuments, {
-    answerable: Boolean(forestBalance) || quality.strong,
+    answerable: Boolean(forestBalance) || quality.answerable,
     // "Seotud ametlikud tulemused" is a claim about the question's subject:
     // incidental matches on filler words never qualify (see
     // rankedSetCoversSubject).
     hasRelevantResults: subjectCovered,
-    clarification: forestBalance || quality.strong
+    clarification: forestBalance || quality.answerable
       ? null
       : subjectCovered
         ? plannedEvidence?.reason === "national-area-method-evidence-required"
@@ -1076,11 +1103,34 @@ export async function createPortalDraft(query, {
         : undefined,
     evidenceKind: forestBalance
       ? "structured-forest-balance"
-      : quality.strong ? "ranked-search-results" : "insufficient-evidence",
+      : quality.strong
+        ? "ranked-search-results"
+        : quality.answerable ? "broad-grounded-answer" : "insufficient-evidence",
     limit: 10,
     quality,
     total: Number(listing.total || reranked.length),
   });
+  if (quality.broad && !forestBalance) {
+    // A qualitative answer must still say something verifiable when the model
+    // is unavailable. Use the most query-relevant passage from the same
+    // document that passed the broad eligibility check.
+    const broadDocument = answerDocuments.find((document) => document.id === quality.broadDocumentId);
+    const extract = broadDocument ? directEvidenceExtract(retrievalQuery, broadDocument, null, { requireSubject: true }) : "";
+    const broadCitation = broadDocument
+      ? answerDocuments.findIndex((document) => document.id === broadDocument.id) + 1
+      : 0;
+    if (extract && broadCitation > 0) {
+      draft.answer = {
+        eyebrow: "Allikapõhine vastus",
+        title: draft.answer.title,
+        intro: extract,
+        introCitations: [broadCitation],
+        parts: [],
+        note: "",
+      };
+      draft.clarification = null;
+    }
+  }
   if (forestBalance) {
     draft.answer = forestBalance.answer;
     draft.related = forestBalance.related;
@@ -1233,10 +1283,12 @@ export function cachedSourcesBelongToListing(cached, listing) {
 
 function draftSourcesBelongToListing(draft, listing) {
   if (!draft?.sources?.length) return true;
-  const witnesses = new Set((listing?.items || []).map(publicSourceWitnessKey).filter(Boolean));
+  const visibleItems = listing?.items || [];
+  const answerItems = listing?.evidenceCandidates || visibleItems;
+  const witnesses = new Set(answerItems.map(publicSourceWitnessKey).filter(Boolean));
   return draft.sources.every((source) => {
     const key = publicSourceWitnessKey(source);
-    return (key !== null && witnesses.has(key)) || sourceIsLinkedToVisibleService(source, listing?.items);
+    return (key !== null && witnesses.has(key)) || sourceIsLinkedToVisibleService(source, visibleItems);
   });
 }
 

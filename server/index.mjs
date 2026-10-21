@@ -8,6 +8,7 @@ import {
   closeCorpusStatsBackendAdmission,
   corpusStats,
   scheduleOfficialDiscoveryMaintenance,
+  startContinuousCorpusBackfill,
   startCorpusSyncIfStale,
   stopOfficialDiscoveryIndexing,
 } from "./corpus.mjs";
@@ -156,6 +157,7 @@ let containerReadiness = "ready";
 let officialDiscoveryMaintenanceTimer;
 let corpusRefreshTimeout;
 let corpusRefreshInterval;
+let continuousCorpusBackfillTimer;
 
 void purgeExpiredSearchData();
 const searchDataMaintenance = setInterval(() => void purgeExpiredSearchData(), 60_000);
@@ -1135,6 +1137,7 @@ server.listen(port, "0.0.0.0", () => {
   corpusRefreshTimeout.unref();
   corpusRefreshInterval = setInterval(refreshCorpus, 60 * 60 * 1_000);
   corpusRefreshInterval.unref();
+  continuousCorpusBackfillTimer = startContinuousCorpusBackfill();
   scheduleOfficialDiscoveryMaintenance();
   officialDiscoveryMaintenanceTimer = setInterval(
     () => scheduleOfficialDiscoveryMaintenance(),
@@ -1150,9 +1153,10 @@ const gracefulShutdown = createGracefulShutdown(server, {
     corpusStatsAdmission.close();
     closeCorpusStatsBackendAdmission(new DOMException("Server is shutting down", "AbortError"));
     terrapointAdmission.close();
-    if (corpusRefreshTimeout) clearTimeout(corpusRefreshTimeout);
-    if (corpusRefreshInterval) clearInterval(corpusRefreshInterval);
-    if (officialDiscoveryMaintenanceTimer) clearInterval(officialDiscoveryMaintenanceTimer);
+    clearTimeout(corpusRefreshTimeout);
+    clearInterval(corpusRefreshInterval);
+    clearInterval(continuousCorpusBackfillTimer);
+    clearInterval(officialDiscoveryMaintenanceTimer);
     stopOfficialDiscoveryIndexing(new DOMException("Server is shutting down", "AbortError"));
   },
 });

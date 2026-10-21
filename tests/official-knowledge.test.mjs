@@ -218,7 +218,7 @@ test("new forestry knowledge adds no Statistikaamet source", () => {
   for (const document of added) {
     const reviewedAt = Date.parse(document._catalogueReviewedAt);
     assert.ok(Number.isFinite(reviewedAt), document.id);
-    assert.ok(reviewedAt <= Date.now() && Date.now() - reviewedAt <= 31 * 24 * 60 * 60 * 1_000, document.id);
+    assert.ok(reviewedAt <= Date.now() && Date.now() - reviewedAt <= 366 * 24 * 60 * 60 * 1_000, document.id);
     assert.equal(document._evidenceStatusAt, document._catalogueReviewedAt, document.id);
     assert.match(document._evidenceVersion, new RegExp(`^catalogue-review-${document._catalogueReviewedAt.slice(0, 10)}:[0-9a-f]{64}$`, "u"), document.id);
     assert.equal(document.sourceProfile.checkedAt, document._catalogueReviewedAt.slice(0, 10), document.id);

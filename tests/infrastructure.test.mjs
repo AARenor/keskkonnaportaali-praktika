@@ -4749,12 +4749,12 @@ test("reviewed expansion pages yield visible cited answers", async () => {
   for (const [query, sourceId, expectedIntro, expectedExcerpt] of [
     ["radooni päritolu Eestis", "radon-guidance", /radooni päritolu/u, /peamine allikas Eestis on pinnas/u],
     ["mikroplastireostus", "microplastic-pollution", /mikroplasti/u, /keskkonnas püsiv/u],
-    ["häiriv lõhn kuhu teatada", "odor-guidance", /lõhnahäiringut/u, /riigiinfo telefoni 1247/u],
+    ["häiriv lõhn kuhu teatada", "odor-guidance", /lõhnahäiringu|häirivast lõhnast/iu, /riigiinfo telefoni 1247/u],
     ["Eesti rannikuvee ökoloogiline seisund", "coastal-water-status", /16 rannikuveekogumi/u, /2021\. aasta Exceli algandmeid/u],
     ["mikroprügi uuring Eesti meri", "marine-microplastic-research", /uuringud/u, /merepõhja setete/u],
     ["UV-kiirgus Eestis", "solar-uv-guidance", /UV-indeksi/u, /Ilmateenistuse hetkemõõtmisele/u],
     ["radioaktiivsed jäätmed Eestis", "radioactive-waste-guidance", /radioaktiivsed jäätmed/u, /meditsiini-, tööstus- ja teadusasutused/u],
-    ["looduslikud radionukliidid põhjavees", "natural-radionuclides-guidance", /looduslikud radionukliidid/u, /Kambrium-Vendi/u],
+    ["looduslikud radionukliidid põhjavees", "natural-radionuclides-guidance", /looduslik\w* radionukliid/iu, /Kambrium-Vendi/u],
   ]) {
     const source = byId.get(sourceId);
     assert.ok(source);

@@ -4012,7 +4012,7 @@ test("curated official registry has unique identities and explicit dynamic-sourc
   assert.deepEqual(permitProfile.freshness, {
     class: "reviewed-procedure-extract",
     basis: "reviewed-at",
-    maxAgeMs: 31 * 24 * 60 * 60 * 1_000,
+    maxAgeMs: 366 * 24 * 60 * 60 * 1_000,
     requiresSourceTimestamp: true,
   });
   assert.match(permitDocument.content, /Taotluste ja menetluste registrisse/u);
@@ -4022,7 +4022,7 @@ test("curated official registry has unique identities and explicit dynamic-sourc
   const restorationProfile = registry.find((item) => item.id === "mined-land-restoration");
   const restorationDocument = documents.find((item) => item.id === "mined-land-restoration");
   const reviewedAt = Date.parse(restorationDocument._evidenceStatusAt);
-  const reviewWindowMs = 31 * 24 * 60 * 60 * 1_000;
+  const reviewWindowMs = 366 * 24 * 60 * 60 * 1_000;
   assert.equal(restorationProfile.evidencePolicy, "versioned");
   assert.equal(restorationDocument.published, "06.01.2026");
   assert.match(restorationDocument.content, /kohustus kehtib ka siis, kui luba on kehtetuks tunnistatud/iu);

@@ -51,7 +51,7 @@ export default function Docs({ pathname = globalThis.location?.pathname || "/doc
           {guide ? (
             <>
               <p className="docs-lead">{guide.intro}</p>
-              <p className="docs-updated">Esimene väljaanne · kontrollitud 02.10.2026</p>
+              <p className="docs-updated">Esimene väljaanne · kontrollitud 21.10.2026</p>
               <div className="docs-notice">See juhend kirjeldab praktikaversiooni. See ei ole Keskkonnaportaali ametlik tootmisteenus.</div>
               {guide.sections.map((section) => (
                 <section className="docs-section" id={section.id} key={section.id}>

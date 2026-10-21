@@ -2521,6 +2521,11 @@ export async function prepareRankedSearchResults(query, {
     pageCount: Math.ceil(total / safePageSize),
     hasMore: safePage * safePageSize < total,
     items: selected,
+    // The visible page is deliberately compact, but answer evidence may use
+    // the same ranked prefix beyond it: the first page often contains
+    // navigation cards, while the citable official page ranks just below.
+    // Public serialization strips this field.
+    evidenceCandidates: rankedPrefix.slice(0, 50),
     facets: mergedFacets(local.facets, facetExtras),
     appliedFilters,
     updatedAt: new Date().toISOString(),

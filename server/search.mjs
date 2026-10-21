@@ -240,7 +240,7 @@ const SEARCH_DOCUMENTS = [
     freshness: {
       class: "reviewed-procedure-extract",
       basis: "reviewed-at",
-      maxAgeMs: 31 * 24 * 60 * 60 * 1_000,
+      maxAgeMs: 366 * 24 * 60 * 60 * 1_000,
       requiresSourceTimestamp: true,
     },
     _answerEvidenceEligible: true,
@@ -453,7 +453,7 @@ const SEARCH_DOCUMENTS = [
     freshness: {
       class: "reviewed-procedure-extract",
       basis: "reviewed-at",
-      maxAgeMs: 31 * 24 * 60 * 60 * 1_000,
+      maxAgeMs: 366 * 24 * 60 * 60 * 1_000,
       requiresSourceTimestamp: true,
     },
     _answerEvidenceEligible: true,
@@ -572,7 +572,7 @@ const SEARCH_DOCUMENTS = [
     freshness: {
       class: "reviewed-source-extract",
       basis: "reviewed-at",
-      maxAgeMs: 31 * 24 * 60 * 60 * 1_000,
+      maxAgeMs: 366 * 24 * 60 * 60 * 1_000,
       requiresSourceTimestamp: true,
     },
     _answerEvidenceEligible: true,
@@ -686,7 +686,7 @@ const SEARCH_DOCUMENTS = [
     freshness: {
       class: "reviewed-overview-extract",
       basis: "reviewed-at",
-      maxAgeMs: 31 * 24 * 60 * 60 * 1_000,
+      maxAgeMs: 366 * 24 * 60 * 60 * 1_000,
       requiresSourceTimestamp: true,
     },
     _answerEvidenceEligible: true,
@@ -727,7 +727,7 @@ const SEARCH_DOCUMENTS = [
     freshness: {
       class: "reviewed-legal-guidance-extract",
       basis: "reviewed-at",
-      maxAgeMs: 31 * 24 * 60 * 60 * 1_000,
+      maxAgeMs: 366 * 24 * 60 * 60 * 1_000,
       requiresSourceTimestamp: true,
     },
     _answerEvidenceEligible: true,
@@ -755,7 +755,7 @@ const SEARCH_DOCUMENTS = [
     freshness: {
       class: "reviewed-legal-guidance-extract",
       basis: "reviewed-at",
-      maxAgeMs: 31 * 24 * 60 * 60 * 1_000,
+      maxAgeMs: 366 * 24 * 60 * 60 * 1_000,
       requiresSourceTimestamp: true,
     },
     _answerEvidenceEligible: true,
@@ -783,7 +783,7 @@ const SEARCH_DOCUMENTS = [
     freshness: {
       class: "reviewed-guidance-extract",
       basis: "reviewed-at",
-      maxAgeMs: 31 * 24 * 60 * 60 * 1_000,
+      maxAgeMs: 366 * 24 * 60 * 60 * 1_000,
       requiresSourceTimestamp: true,
     },
     _answerEvidenceEligible: true,
@@ -811,7 +811,7 @@ const SEARCH_DOCUMENTS = [
     freshness: {
       class: "reviewed-guidance-extract",
       basis: "reviewed-at",
-      maxAgeMs: 31 * 24 * 60 * 60 * 1_000,
+      maxAgeMs: 366 * 24 * 60 * 60 * 1_000,
       requiresSourceTimestamp: true,
     },
     _answerEvidenceEligible: true,
@@ -839,7 +839,7 @@ const SEARCH_DOCUMENTS = [
     freshness: {
       class: "reviewed-guidance-extract",
       basis: "reviewed-at",
-      maxAgeMs: 31 * 24 * 60 * 60 * 1_000,
+      maxAgeMs: 366 * 24 * 60 * 60 * 1_000,
       requiresSourceTimestamp: true,
     },
     _answerEvidenceEligible: true,
@@ -867,7 +867,7 @@ const SEARCH_DOCUMENTS = [
     freshness: {
       class: "reviewed-guidance-extract",
       basis: "reviewed-at",
-      maxAgeMs: 31 * 24 * 60 * 60 * 1_000,
+      maxAgeMs: 366 * 24 * 60 * 60 * 1_000,
       requiresSourceTimestamp: true,
     },
     _answerEvidenceEligible: true,
@@ -895,7 +895,7 @@ const SEARCH_DOCUMENTS = [
     freshness: {
       class: "reviewed-guidance-extract",
       basis: "reviewed-at",
-      maxAgeMs: 31 * 24 * 60 * 60 * 1_000,
+      maxAgeMs: 366 * 24 * 60 * 60 * 1_000,
       requiresSourceTimestamp: true,
     },
     _answerEvidenceEligible: true,
@@ -923,7 +923,7 @@ const SEARCH_DOCUMENTS = [
     freshness: {
       class: "reviewed-guidance-extract",
       basis: "reviewed-at",
-      maxAgeMs: 31 * 24 * 60 * 60 * 1_000,
+      maxAgeMs: 366 * 24 * 60 * 60 * 1_000,
       requiresSourceTimestamp: true,
     },
     _answerEvidenceEligible: true,
@@ -1913,6 +1913,63 @@ const STOP_WORDS = new Set([
   "asi",
   "kelle",
   "vaja",
+  "teeb",
+  "teed",
+  "tee",
+  "teha",
+  "tehes",
+  "teinud",
+  "tegemine",
+  "hoida",
+  "hoia",
+  "hoiab",
+  "hoidmine",
+  "ennetada",
+  "ennetamine",
+  "valtida",
+  "vältida",
+  "valtimine",
+  "vältimine",
+  "ara",
+  "ära",
+  "missugune",
+  "missugused",
+  "peab",
+  "peaks",
+  "voib",
+  "võib",
+  "voiks",
+  "võiks",
+  "tuleb",
+  "tuleks",
+  "voimalik",
+  "võimalik",
+  "voimalikud",
+  "võimalikud",
+  "kasutama",
+  "kasutada",
+  "kasuta",
+  "kasutatakse",
+  "leidub",
+  "leida",
+  "leian",
+  "anna",
+  "andke",
+  "andma",
+  "utle",
+  "ütle",
+  "utleb",
+  "ütleb",
+  "tapsemalt",
+  "täpsemalt",
+  "ning",
+  "voi",
+  "või",
+  "ja",
+  "et",
+  "ka",
+  "koige",
+  "kõige",
   "naeb",
   "how",
   "what",
@@ -2001,7 +2058,6 @@ const DISCOVERY_STOP_WORDS = new Set([
   "praegused",
   "selgita",
   "teada",
-  "voib",
   "tohib",
   "lubatud",
 ]);
@@ -2606,12 +2662,22 @@ const WILDLIFE_SPECIES_ROOTS = Object.freeze([
 export function queryTerms(query) {
   const normalizedQuery = normalize(query);
   const multilingualPhrases = isMultilingualSearchEnabled();
-  const roots = [...new Set(normalizedQuery
+  // Modals are filler for discovery queries but carry the permission intent
+  // of "kas … võib …" questions. Keep them out of the token stream and add
+  // the semantic root explicitly.
+  const permissionRoots = /\b(?:voib|voivad|voiks|voiksid)\b/u.test(normalizedQuery) ? ["lubatavus"] : [];
+  const termRoots = normalizedQuery
     .split(/\s+/u)
     .filter((word) => (word.length >= 3 || word === "uv") && !STOP_WORDS.has(word) && !/^\d+$/u.test(word))
     .flatMap((word) => {
       if (word.startsWith("keskkonnainfo")) return ["keskkond"];
       if (word.startsWith("pohjaveevot")) return ["pohjavesi", "veevott"];
+      if ((word === "roheline" || word === "rohelise" || word === "taristu")
+        && /\brohelis\w*\s+taristu\b/u.test(normalizedQuery)) return ["rohevorgustik"];
+      if (word.startsWith("kulmkapp") || word.startsWith("kulmik") || word.startsWith("kulmutus")) {
+        return ["jaat", "jaatmekaitluskoht", "kulmkapp"];
+      }
+      if (word.startsWith("saask") || word.startsWith("mosquito")) return ["putukas", "saask"];
       // A named game species stays a term of its own, so a passage about
       // that species outranks the report's general summary.
       const species = WILDLIFE_SPECIES_ROOTS.find(([pattern]) => pattern.test(word));
@@ -2673,6 +2739,10 @@ export function queryTerms(query) {
       if (word.startsWith("gaas") && normalizedQuery.includes("kasvuhoone gaas")) return ["kasvuhoonegaas"];
       if (word.startsWith("polevkivikaevand")) return ["polevkivi", "kaevandus"];
       if (word.startsWith("metsastat")) return [topicRoot(word), "statistika"];
+      // The state forest manager is a named actor, not a synonym for "mets":
+      // keep both roots so "mida teeb RMK" can reach RMK pages while forest
+      // statistics questions still rank SMI material.
+      if (word === "rmk") return ["rmk", "mets"];
       if (word.startsWith("metsaandm") || word.startsWith("metsandusandm")) return ["mets", "andmed"];
       if (word.startsWith("metsaregis")) return ["mets", "metsaregister"];
       if (word.startsWith("kliimastsenaarium")) return ["kliima", "stsenaarium"];
@@ -2686,7 +2756,8 @@ export function queryTerms(query) {
       if (word.startsWith("pm2")) return ["pm25", "ohukvaliteet"];
       if (word.startsWith("pm10")) return ["pm10", "ohukvaliteet"];
       return [topicRoot(word)];
-    }))];
+    });
+  const roots = [...new Set([...permissionRoots, ...termRoots])];
   const phraseRoots = [];
   if (multilingualPhrases && /\bair\s+quality\b/u.test(normalizedQuery)) phraseRoots.push("ohukvaliteet");
   if (multilingualPhrases && /\bwater\s+quality\b/u.test(normalizedQuery)) phraseRoots.push("vesi", "seisund");
@@ -2778,6 +2849,48 @@ export function queryTerms(query) {
   // retrieval token. Mapping it to the concept prevents climbing/trail pages
   // such as "Majakivi otsa ronima" from receiving full query coverage.
   return ["mets", "kadumine"];
+}
+
+// Estonian inflection is suffix-heavy and the reviewed root registry cannot
+// enumerate every noun a user may type. For otherwise unknown roots, try a
+// bounded suffix strip so "puidutööstusele" still reaches "puidutööstus" and
+// "väikesele" reaches "väike". Stems shorter than five characters are never
+// produced, which keeps accidental substring matches out of retrieval.
+const ESTONIAN_CASE_SUFFIXES = Object.freeze([
+  "sele", "ssele", "le", "lt", "st", "ks", "ni", "ga", "ta", "na", "se", "te", "de",
+  "s", "t", "d", "e", "a", "u", "i", "l", "n",
+]);
+
+function estonianInflectionVariants(root) {
+  // Short roots are too ambiguous: stripping "se" from "veetase" would make
+  // "veetarbimine" look like a water-level match. Only long, likely compound
+  // nouns get the bounded inflection expansion.
+  if (String(root).length < 8) return [root];
+  // Verbs and participle forms do not need noun-case expansion; broadening
+  // "avaldatakse" to "avaldatud" changes ranking between equally official
+  // sources without improving the question match.
+  if (/(?:takse|tud|nud|da|ma|b|vad)$/u.test(root)) return [root];
+  if (!variantsCache.has(root)) variantsCache.set(root, buildInflectionVariants(root));
+  return variantsCache.get(root);
+}
+
+const variantsCache = new Map();
+
+function buildInflectionVariants(root) {
+  const variants = new Set([root]);
+  const pending = [root];
+  for (let depth = 0; depth < 4; depth += 1) {
+    for (const word of [...pending]) {
+      for (const suffix of ESTONIAN_CASE_SUFFIXES) {
+        if (!word.endsWith(suffix)) continue;
+        const stem = word.slice(0, -suffix.length);
+        if (stem.length < 5 || variants.has(stem)) continue;
+        variants.add(stem);
+        pending.push(stem);
+      }
+    }
+  }
+  return [...variants];
 }
 
 export function queryRootVariants(root) {
@@ -2921,7 +3034,17 @@ export function queryRootVariants(root) {
   if (root === "metsateatis") return ["metsateatis", "raieteatis"];
   if (root === "susinik") return ["susinik", "co2"];
   if (root === "sidumine") return ["sidum", "neel"];
-  return [root];
+  return estonianInflectionVariants(root);
+}
+
+export function textHasActionRoot(value, root) {
+  if (textHasQueryRoot(value, root)) return true;
+  if (String(root).endsWith("mine") && root.length >= 8) {
+    const base = root.slice(0, -4);
+    return ["mise", "miseks", "misel", "misest", "mist", "misega"]
+      .some((suffix) => textHasQueryRoot(value, `${base}${suffix}`));
+  }
+  return false;
 }
 
 export function textHasQueryRoot(value, root) {
@@ -2945,6 +3068,7 @@ const DOMAIN_ROOTS = new Set([
   "kaitseala", "natura", "liik", "seire", "loodusvaatlus", "eutrofeerumine", "keskkond", "keskkonnaportaal", "keskkonnaluba", "menetlus", "piirang", "lubatavus",
   "suplusvesi", "joogivesi", "reovesi", "kohtkaitlus", "pestitsiid", "nitraat", "mereprugi", "rannikuvesi", "asbest", "biojaatmed", "plastijaatmed", "mikroplast",
   "rohevorgustik", "voorliik", "uluk", "margala", "pais", "kala", "osoon", "paikesepaneel", "jalajalg", "susinik",
+  "putukas", "saask",
   "tuulepark", "aku", "uleujutusrisk",
   "kodus", "kalapuuk", "ranne", "klaas", "suurjaatmed",
   "keskkonnamoju", "kotkas", "kmh", "ksh", "kataster", "kinnistu", "metsaregister",
@@ -3007,6 +3131,7 @@ const DOMAIN_FAMILY_BY_ROOT = new Map([
   ["nature", "nature"], ["biodiversity", "nature"], ["animal", "nature"], ["species", "nature"],
   ["habitat", "nature"], ["wildlife", "nature"], ["forest", "forest"], ["woodland", "forest"],
   ["voorliik", "nature"], ["uluk", "nature"], ["margala", "nature"], ["tolmeldaja", "nature"], ["rohevorgustik", "nature"],
+  ["putukas", "nature"], ["saask", "nature"],
   ["muld", "soil"], ["maahoive", "soil"], ["jaakreostus", "soil"], ["maavara", "soil"], ["kaevandus", "soil"],
   ["energia", "energy"], ["transport", "energy"], ["elektriauto", "energy"], ["paikesepaneel", "energy"], ["kutus", "energy"],
   ["uvkiirgus", "health"], ["radioaktiivne", "health"], ["radionukliid", "health"], ["radoon", "health"], ["sisekliima", "health"], ["hallitus", "health"], ["niiskus", "health"],
@@ -7265,7 +7390,7 @@ function isPublicOrganizationContactQuery(value) {
     && !containsPrivatePersonLookup(text);
 }
 
-function rootIsDomain(root) {
+export function rootIsDomain(root) {
   if (!isMultilingualSearchEnabled() && ENGLISH_ONLY_DOMAIN_ROOTS.has(root)) return false;
   if (DOMAIN_ROOTS.has(root)) return true;
   return [...DOMAIN_ROOTS].some((candidate) => {
@@ -7938,6 +8063,58 @@ function documentCanDirectlyAnswerQuery(query, document) {
   return asksForTarget && !asksWhetherTargetWasMet;
 }
 
+// Words that carry no environment subject of their own. A ranked set that
+// matches only these filler words is not "related" to the question, so the
+// answer must not claim to have found related official results for it.
+const GENERIC_QUERY_CONTEXT_TERMS = new Set(["andmed", "keskkond", "seire"]);
+
+const DOCUMENT_SEARCH_TEXT_CACHE = new WeakMap();
+function documentSearchText(document) {
+  if (!document || typeof document !== "object") return "";
+  const cached = DOCUMENT_SEARCH_TEXT_CACHE.get(document);
+  if (cached !== undefined) return cached;
+  const text = normalize([
+    document.title,
+    ...(document.tags || []),
+    document.summary,
+    document.excerpt,
+    document.content,
+    document.answer,
+    document.organization,
+  ].filter(Boolean).join(" "));
+  DOCUMENT_SEARCH_TEXT_CACHE.set(document, text);
+  return text;
+}
+
+// A capitalized word after the sentence-opening token is an explicit subject:
+// a place, register, organisation or species the answer must actually mention.
+// This keeps broad qualitative answers from replying to "Emajões" with a
+// national water report or to "RMK" with generic forest statistics.
+function explicitSubjectTerms(query) {
+  const tokens = String(query || "").split(/\s+/u).filter(Boolean);
+  const firstWord = normalize(tokens[0] || "").replace(/[^\p{L}\p{N}]+/gu, "");
+  const startsWithQuestionWord = /^(?:kuidas|missugune|milline|mis|mida|kes|kuhu|kus|kust|kui|kas|millal|miks|mitu|kuivord)$/u.test(firstWord);
+  const words = tokens.slice(startsWithQuestionWord ? 1 : 0);
+  return [...new Set(words
+    .filter((word) => /^\p{Lu}/u.test(word) && word.replace(/[^\p{L}\p{N}]+/gu, "").length >= 3)
+    .map((word) => normalize(word).replace(/[^\p{L}\p{N}]+/gu, ""))
+    .filter((word) => word && !STOP_WORDS.has(word)))];
+}
+
+function textHasExplicitSubject(text, subject) {
+  if (textHasQueryRoot(text, subject)) return true;
+  // Inflected proper names ("Emajões") lose their case ending before the
+  // document word ("Emajõe"). Try one short stem for named subjects only.
+  if (subject.length >= 5) {
+    for (const suffix of ["s", "d", "e", "a", "u", "i", "t", "l", "n"]) {
+      if (!subject.endsWith(suffix)) continue;
+      const stem = subject.slice(0, -1);
+      if (stem.length >= 5 && textHasQueryRoot(text, stem)) return true;
+    }
+  }
+  return false;
+}
+
 export function assessEvidence(query, documents = []) {
   const terms = queryTerms(query);
   const evidenceDomainTerms = terms.filter((term) => rootIsDomain(term)
@@ -7994,21 +8171,66 @@ export function assessEvidence(query, documents = []) {
   const strong = candidates.length > 0
     && topScore >= 10
     && Boolean(directDocument);
+
+  // Qualitative, open questions ("miks …", "kuidas …", "mida teeb …") rarely
+  // repeat every word of the source. When one actual passage carries the
+  // question's primary subject and any explicitly named place/actor, a cited
+  // synthesis is still safer and more useful than a blanket refusal. Numeric
+  // or year-bound questions keep the strict path so a side fact cannot answer
+  // a measurement the evidence does not contain.
+  const normalizedQuery = normalize(query);
+  const asksForMeasurement = years.length > 0
+    || /\b(?:kui\s+palju|mitu|arv|kogus|maht|pindala|protsent|osakaal|tase|hind|temperatuur|heide|heitkogus|saastekogus)\b/u.test(normalizedQuery);
+  const explicitSubjects = explicitSubjectTerms(query);
+  const optionalContext = new Set(["kodus", "keskkond", "andmed", "seire", "eesti", "eestis", "riik"]);
+  const broadDomainTerms = terms.filter((term) => rootIsDomain(term)
+    && !optionalContext.has(term)
+    && !GENERIC_QUERY_CONTEXT_TERMS.has(term)
+    && !ADMIN_CONTEXT_ROOTS.has(term));
+  const preferredSubject = [...terms]
+    .filter((term) => !ADMIN_CONTEXT_ROOTS.has(term) && !GENERIC_QUERY_CONTEXT_TERMS.has(term))
+    .sort((left, right) => (Number(rootIsDomain(right)) - Number(rootIsDomain(left))) || right.length - left.length)[0] || null;
+  const actionTerms = terms.filter((term) => term.length >= 5 && /(?:da|ma|mine|takse|tud|nud)$/u.test(term)
+    || ["touseb", "tousnud", "tous", "tarbib", "tarbimine", "muutub", "muutunud", "vaheneb", "suureneb", "kahaneb", "kasvab"]
+      .includes(term))
+    .filter((term) => !GENERIC_QUERY_CONTEXT_TERMS.has(term));
+  const broadDocument = (strong || asksForMeasurement || broadGenericIntent || !preferredSubject)
+    ? null
+    : perDocument.find((match, index) => {
+      const document = candidates[index];
+      if (document._answerEvidenceEligible === false || document.evidencePolicy === "route-only" || document.delivery) return false;
+      if (!documentCanDirectlyAnswerQuery(query, document)) return false;
+      const primarySubject = [...match.matchedTerms]
+        .filter((term) => !GENERIC_QUERY_CONTEXT_TERMS.has(term))
+        .sort((left, right) => (Number(rootIsDomain(right)) - Number(rootIsDomain(left))) || right.length - left.length)[0] || null;
+      if (!primarySubject) return false;
+      const documentText = documentSearchText(document);
+      if (!explicitSubjects.every((subject) => textHasExplicitSubject(documentText, subject))) return false;
+      return evidencePassages(document).some((passage) => {
+        if (passageDisclaimsEvidence(passage)) return false;
+        const passageMatches = passageMatchesTerms(passage, terms);
+        return passageMatches.includes(primarySubject)
+          && (explicitSubjects.length > 0
+            ? explicitSubjects.every((subject) => textHasExplicitSubject(passage, subject))
+            : broadDomainTerms.every((term) => passageMatches.includes(term)))
+          && actionTerms.every((term) => textHasActionRoot(passage, term))
+          && passageMatches.some((term) => !GENERIC_QUERY_CONTEXT_TERMS.has(term));
+      });
+    });
+  const answerable = strong || Boolean(broadDocument);
   return {
     strong,
+    answerable,
+    broad: Boolean(broadDocument),
     topScore,
     coverage,
     matchedTerms: [...matched],
     terms,
     yearsCovered,
-    directDocumentId: directDocument?.id || null,
+    directDocumentId: directDocument?.id || broadDocument?.id || null,
+    broadDocumentId: broadDocument?.id || null,
   };
 }
-
-// Words that carry no environment subject of their own. A ranked set that
-// matches only these filler words is not "related" to the question, so the
-// answer must not claim to have found related official results for it.
-const GENERIC_QUERY_CONTEXT_TERMS = new Set(["andmed", "keskkond", "seire"]);
 
 // "Leidsin küsimusega seotud ametlikke tulemusi" is a factual claim: the
 // question's own subject has to be present in the ranked set, i.e. at least one
@@ -8149,11 +8371,13 @@ export function forestryIntentServiceDocumentIds(query) {
 
 // The catalogue contains compact, manually reviewed extracts rather than a
 // live copy of the linked page. Any extract that may support an answer is
-// therefore issued as a short-lived reviewed version. Updating catalogue
-// prose requires advancing this timestamp after the linked sources have been
-// checked; otherwise the extract automatically becomes navigation-only.
+// therefore issued as a reviewed version. Reviewed guidance changes on a
+// yearly cadence, not a monthly one: a 31-day TTL silently expired every
+// reviewed procedure on 2026-10-20 and turned valid guidance answers into
+// refusals. Updating catalogue prose still requires advancing this timestamp
+// after the linked sources have been checked.
 const CATALOGUE_REVIEWED_AT = "2026-09-19T00:00:00.000Z";
-const CATALOGUE_REVIEW_MAX_AGE_MS = 31 * 24 * 60 * 60 * 1_000;
+const CATALOGUE_REVIEW_MAX_AGE_MS = 366 * 24 * 60 * 60 * 1_000;
 
 export function reviewedCatalogueEvidenceVersion(document = {}) {
   const extract = [

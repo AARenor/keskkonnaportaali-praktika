@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { Readable } from "node:stream";
 import test from "node:test";
 import {
+  buildAnyPrefixTsQuery,
   buildPrefixTsQuery,
   backfillCorpusSourceIdentity,
   deduplicateCorpusDocuments,
@@ -24,6 +25,7 @@ import {
   parsePortalSearchPage,
   parsePortalSitemap,
   parsePortalSitemapPage,
+  parseOfficialSitemapDocument,
   parseRobotsTxt,
   persistHydratedCorpusDocument,
   publicSearchItem,
@@ -549,7 +551,7 @@ test("reviewed catalogue seeding covers the supplied legal and terminology sourc
   const urls = records.map((record) => record.canonical_url);
   assert.equal(new Set(urls).size, urls.length);
   for (const id of ["forest-law", "forest-management-rules", "forest-management-guide", "fao-fra-terms-2025", "metsandusteatmik"]) {
-    const record = records.find((row) => row.external_id === `reviewed:${id}`);
+    const record = records.find((row) => row.external_id.startsWith(`reviewed:${id}:`));
     assert.ok(record, id);
     assert.equal(record.source_key, "reviewed-catalogue-source");
     assert.equal(record.source_tier, "official");
@@ -592,7 +594,7 @@ test("reviewed catalogue rows are citable while crawled catalogue rows stay rout
   assert.equal(sourceEvidenceEligibility(item, { now }).eligible, true);
   assert.equal(sourceEvidenceEligibility(publicSearchItem({
     ...row,
-    metadata: { ...row.metadata, reviewed_at: "2026-01-01T00:00:00Z" },
+    metadata: { ...row.metadata, reviewed_at: "2025-01-01T00:00:00Z" },
   }), { now }).eligible, false);
   const route = publicSearchItem({
     ...row,
@@ -756,6 +758,47 @@ test("PostgreSQL prefix query drops conversational stop words", () => {
     buildPrefixTsQuery("kaitsealuse liigi elupaiga andmed"),
     "kait:* & (liik:* | liig:*) & (elupaik:* | elupaig:*) & andmed:*",
   );
+});
+
+test("open-question recall query matches any subject term while the strict query stays available", () => {
+  assert.equal(
+    buildAnyPrefixTsQuery("Kuidas taotleda keskkonnaluba väikesele puidutööstusele?"),
+    "taotl:* | keskkonnaluba:* | väikesele:* | puidutööstusele:*",
+  );
+  assert.equal(buildAnyPrefixTsQuery("kuidas ja mis"), "");
+});
+
+test("official sitemap parser accepts Drupal and WordPress indexes and rejects foreign or non-Estonian URLs", () => {
+  const index = parseOfficialSitemapDocument(`<?xml version="1.0"?>
+    <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <sitemap><loc>https://keskkonnaagentuur.ee/sitemap.xml?page=1</loc></sitemap>
+      <sitemap><loc>https://example.test/sitemap.xml</loc></sitemap>
+    </sitemapindex>`);
+  assert.deepEqual(index.indexUrls, ["https://keskkonnaagentuur.ee/sitemap.xml?page=1"]);
+  const page = parseOfficialSitemapDocument(`<?xml version="1.0"?>
+    <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <url><loc>https://keskkonnaamet.ee/jaatmevaldkonna-keskkonnaluba</loc><lastmod>2026-09-01</lastmod></url>
+      <url><loc>https://kik.ee/en/projects</loc></url>
+      <url><loc>https://example.test/leht</loc></url>
+    </urlset>`);
+  assert.deepEqual(page.entries, [{
+    url: "https://keskkonnaamet.ee/jaatmevaldkonna-keskkonnaluba",
+    lastmod: "2026-09-01",
+  }]);
+  assert.equal(page.entryCount, 3);
+  assert.equal(page.rejectedCount, 2);
+});
+
+test("reviewed catalogue rows keep a URL-stable external identity across trailing-slash moves", () => {
+  const records = reviewedCatalogueCorpusRecords();
+  assert.ok(records.length > 100);
+  const ids = records.map((record) => record.external_id);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.ok(records.every((record) => /^reviewed:[^:]+:[a-f0-9]{16}$/u.test(record.external_id)));
+  assert.ok(records.every((record) => {
+    const url = new URL(record.canonical_url);
+    return url.pathname === "/" || !url.pathname.endsWith("/");
+  }));
 });
 
 test("readable page extraction removes navigation, forms and scripts", () => {
