@@ -1853,8 +1853,8 @@ h3 {
   padding: 0;
   border: 0;
   border-radius: 50%;
-  background: #c62828;
-  color: var(--white);
+  background: #f5c518;
+  color: var(--ink);
   font: 700 0.75rem/1 inherit;
   cursor: help;
 }
