@@ -417,6 +417,33 @@ test("duplicate URLs are merged before a PostgreSQL upsert batch", () => {
   assert.notEqual(documents[0].publishedLabel, "null");
 });
 
+test("one source identity is written once even when URLs differ", () => {
+  const documents = deduplicateCorpusDocuments([
+    {
+      externalId: "stable-identity",
+      sourceKey: "official-sitemap",
+      url: "https://keskkonnaagentuur.ee/uudised/esimene",
+      title: "Lühem kirje",
+      content: "Lühike sisu.",
+      quality: 2,
+      topics: ["mets"],
+    },
+    {
+      externalId: "stable-identity",
+      sourceKey: "official-sitemap",
+      url: "https://keskkonnaagentuur.ee/uudised/teine",
+      title: "Pikem kirje",
+      content: "Pikem ja täielikum sisu.",
+      quality: 3,
+      topics: ["seire"],
+    },
+  ]);
+  assert.equal(documents.length, 1);
+  assert.equal(documents[0].url, "https://keskkonnaagentuur.ee/uudised/teine");
+  assert.equal(documents[0].title, "Pikem kirje");
+  assert.deepEqual(documents[0].topics, ["mets", "seire"]);
+});
+
 test("federated snippets can never replace a non-live page body or its provenance", () => {
   const url = "https://keskkonnaportaal.ee/et/vesi/provenance";
   const hydrated = {
