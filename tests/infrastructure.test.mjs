@@ -1518,7 +1518,7 @@ test("forest harvest draft answers the root and temporal follow-up from multiple
   });
   assert.match(followDraft.answer.title, /^2020–2024 viie aasta kohta/iu);
   assert.match(followDraft.answer.intro, /2025\. aasta rida selles väljavõttes veel ei ole/u);
-  assert.match(followDraft.answer.intro, /2020: eemaldamine 12,2 ja netojuurdekasv 14,4/u);
+  assert.match(followDraft.answer.intro, /2020: raiemaht 12,2 ja netojuurdekasv 14,4/u);
   assert.match(followDraft.answer.note, /Puuduvaid aastaid ei ole interpoleeritud/u);
 
   const followResponse = await searchEnvironmentLive(followQuestion, {
@@ -1552,12 +1552,12 @@ test("forest harvest draft answers the root and temporal follow-up from multiple
   });
   assert.equal(yearGenerationCalls, 0);
   assert.match(yearResponse.answer.title, /^2022\. aasta võrreldavate andmete järgi jah$/iu);
-  assert.match(yearResponse.answer.intro, /eemaldamine \(removals\) 12,0 miljonit m³ koorega/u);
+  assert.match(yearResponse.answer.intro, /raiemaht \(removals\) 12,0 miljonit m³ koorega/u);
   assert.match(yearResponse.answer.intro, /netojuurdekasv 9,1 miljonit m³ koorega/u);
   assert.match(yearResponse.answer.intro, /2,9 miljoni m³ võrra/u);
   assert.doesNotMatch(yearResponse.answer.title, /2020–2024|viie aasta/iu);
   assert.match(yearResponse.sources[0].evidenceExcerpt, /2022\. aastal oli netojuurdekasv 9,1/u);
-  assert.match(yearResponse.sources[0].evidenceExcerpt, /eemaldamine \(removals\) 12,0/u);
+  assert.match(yearResponse.sources[0].evidenceExcerpt, /raiemaht \(removals\) 12,0/u);
 
   const datedRoot = "Kas 2023. aastal ületas raiemaht netojuurdekasvu?";
   const windowRetrievalQuery = contextualRetrievalQuery(datedRoot, followQuestion, []);
@@ -1615,7 +1615,7 @@ test("forest harvest draft answers the root and temporal follow-up from multiple
   });
   assert.equal(generatedFollowUps, 0);
   assert.match(collisionSafeResponse.answer.title, /^2020–2024 viie aasta kohta/iu);
-  assert.match(collisionSafeResponse.answer.intro, /2020: eemaldamine 12,2 ja netojuurdekasv 14,4/u);
+  assert.match(collisionSafeResponse.answer.intro, /2020: raiemaht 12,2 ja netojuurdekasv 14,4/u);
   assert.ok(splitTextPassages(collisionSafeResponse.answer.intro).some((passage) => (
     /\b2021\b/u.test(passage) && /\b2024\b/u.test(passage)
       && /(?:puudub|ei ole[\s\S]*avaldatud)/iu.test(passage)
