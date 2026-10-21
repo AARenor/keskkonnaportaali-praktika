@@ -1618,7 +1618,7 @@ export function forestHarvestBalanceDocumentsFromJson(query, payload, options = 
       : item.removals < item.increment
         ? `jäi netojuurdekasvust ${etDecimal(difference, 1)} miljoni m³ võrra madalamaks`
         : "võrdus netojuurdekasvuga";
-    return `${item.year}. aastal oli netojuurdekasv ${etDecimal(item.increment, 1)} ja Eurostati puidu eemaldamine (removals) ${etDecimal(item.removals, 1)} miljonit m³ koorega, seega eemaldamine ${relation}`;
+    return `${item.year}. aastal oli netojuurdekasv ${etDecimal(item.increment, 1)} ja Eurostati raiemaht (removals) ${etDecimal(item.removals, 1)} miljonit m³ koorega, seega raiemaht ${relation}`;
   }).join(". ");
   const missingYears = observations
     .filter((item) => item.increment === null || item.removals === null)
@@ -1644,7 +1644,7 @@ export function forestHarvestBalanceDocumentsFromJson(query, payload, options = 
     .digest("hex");
   return [{
     id: "forest-balance-eurostat",
-    title: "Eesti puidu eemaldamine ja netojuurdekasv Eurostati metsa arvepidamises",
+    title: "Eesti raiemaht ja netojuurdekasv Eurostati metsa arvepidamises",
     organization: "Eurostat",
     type: "Ametlik andmestik",
     published: "20.03.2026",
@@ -1657,8 +1657,8 @@ export function forestHarvestBalanceDocumentsFromJson(query, payload, options = 
     locator: FOREST_BALANCE_EUROSTAT_API_URL,
     summary: `${rangeSentence} ${observationsText}.${forestObservationStatusSentence(comparable)}`.trim(),
     content: `Eurostati European Forest Accounts andmestiku for_vol_efa näitaja FOR, algühik tuhat kuupmeetrit koorega; kasutajavastuses on väärtused teisendatud miljoniteks kuupmeetriteks. ${rangeSentence} ${observationsText}. ${missingYears.length ? `Mõlemat võrreldavat väärtust ei ole aastate ${missingYears.join(", ")} kohta avaldatud.` : ""}`.trim(),
-    topics: ["mets", "raiemaht", "puidu eemaldamine", "netojuurdekasv", "Eurostat", ...comparable.map((item) => String(item.year))],
-    tags: ["mets", "raiemaht", "puidu eemaldamine", "netojuurdekasv", "Eurostat", ...comparable.map((item) => String(item.year))],
+    topics: ["mets", "raiemaht", "removals", "netojuurdekasv", "Eurostat", ...comparable.map((item) => String(item.year))],
+    tags: ["mets", "raiemaht", "removals", "netojuurdekasv", "Eurostat", ...comparable.map((item) => String(item.year))],
     sourceTier: "official",
     retrieval: options.reviewedSnapshot === true
       ? "reviewed-official-eurostat-snapshot"
@@ -1686,15 +1686,15 @@ export function forestHarvestBalanceDocumentsFromJson(query, payload, options = 
     _forestBalance: forestBalanceProjection,
   }, {
     id: "forest-balance-eurostat-handbook",
-    title: "European Forest Accounts Handbook: puidu eemaldamine ja netojuurdekasv",
+    title: "European Forest Accounts Handbook: raiemaht (removals) ja netojuurdekasv",
     organization: "Eurostat",
     type: "Metoodika",
     published: "2024",
     url: FOREST_BALANCE_EFA_HANDBOOK_URL,
-    summary: "EFA removals mõõdab aruandeperioodil metsast eemaldatud elusate ja surnud puude mahtu koorega. Sama aasta eemaldamise ja netojuurdekasvu võrdlus näitab, kas eemaldamine ületab juurdekasvu või jääb sellest alla, kuid EFA näitaja ei võrdu üks-ühele ühe aasta SMI raiemahuga.",
-    content: "European Forest Accounts käsiraamatu peatükid 4.14–4.18 määratlevad mahu koorega. Removals hõlmab aruandeperioodil metsast eemaldatud elusaid ja surnud puid, sealhulgas metsast ära toodud looduslikku väljalangemist, varasemal perioodil langetatud puitu ning eemaldatud mittetüvepuitu. Sama aasta eemaldamise ja netojuurdekasvu võrdlus näitab, kas eemaldamine ületab juurdekasvu või jääb sellest alla. Seetõttu ei ole EFA removals üks-ühele sama mis ühe aasta SMI raiemaht.",
-    topics: ["mets", "puidu eemaldamine", "removals", "metoodika", "koorega"],
-    tags: ["mets", "puidu eemaldamine", "removals", "metoodika", "koorega"],
+    summary: "EFA raiemaht (removals) mõõdab aruandeperioodil metsast eemaldatud elusate ja surnud puude mahtu koorega. Sama aasta raiemahu ja netojuurdekasvu võrdlus näitab, kas raiemaht ületab juurdekasvu või jääb sellest alla, kuid EFA näitaja ei võrdu üks-ühele ühe aasta SMI raiemahuga.",
+    content: "European Forest Accounts käsiraamatu peatükid 4.14–4.18 määratlevad mahu koorega. Removals hõlmab aruandeperioodil metsast eemaldatud elusaid ja surnud puid, sealhulgas metsast ära toodud looduslikku väljalangemist, varasemal perioodil langetatud puitu ning eemaldatud mittetüvepuitu. Sama aasta raiemahu ja netojuurdekasvu võrdlus näitab, kas raiemaht ületab juurdekasvu või jääb sellest alla. Seetõttu ei ole EFA removals üks-ühele sama mis ühe aasta SMI raiemaht.",
+    topics: ["mets", "raiemaht", "removals", "metoodika", "koorega"],
+    tags: ["mets", "raiemaht", "removals", "metoodika", "koorega"],
     sourceTier: "official",
     retrieval: "official-eurostat-methodology",
     evidencePolicy: "claim-specific",
@@ -1710,7 +1710,7 @@ function forestObservationStatusSentence(observations = []) {
     const incrementLabel = labels[observation.incrementStatus];
     const removalsLabel = labels[observation.removalsStatus];
     if (incrementLabel) details.push(`${observation.year}. aasta netojuurdekasv on märgitud ${incrementLabel}`);
-    if (removalsLabel) details.push(`${observation.year}. aasta eemaldamine on märgitud ${removalsLabel}`);
+    if (removalsLabel) details.push(`${observation.year}. aasta raiemaht on märgitud ${removalsLabel}`);
   }
   return details.length ? ` Eurostati kvaliteedimärgendid: ${details.join("; ")}.` : "";
 }
@@ -1743,13 +1743,13 @@ export function composeForestHarvestBalanceAnswer(query, sources = [], controlQu
     || requestedObservation.removals === null)) {
     const missingYearExplanation = [
       methodCitation ? "Netojuurdekasv on kogu juurdekasv pärast loodusliku suremuse mahaarvamist." : "",
-      handbookCitation ? "Eurostati käsiraamatu järgi näitab sama aasta eemaldamise ja netojuurdekasvu võrdlus, kas eemaldamine ületab juurdekasvu või jääb sellest alla." : "",
+      handbookCitation ? "Eurostati käsiraamatu järgi näitab sama aasta raiemahu ja netojuurdekasvu võrdlus, kas raiemaht ületab juurdekasvu või jääb sellest alla." : "",
     ].filter(Boolean).join(" ");
     return {
       answer: {
         eyebrow: "Allikapõhine koondvastus",
         title: `${explicitYear}. aasta kohta võrreldav paar puudub`,
-        intro: `Kasutatud Eurostati metsa arvepidamise väljavõttes ei ole ${explicitYear}. aasta kohta korraga avaldatud nii Eesti netojuurdekasvu kui ka puidu eemaldamise (removals) väärtust.`,
+        intro: `Kasutatud Eurostati metsa arvepidamise väljavõttes ei ole ${explicitYear}. aasta kohta korraga avaldatud nii Eesti netojuurdekasvu kui ka raiemahu (removals) väärtust.`,
         introCitations: [eurostatCitation],
         parts: missingYearExplanation ? [{
           title: "Miks ma puuduvat väärtust ei asenda",
@@ -1772,14 +1772,14 @@ export function composeForestHarvestBalanceAnswer(query, sources = [], controlQu
     const comparableWindow = window.filter((item) => item.increment !== null && item.removals !== null);
     const missingWindow = window.filter((item) => item.increment === null || item.removals === null).map((item) => item.year);
     const availableWindow = comparableWindow
-      .map((item) => `${item.year}: eemaldamine ${etDecimal(item.removals, 1)} ja netojuurdekasv ${etDecimal(item.increment, 1)} mln m³ koorega`)
+      .map((item) => `${item.year}: raiemaht ${etDecimal(item.removals, 1)} ja netojuurdekasv ${etDecimal(item.increment, 1)} mln m³ koorega`)
       .join("; ");
     const higherYears = comparableWindow.filter((item) => item.removals > item.increment).map((item) => String(item.year));
     const lowerYears = comparableWindow.filter((item) => item.removals < item.increment).map((item) => String(item.year));
     const equalYears = comparableWindow.filter((item) => item.removals === item.increment).map((item) => String(item.year));
     const relations = [
-      higherYears.length ? `${etYearList(higherYears)}. aastal oli eemaldamine suurem` : "",
-      lowerYears.length ? `${etYearList(lowerYears)}. aastal oli eemaldamine väiksem` : "",
+      higherYears.length ? `${etYearList(higherYears)}. aastal oli raiemaht suurem` : "",
+      lowerYears.length ? `${etYearList(lowerYears)}. aastal oli raiemaht väiksem` : "",
       equalYears.length ? `${etYearList(equalYears)}. aastal olid näitajad võrdsed` : "",
     ].filter(Boolean).join("; ");
     const startYear = window[0]?.year;
@@ -1797,12 +1797,12 @@ export function composeForestHarvestBalanceAnswer(query, sources = [], controlQu
     const chart = incrementPoints.length >= 2 && removalPoints.length >= 2
       ? {
         kind: "bar",
-        title: `Netojuurdekasv ja puidu eemaldamine ${startYear}–${endYear}`,
+        title: `Netojuurdekasv ja raiemaht ${startYear}–${endYear}`,
         unit: "mln m³ koorega",
         xLabel: "Aasta",
         series: [
           { id: "efa-increment", label: "Netojuurdekasv", points: incrementPoints },
-          { id: "efa-removals", label: "Puidu eemaldamine", points: removalPoints },
+          { id: "efa-removals", label: "Raiemaht", points: removalPoints },
         ],
         citation: eurostatCitation,
         caption: `Eurostat, metsa arvepidamine (for_vol_efa), Eesti. Puuduvaid aastaid ei ole interpoleeritud.`,
@@ -1814,13 +1814,13 @@ export function composeForestHarvestBalanceAnswer(query, sources = [], controlQu
         eyebrow: "Allikapõhine koondvastus",
         title: incompleteWindow
           ? `${startYear}–${endYear} viie aasta kohta ei saa lünkade tõttu täielikku trendi anda`
-          : `Viie värskeima võrdlusaasta reas oli ${latestWindow.year}. aastal eemaldamine netojuurdekasvust ${latestWindowRelation}`,
+          : `Viie värskeima võrdlusaasta reas oli ${latestWindow.year}. aastal raiemaht netojuurdekasvust ${latestWindowRelation}`,
         intro: `Kasutatud väljavõtte aastad on ${startYear}–${endYear}; ${nextUnavailableYear}. aasta rida selles väljavõttes veel ei ole. Avaldatud on need võrreldavad paarid: ${availableWindow || "ühtegi täielikku paari ei ole"}. ${relations ? `${relations}.` : ""}${missingWindow.length ? ` Mõlemat võrreldavat väärtust ei ole aastate ${missingWindow.join(", ")} kohta avaldatud.` : ""}${forestObservationStatusSentence(comparableWindow)}`,
         introCitations: [eurostatCitation],
         parts: [
           ...(handbookCitation ? [{
-            title: "Mida Eurostati eemaldamine tähendab",
-            text: "EFA removals mõõdab perioodil metsast eemaldatud elusate ja surnud puude mahtu koorega ning võib hõlmata metsast ära toodud looduslikku väljalangemist, varem langetatud puitu ja mittetüvepuitu. See ei ole üks-ühele sama mis ühe aasta SMI raiemaht.",
+            title: "Mida Eurostati raiemaht tähendab",
+            text: "EFA raiemaht (removals) mõõdab perioodil metsast eemaldatud elusate ja surnud puude mahtu koorega ning võib hõlmata metsast ära toodud looduslikku väljalangemist, varem langetatud puitu ja mittetüvepuitu. See ei ole üks-ühele sama mis ühe aasta SMI raiemaht.",
             citations: [handbookCitation],
           }] : []),
           ...(fiveYearCitation ? [{
@@ -1834,7 +1834,7 @@ export function composeForestHarvestBalanceAnswer(query, sources = [], controlQu
             citations: [methodCitation],
           }] : []),
         ].slice(0, 3),
-        note: "Puuduvaid aastaid ei ole interpoleeritud. Eurostati puidu eemaldamise, SMI raiemahu ning kogu- ja netojuurdekasvu mõisted ja ulatused ei ole omavahel asendatavad.",
+        note: "Puuduvaid aastaid ei ole interpoleeritud. Eurostati raiemahu (removals), SMI raiemahu ning kogu- ja netojuurdekasvu mõisted ja ulatused ei ole omavahel asendatavad.",
       },
       related: [
         "Mis vahe on kogu- ja netojuurdekasvul?",
@@ -1852,13 +1852,13 @@ export function composeForestHarvestBalanceAnswer(query, sources = [], controlQu
     ? removalsGreater
     : comparisonIntent === "removals-lower" ? removalsLower : null;
   const relation = removalsGreater
-    ? `puidu eemaldamine ületas netojuurdekasvu umbes ${etDecimal(latestDifference, 1)} miljoni m³ võrra (maht koorega)`
+    ? `raiemaht ületas netojuurdekasvu umbes ${etDecimal(latestDifference, 1)} miljoni m³ võrra (maht koorega)`
     : removalsLower
-      ? `puidu eemaldamine jäi netojuurdekasvust umbes ${etDecimal(latestDifference, 1)} miljoni m³ võrra madalamaks (maht koorega)`
-      : "puidu eemaldamine ja netojuurdekasv olid võrdsed";
+      ? `raiemaht jäi netojuurdekasvust umbes ${etDecimal(latestDifference, 1)} miljoni m³ võrra madalamaks (maht koorega)`
+      : "raiemaht ja netojuurdekasv olid võrdsed";
   const qualitySentence = forestObservationStatusSentence([latest]);
   const directTitle = predicateResult === null
-    ? `${latest.year}. aastal oli puidu eemaldamine netojuurdekasvust ${removalsGreater ? "suurem" : removalsLower ? "väiksem" : "sama suur"}`
+    ? `${latest.year}. aastal oli raiemaht netojuurdekasvust ${removalsGreater ? "suurem" : removalsLower ? "väiksem" : "sama suur"}`
     : `${latest.year}. aasta võrreldavate andmete järgi ${predicateResult ? "jah" : "ei"}`;
   const directLead = predicateResult === null ? "" : `${predicateResult ? "Jah" : "Ei"}. `;
 
@@ -1866,12 +1866,12 @@ export function composeForestHarvestBalanceAnswer(query, sources = [], controlQu
     answer: {
       eyebrow: "Allikapõhine koondvastus",
       title: directTitle,
-      intro: `${directLead}Eurostati metsa arvepidamises oli Eesti ${latest.year}. aasta puidu eemaldamine (removals) ${etDecimal(latest.removals, 1)} miljonit m³ koorega ja netojuurdekasv ${etDecimal(latest.increment, 1)} miljonit m³ koorega; ${relation}.${qualitySentence}`,
+      intro: `${directLead}Eurostati metsa arvepidamises oli Eesti ${latest.year}. aasta raiemaht (removals) ${etDecimal(latest.removals, 1)} miljonit m³ koorega ja netojuurdekasv ${etDecimal(latest.increment, 1)} miljonit m³ koorega; ${relation}.${qualitySentence}`,
       introCitations: [eurostatCitation],
       parts: [
         ...(handbookCitation ? [{
-          title: "Mida Eurostati eemaldamine tähendab",
-          text: "EFA removals mõõdab perioodil metsast eemaldatud elusate ja surnud puude mahtu koorega ning võib hõlmata metsast ära toodud looduslikku väljalangemist, varem langetatud puitu ja mittetüvepuitu. See ei ole üks-ühele sama mis ühe aasta SMI raiemaht.",
+          title: "Mida Eurostati raiemaht tähendab",
+          text: "EFA raiemaht (removals) mõõdab perioodil metsast eemaldatud elusate ja surnud puude mahtu koorega ning võib hõlmata metsast ära toodud looduslikku väljalangemist, varem langetatud puitu ja mittetüvepuitu. See ei ole üks-ühele sama mis ühe aasta SMI raiemaht.",
           citations: [handbookCitation],
         }] : []),
         ...(methodCitation ? [{
@@ -1882,12 +1882,12 @@ export function composeForestHarvestBalanceAnswer(query, sources = [], controlQu
         ...(fiveYearCitation ? [{
           title: "Lühem taust",
           text: handbookCitation
-            ? "SMI järgi oli 2018/2019–2022/2023 viie raiehooaja keskmine raiemaht 11,2 miljonit tihumeetrit. See taust ei ole sama ajavahemik ega üks-ühele sama näitaja kui Eurostati puidu eemaldamine ning ei anna üksi lõplikku hinnangut metsamajanduse kestlikkusele."
+            ? "SMI järgi oli 2018/2019–2022/2023 viie raiehooaja keskmine raiemaht 11,2 miljonit tihumeetrit. See taust ei ole sama ajavahemik ega üks-ühele sama näitaja kui Eurostati raiemaht ning ei anna üksi lõplikku hinnangut metsamajanduse kestlikkusele."
             : "SMI järgi oli 2018/2019–2022/2023 viie raiehooaja keskmine raiemaht 11,2 miljonit tihumeetrit.",
           citations: [fiveYearCitation, methodCitation, handbookCitation].filter(Boolean),
         }] : []),
       ],
-      note: "Eurostati puidu eemaldamine (removals), SMI raiemaht ning kogu- ja netojuurdekasv ei ole üks-ühele asendatavad. Järeldus kehtib ainult samas allikas, aastas ja ulatuses võrreldud näitajatele.",
+      note: "Eurostati raiemaht (removals), SMI raiemaht ning kogu- ja netojuurdekasv ei ole üks-ühele asendatavad. Järeldus kehtib ainult samas allikas, aastas ja ulatuses võrreldud näitajatele.",
     },
     related: [
       "Mida see viimase viie aasta jooksul tähendab?",

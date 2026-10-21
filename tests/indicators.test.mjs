@@ -707,9 +707,9 @@ test("forest balance adapter decodes Eurostat JSON-stat without inventing missin
     "forest-balance-kaur-five-year",
   ]);
   assert.equal(documents[0].locator, FOREST_BALANCE_EUROSTAT_API_URL);
-  assert.match(documents[0].summary, /2023\. aastal oli netojuurdekasv 9,1 ja Eurostati puidu eemaldamine \(removals\) 11,6 miljonit m³ koorega/u);
+  assert.match(documents[0].summary, /2023\. aastal oli netojuurdekasv 9,1 ja Eurostati raiemaht \(removals\) 11,6 miljonit m³ koorega/u);
   assert.match(documents[0].summary, /2020\. aasta netojuurdekasv on märgitud imputeerituna/u);
-  assert.match(documents[0].summary, /2023\. aasta eemaldamine on märgitud hinnangulisena/u);
+  assert.match(documents[0].summary, /2023\. aasta raiemaht on märgitud hinnangulisena/u);
   assert.match(documents[0].content, /2021, 2024/u);
   assert.deepEqual(forestHarvestBalanceDocumentsFromJson("metsamaa pindala", forestFixture), []);
 });
@@ -818,9 +818,9 @@ test("forest balance synthesis answers directly from four separately cited offic
   assert.match(followUp.answer.title, /^2020–2024 viie aasta kohta/u);
   assert.match(followUp.answer.intro, /2020–2024/u);
   assert.match(followUp.answer.intro, /2025\. aasta rida selles väljavõttes veel ei ole/u);
-  assert.match(followUp.answer.intro, /2020: eemaldamine 12,2 ja netojuurdekasv 14,4/u);
-  assert.match(followUp.answer.intro, /2022: eemaldamine 12,0 ja netojuurdekasv 9,1/u);
-  assert.match(followUp.answer.intro, /2022\. ja 2023\. aastal oli eemaldamine suurem/u);
+  assert.match(followUp.answer.intro, /2020: raiemaht 12,2 ja netojuurdekasv 14,4/u);
+  assert.match(followUp.answer.intro, /2022: raiemaht 12,0 ja netojuurdekasv 9,1/u);
+  assert.match(followUp.answer.intro, /2022\. ja 2023\. aastal oli raiemaht suurem/u);
   assert.match(followUp.answer.intro, /imputeerituna/u);
   assert.match(followUp.answer.intro, /hinnangulisena/u);
   assert.ok(splitTextPassages(followUp.answer.intro).some((passage) => (
@@ -842,7 +842,7 @@ test("forest balance synthesis answers directly from four separately cited offic
     [documents[0]],
   );
   assert.match(numericOnlyFollowUp.answer.title, /^2020–2024 viie aasta kohta/u);
-  assert.match(numericOnlyFollowUp.answer.intro, /2020: eemaldamine 12,2 ja netojuurdekasv 14,4/u);
+  assert.match(numericOnlyFollowUp.answer.intro, /2020: raiemaht 12,2 ja netojuurdekasv 14,4/u);
   assert.match(followUp.answer.parts[0].text, /metsast ära toodud looduslikku väljalangemist/u);
   assert.equal(isForestHarvestBalanceQuery("raiemaht ja netojuurdekasv"), true);
   assert.equal(isForestHarvestBalanceQuery("raiemaht 2023"), false);
@@ -981,7 +981,7 @@ test("forest balance synthesis honors an explicit year and abstains when its pai
     const missing = composeForestHarvestBalanceAnswer(`Kas raiemaht ületas juurdekasvu ${year}. aastal?`, documents);
     assert.match(missing.answer.title, new RegExp(`^${year}\\. aasta kohta võrreldav paar puudub$`, "u"));
     assert.match(missing.answer.intro, new RegExp(`ei ole[\\s\\S]*${year}[\\s\\S]*korraga avaldatud`, "u"));
-    assert.match(missing.answer.intro, /netojuurdekasvu[\s\S]*eemaldamise/iu);
+    assert.match(missing.answer.intro, /netojuurdekasvu[\s\S]*raiemahu/iu);
     assert.deepEqual(missing.answer.introCitations, [1]);
     assert.doesNotMatch(missing.answer.intro, /2023\. aasta raiemaht/u);
   }
@@ -1014,7 +1014,7 @@ test("forest balance keeps dense JSON-stat nulls missing and derives a rolling w
   const answer = composeForestHarvestBalanceAnswer("Mida see viimase 5 aasta jooksul tähendab: raiemaht ja netojuurdekasv?", documents);
   assert.doesNotMatch(answer.answer.intro, /2020:/u);
   assert.match(answer.answer.intro, /2021:/u);
-  assert.match(answer.answer.intro, /2025: eemaldamine 9,0 ja netojuurdekasv 12,5/u);
+  assert.match(answer.answer.intro, /2025: raiemaht 9,0 ja netojuurdekasv 12,5/u);
   assert.match(answer.answer.intro, /2026\. aasta rida selles väljavõttes veel ei ole/u);
   assert.match(answer.answer.title, /2025\. aastal.*väiksem$/u);
 });
@@ -1028,10 +1028,10 @@ test("forest balance five-year answer carries a grouped bar chart with gaps kept
     documents,
   );
   assert.equal(fiveYear.chart.kind, "bar");
-  assert.equal(fiveYear.chart.title, "Netojuurdekasv ja puidu eemaldamine 2020–2024");
+  assert.equal(fiveYear.chart.title, "Netojuurdekasv ja raiemaht 2020–2024");
   assert.equal(fiveYear.chart.unit, "mln m³ koorega");
   assert.equal(fiveYear.chart.citation, fiveYear.answer.introCitations[0]);
-  assert.deepEqual(fiveYear.chart.series.map((series) => series.label), ["Netojuurdekasv", "Puidu eemaldamine"]);
+  assert.deepEqual(fiveYear.chart.series.map((series) => series.label), ["Netojuurdekasv", "Raiemaht"]);
   const observations = documents[0]._forestBalance.observations;
   assert.deepEqual(
     fiveYear.chart.series[0].points,

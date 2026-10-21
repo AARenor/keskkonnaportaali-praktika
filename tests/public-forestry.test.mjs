@@ -1376,7 +1376,7 @@ test("the three harvest/increment formulations use the structured comparison and
   assert.ok(missingYearMethod);
   const methodWitness = witnessTextForCitations(missingYearDraft, missingYearMethod.citations);
   assert.match(methodWitness, /Netojuurdekasv[\s\S]*looduslik(?:ku)? suremus(?:e)?/iu);
-  assert.match(methodWitness, /Sama aasta eemaldamise ja netojuurdekasvu võrdlus/iu);
+  assert.match(methodWitness, /Sama aasta raiemahu ja netojuurdekasvu võrdlus/iu);
   assertNumericClaimsHaveVisibleWitnesses(missingYearDraft, missingYearQuery);
 });
 
