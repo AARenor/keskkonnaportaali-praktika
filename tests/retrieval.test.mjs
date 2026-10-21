@@ -626,6 +626,10 @@ test("precise environmental tasks start with their maintained official service p
     ["keskkonnamõju hindamine tuulepargile", "wind-farm-assessment-guide"],
     ["Millised on Ida-Virumaa kaevandamise peamised keskkonnamõjud ja leevendusmeetmed?", "mining-impact-guidance"],
     ["Kas põlevkivikaevandus mõjutab kaevude vett?", "mining-impact-guidance"],
+    ["Mida teha vana külmikuga?", "waste-sorting-guidance"],
+    ["Kuhu panna klaaspudelid?", "waste-sorting-guidance"],
+    ["Kuhu saab vana diivani viia?", "waste-sorting-guidance"],
+    ["Mida teha tühjade patareidega?", "waste-sorting-guidance"],
   ];
   for (const [query, expected] of cases) {
     assert.equal(rankSearchCandidates(query, services, { now: NOW })[0].id, expected, query);

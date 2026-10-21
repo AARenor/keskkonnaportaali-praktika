@@ -1742,6 +1742,9 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
     && roots.some((root) => root.startsWith("andmestik") || root.startsWith("valjaand"));
   if (requestsForestCatalogue && document.id === "forest-catalogue") return 4;
   if (roots.includes("jaatmekaitluskoht") && document.id === "waste-facilities-map") return 3;
+  if (document.id === "waste-sorting-guidance"
+    && roots.includes("jaat")
+    && /\b(?:kuhu|mida\s+teha|sorteer|visata|viia|panna|k\w*idelda)\b/u.test(normalize(query))) return 50;
   if (roots.includes("kaart")
     && roots.some((root) => ["natura", "kaitseala"].includes(root))
     && document.id === "environment-register") return 4;
