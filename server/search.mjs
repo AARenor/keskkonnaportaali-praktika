@@ -2683,7 +2683,7 @@ export function queryTerms(query) {
       if ((word === "roheline" || word === "rohelise" || word === "rohelist" || word === "taristu")
         && /\brohel(?:ine|ise|ist)\s+taristu\b/u.test(normalizedQuery)) return ["rohevorgustik"];
       if (word.startsWith("kulmkapp") || word.startsWith("kulmik") || word.startsWith("kulmutus")) {
-        return ["jaat", "jaatmekaitluskoht", "kulmkapp"];
+        return ["jaat", "jaatmekaitluskoht", "kulmkapp", "kylmik"];
       }
       if (word.startsWith("saask") || word.startsWith("mosquito")) return ["putukas", "saask"];
       if (word === "soo" || /^(?:soid|soode|soos|soost|sooga)$/u.test(word)) return "margala";
