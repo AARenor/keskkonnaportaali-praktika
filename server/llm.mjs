@@ -1873,7 +1873,24 @@ function validateGroundedProposal(payload, draft, query, evidencePack) {
   return { answer, acceptedClaims, rejectionReason: acceptedClaims.length ? null : "no-new-contribution" };
 }
 
+function specificTopicMismatch(query, payload) {
+  const cleanQuery = normalize(query);
+  const intro = normalize(payload?.intro || "");
+  if (!intro) return false;
+  if (/(?:metsa)?poleng|tulekahju|tuleoht/u.test(cleanQuery)
+    && /(?:hoida|valtida|ennetada|kaitsta|ennetus|torje)/u.test(cleanQuery)) {
+    return !/(?:poleng|tulekahju|tuleoht)/u.test(intro);
+  }
+  if (/eraldis/u.test(cleanQuery) && /(?:taotle|taotlus|taotlemine)/u.test(cleanQuery)) {
+    return !/(?:eraldis|taotl|metsateatis)/u.test(intro);
+  }
+  return false;
+}
+
 export function validateGroundedAnswer(payload, draft, query, evidencePack) {
+  if (specificTopicMismatch(query, payload)) {
+    return { answer: null, acceptedClaims: [], rejectionReason: "specific-topic-mismatch" };
+  }
   if (!evidencePackMatchesSources(evidencePack, draft?.sources)) {
     return { answer: null, acceptedClaims: [], rejectionReason: "evidence-insufficient" };
   }
