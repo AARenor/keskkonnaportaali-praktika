@@ -1233,7 +1233,7 @@ export async function createPortalDraft(query, {
   const firePreventionIntent = /(?:metsa)?poleng|tulekahju|tuleoht/u.test(intentNormalized)
     && /(?:hoida|valtida|ennetada|kaitsta|ennetus|torje)/u.test(intentNormalized);
   const fellingProcedureIntent = /eraldis/u.test(intentNormalized)
-    && /(?:taotle|taotlus|taotlemine|raie)/u.test(intentNormalized);
+    && /(?:taotle|taotlus|taotlemine)/u.test(intentNormalized);
   const intentAnswer = normalize(draft.answer?.intro || "");
   const radonRiskIntent = /radoon/u.test(intentNormalized)
     && /(?:ohtlik|tervis|risk|piirnorm)/u.test(intentNormalized);
