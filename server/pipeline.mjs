@@ -1235,9 +1235,12 @@ export async function createPortalDraft(query, {
   const fellingProcedureIntent = /eraldis/u.test(intentNormalized)
     && /(?:taotle|taotlus|taotlemine|raie)/u.test(intentNormalized);
   const intentAnswer = normalize(draft.answer?.intro || "");
-  const intentCovered = !firePreventionIntent && !fellingProcedureIntent
+  const radonRiskIntent = /radoon/u.test(intentNormalized)
+    && /(?:ohtlik|tervis|risk|piirnorm)/u.test(intentNormalized);
+  const intentCovered = !firePreventionIntent && !fellingProcedureIntent && !radonRiskIntent
     || (firePreventionIntent && /(?:poleng|tulekahju|tuleoht)/u.test(intentAnswer))
-    || (fellingProcedureIntent && /(?:eraldis|raie|metsateatis)/u.test(intentAnswer) && /taotl/u.test(intentAnswer));
+    || (fellingProcedureIntent && /(?:eraldis|raie|metsateatis)/u.test(intentAnswer) && /taotl/u.test(intentAnswer))
+    || (radonRiskIntent && /(?:tervis|ohtlik|risk|piirnorm|radoonioht)/u.test(intentAnswer));
   if (!intentCovered) {
     draft.answer = {
       eyebrow: "Vajan täpsustust",
