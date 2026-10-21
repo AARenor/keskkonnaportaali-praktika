@@ -258,12 +258,16 @@ export function directEvidenceExtract(query, document, plannedEvidence = null, {
     && !term.endsWith("maa")
     && !genericContext.has(term));
   const stateTerms = terms.filter((term) => /^(?:haig|vigast|surnud|hukkunud)/u.test(term));
+  const itemTerms = terms.filter((term) => ["arvuti", "kulmkapp", "kulmik", "telefon", "patarei", "moobel", "diivan", "ravim", "rehv"].includes(term));
+  const organizationTerms = terms.filter((term) => ["keskkonnaamet", "keskkonnaagentuur", "kliimaministeerium", "rmk"].includes(term));
   const primarySubject = [...terms]
     .filter((term) => !genericContext.has(term))
     .sort((left, right) => (Number(rootIsDomain(right)) - Number(rootIsDomain(left))) || right.length - left.length)[0] || null;
   const passageAnswersSubject = (passage) => (!primarySubject || textHasQueryRoot(passage, primarySubject))
     && actionTerms.every((term) => textHasActionRoot(passage, term))
-    && stateTerms.every((term) => textHasQueryRoot(passage, term));
+    && stateTerms.every((term) => textHasQueryRoot(passage, term))
+    && itemTerms.every((term) => textHasQueryRoot(passage, term))
+    && organizationTerms.every((term) => textHasQueryRoot(passage, term));
   const stablePublicationText = (value) => {
     const published = /^\d{2}\.\d{2}\.\d{4}$/u.test(String(document?.published || "").trim())
       ? String(document.published).trim()
@@ -1030,6 +1034,13 @@ export async function createPortalDraft(query, {
     return reranked.find((document) => document.id === source.id
       || sameSourceResource(document.url, source.url)) || null;
   })();
+  const mandateTerms = queryTerms(query);
+  const mandateOrganizationQuery = /^mida\s+teeb\s+/u.test(normalize(query))
+    && mandateTerms.length === 1
+    && ["keskkonnaamet", "keskkonnaagentuur", "kliimaministeerium", "rmk"].includes(mandateTerms[0]);
+  const plannedMandateOk = !mandateOrganizationQuery
+    || (plannedEvidence?.passages || []).some((passage) => textHasQueryRoot(passage, mandateTerms[0])
+      && /\b(?:teeb|tegevus\w*|ulesanne\w*|ülesanne\w*|haldab|korraldab|vastutab|pakub)\b/u.test(normalize(passage)));
   const quality = directOverview
     ? {
       ...conventionalQuality,
@@ -1039,7 +1050,7 @@ export async function createPortalDraft(query, {
       answerIntent: "portal-overview",
       supportingDocumentIds: [directOverview.id],
     }
-    : plannedEvidence?.strong
+    : plannedEvidence?.strong && plannedMandateOk
     ? {
       ...conventionalQuality,
       strong: true,
@@ -1057,6 +1068,13 @@ export async function createPortalDraft(query, {
         supportingDocumentIds: [],
       }
     : conventionalQuality;
+
+  if (mandateOrganizationQuery && !plannedMandateOk) {
+    quality.strong = false;
+    quality.answerable = false;
+    quality.directDocumentId = null;
+    quality.supportingDocumentIds = [];
+  }
 
   // Does the ranked set actually carry the question's subject? This decides
   // whether the answer may claim to have found "related official results" or

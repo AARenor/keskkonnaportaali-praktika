@@ -2666,18 +2666,25 @@ export function queryTerms(query) {
   // of "kas … võib …" questions. Keep them out of the token stream and add
   // the semantic root explicitly.
   const permissionRoots = /\b(?:voib|voivad|voiks|voiksid)\b/u.test(normalizedQuery) ? ["lubatavus"] : [];
+  const savingRoots = /sääst\w*/iu.test(String(query || "")) && /\b(?:vett|vesi|energiat|elektrit)\b/iu.test(String(query || ""))
+    ? ["vesi", "saastmine"]
+    : [];
   const termRoots = normalizedQuery
     .split(/\s+/u)
     .filter((word) => (word.length >= 3 || word === "uv") && !STOP_WORDS.has(word) && !/^\d+$/u.test(word))
     .flatMap((word) => {
+      if (savingRoots.length && word.startsWith("saasta")) return [];
       if (word.startsWith("keskkonnainfo")) return ["keskkond"];
       if (word.startsWith("pohjaveevot")) return ["pohjavesi", "veevott"];
-      if ((word === "roheline" || word === "rohelise" || word === "taristu")
-        && /\brohelis\w*\s+taristu\b/u.test(normalizedQuery)) return ["rohevorgustik"];
+      if ((word === "roheline" || word === "rohelise" || word === "rohelist" || word === "taristu")
+        && /\brohel(?:ine|ise|ist)\s+taristu\b/u.test(normalizedQuery)) return ["rohevorgustik"];
       if (word.startsWith("kulmkapp") || word.startsWith("kulmik") || word.startsWith("kulmutus")) {
         return ["jaat", "jaatmekaitluskoht", "kulmkapp"];
       }
       if (word.startsWith("saask") || word.startsWith("mosquito")) return ["putukas", "saask"];
+      if (word === "soo" || /^(?:soid|soode|soos|soost|sooga)$/u.test(word)) return "margala";
+      if (word.startsWith("kuumalaine")) return "kuumalaine";
+      if (word.startsWith("arvuti") || word.startsWith("sulearvuti")) return ["jaat", "jaatmekaitluskoht", "arvuti"];
       // A named game species stays a term of its own, so a passage about
       // that species outranks the report's general summary.
       const species = WILDLIFE_SPECIES_ROOTS.find(([pattern]) => pattern.test(word));
@@ -2757,7 +2764,7 @@ export function queryTerms(query) {
       if (word.startsWith("pm10")) return ["pm10", "ohukvaliteet"];
       return [topicRoot(word)];
     });
-  const roots = [...new Set([...permissionRoots, ...termRoots])];
+  const roots = [...new Set([...permissionRoots, ...savingRoots, ...termRoots])];
   const phraseRoots = [];
   if (multilingualPhrases && /\bair\s+quality\b/u.test(normalizedQuery)) phraseRoots.push("ohukvaliteet");
   if (multilingualPhrases && /\bwater\s+quality\b/u.test(normalizedQuery)) phraseRoots.push("vesi", "seisund");
@@ -3034,6 +3041,7 @@ export function queryRootVariants(root) {
   if (root === "metsateatis") return ["metsateatis", "raieteatis"];
   if (root === "susinik") return ["susinik", "co2"];
   if (root === "sidumine") return ["sidum", "neel"];
+  if (root === "saastmine") return ["saast", "saasta", "saastlik", "kokkuhoid", "hoida"];
   return estonianInflectionVariants(root);
 }
 
@@ -3070,8 +3078,9 @@ const DOMAIN_ROOTS = new Set([
   "rohevorgustik", "voorliik", "uluk", "margala", "pais", "kala", "osoon", "paikesepaneel", "jalajalg", "susinik",
   "putukas", "saask",
   "tuulepark", "aku", "uleujutusrisk",
-  "kodus", "kalapuuk", "ranne", "klaas", "suurjaatmed",
-  "keskkonnamoju", "kotkas", "kmh", "ksh", "kataster", "kinnistu", "metsaregister",
+  "kodus", "kalapuuk", "ranne", "klaas", "suurjaatmed", "puu",
+  "keskkonnamoju", "keskkonnaamet", "keskkonnaagentuur", "kliimaministeerium", "kuumalaine",
+  "kotkas", "kmh", "ksh", "kataster", "kinnistu", "metsaregister",
   "elektriauto", "energia", "transport", "kutus", "maavara", "kaevandus", "muld", "maahoive", "jaakreostus", "kaevandamisjaatmed",
   "mura", "lohn", "kiirgus", "uvkiirgus", "radioaktiivne", "radionukliid", "radoon", "sisekliima", "hallitus", "niiskus", "kemikaal", "ohutuskaart", "biotsiid", "pfas", "prtr", "veekaitse", "tolmeldaja", "climate", "forest", "water", "weather", "pollution", "waste",
   "biodiversity", "nature", "air", "animal", "species", "habitat", "wildlife", "woodland",
@@ -5246,6 +5255,16 @@ export function containsPrivatePersonLookup(value, {
   // intentionally ahead of every reviewed public exception and is shared by
   // all provider-facing minimization paths below.
   if (hasForeignPrivatePersonClause(canonicalText)) return true;
+  // A public nature superlative or general home-safety advice is not a
+  // private-person lookup. Keep the exception narrow: no address, contact
+  // field, numeric identifier or named-owner wording in the original text.
+  const publicEnvironmentalQuestion = /\b(?:korg|kõrg|vanim|suurim|pikim|vanem)\w*\s+(?:puu|mand|mänd|kuusk|kask|tamm|vaher|pihlakas|kadakas)\b/iu.test(canonicalText)
+    || (/\b(?:kuidas|mida)\b/iu.test(canonicalText)
+      && /\b(?:kodu|kodus|korteris|elamus)\b/iu.test(canonicalText)
+      && /\b(?:radoon\w*|hallitus\w*|niiskus\w*|mura\w*|müra\w*|asbest\w*|pli\b|vesi\b|energia\w*|kute\w*|küte\w*)\b/iu.test(canonicalText));
+  if (publicEnvironmentalQuestion
+    && !/\b(?:aadress|tanav|tänav|tn\b|maja\s*nr|kinnistu\s*nr|isikukood|telefon|e-?post|email|omanik)\b/iu.test(canonicalText)
+    && !/\d{3,}/u.test(canonicalText)) return false;
   // Reviewed protected-construction grammars are Latin/Estonian. Never grant
   // their public exception after normalization has erased an unconsumed
   // letter or number from another script; the intact query would otherwise
@@ -8142,6 +8161,12 @@ export function assessEvidence(query, documents = []) {
     }
   }
   const coverage = terms.length ? matched.size / terms.length : 0;
+  const mandateOrganization = /^mida\s+teeb\s+/u.test(normalize(query))
+    && terms.length === 1
+    && ["keskkonnaamet", "keskkonnaagentuur", "kliimaministeerium", "rmk"].includes(terms[0]);
+  const mandatePassage = (value) => !mandateOrganization
+    || (textHasQueryRoot(value, terms[0])
+      && /\b(?:teeb|tegevus\w*|ulesanne\w*|ülesanne\w*|haldab|korraldab|vastutab|pakub)\b/u.test(normalize(value)));
   const years = normalize(query)
     .replace(/\bnatura\s+2000\b/gu, "natura")
     .match(/\b(?:19|20)\d{2}\b/gu) || [];
@@ -8159,6 +8184,7 @@ export function assessEvidence(query, documents = []) {
       const passageMatches = passageMatchesTerms(passage, terms);
       const requiredMatches = passageMatches.filter((term) => passageTerms.includes(term));
       return years.every((year) => passageText.includes(year))
+        && mandatePassage(passage)
         && requiredDomainTerms.every((term) => passageMatches.includes(term))
         && requiredMatches.length >= requiredPassageMatches;
     });
@@ -8195,7 +8221,10 @@ export function assessEvidence(query, documents = []) {
       .includes(term))
     .filter((term) => !GENERIC_QUERY_CONTEXT_TERMS.has(term));
   const stateTerms = terms.filter((term) => /^(?:haig|vigast|surnud|hukkunud)/u.test(term));
-  const broadDocument = (strong || asksForMeasurement || broadGenericIntent || !preferredSubject)
+  const itemTerms = terms.filter((term) => ["arvuti", "kulmkapp", "kulmik", "telefon", "patarei", "moobel", "diivan", "ravim", "rehv"].includes(term));
+  const organizationTerms = terms.filter((term) => ["keskkonnaamet", "keskkonnaagentuur", "kliimaministeerium", "rmk"].includes(term));
+  const locationQuestion = /\b(?:kus|kust|kuhu)\s+(?:asub|asuvad|paikneb|paiknevad|on)\b/u.test(normalizedQuery);
+  const broadDocument = (strong || asksForMeasurement || broadGenericIntent || locationQuestion || !preferredSubject)
     ? null
     : perDocument.find((match, index) => {
       const document = candidates[index];
@@ -8211,11 +8240,14 @@ export function assessEvidence(query, documents = []) {
         if (passageDisclaimsEvidence(passage)) return false;
         const passageMatches = passageMatchesTerms(passage, terms);
         return passageMatches.includes(primarySubject)
+          && mandatePassage(passage)
           && (explicitSubjects.length > 0
             ? explicitSubjects.every((subject) => textHasExplicitSubject(passage, subject))
             : broadDomainTerms.every((term) => passageMatches.includes(term)))
           && actionTerms.every((term) => textHasActionRoot(passage, term))
           && stateTerms.every((term) => textHasQueryRoot(passage, term))
+          && itemTerms.every((term) => textHasQueryRoot(passage, term))
+          && organizationTerms.every((term) => textHasQueryRoot(passage, term))
           && passageMatches.some((term) => !GENERIC_QUERY_CONTEXT_TERMS.has(term));
       });
     });

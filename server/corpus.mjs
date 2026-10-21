@@ -3278,6 +3278,10 @@ export async function hydrateCorpusBacklog({ limit = 300, concurrency = 2, delay
               OR canonical_url LIKE 'https://www.keskkonnaportaal.ee/%' THEN 0
             ELSE 1
           END,
+          CASE
+            WHEN canonical_url ~ '/(?:juhend|juhised|kasiraamat|kkk|kysimused|teemad|keskkonnakasutus|jaatmed|vesi|valisohk|kliima|radoon|hallitus|metsloom|loomahaig)' THEN 0
+            ELSE 1
+          END,
           published_at DESC NULLS LAST,
           id DESC
         LIMIT $1
