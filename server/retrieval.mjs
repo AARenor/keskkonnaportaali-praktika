@@ -1743,7 +1743,7 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
   if (requestsForestCatalogue && document.id === "forest-catalogue") return 4;
   if (roots.includes("jaatmekaitluskoht") && document.id === "waste-facilities-map") return 3;
   if (document.id === "waste-sorting-guidance"
-    && roots.includes("jaat")
+    && roots.some((root) => ["jaat", "klaas", "suurjaatmed", "kulmkapp", "rehv"].includes(root))
     && /\b(?:kuhu|mida\s+teha|sorteer|visata|viia|panna|k\w*idelda)\b/u.test(normalize(query))) return 50;
   if (roots.includes("kaart")
     && roots.some((root) => ["natura", "kaitseala"].includes(root))
