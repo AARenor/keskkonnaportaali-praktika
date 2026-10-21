@@ -1716,11 +1716,11 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
     && roots.includes("pindala")
     && /\b2013\b/u.test(normalizedQuery)
     && document.id === "bogs-overview") return 5;
-  if (isElectricVehicleImpactIntent(roots) && document.id === "electric-vehicle-lifecycle") return 6;
+  if (isElectricVehicleImpactIntent(roots) && document.id === "electric-vehicle-lifecycle") return 50;
   if (roots.includes("jalajalg")
     && !roots.includes("elektriauto")
     && document.id === "organizational-footprint") return 5;
-  if (isMiningWaterImpactIntent(roots) && document.id === "mining-impact-guidance") return 6;
+  if (isMiningWaterImpactIntent(roots) && document.id === "mining-impact-guidance") return 50;
   if (roots.includes("margala")
     && roots.includes("taastamine")
     && document.id === "wetland-restoration") return 5;
@@ -1790,13 +1790,14 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
     && roots.some((root) => ["kaart", "stsenaarium"].includes(root));
   if (requestsClimateMap && document.id === "climate-atlas") return 4;
   if (roots.includes("kliima") && roots.includes("sademed") && document.id === "precipitation-change") {
+    if (/\bkliimamuut|sademet\w*\s+muut|m\w*ju\s+sademet/u.test(normalize(query))) return 50;
     return requestsClimateMap ? 2 : 3;
   }
   if (roots.includes("kliima") && roots.includes("sademed") && document.id === "climate-atlas") return 2;
   if (roots.includes("kotkas")
     && roots.some((root) => ["keskkonnaluba", "menetluse", "menetlus", "staatus"].includes(root))
     && document.id === "environmental-permits") return 3;
-  if (roots.includes("kese") && roots.includes("seire") && document.id === "kese-monitoring") return 3;
+  if (roots.includes("kese") && roots.includes("seire") && document.id === "kese-monitoring") return 50;
   if (roots.includes("maahoive") && document.id === "soil-land-take") return 5;
   if (roots.includes("jaakreostus") && document.id === "residual-pollution") return 5;
   if (roots.includes("muld") && document.id === "soil-monitoring-results") {

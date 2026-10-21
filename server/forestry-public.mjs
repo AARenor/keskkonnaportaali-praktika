@@ -1561,7 +1561,8 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
     return resolved("protected-forest-overview");
   }
   if (hasProtection && (hasHarvest || hasNotice)) return resolved("logging-in-protected-areas");
-  if (hasNotice || (/\braiekavatsus\w*\b/u.test(text) && /\blubav\w*\s+mar(?:k|g)\w*\b/u.test(text))) return resolved("forest-notice");
+  if (hasNotice || (/\btaotl/u.test(text) && /\b(?:eraldis|raie)\w*/u.test(text))
+    || (/\braiekavatsus\w*\b/u.test(text) && /\blubav\w*\s+mar(?:k|g)\w*\b/u.test(text))) return resolved("forest-notice");
   if (hasStem(tokens, ["mand", "mann", "mannik"], true) && hasStem(tokens, ["kuusk", "kuus", "kuusik"], true)) {
     return resolved("pine-versus-spruce");
   }

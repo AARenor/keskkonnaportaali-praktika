@@ -2666,6 +2666,9 @@ export function queryTerms(query) {
   // of "kas … võib …" questions. Keep them out of the token stream and add
   // the semantic root explicitly.
   const permissionRoots = /\b(?:voib|voivad|voiks|voiksid)\b/u.test(normalizedQuery) ? ["lubatavus"] : [];
+  const permitIntent = /\btaotl/u.test(normalizedQuery)
+    && /\b(?:eraldis|raie|metsateatis)\w*/u.test(normalizedQuery);
+  const permitRoots = permitIntent ? ["metsateatis", "esitamine", "mets"] : [];
   const savingRoots = /sääst\w*/iu.test(String(query || "")) && /\b(?:vett|vesi|energiat|elektrit)\b/iu.test(String(query || ""))
     ? ["vesi", "saastmine"]
     : [];
@@ -2675,6 +2678,7 @@ export function queryTerms(query) {
     .flatMap((word) => {
       if (savingRoots.length && word.startsWith("saasta")) return [];
       if (word.startsWith("keskkonnainfo")) return ["keskkond"];
+      if (word.startsWith("eraldis")) return "eraldis";
       if (word.startsWith("pohjaveevot")) return ["pohjavesi", "veevott"];
       if ((word === "roheline" || word === "rohelise" || word === "rohelist" || word === "taristu")
         && /\brohel(?:ine|ise|ist)\s+taristu\b/u.test(normalizedQuery)) return ["rohevorgustik"];
@@ -2764,7 +2768,8 @@ export function queryTerms(query) {
       if (word.startsWith("pm10")) return ["pm10", "ohukvaliteet"];
       return [topicRoot(word)];
     });
-  const roots = [...new Set([...permissionRoots, ...savingRoots, ...termRoots])];
+  const roots = [...new Set([...permitRoots, ...permissionRoots, ...savingRoots,
+    ...termRoots.filter((root) => !(permitIntent && ["taotlemine", "eraldis", "raie"].includes(root)))])];
   const phraseRoots = [];
   if (multilingualPhrases && /\bair\s+quality\b/u.test(normalizedQuery)) phraseRoots.push("ohukvaliteet");
   if (multilingualPhrases && /\bwater\s+quality\b/u.test(normalizedQuery)) phraseRoots.push("vesi", "seisund");
