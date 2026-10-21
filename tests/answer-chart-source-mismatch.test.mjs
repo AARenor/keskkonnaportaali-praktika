@@ -18,15 +18,21 @@ test("chart warns with a hover note only when its source differs from the text's
   try {
     const { default: AnswerChart, chartSourceDiffers, SOURCE_MISMATCH_NOTE } = await vite.ssrLoadModule("/src/AnswerChart.jsx");
     const sources = [
-      { citation: 1, url: "https://example.ee/text" },
-      { citation: 2, url: "https://example.ee/smi" },
-      { citation: 3, url: "https://example.ee/smi" },
+      { citation: 1, url: "https://keskkonnaagentuur.ee/smi-aruanne", organization: "Keskkonnaagentuur" },
+      { citation: 2, url: "https://keskkonnaagentuur.ee/smi-tooleht", organization: "Keskkonnaagentuur" },
+      { citation: 3, url: "https://example.ee/muu", organization: "Muu Asutus" },
+      { citation: 4, url: "https://example.ee/a" },
+      { citation: 5, url: "https://example.ee/a" },
+      { citation: 6, url: "https://example.ee/b" },
     ];
-    const answer = { introCitations: [1], parts: [{ text: "x", citations: [3] }] };
-    assert.equal(chartSourceDiffers(answer, { citation: 1 }, sources), false, "same citation");
-    assert.equal(chartSourceDiffers(answer, { citation: 2 }, sources), false, "same URL under another number");
-    assert.equal(chartSourceDiffers({ introCitations: [1] }, { citation: 2 }, sources), true);
-    assert.equal(chartSourceDiffers({ introCitations: [], parts: [] }, { citation: 2 }, sources), false, "nothing to compare");
+    const cites = (...numbers) => ({ introCitations: numbers });
+    assert.equal(chartSourceDiffers(cites(1), { citation: 1 }, sources), false, "same citation");
+    assert.equal(chartSourceDiffers(cites(1), { citation: 2 }, sources), false, "two documents from one publisher");
+    assert.equal(chartSourceDiffers(cites(1), { citation: 3 }, sources), true, "different publisher");
+    assert.equal(chartSourceDiffers({ parts: [{ citations: [3, 2] }] }, { citation: 1 }, sources), false, "publisher cited anywhere in the text");
+    assert.equal(chartSourceDiffers(cites(4), { citation: 5 }, sources), false, "unlabelled sources on the same page");
+    assert.equal(chartSourceDiffers(cites(4), { citation: 6 }, sources), true, "unlabelled sources on different pages");
+    assert.equal(chartSourceDiffers({ introCitations: [], parts: [] }, { citation: 3 }, sources), false, "nothing to compare");
 
     const chart = { kind: "line", title: "Raiemaht", unit: "tuhat m³", series: [{ id: "h", label: "Raiemaht", points: [{ x: 2023, y: 1 }, { x: 2024, y: 2 }] }] };
     const plain = load(renderToStaticMarkup(createElement(AnswerChart, { chart })));

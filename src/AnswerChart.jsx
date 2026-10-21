@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { chartDescription, formatChartValue, niceDomain, seriesPrecision, shareArcs, splitRuns, xTickStep } from "./answer-chart-layout.js";
+import { sourceOrganizationLabel } from "./source-label.js";
 
 const HEIGHT = 260;
 const MARGIN = { top: 16, right: 20, bottom: 36, left: 56 };
@@ -382,7 +383,9 @@ function ShareChart({ chart, citation = null, sourceDiffers = false }) {
 // know; showing nothing is better than drawing it with the wrong geometry.
 const KNOWN_CHART_KINDS = new Set(["line", "bar", "share"]);
 
-// True when the chart cites a source the text answer does not cite. An answer
+// True when the chart's publisher is not among the text answer's publishers.
+// Two tables from the same agency are one source to a reader; only a different
+// publisher (or, for an unlabelled source, a different page) warns. An answer
 // without any citations gives nothing to compare against, so it never warns.
 export function chartSourceDiffers(answer, chart, sources = []) {
   if (!chart?.citation || !answer) return false;
@@ -391,9 +394,10 @@ export function chartSourceDiffers(answer, chart, sources = []) {
     ...(answer.parts || []).flatMap((part) => part.citations || []),
   ]);
   if (!textCitations.size || textCitations.has(chart.citation)) return false;
-  const urlOf = (number) => sources.find((source) => source.citation === number)?.url;
-  const chartUrl = urlOf(chart.citation);
-  return !chartUrl || ![...textCitations].some((number) => urlOf(number) === chartUrl);
+  const sourceOf = (number) => sources.find((source) => Number(source.citation) === Number(number));
+  const identity = (source) => sourceOrganizationLabel(source) || source?.url || "";
+  const chartIdentity = identity(sourceOf(chart.citation));
+  return !chartIdentity || ![...textCitations].some((number) => identity(sourceOf(number)) === chartIdentity);
 }
 
 export default function AnswerChart({ chart, citation = null, sourceDiffers = false }) {
