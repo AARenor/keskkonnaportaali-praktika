@@ -1240,7 +1240,8 @@ export async function createPortalDraft(query, {
   const intentCovered = !firePreventionIntent && !fellingProcedureIntent && !radonRiskIntent
     || (firePreventionIntent && /(?:poleng|tulekahju|tuleoht)/u.test(intentAnswer))
     || (fellingProcedureIntent && /(?:eraldis|raie|metsateatis)/u.test(intentAnswer) && /taotl/u.test(intentAnswer))
-    || (radonRiskIntent && /(?:tervis|ohtlik|risk|piirnorm|radoonioht)/u.test(intentAnswer));
+    || (radonRiskIntent && /(?:tervis|ohtlik|risk|piirnorm|radoonioht)/u.test(intentAnswer)
+      && !/(?:seminar|konverents|koolitus|toimub|korraldab|registreeru|külasta)/u.test(intentAnswer));
   if (!intentCovered) {
     draft.answer = {
       eyebrow: "Vajan täpsustust",

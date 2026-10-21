@@ -1885,7 +1885,8 @@ function specificTopicMismatch(query, payload) {
     return !(/(?:eraldis|raie|metsateatis)/u.test(intro) && /taotl/u.test(intro));
   }
   if (/radoon/u.test(cleanQuery) && /(?:ohtlik|tervis|risk|piirnorm)/u.test(cleanQuery)) {
-    return !/(?:tervis|ohtlik|risk|piirnorm|radoonioht)/u.test(intro);
+    return /(?:seminar|konverents|koolitus|toimub|korraldab|registreeru|külasta)/u.test(intro)
+      || !/(?:tervis|ohtlik|risk|piirnorm|radoonioht)/u.test(intro);
   }
   return false;
 }
