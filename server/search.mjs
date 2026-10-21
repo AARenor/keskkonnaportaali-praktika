@@ -2367,7 +2367,7 @@ function topicRoot(word) {
   if (["pfas", "pfos", "pfoa"].includes(word)) return "pfas";
   if (word === "prtr") return "prtr";
   if (word.startsWith("saast")) return "saaste";
-  if (word.startsWith("reost")) return "saaste";
+  if (word.startsWith("reost")) return "reostus";
   if (word.startsWith("veereost")) return "saaste";
   if (word.startsWith("reove") || word.startsWith("heitve")) return "reovesi";
   if (word.startsWith("heit")) return "heide";
@@ -3081,7 +3081,7 @@ const DOMAIN_ROOTS = new Set([
   "kodus", "kalapuuk", "ranne", "klaas", "suurjaatmed", "puu",
   "keskkonnamoju", "keskkonnaamet", "keskkonnaagentuur", "kliimaministeerium", "kuumalaine",
   "kotkas", "kmh", "ksh", "kataster", "kinnistu", "metsaregister",
-  "elektriauto", "energia", "transport", "kutus", "maavara", "kaevandus", "muld", "maahoive", "jaakreostus", "kaevandamisjaatmed",
+  "elektriauto", "energia", "transport", "kutus", "maavara", "kaevandus", "muld", "maahoive", "jaakreostus", "reostus", "kaevandamisjaatmed",
   "mura", "lohn", "kiirgus", "uvkiirgus", "radioaktiivne", "radionukliid", "radoon", "sisekliima", "hallitus", "niiskus", "kemikaal", "ohutuskaart", "biotsiid", "pfas", "prtr", "veekaitse", "tolmeldaja", "climate", "forest", "water", "weather", "pollution", "waste",
   "biodiversity", "nature", "air", "animal", "species", "habitat", "wildlife", "woodland",
   "sea", "ocean", "river", "lake", "data", "andmed", "metaandmed", "api", "statistika", "ruumikiht", "allalaadimine", "kaart", "register", "metsateatis",
