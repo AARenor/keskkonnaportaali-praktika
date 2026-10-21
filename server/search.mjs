@@ -2368,7 +2368,7 @@ function topicRoot(word) {
   if (word === "prtr") return "prtr";
   if (word.startsWith("saast")) return "saaste";
   if (word.startsWith("reost")) return "reostus";
-  if (word.startsWith("veereost")) return "saaste";
+  if (word.startsWith("veereost")) return "reostus";
   if (word.startsWith("reove") || word.startsWith("heitve")) return "reovesi";
   if (word.startsWith("heit")) return "heide";
   if (word.startsWith("looduskait")) return "looduskaitse";
