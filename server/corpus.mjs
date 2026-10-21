@@ -751,7 +751,26 @@ export function deduplicateCorpusDocuments(rawDocuments = []) {
     ]));
     byUrl.set(document.url, merged);
   }
-  return [...byUrl.values()];
+  const byIdentity = new Map();
+  for (const document of byUrl.values()) {
+    const key = `${document.sourceKey}\u0000${document.externalId}`;
+    const current = byIdentity.get(key);
+    if (!current) {
+      byIdentity.set(key, document);
+      continue;
+    }
+    const preferred = document.quality >= current.quality ? document : current;
+    const fallback = preferred === document ? current : document;
+    byIdentity.set(key, {
+      ...fallback,
+      ...preferred,
+      content: preferred.content.length >= fallback.content.length ? preferred.content : fallback.content,
+      topics: [...new Set([...current.topics, ...document.topics])].slice(0, 20),
+      metadata: { ...current.metadata, ...document.metadata },
+      quality: Math.max(current.quality, document.quality),
+    });
+  }
+  return [...byIdentity.values()];
 }
 
 export function parsePortalReportedTotal(value) {
@@ -1412,7 +1431,7 @@ async function upsertDocuments(
         metadata JSONB,
         content_hash TEXT
       )
-      ON CONFLICT DO UPDATE SET
+      ON CONFLICT (canonical_url) DO UPDATE SET
         external_id = CASE
           WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search'
             THEN current.external_id
@@ -2363,14 +2382,22 @@ export async function syncPortalCorpus({
       );
       runId = run.rows[0].id;
 
-      const sitemap = await crawlPortalSitemap();
-      const sitemapDocuments = sitemap.documents;
-      details.sitemapPages = sitemap.pages;
-      totals.discovered += sitemapDocuments.length;
-      const sitemapUpsert = await upsertDocuments(client, sitemapDocuments, runId);
-      totals.indexed += sitemapUpsert.indexed;
-      totals.capacityDropped += sitemapUpsert.capacityDropped;
-      details.authoritativeCapacityDropped += sitemapUpsert.capacityDropped;
+      let sitemapDocuments = [];
+      try {
+        const sitemap = await crawlPortalSitemap();
+        sitemapDocuments = sitemap.documents;
+        details.sitemapPages = sitemap.pages;
+        totals.discovered += sitemapDocuments.length;
+        const sitemapUpsert = await upsertDocuments(client, sitemapDocuments, runId);
+        totals.indexed += sitemapUpsert.indexed;
+        totals.capacityDropped += sitemapUpsert.capacityDropped;
+        details.authoritativeCapacityDropped += sitemapUpsert.capacityDropped;
+      } catch (error) {
+        // The portal is the primary mirror, not the only scrapeable source.
+        // A temporary portal outage must not abort official sitemap refreshes.
+        details.portalSitemap = { error: error.message };
+        totals.errors += 1;
+      }
       const reviewedSeed = await seedReviewedCatalogueDocuments(client, runId);
       details.reviewedCatalogueSeeded = reviewedSeed.seeded;
 
@@ -2418,9 +2445,9 @@ export async function syncPortalCorpus({
           // The portal now disallows its search endpoint in robots.txt while
           // keeping the sitemap public. Respect that policy, keep the sitemap
           // and seed-query data, and do not fail the whole synchronization.
-          if (!isRobotsDisallowedCorpusError(error)) throw error;
+          if (!isRobotsDisallowedCorpusError(error) && !/Corpus source returned 5\d\d/u.test(error.message)) throw error;
           catalogSkipped = true;
-          details.catalogSkipped = "robots-disallowed";
+          details.catalogSkipped = isRobotsDisallowedCorpusError(error) ? "robots-disallowed" : "source-unavailable";
         }
       }
 
@@ -2451,8 +2478,8 @@ export async function syncPortalCorpus({
           });
           hydrationCandidates.push(...snapshot.distinctUrls);
         } catch (error) {
-          if (!isRobotsDisallowedCorpusError(error)) throw error;
-          details.seedQueries[query] = { skipped: "robots-disallowed" };
+          if (!isRobotsDisallowedCorpusError(error) && !/Corpus source returned 5\d\d/u.test(error.message)) throw error;
+          details.seedQueries[query] = { skipped: isRobotsDisallowedCorpusError(error) ? "robots-disallowed" : "source-unavailable" };
         }
       }
       // Seed-query pages are intentionally first: the initial bounded hydration
