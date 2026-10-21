@@ -1745,6 +1745,7 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
   if (document.id === "waste-sorting-guidance"
     && roots.some((root) => ["jaat", "klaas", "suurjaatmed", "kulmkapp", "rehv"].includes(root))
     && !roots.includes("polet")
+    && !/\b(?:rakvere|tallinn|tartu|parnu|narva|kohtla|viljandi|voru|kuressaare|haapsalu|johvi|paide|valga|polva|jogeva|sillamae|kivioli|keila|maardu|elva|rapla|kardla|lahedal|jaamas|vastuvot)\w*/u.test(normalize(query))
     && /\b(?:kuhu|mida\s+teha|sorteer|visata|viia|panna|k\w*idelda)\b/u.test(normalize(query))) return 50;
   if (roots.includes("kaart")
     && roots.some((root) => ["natura", "kaitseala"].includes(root))
