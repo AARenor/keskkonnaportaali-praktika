@@ -1412,7 +1412,7 @@ async function upsertDocuments(
         metadata JSONB,
         content_hash TEXT
       )
-      ON CONFLICT (canonical_url) DO UPDATE SET
+      ON CONFLICT DO UPDATE SET
         external_id = CASE
           WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search'
             THEN current.external_id
