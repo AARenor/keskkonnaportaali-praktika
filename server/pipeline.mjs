@@ -151,7 +151,13 @@ function passageDirectness(query, passage) {
   const guidanceQuestion = /\b(?:kuidas|mida\s+teha|mida\s+peab|kuhu|kus\s+saab|millised\s+on\s+nouded|kuidas\s+valtida|kuidas\s+taotleda)\b/u.test(normalize(query))
     && !/\b(?:kui\s+palju|kui\s+suur|pindala|osakaal|muutunud|muutus|trend|aastatel|arv|kogus|protsent)\b/u.test(normalize(query));
   if (guidanceQuestion) {
-    const advice = /\b(?:tuleb|peab|soovita\w*|valdi\w*|valtida|eemalda\w*|kuivata\w*|tuuluta\w*|puhasta\w*|kontrolli\w*|taotle\w*|esita\w*|hoia\w*|vaheta\w*|paranda\w*|koguge|vii\b|viia\b|registreeri\w*)\b/u.test(text);
+    const adviceText = /\b(?:tuleb|peab|soovita\w*|valdi\w*|valtida|eemalda\w*|kuivata\w*|tuuluta\w*|puhasta\w*|kontrolli\w*|taotle\w*|esita\w*|hoia\w*|vaheta\w*|paranda\w*|koguge|vii\b|viia\b|registreeri\w*)\b/u.test(text);
+    // An imperative sentence is only an answer when it is about the question's
+    // own action. Otherwise a disposal sentence on a sorting page could answer
+    // "how do I sort bio-waste" merely because it contains "viia".
+    const terms = queryTerms(query);
+    const actions = terms.filter((term) => term.length >= 5 && /(?:da|ma|mine|takse|tud|nud)$/u.test(term) && !term.endsWith("maa"));
+    const advice = adviceText && (actions.length === 0 || actions.some((term) => textHasActionRoot(passage, term)));
     const meta = /\b(?:kasitleb|sisaldab|annab\s+ulevaate|on\s+puhendatud|tutvustab|leiad|naed)\b/u.test(text);
     const chrome = /\b(?:avakuva|infosusteem|menuu|otsing|avaandmed|juhatus)\b/u.test(text);
     return yearScore + (advice ? 14 : 0) - (meta ? 16 : 0) - (chrome ? 10 : 0);
