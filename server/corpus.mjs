@@ -1459,7 +1459,7 @@ async function upsertDocuments(
         content = CASE
           WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search' THEN current.content
           WHEN current.source_key = 'official-live-search' AND EXCLUDED.source_key <> 'official-live-search' THEN EXCLUDED.content
-          WHEN EXCLUDED.content <> '' THEN EXCLUDED.content ELSE current.content END,
+          WHEN EXCLUDED.metadata_quality >= current.metadata_quality AND EXCLUDED.content <> '' THEN EXCLUDED.content ELSE current.content END,
         category = CASE
           WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search' THEN current.category
           WHEN current.source_key = 'official-live-search' AND EXCLUDED.source_key <> 'official-live-search' THEN EXCLUDED.category
@@ -1506,16 +1506,18 @@ async function upsertDocuments(
             THEN EXCLUDED.metadata
           WHEN EXCLUDED.source_key = 'official-live-search'
             THEN (current.metadata - 'retired_reason') || EXCLUDED.metadata
-          ELSE current.metadata || EXCLUDED.metadata
+          WHEN EXCLUDED.metadata_quality >= current.metadata_quality
+            THEN current.metadata || EXCLUDED.metadata
+          ELSE EXCLUDED.metadata || current.metadata
         END,
         content_hash = CASE
           WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search' THEN current.content_hash
           WHEN current.source_key = 'official-live-search' AND EXCLUDED.source_key <> 'official-live-search' THEN EXCLUDED.content_hash
-          WHEN EXCLUDED.metadata_quality >= current.metadata_quality OR EXCLUDED.content <> '' THEN EXCLUDED.content_hash ELSE current.content_hash END,
+          WHEN EXCLUDED.metadata_quality >= current.metadata_quality THEN EXCLUDED.content_hash ELSE current.content_hash END,
         fetched_at = CASE
           WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search' THEN current.fetched_at
           WHEN current.source_key = 'official-live-search' AND EXCLUDED.source_key <> 'official-live-search' THEN NOW()
-          WHEN EXCLUDED.content <> '' THEN NOW() ELSE current.fetched_at END,
+          WHEN EXCLUDED.metadata_quality >= current.metadata_quality AND EXCLUDED.content <> '' THEN NOW() ELSE current.fetched_at END,
         last_seen_at = NOW(),
         last_seen_run = EXCLUDED.last_seen_run,
         is_available = TRUE
@@ -3293,9 +3295,9 @@ export function corpusBackfillHydrateLimit(value = process.env.CORPUS_BACKFILL_H
   return Math.max(0, Math.min(Number.isFinite(parsed) && String(value ?? "").trim() !== "" ? parsed : 300, 1_000));
 }
 
-// Hydrates corpus rows that have never been fetched, news and topic pages
-// first. It records no run: persistence keeps each row's last_seen_run, so the
-// next full sync's retirement pass and freshness check are unaffected.
+// Hydrate missing bodies and repair provenance overwritten by older sitemap
+// merges. Damaged rows remain route-only until a new approved fetch succeeds;
+// retaining a body or its old hash never restores evidence rights by itself.
 export async function hydrateCorpusBacklog({ limit = 300, concurrency = 2, delayMs = 400 } = {}) {
   await ensureCorpusSchema();
   const safeLimit = Math.max(0, Math.trunc(Number(limit) || 0));
@@ -3308,17 +3310,20 @@ export async function hydrateCorpusBacklog({ limit = 300, concurrency = 2, delay
         SELECT canonical_url
         FROM practice_corpus_documents
         WHERE is_available = TRUE
-          AND source_key IN ('portal-sitemap', 'portal-catalog', 'official-sitemap', 'official-live-search')
+          AND source_key IN ('portal-sitemap', 'portal-catalog', 'official-sitemap', 'official-live-search', 'official-page-hydration')
           AND NOT (metadata ? 'robots_noindex')
           AND (
             content = ''
             OR source_key IN ('official-sitemap', 'official-live-search')
+            OR (source_key = 'official-page-hydration'
+              AND metadata->>'source_kind' IS DISTINCT FROM 'official-page-hydration')
           )
           AND (
             NOT (metadata ? 'hydration_attempted_at')
             OR (metadata->>'hydration_attempted_at')::TIMESTAMPTZ < NOW() - INTERVAL '7 days'
           )
         ORDER BY
+          CASE WHEN source_key = 'official-page-hydration' THEN 0 ELSE 1 END,
           CASE WHEN canonical_url ~ '/(uudised|teemad)/' THEN 0 ELSE 1 END,
           CASE
             WHEN canonical_url LIKE 'https://keskkonnaportaal.ee/%'

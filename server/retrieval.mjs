@@ -447,6 +447,99 @@ function claimBearingEvidenceSourcePassages(document = {}) {
     .filter((passage) => !passageDisclaimsEvidence(passage));
 }
 
+// Fact-check planning: keep a disputed statement together with the source's
+// own correction. The windows stay raw source prose so the evidence pack's
+// exact-window admission (evidence-pack.mjs rawWindows) accepts them; nothing
+// here rewrites or paraphrases the article, and the disputed claim is never
+// promoted as fact by itself.
+const FACT_CHECK_CLAIM_START = /^\d{1,2}[.)]\s*\p{Lu}/u;
+const FACT_CHECK_NUMBERED_MARKER = /^\d{1,2}[.)]$/u;
+const FACT_CHECK_CORRECTION_MARKER = /\b(?:vale|valeks|ei\s+vasta\s+toele|tegelikult|tegelikkuses|lukkab\s+umber|lukatakse\s+umber|on\s+vale|ei\s+ole\b|ei\s+oleks\b|korrektsed|korrektne|oige\s+on|ei\s+tohi\s+uletada|alahindamine|erinevused\s+tulenevad|klapivad)\b/u;
+const FACT_CHECK_ALLEGATION_MARKER = /\b(?:valevait\w*|valeandm\w*|valeinfo\w*|vaidetakse|hinnangul|ulerai\w*|otsas)\b/u;
+const FACT_CHECK_DOCUMENT_FRAMING = /\b(?:valevait\w*|valeinfo\w*|valeandm\w*|desinformatsioon\w*|lukkab\s+umber|lukatakse\s+umber|umber\s+luk\w*|tosi\s+voi\s+vale|ei\s+vasta\s+toele|on\s+vale|muut|muudi|muuti)\b/u;
+const FACT_CHECK_INTENT_TERMS = new Set([
+  "levinud", "valevaited", "valevait", "valeandmed", "valeandm", "valeinfo",
+  "muut", "muudi", "muuti", "umber", "lukkab", "lukatakse", "kaivad", "tosi",
+]);
+
+function factCheckSubjectTerms(query) {
+  return queryTerms(query).filter((term) => term.length >= 4 && !FACT_CHECK_INTENT_TERMS.has(term));
+}
+
+// A numbered claim may arrive either as "1. Claim sentence." or as a lone
+// "1." window followed by the claim sentence, depending on how the source
+// body was split. Both shapes identify the same source structure.
+function factCheckNumberedStart(windows, index) {
+  const window = windows[index];
+  if (FACT_CHECK_CLAIM_START.test(window)) return { claimIndex: index, claim: window };
+  if (FACT_CHECK_NUMBERED_MARKER.test(window) && index + 1 < windows.length) {
+    return { claimIndex: index + 1, claim: windows[index + 1] };
+  }
+  return null;
+}
+
+function factCheckEvidence(document = {}, query = "") {
+  const windows = [...new Set(claimBearingEvidenceSourcePassages(document))];
+  if (!windows.length) return null;
+  // The correction framing may live in the title, summary or body: a document
+  // that never presents itself as a correction is not fact-check evidence.
+  const framingText = normalize([document.title, document.summary, document.content, document.answer]
+    .filter(Boolean).join(" "));
+  if (!FACT_CHECK_DOCUMENT_FRAMING.test(framingText)) return null;
+  const subjects = factCheckSubjectTerms(query);
+  const hasSubject = (value) => subjects.length === 0
+    || subjects.some((subject) => textHasQueryRoot(value, subject));
+  const pairs = [];
+  for (let index = 0; index < windows.length && pairs.length < 4; index += 1) {
+    const start = factCheckNumberedStart(windows, index);
+    if (!start) continue;
+    // A bare numbered topic label ("4. Netojuurdekasvu mõiste.") names a
+    // subject but states no allegation; a real claim needs a full sentence or
+    // an explicit allegation marker.
+    if (start.claim.length < 25 && !FACT_CHECK_ALLEGATION_MARKER.test(normalize(start.claim))) continue;
+    const block = [];
+    for (let next = start.claimIndex + 1; next < windows.length; next += 1) {
+      if (factCheckNumberedStart(windows, next)) break;
+      block.push(windows[next]);
+    }
+    // Find the actual response before retaining nearby explanatory context.
+    // Never treat the allegation's continuation or a link to another page as
+    // the response; keep anaphoric conclusions with their numeric antecedents.
+    const position = block.findIndex((window) => FACT_CHECK_CORRECTION_MARKER.test(normalize(window)));
+    if (position < 0) continue;
+    const response = block[position];
+    const isNavigation = (passage) => /\b(?:blogi|loe\s+lahemalt|tapsemalt\s+on\s+teemat)\w*/u.test(normalize(passage));
+    const safeContext = (passage) => !FACT_CHECK_ALLEGATION_MARKER.test(normalize(passage)) && !isNavigation(passage);
+    const context = /^(?:need|see|selle)\b/u.test(normalize(response))
+      ? block.slice(Math.max(0, position - 2), position).filter(safeContext)
+      : [];
+    const following = block[position + 1];
+    const corrections = [
+      ...context,
+      response,
+      ...(following && !context.length && safeContext(following) ? [following] : []),
+    ];
+    const pairText = [start.claim, ...corrections].join(" ");
+    if (!hasSubject(pairText)) continue;
+    pairs.push({ index: pairs.length + 1, claim: start.claim, corrections });
+  }
+  if (!pairs.length) {
+    // Unnumbered correction prose: an allegation sentence followed directly by
+    // the source's correction. Both sides stay verbatim.
+    for (let index = 1; index < windows.length && pairs.length < 2; index += 1) {
+      const correction = windows[index];
+      const claim = windows[index - 1];
+      if (factCheckNumberedStart(windows, index)) continue;
+      if (!FACT_CHECK_CORRECTION_MARKER.test(normalize(correction))) continue;
+      if (!FACT_CHECK_ALLEGATION_MARKER.test(normalize(claim))) continue;
+      if (!hasSubject(`${claim} ${correction}`)) continue;
+      pairs.push({ index: pairs.length + 1, claim, corrections: [correction] });
+    }
+  }
+  if (!pairs.length) return null;
+  return { pairs, passages: pairs.flatMap((pair) => [pair.claim, ...pair.corrections]) };
+}
+
 function forestAreaPassageEvidence(passage = "") {
   const raw = String(passage || "");
   const text = normalize(raw);
@@ -1084,6 +1177,58 @@ export function selectAnswerEvidence(query, documents = [], rankingOptions = {})
   if (containsPrivatePersonLookup(query)) return null;
   const intent = forestEvidenceIntent(query);
   if (!intent) return null;
+  if (intent.kind === "forest-fact-check") {
+    const selected = (documents || [])
+      .filter((document) => document && sourceCanSupportPublicCitation(document).eligible)
+      .map((document) => ({ document, factCheck: factCheckEvidence(document, query) }))
+      .find((candidate) => candidate.factCheck);
+    if (!selected) {
+      // A fact-check question is not answered by a generic amount, area or
+      // volume overview. Without a body assertion paired with the source's own
+      // correction, the honest outcome is that this evidence is missing.
+      return {
+        kind: intent.kind,
+        strong: false,
+        requiresStrictScopeEvidence: true,
+        evidenceGroups: [],
+        directDocumentId: null,
+        passages: [],
+        supportingDocumentIds: [],
+        passagesByDocument: {},
+        requiredRoles: [],
+        roleWitnesses: {},
+        evidenceRoles: null,
+        reason: "fact-check-pair-required",
+        missingEvidenceRequirements: [],
+      };
+    }
+    const { document, factCheck } = selected;
+    return {
+      kind: intent.kind,
+      strong: true,
+      directDocumentId: document.id,
+      passages: [...factCheck.passages],
+      supportingDocumentIds: [document.id],
+      passagesByDocument: { [document.id]: [...factCheck.passages] },
+      requiredRoles: ["claims"],
+      roleWitnesses: {
+        claims: {
+          documentId: document.id,
+          ...sourceEvidenceBinding(document),
+          passages: [...factCheck.passages],
+        },
+      },
+      requiredOnly: true,
+      evidenceGroups: [],
+      evidenceRoles: { claims: document.id },
+      claimPairs: factCheck.pairs.map((pair) => ({
+        index: pair.index,
+        claim: pair.claim,
+        corrections: [...pair.corrections],
+      })),
+      missingEvidenceRequirements: [],
+    };
+  }
   const hasBeetleSubject = queryTerms(query).some((root) => ["urask", "feromoon", "puunispuu"].includes(root));
   const beetleYears = hasBeetleSubject ? normalize(query).match(/(?<!\d)(?:19|20)\d{2}(?!\d)/gu) || [] : [];
   const beetleCountyCase = hasBeetleSubject && normalize(query).split(/\s+/u).some((word) =>

@@ -7,10 +7,9 @@ import {
   FORESTRY_GLOSSARY,
   FORESTRY_GLOSSARY_SOURCE,
   glossaryAvoidHits,
-  glossaryDirective,
   glossaryTermsInText,
 } from "../server/forestry-glossary.mjs";
-import { buildLlmRequest, validateGroundedAnswer } from "../server/llm.mjs";
+import { validateGroundedAnswer } from "../server/llm.mjs";
 
 function groundingSource(source) {
   return {
@@ -44,18 +43,6 @@ test("English source wording maps to the yearbook's Estonian term", () => {
   assert.deepEqual(found("Household waste cleaning and tree-free stand-up meetings"), []);
 });
 
-test("the answer prompt carries only the glossary terms present in English evidence", () => {
-  const evidence = [{ citation: 1, title: "Forest accounts", content: "Wood removals and clear felling in Estonia." }];
-  const request = buildLlmRequest({ selectedModel: "gpt-5.6-luna", query: "Kui palju raiuti Eestis?", evidence, singleSource: true });
-  const system = request.body.input[0].content[0].text;
-  assert.match(system, /wood removals → raiemaht/u);
-  assert.match(system, /clear felling → lageraie/u);
-  assert.match(system, /Ära kasuta vorme: puidu eemaldam/u);
-
-  const estonian = buildLlmRequest({ selectedModel: "gpt-5.6-luna", query: "Mis on SMI?", evidence: [{ citation: 1, title: "SMI", content: "SMI on valikuuring." }], singleSource: true });
-  assert.doesNotMatch(estonian.body.input[0].content[0].text, /aastaraamatu "Mets" sõnastiku/u);
-  assert.equal(glossaryDirective([]), "");
-});
 
 test("mistranslated wood removals are caught in every Estonian case form", () => {
   for (const text of [

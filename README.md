@@ -79,6 +79,24 @@ jätta tarbetu live-avastuse ootamise ära; puuduv/aegunud roll või sobimatu
 filter säilitab tavapärase ühendotsingu. Roll tähendab avaldatud faktilõike:
 registri roll vajab kinnistu/metsaeraldise ulatust, mitte üksnes raiekavatsust.
 
+Metsa valeväidete päring vajab artikli sisust väite ja allika selgituse paare.
+Pealkiri üksi ega üldine SMI ülevaade neid ei asenda. Avalik vastus eristab
+vaidlustatud väite allika selgitusest ja nimetab avaldamisaja; ajaloolist
+selgitust ei esitata tänase metsaseisu või väite levimuse hinnanguna.
+Täielik paaritatud tõend avaldatakse ilma tarbetu mudelikõneta ning võib kasutada
+sama privaatsus- ja värskuskontrollidega deterministlikku vastusevahemälu.
+
+Korpuse ühendamisel ei kirjuta madalama kvaliteediga saidikaardikirje üle
+loetud lehe sisu, sisuräsi, lugemisaega ega päritolu. Varasema vigase päritoluga
+lehed jäävad navigeerimiseks: taustapartii taastab tõendiõiguse alles pärast uut
+lubatud HTTPS-lugemist, mitte olemasoleva teksti massilist usaldusväärseks märkimist.
+
+Mudeli süsteemijuhis on päringu, intent'i ja allikate arvu suhtes muutumatu.
+Muutuvad juhised jäävad kasutajasisendisse; tõendid eelnevad küsimusele ja
+vestluskontekstile, et sama tõendipaki ühisprefiks oleks korduskasutatav.
+Provider'i prompt-cache'i tabamus ei ole garanteeritud ega sama mis rakenduse
+vastusevahemälu. Lõppvastus peab säilitama planeerija nõutud rollide viited.
+
 Tootmine kasutab Coolify **Dockerfile** build pack'i, mitte Compose'i runtime'i.
 Runtime-muutujad tuleb seetõttu muuta ka Coolifys enne `main` push'i käivitatavat
 redeploy'd. Täpne käituskeskkonna ja exact-SHA kontrolli kord:

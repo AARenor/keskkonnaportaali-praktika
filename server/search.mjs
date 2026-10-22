@@ -8146,8 +8146,45 @@ function textHasExplicitSubject(text, subject) {
   return false;
 }
 
+// A fact-check answer must rest on the source's own correction of a disputed
+// statement, not on a title, tag or a generic amount. Numbered allegation
+// lists ("1. … valeandmeid. Nende andmed on korrektsed …") and unnumbered
+// allegation/correction prose both qualify, but only when both sides occur in
+// body passages and share the question's subject.
+const FACT_CHECK_CLAIM_START = /^\d{1,2}[.)]\s*\p{Lu}/u;
+const FACT_CHECK_NUMBERED_MARKER = /^\d{1,2}[.)]$/u;
+const FACT_CHECK_CORRECTION_MARKER = /\b(?:vale|valeks|ei\s+vasta\s+toele|tegelikult|tegelikkuses|lukkab\s+umber|lukatakse\s+umber|on\s+vale|ei\s+ole\b|ei\s+oleks\b|korrektsed|korrektne|oige\s+on|ei\s+tohi\s+uletada|alahindamine|erinevused\s+tulenevad|klapivad)\b/u;
+const FACT_CHECK_ALLEGATION_MARKER = /\b(?:valevait\w*|valeandm\w*|valeinfo\w*|vaidetakse|hinnangul|ulerai\w*|otsas|ei\s+ole)\b/u;
+const FACT_CHECK_INTENT_TERMS = new Set([
+  "levinud", "valevaited", "valevait", "valeandmed", "valeandm", "valeinfo",
+  "muut", "muudi", "muuti", "umber", "lukkab", "lukatakse", "kaivad", "tosi",
+]);
+
+function factCheckSubjectTerms(terms) {
+  return terms.filter((term) => term.length >= 4 && !FACT_CHECK_INTENT_TERMS.has(term));
+}
+
+function documentCarriesFactCheckPair(document, terms) {
+  const passages = evidencePassages(document).map((passage) => String(passage || "").trim()).filter(Boolean);
+  if (!passages.length) return false;
+  const subjects = factCheckSubjectTerms(terms);
+  const hasSubject = (value) => subjects.length === 0
+    || subjects.some((subject) => textHasQueryRoot(value, subject));
+  const marker = passages.findIndex((passage) => FACT_CHECK_CLAIM_START.test(passage)
+    || FACT_CHECK_NUMBERED_MARKER.test(passage));
+  if (marker >= 0) {
+    const body = passages.slice(marker + 1);
+    return body.some((passage) => FACT_CHECK_ALLEGATION_MARKER.test(normalize(passage)) && hasSubject(passage))
+      && body.some((passage) => FACT_CHECK_CORRECTION_MARKER.test(normalize(passage)) && hasSubject(passage));
+  }
+  return passages.some((passage) => FACT_CHECK_ALLEGATION_MARKER.test(normalize(passage)) && hasSubject(passage))
+    && passages.some((passage) => FACT_CHECK_CORRECTION_MARKER.test(normalize(passage)) && hasSubject(passage));
+}
+
 export function assessEvidence(query, documents = []) {
   const terms = queryTerms(query);
+  const factCheckIntent = forestEvidenceIntent(query)?.kind === "forest-fact-check";
+  const factCheckDocument = (document) => !factCheckIntent || documentCarriesFactCheckPair(document, terms);
   const evidenceDomainTerms = terms.filter((term) => rootIsDomain(term)
     && !ADMIN_CONTEXT_ROOTS.has(term));
   const broadGenericIntent = !isTopicDataOverviewQuery(query, terms)
@@ -8183,28 +8220,34 @@ export function assessEvidence(query, documents = []) {
     .replace(/\bnatura\s+2000\b/gu, "natura")
     .match(/\b(?:19|20)\d{2}\b/gu) || [];
   const requiredMatches = Math.min(2, Math.max(1, terms.length));
-  const directDocument = broadGenericIntent ? null : perDocument.find((match, index) => {
-    const document = candidates[index];
-    if (!documentCanDirectlyAnswerQuery(query, document)) return false;
-    const passageTerms = terms.filter((term) => !ADMIN_CONTEXT_ROOTS.has(term));
-    const requiredPassageMatches = passageTerms.length <= 3
-      ? passageTerms.length
-      : Math.ceil(passageTerms.length * 0.75);
-    const directPassage = evidencePassages(document).some((passage) => {
-      const passageText = normalize(passage);
-      if (passageDisclaimsEvidence(passage)) return false;
-      const passageMatches = passageMatchesTerms(passage, terms);
-      const requiredMatches = passageMatches.filter((term) => passageTerms.includes(term));
-      return years.every((year) => passageText.includes(year))
-        && mandatePassage(passage)
-        && requiredDomainTerms.every((term) => passageMatches.includes(term))
-        && requiredMatches.length >= requiredPassageMatches;
+  // A misconception question is answered by the source's own assertion and
+  // correction pair, not by repeating its wording. This is intent-specific:
+  // the ordinary term-coverage path below is untouched for every other query.
+  const directDocument = broadGenericIntent ? null : factCheckIntent
+    ? perDocument.find((_match, index) => documentCanDirectlyAnswerQuery(query, candidates[index])
+      && documentCarriesFactCheckPair(candidates[index], terms))
+    : perDocument.find((match, index) => {
+      const document = candidates[index];
+      if (!documentCanDirectlyAnswerQuery(query, document)) return false;
+      const passageTerms = terms.filter((term) => !ADMIN_CONTEXT_ROOTS.has(term));
+      const requiredPassageMatches = passageTerms.length <= 3
+        ? passageTerms.length
+        : Math.ceil(passageTerms.length * 0.75);
+      const directPassage = evidencePassages(document).some((passage) => {
+        const passageText = normalize(passage);
+        if (passageDisclaimsEvidence(passage)) return false;
+        const passageMatches = passageMatchesTerms(passage, terms);
+        const requiredMatches = passageMatches.filter((term) => passageTerms.includes(term));
+        return years.every((year) => passageText.includes(year))
+          && mandatePassage(passage)
+          && requiredDomainTerms.every((term) => passageMatches.includes(term))
+          && requiredMatches.length >= requiredPassageMatches;
+      });
+      return match.matchedTerms.length >= requiredMatches
+        && match.coverage >= 0.45
+        && requiredDomainTerms.every((term) => match.matchedTerms.includes(term))
+        && directPassage;
     });
-    return match.matchedTerms.length >= requiredMatches
-      && match.coverage >= 0.45
-      && requiredDomainTerms.every((term) => match.matchedTerms.includes(term))
-      && directPassage;
-  });
   const yearsCovered = years.length === 0 || Boolean(directDocument);
   const strong = candidates.length > 0
     && topScore >= 10
@@ -8242,6 +8285,7 @@ export function assessEvidence(query, documents = []) {
       const document = candidates[index];
       if (document._answerEvidenceEligible === false || document.evidencePolicy === "route-only" || document.delivery === "structured-or-download") return false;
       if (!documentCanDirectlyAnswerQuery(query, document)) return false;
+      if (!factCheckDocument(document)) return false;
       const primarySubject = [...match.matchedTerms]
         .filter((term) => !GENERIC_QUERY_CONTEXT_TERMS.has(term))
         .sort((left, right) => (Number(rootIsDomain(right)) - Number(rootIsDomain(left))) || right.length - left.length)[0] || null;

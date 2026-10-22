@@ -1136,6 +1136,12 @@ const INTENTS = {
     evidenceGroups: [],
     requiresQueryBoundObservation: true,
   },
+  "forest-fact-check": {
+    serviceDocumentIds: [],
+    discoveryQueries: ["metsastatistika valeväited", "Keskkonnaagentuur lükkab ümber valeväited"],
+    evidenceGroups: [],
+    minimumSupportingDocuments: 1,
+  },
   "clearcut-value-judgement": {
     serviceDocumentIds: ["forest-condition-review", "forest-climate-adaptation-report"],
     discoveryQueries: ["lageraie keskkonnamõju metsaseadus", "lageraie mõju elurikkus veerežiim"],
@@ -1240,6 +1246,20 @@ function forestDataSourcesIntent() {
   };
 }
 
+// A fact-check / misconception question asks which statements about a forest
+// subject are true, so its evidence is an assertion paired with the source's
+// own correction. It is not a quantity question and must not be answered with
+// a generic area or volume overview. Detection stays lexical on the query so
+// the same rule works for a natural question ("millised on levinud
+// valeväited…") and for an article title ("… lükkab ümber … valeväited").
+function isForestFactCheckIntent(text) {
+  if (!text) return false;
+  const correctionFraming = /\b(?:valevait\w*|valeinfo\w*|desinformatsioon\w*|muut|muudi|muuti|muutide|muutisid|lukkab\s+umber|lukatakse\s+umber|umber\s+luk\w*|kas\s+on\s+tosi|mis\s+on\s+tosi|tosi\s+voi\s+vale|vastuolul\w*\s+(?:vait\w*|info\w*)|vale\s+(?:vait|info))\b/u.test(text);
+  const unfoundedDataFraming = /\b(?:valeandm\w*|vale\s+andm\w*)\b/u.test(text)
+    && /\b(?:umber|tosi|kontroll\w*|valevait\w*|valeinfo\w*|vaidlus\w*|vastuol\w*)\b/u.test(text);
+  return correctionFraming || unfoundedDataFraming;
+}
+
 function isForestDepletionIntent(text) {
   if (/\b(?:roni\w*|matk\w*|majakivi|randrahn\w*|kivi\w*|mae\w*)\b/u.test(text)) return false;
   const forest = "(?:eesti\\s+)?mets(?:a|ad|ade|as|ast|aga|amaal|amaa)?";
@@ -1276,6 +1296,7 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
     ...(multilingualForestry ? ["forest", "woodland"] : []),
   ], true) || (multilingualForestry && /\bforested\b/u.test(text)) || hasSmi || hasStem(tokens, ["rmk"]);
 
+  if (hasForest && isForestFactCheckIntent(text)) return resolved("forest-fact-check");
   if (/\bpuidubilans\w*\b/u.test(text)) return resolved("wood-balance-definition");
   if (/^(?:(?:mis\s+on|palun\s+selgita)\s+)?(?:metsa\s+aastaraamat\w*|metsaaastaraamat\w*)$/u.test(text)) return resolved("forest-yearbook-definition");
   if (/\blulucf\b/u.test(text)) return resolved("lulucf-definition");

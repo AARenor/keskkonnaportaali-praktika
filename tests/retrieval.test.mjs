@@ -2537,3 +2537,144 @@ test("three reviewed publication corrections preserve separate update dates", ()
   assert.equal(smiWorkbookInResults([otherRow], workbook), false);
   assert.equal(smiTablesSource([otherRow], workbook), null);
 });
+
+// ---- Generic fact-check / misconception intent -------------------------
+
+const FACT_CHECK_QUERIES = [
+  "Millised on levinud valeväited Eesti metsa kohta?",
+  "Keskkonnaagentuur lükkab ümber metsastatistika kohta käivad valeväited",
+];
+
+async function factCheckArticleSource() {
+  const row = JSON.parse(await readFile(
+    new URL("./fixtures/forest-fact-check-article.json", import.meta.url),
+    "utf8",
+  ));
+  return {
+    id: `corpus-${row.id}`,
+    title: row.title,
+    url: row.canonical_url,
+    summary: row.summary,
+    content: row.content,
+    organization: row.organization,
+    type: row.category,
+    published: row.published_label,
+    topics: row.topics,
+    sourceTier: row.source_tier,
+    _publishedAt: row.published_at.slice(0, 10),
+    retrieval: "approved-page-hydration",
+    delivery: "catalog-and-bounded-hydration",
+    evidencePolicy: "versioned",
+    _answerEvidenceEligible: true,
+    _evidenceVersion: row.content_hash,
+    _evidenceStatusAt: new Date().toISOString(),
+    freshness: {
+      class: "cached-official-page",
+      basis: "retrieved-at",
+      maxAgeMs: 30 * 24 * 60 * 60 * 1_000,
+      requiresSourceTimestamp: true,
+    },
+  };
+}
+
+test("misconception questions resolve to the forestry fact-check intent only", () => {
+  for (const query of FACT_CHECK_QUERIES) {
+    assert.equal(forestEvidenceIntent(query)?.kind, "forest-fact-check");
+  }
+  for (const query of ["metsamaa pindala", "kui palju on metsa Eestis", "metsastatistika"]) {
+    assert.notEqual(forestEvidenceIntent(query)?.kind, "forest-fact-check", query);
+  }
+});
+
+test("fact-check plan pairs each disputed statement with the source correction", async () => {
+  const source = await factCheckArticleSource();
+  for (const query of FACT_CHECK_QUERIES) {
+    const plan = selectAnswerEvidence(query, [source], { preRanked: true });
+    assert.equal(plan.kind, "forest-fact-check", query);
+    assert.equal(plan.strong, true, query);
+    assert.equal(plan.directDocumentId, source.id);
+    assert.deepEqual(plan.requiredRoles, ["claims"]);
+    assert.equal(plan.requiredOnly, true);
+    assert.ok(plan.claimPairs.length >= 2 && plan.claimPairs.length <= 4, query);
+
+    const registryPair = plan.claimPairs.find((pair) => /metsaregistrile esitatakse valeandmeid/iu.test(pair.claim));
+    assert.ok(registryPair, "the metsaregister allegation keeps its correction");
+    assert.match(registryPair.corrections.join(" "), /andmed on korrektsed/iu);
+
+    // The article's leading "1." is split as its own source window; the plan
+    // must still carry the following claim sentence, never the bare numeral.
+    assert.match(plan.claimPairs[0].claim, /raieküps mets Eestis otsas/u);
+    assert.doesNotMatch(plan.passages.join(" "), /(?:^|\s)\d{1,2}\.\s/u);
+    // A pair contains the source's actual corrective sentence, not merely the
+    // next alarm sentence of the same block.
+    assert.ok(plan.claimPairs[0].corrections.some((correction) => /krahhi aga oodata ei ole/u.test(correction)));
+    assert.equal(plan.claimPairs[0].corrections.some((correction) => /^Praegune üleraie/u.test(correction)), false);
+
+    // Every planned passage is an exact raw window of the same source, and the
+    // claim/correction order survives into the witness list.
+    const windows = new Set(splitTextPassages(source.content)
+      .map((passage) => passage.replace(/\s+/gu, " ").trim()));
+    assert.deepEqual(plan.passages, plan.claimPairs.flatMap((pair) => [pair.claim, ...pair.corrections]));
+    for (const passage of plan.passages) assert.ok(windows.has(passage), passage);
+    assert.equal(plan.roleWitnesses.claims.documentId, source.id);
+    assert.equal(plan.roleWitnesses.claims.witnessKey, sourceWitnessKey(source));
+    assert.deepEqual(plan.roleWitnesses.claims.passages, plan.passages);
+
+    const quality = assessEvidence(query, [{ ...source, score: 40 }]);
+    assert.equal(quality.strong, true, query);
+    assert.equal(quality.directDocumentId, source.id);
+  }
+});
+
+test("fact-check evidence requires a correction pair, not a generic overview", async () => {
+  const source = await factCheckArticleSource();
+  const query = FACT_CHECK_QUERIES[0];
+
+  const allegationOnly = {
+    ...source,
+    id: "test-allegation-only",
+    title: "Valeväited metsa kohta",
+    summary: "",
+    content: "1. Metsaregistrile esitatakse valeandmeid.",
+  };
+  const refused = selectAnswerEvidence(query, [allegationOnly], { preRanked: true });
+  assert.equal(refused.kind, "forest-fact-check");
+  assert.equal(refused.strong, false);
+  assert.equal(refused.reason, "fact-check-pair-required");
+  assert.deepEqual(refused.passages, []);
+
+  // A neighbouring sentence is not a correction. Without a proved response the
+  // numbered allegation is omitted even though the title says "valeväited".
+  const uncorrectedNeighbour = {
+    ...source,
+    id: "test-uncorrected-neighbour",
+    title: "Valeväited metsa kohta",
+    summary: "",
+    content: "1. Metsaregistrile esitatakse valeandmeid. Metsaregister sisaldab kaardikihte.",
+  };
+  const neighbourPlan = selectAnswerEvidence(query, [uncorrectedNeighbour], { preRanked: true });
+  assert.equal(neighbourPlan.strong, false);
+  assert.deepEqual(neighbourPlan.passages, []);
+  assert.equal(neighbourPlan.reason, "fact-check-pair-required");
+
+  const overview = officialServiceCatalogueDocuments().find((document) => document.id === "forest-area");
+  assert.ok(overview);
+  const overviewPlan = selectAnswerEvidence(query, [overview], { preRanked: true });
+  assert.equal(overviewPlan.kind, "forest-fact-check");
+  assert.equal(overviewPlan.strong, false);
+  const quality = assessEvidence(query, [{ ...overview, score: 40 }]);
+  assert.equal(quality.strong, false);
+  assert.equal(quality.answerable, false);
+});
+
+test("fact-check plan keeps the article date and admits its claims role into the pack", async () => {
+  const source = await factCheckArticleSource();
+  const query = FACT_CHECK_QUERIES[0];
+  const plan = selectAnswerEvidence(query, [source], { preRanked: true });
+  assert.equal(source.published, "17.03.2023");
+  const pack = buildEvidencePack({ sources: [{ ...source, citation: 1 }], query, plan });
+  assert.equal(pack.complete, true);
+  assert.deepEqual(pack.missingEvidenceRequirements, []);
+  assert.equal(pack.entries[0].published, "17.03.2023");
+  assert.deepEqual(Object.keys(pack.roleWitnesses), ["claims"]);
+});

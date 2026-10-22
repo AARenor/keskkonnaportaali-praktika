@@ -71,9 +71,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-// Increment whenever the public response/citation contract changes so rows
-// written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v72-source-difference-structure";
+export const SEARCH_RESPONSE_REVISION = "answer-v73-intent-grounded-cache-prefix";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
@@ -127,8 +125,23 @@ function passageQueryCoverage(query, passage) {
 function passageDirectness(query, passage) {
   const roots = queryTerms(query);
   const text = normalize(passage);
-  const years = normalize(query).match(/\b(?:19|20)\d{2}\b/gu) || [];
-  const yearScore = years.length ? (years.every((year) => text.includes(year)) ? 20 : -20) : 0;
+  const cleanQuery = normalize(query);
+  const years = cleanQuery.match(/\b(?:19|20)\d{2}\b/gu) || [];
+  // Describing what a page covers is navigation, not an explanation of the
+  // subject. Prefer its actual factual passage even with fewer exact words.
+  const pageDescription = /\b(?:juhend|leht|artikkel|ulevaade|andmestik)\w*\s+(?:selgita|kirjelda|tutvusta|sisalda|kasitle)\w*/u.test(text);
+  const unrelatedEvent = /\b(?:seminar|konverents|koolitus|registreeru)\w*/u.test(text)
+    && !/\b(?:seminar|konverents|koolitus|uritus)\w*/u.test(cleanQuery);
+  const yearScore = (years.length ? (years.every((year) => text.includes(year)) ? 20 : -20) : 0)
+    - (pageDescription || unrelatedEvent ? 24 : 0);
+  if (/\b(?:ohtlik|kahjulik|terviserisk|tervisemoju|risk)\w*/u.test(cleanQuery)) {
+    const consequence = /\b(?:haigestu|kopsuvah|vahki|vahk|kahjusta|murgi|surma|suremu|hingamis|tervisehaire)\w*/u.test(text);
+    return yearScore + (consequence ? 20 : 0);
+  }
+  if (/\b(?:paritolu|parineb|tekib|tekkimise|pohjustab)\b/u.test(cleanQuery)) {
+    const origin = /\b(?:allikas|allikaks|parineb|tekib|tekivad|pohjustab|pohjustavad)\b/u.test(text);
+    return yearScore + (origin ? 20 : 0);
+  }
   if (roots.includes("keskkonnamoju")) {
     const subjectRoots = roots.filter((root) => !["keskkonnamoju", "ida", "virumaa"].includes(root));
     const hasSubject = subjectRoots.some((root) => textHasQueryRoot(text, root));
@@ -305,8 +318,11 @@ export function directEvidenceExtract(query, document, plannedEvidence = null, {
     .map((value) => value.replace(/\s+/gu, " ").trim())
     .filter((value) => subjects.every((root) => textHasQueryRoot(value, root)))
     .filter((value) => !requireSubject || passageAnswersSubject(value))
+    // Semicolon windows can start mid-sentence. Do not attach a dependent
+    // lowercase clause to a different lead sentence and change its subject.
+    .filter((value) => !requireSubject || /^[„“"'([]*[\p{Lu}\d]/u.test(value))
     .filter((value) => value.length >= 35 && value.length <= 520 && hasCompleteSentenceEnding(value));
-  return passages
+  const rankedPassages = passages
     .map((passage, index) => ({
       passage: passage.replace(/^[„“”"']+|[„“”"']+$/gu, "").trim(),
       score: passageQueryCoverage(query, passage) * 20
@@ -314,7 +330,25 @@ export function directEvidenceExtract(query, document, plannedEvidence = null, {
         + (preferred.has(normalize(passage)) ? 80 : 0)
         - index * 0.001,
     }))
-    .sort((left, right) => right.score - left.score)[0]?.passage?.slice(0, 520) || "";
+    .sort((left, right) => right.score - left.score);
+  const lead = rankedPassages[0]?.passage || "";
+  if (!requireSubject || !lead) return lead;
+  // Each retained sentence already passed the same subject/action boundary.
+  // Lead with the direct answer, then retain bounded factual context from
+  // that source; navigation and page descriptions must not fill the space.
+  const selected = distinctPassages(rankedPassages
+    .map(({ passage }) => passage)
+    .filter((passage) => passageQueryCoverage(query, passage) > 0
+      && passageDirectness(query, passage) >= 0));
+  let extract = "";
+  let retained = 0;
+  for (const passage of selected) {
+    const candidate = [extract, passage].filter(Boolean).join(" ");
+    if (candidate.length > 900) continue;
+    extract = candidate;
+    if (++retained === 3) break;
+  }
+  return condenseRedundantSentences(extract);
 }
 
 
@@ -470,6 +504,46 @@ function distinctPassages(passages = []) {
   return distinct;
 }
 
+function composeSourceClaimPairs(query, plannedEvidence, sources = []) {
+  if (plannedEvidence?.kind !== "forest-fact-check" || !plannedEvidence.strong) return null;
+  const source = sources.find((candidate) => candidate.id === plannedEvidence.directDocumentId);
+  const citation = sourceCitation(source);
+  const witness = plannedEvidence.roleWitnesses?.claims;
+  if (!source || source.sourceTier !== "official" || !citation || witness?.documentId !== source.id) return null;
+  const admitted = new Set(witness.passages || []);
+  const pairs = (plannedEvidence.claimPairs || []).flatMap((pair) => {
+    if (!admitted.has(pair.claim) || !pair.corrections?.length
+      || pair.corrections.some((passage) => !admitted.has(passage))) return [];
+    const claim = sanitizeLlmEvidenceText(pair.claim).replace(/^\d+\.\s*/u, "").trim();
+    const corrections = pair.corrections.map((passage) => sanitizeLlmEvidenceText(passage).trim());
+    if (corrections.some((passage) => !passage || !hasCompleteSentenceEnding(passage))) return [];
+    const text = corrections.join(" ");
+    // Dropping a trailing correction can turn its preceding context into an
+    // uncorrected allegation. Admit the complete bounded pair or omit it.
+    if (`„${claim}” ${text}`.length > 900) return [];
+    return [{ title: `Väide: „${claim}”`, claim, text, citations: [citation] }];
+  }).slice(0, 4);
+  if (!pairs.length) return null;
+  const published = String(source.published || "").trim();
+  return {
+    eyebrow: "Allika väited ja selgitused",
+    title: query,
+    // Keep the first allegation visibly labeled and separate from its response:
+    // merging opposed propositions into one paragraph loses their attribution.
+    intro: pairs[0].title,
+    introCitations: pairs[0].citations,
+    parts: pairs.map(({ title, text, citations }, index) => ({
+      title: index === 0 ? "Allika selgitus" : title,
+      text,
+      citations,
+    })),
+    note: [
+      published ? `Allikas avaldati ${published}.` : "",
+      "Need on allika avaldamisaegsed selgitused, mitte väidete praeguse levimuse või tänase metsaseisu hinnang.",
+    ].filter(Boolean).join(" "),
+  };
+}
+
 // Generic forestry intents use only passages that were selected from the
 // same visible official result set. This keeps a useful deterministic answer
 // when Luna is unavailable without importing the legacy prewritten forestry
@@ -477,7 +551,7 @@ function distinctPassages(passages = []) {
 function composeOfficialForestryEvidenceFallback(query, plannedEvidence, sources = [], previousAnswer = {}) {
   if (!plannedEvidence?.strong
     || !plannedEvidence?.passagesByDocument
-    || ["forest-area", "forest-depletion", "forest-data-sources"].includes(plannedEvidence.kind)) return null;
+    || ["forest-area", "forest-depletion", "forest-data-sources", "forest-fact-check"].includes(plannedEvidence.kind)) return null;
   const byId = new Map((sources || []).map((source) => [source.id, source]));
   const bundles = (plannedEvidence.supportingDocumentIds || []).flatMap((documentId) => {
     const source = byId.get(documentId);
@@ -1210,7 +1284,20 @@ export async function createPortalDraft(query, {
   const directExtract = !forestBalance && direct
     ? directEvidenceExtract(retrievalQuery, direct, plannedEvidence)
     : "";
-  if (forestDataSourcesFallback) {
+  const sourceClaimPairs = !forestBalance
+    ? composeSourceClaimPairs(query, plannedEvidence, draft.sources)
+    : null;
+  if (plannedEvidence?.kind === "forest-fact-check") {
+    // The source already provides the claim and its response. Preserve that
+    // distinction deterministically instead of asking a model to restate an
+    // allegation as a fact or silently remove the historical qualification.
+    if (sourceClaimPairs) {
+      draft.answer = sourceClaimPairs;
+      draft.evidence.kind = "structured-source-fact-check";
+    } else {
+      draft.evidence.answerable = false;
+    }
+  } else if (forestDataSourcesFallback) {
     draft.answer = forestDataSourcesFallback;
     // The fallback is a terse rendering of raw visible evidence, not a new
     // source. Do not feed it back to Luna as if it were independently
@@ -1603,6 +1690,7 @@ async function searchWithinBudget(cleanQuery, {
     || evidenceKind === "needs-clarification"
     || evidenceKind === "official-live-routing"
     || evidenceKind === "structured-national-weather-forecast"
+    || evidenceKind === "structured-source-fact-check"
     || (evidenceKind === "structured-forest-balance" && !structuredStale)
     || (evidenceKind === "official-spatial-snapshot" && !spatialDegraded)
   );
