@@ -82,7 +82,7 @@ eraldi lokaalse stack'i leping ega määra selle tootmisrakenduse runtime'i.
    gateway bearer'iga, `LLM_BASE_URL=https://terrapoint.arle.top/v1`,
    `LLM_MODEL=openai-codex/gpt-6-luna`,
    `LLM_ORCHESTRATION=direct`, `LLM_ENABLED=true`, `LLM_REASONING_EFFORT=low`
-   ja `LLM_TIMEOUT_MS=14500`. Hoia olemasolevad concurrency-, tokeni-,
+   ja `LLM_TIMEOUT_MS=23000`. Hoia olemasolevad concurrency-, tokeni-,
    eelarve-, proxy-, andmebaasi- ja privaatsuspiirid alles.
    Toetatud effort'id on `low` ja `medium`; `minimal` ja `none` peatavad
    käivituse. 3200 väljundtokeni taotlus on rakenduse eelarvereserv, mitte
@@ -112,6 +112,17 @@ eraldi lokaalse stack'i leping ega määra selle tootmisrakenduse runtime'i.
    ja tõendikontrolliga valmis 6,9 sekundiga; see ei ole praeguse muudatuse
    latentsusgarantii. Ära lülita `agents` režiimi sisse enne selle tervikvoo
    tõendatud mahtumist senisesse otsingueelarvesse.
+
+### Vastuse kvaliteet ja vahemälu
+
+Pikk loomulik küsimus suurendab laia `OR`-vastet. Korpuse järjestus piirab täpse valemi kandidaadiaknaga, kuid `DATABASE_QUERY_TIMEOUT_MS` (vaikimisi 4000 ms) jääb rangeks piiriks. Kui korpusepäring ületab selle, tagastab `searchCorpus` oleku `degraded` ja avalik vastus jääb kataloogi/otsingutulemuste tasemele. Kontrolli siis `DATABASE_QUERY_TIMEOUT_MS`-i, korpuse mahtu ja seda, kas lehepäring ise mahub eelarvesse; ära tõsta piiri pimesi ega tõlgenda degradeerunud vastust „andmeid ei ole” väiteks.
+
+Metsa valeväidete vastus vajab artikli sisust väite–selgituse paari, mitte pealkirjavastet või üldist SMI ülevaadet. Avaldamisaeg ja ajaloolise selgituse piirang peavad jääma nähtavaks. Täielik paaritatud vastus ei vaja sõnastusmudeli kutset; kontrolli sama päringut korrates ka deterministliku vastusevahemälu taasesitust ning allika- ja aastafiltri muutmisel vana vastuse eemaldumist.
+
+Süsteemijuhis on stabiilne ja tõendipakk eelneb muutuvale küsimusele. See võimaldab provider'i prompt-cache'i, kuid ei tõenda tabamust. 22.10.2026 sama tõendipakiga päris Responses-kontrollides oli `cached_tokens=0`, sealhulgas eraldi tõendi- ja küsimussõnumiga ning `prompt_cache_key` katsetes. Gateway ei toetanud proovitud explicit-cache parameetreid; rakendus neid ei saada. Ära raporteeri ühisprefiksi pikkust cache hit rate'ina ega vähenda tokenieelarvet oletatava cache-soodustuse võrra.
+
+Saidikaardi madalam kvaliteet ei tohi üle kirjutada valideeritud lehe sisu, räsi, lugemisaega ega `metadata.source_kind` päritolu. Varasema vastuoluga hüdratsioonirida jääb navigeerimisallikaks kuni tegeliku uue lubatud HTTPS-lugemiseni; taustapartii eelistab neid ridu. Ära paranda tõendiõigust massilise metaandme-UPDATE'iga. Robots-, noindex-, päritolu-, mahu- ja värskuspiirid jäävad kehtima.
+
 
 OpenAI ja gateway logimise, säilitamise ning konto andmetöötlustingimused tuleb
 enne ametlikku kasutuselevõttu kinnitada eraldi; `store: false` ja keelatud SDK

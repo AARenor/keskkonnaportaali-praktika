@@ -2831,6 +2831,7 @@ export async function searchCorpus(query, {
     const orderClause = appliedFilters.sort === "newest"
       ? "relevance_bucket DESC, published_at DESC NULLS LAST, relevance DESC, id ASC"
       : "relevance DESC, published_at DESC NULLS LAST, id ASC";
+    const candidateLimit = Math.min(50_000, Math.max(1_000, safeOffset + safePageSize * 4));
     const parameters = [
       normalized,
       prefixQuery,
@@ -2844,6 +2845,7 @@ export async function searchCorpus(query, {
       safeExcludedUrls,
       SOURCE_IDENTITY_VERSION,
       anyPrefixQuery,
+      candidateLimit,
     ];
     const [resultState, facetState] = await Promise.allSettled([databaseQuery(`
       WITH parameters AS (
@@ -2854,11 +2856,51 @@ export async function searchCorpus(query, {
           lower($1) AS raw_query,
           $3::TEXT[] AS rank_terms,
           $7::BOOLEAN AS freshness_intent
+      ), matched AS MATERIALIZED (
+        SELECT document.*
+        FROM practice_corpus_documents document, parameters
+        WHERE document.is_available = TRUE
+          AND COALESCE(document.metadata->>'robots_noindex', 'false') <> 'true'
+          AND (
+            document.source_key <> 'official-live-search'
+            OR document.last_seen_at >= NOW() - make_interval(hours => ${OFFICIAL_DISCOVERY_RETENTION_HOURS})
+          )
+          AND (cardinality($4::TEXT[]) = 0 OR document.source_tier = ANY($4::TEXT[]))
+          AND ($5::TEXT IS NULL OR document.category = $5::TEXT)
+          AND ($6::INTEGER IS NULL OR EXTRACT(YEAR FROM document.published_at)::INTEGER = $6::INTEGER)
+          AND (
+            cardinality($10::TEXT[]) = 0
+            OR COALESCE(CASE
+              WHEN document.metadata->>'sourceIdentityVersion' = $11
+                THEN document.metadata->>'sourceResourceKey'
+            END, '') <> ALL($10::TEXT[])
+          )
+          AND (
+            document.search_vector @@ parameters.any_prefix_query
+            OR document.search_vector @@ parameters.web_query
+            OR lower(document.title) % parameters.raw_query
+            OR lower(document.title) LIKE '%' || parameters.raw_query || '%'
+          )
+      ), candidates AS MATERIALIZED (
+        -- A natural-language question makes the broad OR query match a large
+        -- share of a production corpus. Rank that match set with the cheap
+        -- ts_rank first and run the expensive weighted formula only on the
+        -- bounded candidate window; without this the 4 s statement budget
+        -- expired and the answer silently degraded to catalogue cards.
+        SELECT matched.*
+        FROM matched, parameters
+        ORDER BY ts_rank(matched.search_vector, parameters.any_prefix_query) DESC,
+                 matched.published_at DESC NULLS LAST, matched.id ASC
+        LIMIT $13
       ), ranked AS (
         SELECT document.*,
           (
-            ts_rank_cd(ARRAY[0.08, 0.2, 0.6, 1.0], document.search_vector, parameters.prefix_query, 32) * 6.0
-            + ts_rank_cd(ARRAY[0.08, 0.2, 0.6, 1.0], document.search_vector, parameters.web_query, 32) * 2.0
+            CASE WHEN document.search_vector @@ parameters.prefix_query
+              THEN ts_rank_cd(ARRAY[0.08, 0.2, 0.6, 1.0], document.search_vector, parameters.prefix_query, 32) * 6.0
+              ELSE 0 END
+            + CASE WHEN document.search_vector @@ parameters.web_query
+              THEN ts_rank_cd(ARRAY[0.08, 0.2, 0.6, 1.0], document.search_vector, parameters.web_query, 32) * 2.0
+              ELSE 0 END
             + GREATEST(
                 similarity(public.unaccent(lower(document.title)), public.unaccent(parameters.raw_query)),
                 word_similarity(public.unaccent(parameters.raw_query), public.unaccent(lower(document.title)))
@@ -2885,36 +2927,13 @@ export async function searchCorpus(query, {
                 ELSE GREATEST(0, 1.0 - ((CURRENT_DATE - document.published_at)::DOUBLE PRECISION / 3650.0)) * 0.35
               END
           ) AS relevance
-        FROM practice_corpus_documents document, parameters
-        WHERE document.is_available = TRUE
-          AND COALESCE(document.metadata->>'robots_noindex', 'false') <> 'true'
-          AND (
-            document.source_key <> 'official-live-search'
-            OR document.last_seen_at >= NOW() - make_interval(hours => ${OFFICIAL_DISCOVERY_RETENTION_HOURS})
-          )
-          AND (cardinality($4::TEXT[]) = 0 OR document.source_tier = ANY($4::TEXT[]))
-          AND ($5::TEXT IS NULL OR document.category = $5::TEXT)
-          AND ($6::INTEGER IS NULL OR EXTRACT(YEAR FROM document.published_at)::INTEGER = $6::INTEGER)
-          AND (
-            cardinality($10::TEXT[]) = 0
-            OR COALESCE(CASE
-              WHEN document.metadata->>'sourceIdentityVersion' = $11
-                THEN document.metadata->>'sourceResourceKey'
-            END, '') <> ALL($10::TEXT[])
-          )
-          AND (
-            document.search_vector @@ parameters.any_prefix_query
-            OR document.search_vector @@ parameters.web_query
-            OR lower(document.title) % parameters.raw_query
-            OR lower(document.title) LIKE '%' || parameters.raw_query || '%'
-          )
+        FROM candidates document, parameters
       ), bucketed AS (
         SELECT ranked.*, FLOOR(GREATEST(relevance, 0) / 5.0) AS relevance_bucket
         FROM ranked
       )
       SELECT id, source_key, canonical_url, title, summary, content, organization, category,
-             published_at, published_label, topics, source_tier, content_hash, fetched_at, metadata, relevance,
-             COUNT(*) OVER()::INTEGER AS full_count
+             published_at, published_label, topics, source_tier, content_hash, fetched_at, metadata, relevance
       FROM bucketed
       ORDER BY ${orderClause}
       LIMIT $8 OFFSET $9
@@ -2925,8 +2944,8 @@ export async function searchCorpus(query, {
           to_tsquery('simple', public.unaccent($2)) AS prefix_query,
           to_tsquery('simple', public.unaccent($3)) AS any_prefix_query,
           lower($1) AS raw_query
-      ), matched AS (
-        SELECT document.source_tier, document.category, document.published_at
+      ), matched AS MATERIALIZED (
+        SELECT document.source_tier, document.category, document.published_at, document.metadata
         FROM practice_corpus_documents document, parameters
         WHERE document.is_available = TRUE
           AND COALESCE(document.metadata->>'robots_noindex', 'false') <> 'true'
@@ -2940,8 +2959,24 @@ export async function searchCorpus(query, {
             OR lower(document.title) % parameters.raw_query
             OR lower(document.title) LIKE '%' || parameters.raw_query || '%'
           )
+      ), counted AS MATERIALIZED (
+        -- Pagination totals must still describe every filtered match, not just
+        -- the bounded candidate window used for ranking.
+        SELECT 1 AS present
+        FROM matched
+        WHERE (cardinality($4::TEXT[]) = 0 OR source_tier = ANY($4::TEXT[]))
+          AND ($5::TEXT IS NULL OR category = $5::TEXT)
+          AND ($6::INTEGER IS NULL OR EXTRACT(YEAR FROM published_at)::INTEGER = $6::INTEGER)
+          AND (
+            cardinality($7::TEXT[]) = 0
+            OR COALESCE(CASE
+              WHEN metadata->>'sourceIdentityVersion' = $8
+                THEN metadata->>'sourceResourceKey'
+            END, '') <> ALL($7::TEXT[])
+          )
       )
       SELECT
+        (SELECT COUNT(*)::INTEGER FROM counted) AS total,
         COALESCE((SELECT jsonb_agg(to_jsonb(item)) FROM (
           SELECT source_tier AS value, COUNT(*)::INTEGER AS count
           FROM matched GROUP BY source_tier ORDER BY count DESC, source_tier ASC
@@ -2956,7 +2991,7 @@ export async function searchCorpus(query, {
           WHERE published_at IS NOT NULL AND published_at <= CURRENT_DATE
           GROUP BY EXTRACT(YEAR FROM published_at) ORDER BY value DESC LIMIT 12
         ) item), '[]'::JSONB) AS years
-    `, [normalized, prefixQuery, anyPrefixQuery], queryOptions)]);
+    `, [normalized, prefixQuery, anyPrefixQuery, sourceTiers, appliedFilters.category || null, appliedFilters.year, safeExcludedUrls, SOURCE_IDENTITY_VERSION], queryOptions)]);
     // Join both parallel database operations before the request-owned corpus
     // work can settle and release its admission slot.
     throwIfCorpusSearchClosed(signal, deadlineAt);
@@ -2965,8 +3000,8 @@ export async function searchCorpus(query, {
     const result = resultState.value;
     const facetResult = facetState.value;
     const rows = result?.rows || [];
-    const total = Number(rows[0]?.full_count || 0);
     const facetRow = facetResult?.rows?.[0] || {};
+    const total = Number(facetRow.total || 0);
     return {
       status: "ready",
       mode: "local-index",

@@ -2,6 +2,33 @@
 
 See fail seob projekti tootmisvalmiduse väited korduvkäivitatavate testide, runtime'i konfiguratsiooni ja koodiga. Avalikud testpäringud on fikseeritud näited ega sisalda kasutajaandmeid. Iga ajalooline jaotis nimetab mõõdetud commit'i; uuemad juurutatud parandused on kirjas 14.09.2026 jaotises faili lõpus. Masinloetavad toorlogid (`output/goal-mu0vgmly/`, gitignore'itud, reprodutseeritavad samade käskudega) täiendavad siinseid tabeleid, mitte ei asenda neid.
 
+## Allikakeskne vastuse kvaliteet ja cache-prefiks 22.10.2026
+
+Kohalik kontroll tehti `2e9e2d1cadd0eba721a0241266af5c7941c8af61` peale rakendatud tööpuul. See jaotis ei ole iseseisvalt tõend uue commit'i tootmisjuurutusest.
+
+Algne päris HTTP-kontroll näitas, et metsa valeväidete artikkel oli esimene otsingutulemus, kuid vastus taandus üldisele ebapiisavuse teatele ja SMI allikatele. Korpuses oli lehe sisu alles, ent hilisem saidikaardi ühendamine oli `official-page-hydration` rea metaandmete päritolu `official-sitemap`-iks muutnud. Tõendiväravat ei lõdvendatud: parandati kirjutajat ja vastuoluliste ridade uuesti lugemise järjekorda.
+
+| Kontroll | Vaadeldud tulemus |
+|---|---|
+| Sihitud regressiooniring pärast parandusi | 23/23: väite–selgituse paarid, filtreeritud ajaloolise allika välistus, avatud selgitus, arvu/aasta täpsus, prompt-prefiks, raw-body tõend, rollid ja cache'i privaatsus/versioon |
+| Sõnastik ja Sites | Sõnastik 5/5, Sites 4/4; `npm run build` edukas |
+| Päris PostgreSQL-i importeri konflikt eraldatud andmebaasis | Madalama kvaliteediga saidikaardi kirjutus säilitas valideeritud päritolu, pealkirja, sisu, sisuräsi ja varasema lugemisaja |
+| Vigase päritolu taastamine | Eraldatud andmebaasis oli kahjustatud kirje enne keelatud ja pärast tegelikku lubatud lehelugemist tõendikõlblik; 3289 märki, algallika kuupäev 17.03.2023 |
+| Päris kohalik vastusevoog | Kolm metsa valeväidete sõnastust said sama asjakohase artikli, neli eristatavat paari, nähtavad viited ja ajaloolise selgituse märkuse; üldine SMI ülevaade ei asenda puuduvat paari |
+| Avatud riskiküsimus | „Miks on radoon ohtlik?” vastab sissehingamise ja kopsuvähki haigestumise riskiga, mitte lausega sellest, mida juhend selgitab |
+| Vastusevahemälu | Korduv HTTP-päring taasesitas sama `generatedAt`-iga neljaosalise vastuse; andmebaasi cache jäi kahe rea juurde |
+| Prompt-cache | Süsteemijuhis 3001 UTF-8 baiti, sama tõendipaki user-ühisprefiks 4577 baiti; päris gateway-katsetes `cached_tokens=0`. Provider'i hit rate'i paranemist ei ole tõendatud |
+| Brauser | Kõik neli paari ja õige HTTPS-algallika viited olemas; ajalooline piirang DOM-is nähtav; horisontaalne overflow puudub |
+| Tootmiskorpuse päring enne parandust | 43 461 kirjega korpuses ja 4000 ms `statement_timeout`-iga: küsimus „Millised on levinud valeväited Eesti metsa kohta?” andis korpusepäringul oleku `degraded`, 0 rida; avalik vastus langes kataloogikaartidele (13 tulemust) |
+| Korpuse päringu profiil | `EXPLAIN ANALYZE`: kogu järjestuspäring 8,1 s ja `COUNT(*) OVER()`-ita rajatis 3,9 s; `ts_rank_cd` 15 051 vaste real 2,2 s. Otseveebi `ts_rank` oli 0,70 s |
+| Kaheastmeline järjestus tootmiskorpuse vastu | Sama koodiga: `ready`, kokku 15 051, artikkel esimene; 2,8 s. Kolm kontrollpäringut 0,4–1,3 s. Lehekülgede koguarv pärineb filtreeritud loenduspäringust |
+| Järjestuse regressioonid | „asbestijäätmed kuhu viia” → `hazardous-waste-asbestos`; „keskkonnaandmete API” → `official-data-services`. Mõlemad kontrollitud otse `rankSearchCandidates`-iga |
+| Mõjutatud komplektid | `corpus`, `retrieval`, `open-search`, `search`, `infrastructure`, `pipeline-quality`: 342/342; `forestry-glossary` eraldi 5/5 |
+| Tootmiskorpuse vastusevoog | Sama kood ja tootmise PostgreSQL: neljaosalise väite–selgituse vastuse ja õige HTTPS-algallinkiga 6,9 s (mudel keelatud); kokku 15 051, artikkel esimene |
+
+Kogu `npm test` ei läbinud ühe jooksuga 600 sekundi ülempiiri: kaks avaliku otsingu testifaili (`public-search`, `public-forestry`) ei lõpetanud selle aja jooksul. Esimeses jooksus nähtud asbesti- ja API-relevantsusvead parandati ning need kontrollid läbisid seejärel eraldi. Sihitud komplektid ei asenda kogu komplekti edukat läbimist ega tõenda provider'i cache-tabamusi. Ajutised integratsioonimoodulid ei kuulu tarnitavasse koodi.
+
+
 ## Agents SDK, uued ametlikud allikad ja ressursipiirid 26.08.2026
 
 See kontroll käis commit'i `0fa9475e371bbdd4e819ad6e5c5a347a2e90c9dd` peale rakendatud tööpuus. Kontrollhetkel ei olnud muudatusi veel commit'itud, push'itud ega juurutatud; `SOURCE_COMMIT`-i või tootmiskonteineri kohta ei tehta selles kohaliku kontrolli jaotises uut väidet.

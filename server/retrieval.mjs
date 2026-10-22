@@ -1889,6 +1889,9 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
   if (roots.includes("jaatmekaitluskoht") && document.id === "waste-facilities-map") return 3;
   if (document.id === "waste-sorting-guidance"
     && roots.some((root) => ["jaat", "klaas", "suurjaatmed", "kulmkapp", "rehv"].includes(root))
+    // A named hazardous subject has its own reviewed card; the generic
+    // household-sorting procedure must not bury it ("asbestijäätmed kuhu viia").
+    && !roots.some((root) => ["asbest", "ohtlikud"].includes(root))
     && !roots.includes("polet")
     && !/\b(?:rakvere|tallinn|tartu|parnu|narva|kohtla|viljandi|voru|kuressaare|haapsalu|johvi|paide|valga|polva|jogeva|sillamae|kivioli|keila|maardu|elva|rapla|kardla|lahedal|jaamas|vastuvot)\w*/u.test(normalize(query))
     && /\b(?:kuhu|mida\s+teha|sorteer|visata|viia|panna|k\w*idelda)\b/u.test(normalize(query))) return 50;
@@ -1927,7 +1930,10 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
   // priority is deliberately modest (below the 4-point reviewed overrides)
   // so it only breaks ties among same-bucket waste candidates.
   if (roots.includes("sorteerimine") && document.id === "waste") return 2;
-  if (roots.includes("api") && roots.includes("andmed")) {
+  // "keskkonnaandmete API" normalizes to the compound root
+  // "keskkonnaandmed", so the data-API intent must accept both spellings;
+  // matching only "andmed" silently dropped the reviewed service card.
+  if (roots.includes("api") && roots.some((root) => ["andmed", "keskkonnaandmed"].includes(root))) {
     if (document.id === "official-data-services" && !roots.includes("pxweb")) return 3;
     if (["open-data", "open-data-downloader"].includes(document.id)) return 2;
   }

@@ -54,6 +54,8 @@ test('a fact-check answer keeps the source response, disputed headings and histo
     searchResults: { total: 1, items: [source] },
   });
   const response = publicResponse(draft);
+  assert.match(response.answer.intro, /^Väide:[\s\S]*10 aasta/iu);
+  assert.match(response.answer.parts[0].text, /mingit krahhi aga oodata ei ole/iu);
   assert.equal(response.clarification, null);
   assert.ok(response.answer.introCitations.length);
   const registry = response.answer.parts.find(part => /Väide:[\s\S]*Metsaregistrile/iu.test(part.title));

@@ -5,6 +5,7 @@ Keskkonnaportaali visuaalsel keelel põhinev praktikaprojekt, mille põhiosad on
 - vastus-enne-allikaid otsing, kus vastuse koostamine ja tõendikontroll kasutavad sama päringu värsket, filtreeritud ja järjestatud tõendipakki ning lisavad nummerdatud viited;
 - PostgreSQL-i korpus, mis koondab portaali sitemapilehed, otsingukaardid, valitud täistekstid ning heakskiidetud ametlike väljaandjate (Keskkonnaagentuur, Keskkonnaamet, Kliimaministeerium, RMK, Ilmateenistus, Terviseamet, KIK) eestikeelsed sitemap-URL-id. Lehetekst hüdratiseeritakse kõigilt lubatud ametlikelt hostidelt ning täissünkroonimiste vahel jätkab piiratud taustapartii tühjade ja aegunud leheteksti ridade täitmist; tulemusi täiendavad ametlikud otsinguliidesed, kontrollitud ilma-, hüdroloogia- ja kliimaandmed ning valitud EELISe registrikirjed. Statistikaamet on avalikust allikavalikust välistatud;
 - avatud kvalitatiivsele küsimusele võib vastuse anda üks asjakohane viidatud ametlik lõik; arvu, aastat, nimetatud kohta või tegevust küsiv vastus nõuab endiselt täpset tõendit ning mudeli tõrke korral kuvatakse sama tõendi viidatud väljavõte;
+- pikk loomulik küsimus ei tohi korpuse otsingut vaikselt degradeerida: lai `OR`-vaste järjestatakse odava `ts_rank`-iga piiratud kandidaadiaknasse (vähemalt 1000 rida, sügavamal lehel `offset + 4 × lehe suurus`) ja täpne kaalutud valem arvutatakse ainult selle akna sees. Lehekülgede koguarv tuleb sama filtreeritud vaste hulgast, mitte kandidaadiaknast;
 - allika-, sisutüübi-, aasta- ja järjestusfiltrid ning kuni neli iga kord uue tõendiotsingu tegevat viidatud jätkuküsimust;
 - toetatud metsaküsimustele Keskkonnaagentuuri kontrollitud esmased SMI töövihiku aegread koos viidatud diagrammiga; sobiva esmase andmerea puudumisel diagrammi ei kuvata;
 - metsa osakaalu küsimusele („kui suur osa Eestist on mets”) SMI 2025 maakategooriate jaotus sektordiagrammina;
@@ -54,7 +55,8 @@ Tervisekontroll: `GET /api/health`.
 `LLM_BASE_URL=https://terrapoint.arle.top/v1`,
 `LLM_MODEL=openai-codex/gpt-6-luna`, `LLM_REASONING_EFFORT=low` ja
 `LLM_TIMEOUT_MS=23000`, `LLM_ORCHESTRATION=direct`. Otsene mudelikõne hoiab
-alles viite- ja tõendikontrollid ning kasutab senist 15-sekundilist eelarvet;
+alles viite- ja tõendikontrollid: JSON-otsingu ülempiir on 22 sekundit ja voo
+otsingueelarve 25 sekundit;
 neljakutseline `agents` režiim ületas varasemas live-kontrollis ajapiiri.
 Transport on alati Responses API; teist varumudelit ei kasutata.
 `LLM_API_KEY` saab ainult serveri runtime-keskkonnas
