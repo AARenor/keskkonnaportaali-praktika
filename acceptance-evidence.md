@@ -25,6 +25,9 @@ Algne päris HTTP-kontroll näitas, et metsa valeväidete artikkel oli esimene o
 | Järjestuse regressioonid | „asbestijäätmed kuhu viia” → `hazardous-waste-asbestos`; „keskkonnaandmete API” → `official-data-services`. Mõlemad kontrollitud otse `rankSearchCandidates`-iga |
 | Mõjutatud komplektid | `corpus`, `retrieval`, `open-search`, `search`, `infrastructure`, `pipeline-quality`: 342/342; `forestry-glossary` eraldi 5/5 |
 | Tootmiskorpuse vastusevoog | Sama kood ja tootmise PostgreSQL: neljaosalise väite–selgituse vastuse ja õige HTTPS-algallinkiga 6,9 s (mudel keelatud); kokku 15 051, artikkel esimene |
+| Juurutus | Coolify juurutas commit'i `d57437e05dd94465e5f6166d67311b06ad36a07c`; `/api/health` kinnitas sama revisjoni |
+| Tootmise API | „Millised on levinud valeväited Eesti metsa kohta?” → neli märgistatud plokki, avaldamisaeg 17.03.2023, kokku 15 051, artikkel esimene, 6,6 s; korduspäring taasesitas sama `generatedAt`-i. „Miks on radoon ohtlik?” → viidatud põhjuslik vastus ilma täpsustusnõudeta |
+| Tootmise brauser | `https://praktika.arle.top/otsi`: neli plokki, numberlingid õigele keskkonnaagentuur.ee artiklile, ajaloolise piirangu tekst nähtav, horisontaalne overflow puudub |
 
 Kogu `npm test` ei läbinud ühe jooksuga 600 sekundi ülempiiri: kaks avaliku otsingu testifaili (`public-search`, `public-forestry`) ei lõpetanud selle aja jooksul. Esimeses jooksus nähtud asbesti- ja API-relevantsusvead parandati ning need kontrollid läbisid seejärel eraldi. Sihitud komplektid ei asenda kogu komplekti edukat läbimist ega tõenda provider'i cache-tabamusi. Ajutised integratsioonimoodulid ei kuulu tarnitavasse koodi.
 

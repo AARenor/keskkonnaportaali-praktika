@@ -59,6 +59,7 @@ import {
   forestEvidenceIntent,
   hasCompleteSentenceEnding,
   normalize,
+  passageDisclaimsEvidence,
   queryTerms,
   rootIsDomain,
   sanitizeLlmEvidenceText,
@@ -338,6 +339,9 @@ export function directEvidenceExtract(query, document, plannedEvidence = null, {
   // that source; navigation and page descriptions must not fill the space.
   const selected = distinctPassages(rankedPassages
     .map(({ passage }) => passage)
+    // A sentence about what the page or map does not prove is navigation
+    // meta, not the answer ("Piirkonna kaart ega üldjuhend ei tõenda …").
+    .filter((passage) => !passageDisclaimsEvidence(passage))
     .filter((passage) => passageQueryCoverage(query, passage) > 0
       && passageDirectness(query, passage) >= 0));
   let extract = "";
