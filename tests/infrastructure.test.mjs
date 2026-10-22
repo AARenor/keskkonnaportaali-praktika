@@ -6695,6 +6695,7 @@ test("source failures degrade without turning an outage into an absence claim", 
   assert.match(result.answer.intro, /ei tähenda, et otsitud andmeid ei ole/iu);
   assert.deepEqual(result.answer.introCitations, []);
   assert.deepEqual(result.answer.parts, []);
+  assert.equal(result.answer.aiUnavailable, true);
 });
 
 test("capacity fallback is explicit, retryable and never claims missing data", () => {

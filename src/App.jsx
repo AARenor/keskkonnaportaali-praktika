@@ -1083,6 +1083,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
     latestHeading?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   }, [followUpBusy, followUps.length]);
   const appliedFilters = clientSearchFilters(listing?.appliedFilters || result?.searchResults?.appliedFilters);
+  const aiUnavailable = Boolean(result?.answer?.aiUnavailable);
   const loadListingPage = async (page) => {
     listingRequestRef.current.controller?.abort();
     const id = listingRequestRef.current.id + 1;
@@ -1120,6 +1121,19 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
     listingRequestRef.current.controller?.abort();
     onSearch(query, { filters: clientSearchFilters(nextFilters) });
   };
+
+  const broadResults = (
+    <BroadSearchResults
+      busy={listingBusy}
+      error={listingError}
+      headingRef={listingHeadingRef}
+      interactive={!busy}
+      listing={listing || result?.searchResults || previewListing}
+      onFilters={applyFilters}
+      onPage={loadListingPage}
+      onSearch={onSearch}
+    />
+  );
   const askFollowUp = async (questionValue) => {
     const cleanQuestion = String(questionValue || followUpValue).replace(/\s+/gu, " ").trim();
     if (!cleanQuestion || busy || followUpBusy || followUps.length >= 4) return;
@@ -1183,6 +1197,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
         {error ? <div className="search-error" role="alert"><CircleHelp size={22} /><div><strong>Otsingut ei saanud lõpetada</strong><p>{error}</p><button className="error-retry" disabled={busy} onClick={() => onSearch(query, { filters: appliedFilters })} type="button">Proovi uuesti</button></div></div> : null}
         {hasResult ? (
           <>
+            {aiUnavailable ? broadResults : null}
             <article className="answer-card">
               {busy ? <div className="answer-progress"><LoaderCircle className="spin" size={16} /> Kontrollin veel AI-sõnastust …</div> : null}
               <div className="answer-label"><Sparkles size={17} /><span>{result.answer.eyebrow || "AI koondvastus"}</span></div>
@@ -1265,16 +1280,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
               </div>
             </article>
 
-            <BroadSearchResults
-              busy={listingBusy}
-              error={listingError}
-              headingRef={listingHeadingRef}
-              interactive={!busy}
-              listing={listing || result?.searchResults || previewListing}
-              onFilters={applyFilters}
-              onPage={loadListingPage}
-              onSearch={onSearch}
-            />
+            {aiUnavailable ? null : broadResults}
 
             {result.related?.length ? (
               <section className="related-section">

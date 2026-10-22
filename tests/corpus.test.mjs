@@ -1037,13 +1037,15 @@ test("progressive answer endpoint and broad result pagination remain separate co
   assert.doesNotMatch(app, /Vastuses viidatud allikad/u);
   const resultsView = app.match(/function SearchResults[\s\S]*?function PrivacyDisclosure/u)?.[0] || "";
   assert.match(resultsView, /<BroadSearchResults/u);
+  assert.match(resultsView, /\{aiUnavailable \? broadResults : null\}[\s\S]*?<article className="answer-card">/u);
+  assert.match(resultsView, /\{aiUnavailable \? null : broadResults\}/u);
   assert.doesNotMatch(resultsView, /sources-section|sources-list|Kõik viidatud allikad/u);
   assert.match(server, /searchPage\(request, "page_size", 12, 50\)/u);
   assert.match(server, /app\.post\("\/api\/search\/stream"/u);
   assert.match(server, /application\/x-ndjson/u);
   assert.match(server, /if \(!resultsWritten\) \{[\s\S]*?await stream\.write\("results"/u);
   assert.match(server, /createBoundedNdjsonWriter\(response[\s\S]*?await stream\.finish\(\)[\s\S]*?cleanupLease\.finish\(\)/u);
-  assert.match(app, /fetch\("\/api\/search\/stream", \{[\s\S]*?method: "POST"/u);
+  assert.match(app, /fetchSearchStream\("\/api\/search\/stream", \{[\s\S]*?method: "POST"/u);
   assert.match(app, /readSearchStream\(response/u);
   assert.match(app, /\{!busy && focused && suggestions\.length \? \(/u);
   assert.match(app, /fetch\("\/api\/suggestions", \{[\s\S]*?method: "POST"/u);

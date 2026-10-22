@@ -1739,12 +1739,13 @@ export function searchTimeoutFallback(cleanQuery, {
       : "Värskete allikate laadimine ei jõudnud vastuse ajapiiri sisse. See ei tähenda, et otsitud andmeid ei ole.";
   draft.answer.introCitations = [];
   draft.answer.parts = [];
+  draft.answer.aiUnavailable = true;
   draft.answer.note = ranked.length
     ? capacityLimited
       ? "Proovi otsingut paari sekundi pärast uuesti."
       : sourceUnavailable
-      ? "Juba leitud ametlikud allikad on kuvatud allpool, kuid ajutise vea järel neist uut faktivastust ei koostatud. Proovi otsingut uuesti."
-      : "Juba leitud ametlikud allikad on kuvatud allpool, kuid neist ei koostatud ajapiiri järel uut faktivastust. Proovi otsingut uuesti."
+      ? "Juba leitud ametlikud allikad on kuvatud tulemuste loendis, kuid ajutise vea järel neist uut faktivastust ei koostatud. Proovi otsingut uuesti."
+      : "Juba leitud ametlikud allikad on kuvatud tulemuste loendis, kuid neist ei koostatud ajapiiri järel uut faktivastust. Proovi otsingut uuesti."
     : capacityLimited
       ? "Proovi otsingut paari sekundi pärast uuesti."
       : "Proovi otsingut uuesti või lisa täpsem objekt, näitaja, piirkond või aasta.";
