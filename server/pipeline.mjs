@@ -73,7 +73,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 // written under an older policy cannot be served without regeneration.
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v71-source-difference-detail";
+export const SEARCH_RESPONSE_REVISION = "answer-v72-source-difference-structure";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
@@ -512,6 +512,32 @@ function composeOfficialForestryEvidenceFallback(query, plannedEvidence, sources
   });
   if (!bundles.length) return null;
   const [lead, ...supporting] = bundles;
+  if (plannedEvidence.kind === "why-forest-numbers-differ") {
+    const sentences = splitTextPassages(lead.text).filter((sentence) => sentence.length >= 25);
+    if (sentences.length >= 3) {
+      const parts = [];
+      if (supporting[0]) {
+        parts.push({
+          title: "Mõõtmismeetod ja katvus",
+          text: supporting[0].text,
+          citations: [supporting[0].citation],
+        });
+      }
+      parts.push({
+        title: "Aeg, definitsioon ja arvutusviis",
+        text: sentences.slice(2).join(" "),
+        citations: [lead.citation],
+      });
+      return {
+        eyebrow: "Allikapõhine kokkuvõte",
+        title: String(previousAnswer.title || query).trim().slice(0, 180),
+        intro: sentences.slice(0, 2).join(" "),
+        introCitations: [lead.citation],
+        parts: parts.slice(0, 3),
+        note: String(previousAnswer.note || "").trim().slice(0, 700),
+      };
+    }
+  }
   return {
     eyebrow: "Allikapõhine kokkuvõte",
     title: String(previousAnswer.title || query).trim().slice(0, 180),
