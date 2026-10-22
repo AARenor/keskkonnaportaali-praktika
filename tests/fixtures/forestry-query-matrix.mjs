@@ -63,6 +63,9 @@ export const FORESTRY_VARIANT_GROUPS = Object.freeze({
     "Puiduvaru veapiir",
   ],
   "why-forest-numbers-differ": [
+    "Miks eri allikad annavad eri andmeid?",
+    "Miks erinevad allikad annavad eri andmeid?",
+    "Miks andmed erinevad allikati?",
     "Miks metsastatistika numbrid muutuvad?",
     "Metsaarvud ei klapi eri aruannetes",
     "Metsaandmete lahknevus eri aastatel",

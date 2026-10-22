@@ -55,6 +55,9 @@ const DETERMINISTIC_CASES = [
   ["Metsa tagavara on üks kindel vaieldamatu number.", "forest-stock-uncertainty", /(?:suhteline viga|valikust tulenev viga|statistiline viga)/iu],
   ["Kui suur osa Eestist on kaetud metsaga?", "forest-covered-area", /47,45%/u],
   ["Miks annavad eri allikad erinevaid numbreid?", "why-forest-numbers-differ", /(?:katavad|uuenevad|statistili\w*\s+(?:viga|uuring)|valikuuring)/iu],
+  ["Miks eri allikad annavad eri andmeid?", "why-forest-numbers-differ", /(?:katavad|uuenevad|statistili\w*\s+(?:viga|uuring)|valikuuring)/iu],
+  ["Miks erinevad allikad annavad eri andmeid?", "why-forest-numbers-differ", /(?:katavad|uuenevad|statistili\w*\s+(?:viga|uuring)|valikuuring)/iu],
+  ["Miks andmed erinevad allikati?", "why-forest-numbers-differ", /(?:katavad|uuenevad|statistili\w*\s+(?:viga|uuring)|valikuuring)/iu],
   ["Mis vahe on SMI-l ja metsaregistril?", "forest-data-sources", /(?:SMI|Metsaregister|kinnistu)/iu],
   ["Kuidas arvutatakse juurdekasvu?", "increment-method", /Kogujuurdekasv[\s\S]*Netojuurdekasv[\s\S]*mudelipõhise meetodi[\s\S]*mitmese imputeerimise/iu],
   ["Miks ei võrdu tagavara raiutava puidukogusega?", "stock-versus-harvestable", /ei ole aastane raiemaht[^.]*raiutav puidukogus/iu],
@@ -478,8 +481,8 @@ test("common nominative wildlife and protection-share variants keep claim-specif
   }
 });
 
-test("all 30 supplied forestry misconceptions and FAQs have an explicit public route", () => {
-  assert.equal(DETERMINISTIC_CASES.length + BALANCE_QUERIES.length + 1, 30);
+test("all 33 supplied forestry misconceptions and FAQs have an explicit public route", () => {
+  assert.equal(DETERMINISTIC_CASES.length + BALANCE_QUERIES.length + 1, 33);
   for (const [query, expectedIntent] of DETERMINISTIC_CASES) {
     assert.equal(assessSearchQuery(query).kind, "answerable", query);
     assert.equal(forestEvidenceIntent(query)?.kind, expectedIntent, query);
@@ -755,10 +758,10 @@ test("explicit 2014–2024 clearcut trend keeps the requested period and non-uni
   assertNumericClaimsHaveVisibleWitnesses(draft, query);
 });
 
-test("88 varied forestry keyword formulations preserve the intended route and strong visible evidence", () => {
+test("91 varied forestry keyword formulations preserve the intended route and strong visible evidence", () => {
   const directory = officialServiceCatalogueDocuments();
   const entries = Object.entries(FORESTRY_VARIANT_GROUPS);
-  assert.equal(entries.reduce((total, [, queries]) => total + queries.length, 0), 88);
+  assert.equal(entries.reduce((total, [, queries]) => total + queries.length, 0), 91);
 
   for (const [expectedIntent, queries] of entries) {
     for (const query of queries) {

@@ -1476,9 +1476,10 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
     || /\b(?:ebakindl\w*|veapiir\w*|usaldusvahem\w*|tapsus\w*|tapne|hinnangu\s+viga)\b/u.test(text))) {
     return resolved("forest-stock-uncertainty");
   }
-  if ((hasForest || /\beri\s+allik\w*/u.test(text))
-    && /\b(?:erinev\w*|eri|lahknev\w*|klapi\w*|uhti\w*|muut\w*)\b/u.test(text)
-    && /\b(?:allik\w*|numb\w*|arv\w*|metsaarv\w*|tabel\w*|statistik\w*|andm\w*|metsaandm\w*|metsandusandm\w*|aruann\w*)\b/u.test(text)) {
+  const sourceDifferenceData = /\b(?:erinev\w*|eri|lahknev\w*|klapi\w*|uhti\w*|muut\w*)\b/u.test(text)
+    && /\b(?:numb\w*|arv\w*|andm\w*|metsaandm\w*|metsandusandm\w*|metsaarv\w*|tabel\w*|statistik\w*|aruann\w*)\b/u.test(text);
+  const sourceDifference = /\ballik\w*/u.test(text) && sourceDifferenceData;
+  if (sourceDifference || (hasForest && sourceDifferenceData)) {
     return resolved("why-forest-numbers-differ");
   }
   if ((hasStock || /\b452(?:[,.]\d+)?\b/u.test(text))
