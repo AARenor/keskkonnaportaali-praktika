@@ -1,5 +1,5 @@
-export const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
-export const JSON_SEARCH_DEADLINE_CEILING_MS = 12_000;
+export const DEFAULT_SEARCH_DEADLINE_MS = 25_000;
+export const JSON_SEARCH_DEADLINE_CEILING_MS = 22_000;
 export const DEFAULT_SEARCH_CONCURRENCY = 8;
 export const DEFAULT_SEARCH_QUEUE = 32;
 // Slow listings still leave enough time for hydration, grounded synthesis,

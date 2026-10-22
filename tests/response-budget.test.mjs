@@ -238,7 +238,7 @@ test("public response configuration keeps finite connection and response limits"
     maximumGeneral: 192,
     maximumPerClient: 16,
     maximumGeneralPerClient: 12,
-    idleTimeoutMs: 20_000,
+    idleTimeoutMs: 30_000,
     absoluteTimeoutMs: 60_000,
   });
   const bounded = resolvePublicResponseBudget({

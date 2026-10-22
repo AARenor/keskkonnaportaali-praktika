@@ -41,7 +41,7 @@ const model = String(process.env.LLM_MODEL || LLM_GATEWAY_MODEL);
 // invariant, so an invalid deployment can never attach it to a request.
 const apiKey = String(process.env.LLM_API_KEY || "");
 export function resolveLlmTimeout(value = process.env.LLM_TIMEOUT_MS) {
-  return Math.max(500, Math.min(Number(value) || 14_500, 15_000));
+  return Math.max(500, Math.min(Number(value) || 23_000, 23_000));
 }
 const timeoutMs = resolveLlmTimeout();
 export function resolveMaxTokens(value = process.env.LLM_MAX_TOKENS) {

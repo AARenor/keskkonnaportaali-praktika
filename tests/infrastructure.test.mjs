@@ -757,10 +757,10 @@ test("the all-at-once search keeps transport margin under load", () => {
   assert.equal(configuredSearchConcurrency(undefined), 8);
   assert.equal(configuredSearchConcurrency("12"), 12);
   assert.equal(configuredSearchConcurrency("99"), 20);
-  assert.equal(configuredSearchBudgetMs("15000", JSON_SEARCH_DEADLINE_CEILING_MS), 12_000);
+  assert.equal(configuredSearchBudgetMs("15000", JSON_SEARCH_DEADLINE_CEILING_MS), 15_000);
   assert.equal(configuredSearchBudgetMs("9000", JSON_SEARCH_DEADLINE_CEILING_MS), 9_000);
   assert.equal(configuredSearchBudgetMs("100", JSON_SEARCH_DEADLINE_CEILING_MS), 1_000);
-  assert.equal(searchDeadline(50_000, JSON_SEARCH_DEADLINE_CEILING_MS, "15000"), 62_000);
+  assert.equal(searchDeadline(50_000, JSON_SEARCH_DEADLINE_CEILING_MS, "15000"), 65_000);
 });
 
 test("the progressive stream keeps retrieval alive until the final-response reserve", () => {
@@ -2148,7 +2148,7 @@ test("model credentials are bound to the exact approved HTTPS gateway base", () 
 });
 
 test("provider generation limits cannot exceed the public deadline or output cap", () => {
-  assert.equal(resolveLlmTimeout(60_000), 15_000);
+  assert.equal(resolveLlmTimeout(60_000), 23_000);
   assert.equal(resolveLlmTimeout(500), 500);
   assert.equal(resolveMaxTokens(100_000), 3_200);
   assert.equal(resolveMaxTokens(1), 1_000);

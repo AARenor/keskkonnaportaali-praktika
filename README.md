@@ -53,7 +53,7 @@ Tervisekontroll: `GET /api/health`.
 06.10.2026 seadistuse cutover kasutab olemasolevat autenditud Codex gateway'd:
 `LLM_BASE_URL=https://terrapoint.arle.top/v1`,
 `LLM_MODEL=openai-codex/gpt-6-luna`, `LLM_REASONING_EFFORT=low` ja
-`LLM_TIMEOUT_MS=14500`, `LLM_ORCHESTRATION=direct`. Otsene mudelikõne hoiab
+`LLM_TIMEOUT_MS=23000`, `LLM_ORCHESTRATION=direct`. Otsene mudelikõne hoiab
 alles viite- ja tõendikontrollid ning kasutab senist 15-sekundilist eelarvet;
 neljakutseline `agents` režiim ületas varasemas live-kontrollis ajapiiri.
 Transport on alati Responses API; teist varumudelit ei kasutata.
