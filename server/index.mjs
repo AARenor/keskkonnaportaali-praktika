@@ -881,16 +881,16 @@ async function handleSuggestions(request, response) {
   if (query.length < 2) return response.json({ suggestions: [] });
   const assessment = assessSearchQuery(query);
   const reviewedAlias = isReviewedSearchSuggestionAlias(query);
-  const curated = getReviewedSearchSuggestions(query, 8).map((value) => ({ value, count: null }));
+  const curated = getReviewedSearchSuggestions(query, 12).map((value) => ({ value, count: null }));
   // Exact reviewed aliases never need to leave the process. An out-of-scope
   // query gets no upstream autocomplete call even if a future classifier or
   // normalizer change makes it resemble one of those local aliases.
   if (reviewedAlias || assessment.kind === "out-of-scope") {
-    return response.json({ suggestions: reviewedAlias ? curated.slice(0, 8) : [] });
+    return response.json({ suggestions: reviewedAlias ? curated.slice(0, 12) : [] });
   }
   const lifecycle = bindRequestAbort(request, response);
   try {
-    const result = await getKeskkonnaportaalSuggestions(query, 8, {
+    const result = await getKeskkonnaportaalSuggestions(query, 12, {
       signal: lifecycle.controller.signal,
       clientKey: requestRateLimitAddress(request, proxyConfiguration.trustedProxyCidrs, {
         ipv6PrefixBits: ipv6ClientPrefixBits,
@@ -904,11 +904,11 @@ async function handleSuggestions(request, response) {
         seen.add(key);
         return true;
       })
-      .slice(0, 8);
+      .slice(0, 12);
     return response.json({ suggestions });
   } catch {
     if (response.destroyed) return undefined;
-    return response.json({ suggestions: curated.slice(0, 8) });
+    return response.json({ suggestions: curated.slice(0, 12) });
   } finally {
     lifecycle.cleanup();
   }

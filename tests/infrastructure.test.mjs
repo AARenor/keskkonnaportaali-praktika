@@ -514,13 +514,14 @@ test("live suggestions use per-client fair admission while preserving query coal
   ]);
   assert.match(integrations, /const officialSuggestionAdmission = createFairSearchAdmission\(\{[\s\S]*?maximumActive: MAX_CONCURRENT_SUGGESTIONS,[\s\S]*?maximumActivePerClient: 1,[\s\S]*?maximumQueuedPerClient: 2/u);
   assert.match(integrations, /suggestionInflight\.get\(cacheKey\)[\s\S]*?officialSuggestionAdmission\.acquire\(options\.clientKey[\s\S]*?finally \{\s*release\(\);/u);
-  assert.match(index, /getKeskkonnaportaalSuggestions\(query, 8, \{[\s\S]*?clientKey: requestRateLimitAddress\(request, proxyConfiguration\.trustedProxyCidrs/u);
+  assert.match(index, /getKeskkonnaportaalSuggestions\(query, 12, \{[\s\S]*?clientKey: requestRateLimitAddress\(request, proxyConfiguration\.trustedProxyCidrs/u);
 });
 
 test("reviewed autocomplete fallback surfaces structured environmental sources without forestry noise", () => {
-  assert.equal(REVIEWED_ENVIRONMENT_SUGGESTIONS.length, 28);
+  assert.equal(REVIEWED_ENVIRONMENT_SUGGESTIONS.length, 53);
   const hazardousWaste = getReviewedSearchSuggestions("ohtlikud jäätmed", 5);
-  assert.deepEqual(hazardousWaste, ["Kui palju tekkis Eestis 2024. aastal ohtlikke jäätmeid?"]);
+  assert.equal(hazardousWaste[0], "Kui palju tekkis Eestis 2024. aastal ohtlikke jäätmeid?");
+  assert.ok(hazardousWaste.every((value) => /jäätm/iu.test(value)));
   assert.doesNotMatch(hazardousWaste.join(" "), /mets|raie|SMI/iu);
   assert.equal(
     getReviewedSearchSuggestions("BHT7", 5)[0],
@@ -598,9 +599,9 @@ test("reviewed autocomplete aliases are local-only and cannot bypass the out-of-
   const end = server.indexOf('app.post("/api/suggestions"', start);
   const handler = server.slice(start, end);
   const localReturn = handler.indexOf("if (reviewedAlias || assessment.kind === \"out-of-scope\")");
-  const upstreamCall = handler.indexOf("getKeskkonnaportaalSuggestions(query, 8");
+  const upstreamCall = handler.indexOf("getKeskkonnaportaalSuggestions(query, 12");
   assert.ok(localReturn >= 0 && upstreamCall > localReturn);
-  assert.match(handler, /return response\.json\(\{ suggestions: reviewedAlias \? curated\.slice\(0, 8\) : \[\] \}\);/u);
+  assert.match(handler, /return response\.json\(\{ suggestions: reviewedAlias \? curated\.slice\(0, 12\) : \[\] \}\);/u);
 });
 
 test("fair search admission reserves global capacity for another client", async () => {
@@ -1114,7 +1115,7 @@ test("autocomplete never renders a late response under a newer query", () => {
     "Kas Eestis saab mets otsa?",
   ];
   assert.equal(suggestionsForValue("", {}, reviewed).length, 5);
-  assert.equal(REVIEWED_SEARCH_SUGGESTIONS.length, 45);
+  assert.equal(REVIEWED_SEARCH_SUGGESTIONS.length, 71);
   assert.ok(suggestionsForValue("m", {}, reviewed).every((item) => item.value.endsWith("?")));
   assert.deepEqual(suggestionsForValue("me", {}, ["How is forest increment calculated?"]), []);
   const rawClimate = { query: "kliima", items: [{ value: "kliima", count: 42 }, { value: "kliimamuutused", count: 18 }] };
@@ -7169,8 +7170,8 @@ test("home links and the 320px quick bar keep accessible names, contrast and ref
 
 test("reviewed autocomplete suggests paraphrased synonym queries the same reviewed questions", () => {
   for (const query of ["mürgised jäätmed"]) {
-    assert.deepEqual(getReviewedSearchSuggestions(query, 5), [
-      "Kui palju tekkis Eestis 2024. aastal ohtlikke jäätmeid?",
-    ]);
+    const values = getReviewedSearchSuggestions(query, 5);
+    assert.equal(values[0], "Kui palju tekkis Eestis 2024. aastal ohtlikke jäätmeid?");
+    assert.ok(values.every((value) => /jäätm/iu.test(value)));
   }
 });

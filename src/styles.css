@@ -501,7 +501,7 @@ h3 {
   top: calc(100% + 6px);
   left: -2px;
   right: -2px;
-  max-height: min(360px, calc(100vh - 180px));
+  max-height: min(620px, calc(100vh - 160px));
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -551,6 +551,22 @@ h3 {
 
 .search-suggestions button svg:last-child {
   margin-left: auto;
+}
+
+@media (min-width: 900px) {
+  .search-suggestions > [role="listbox"] {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .search-suggestions button {
+    padding: 10px 14px;
+    border-right: 1px solid #eef1f3;
+  }
+
+  .search-suggestions button:nth-of-type(even) {
+    border-right: 0;
+  }
 }
 
 .search-form__hint {

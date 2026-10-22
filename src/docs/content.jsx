@@ -174,7 +174,7 @@ export const developerGuide = {
               <tr><td><code>POST /api/search</code></td><td>Vastus ja tulemused ühe JSON-objektina.</td></tr>
               <tr><td><code>POST /api/search/results</code></td><td>Ainult lehekülgede ja filtritega tulemuste loend.</td></tr>
               <tr><td><code>POST /api/search/follow-up</code></td><td>Uue tõendiotsinguga jätkuküsimus; JSON-vastus.</td></tr>
-              <tr><td><code>POST /api/suggestions</code></td><td><code>{'{q}'}</code> → <code>{'{suggestions: [{value, count}]}'}</code>, kuni kaheksa valikut. Piir 80 märki; alla kahe märgi korral tühi loend.</td></tr>
+              <tr><td><code>POST /api/suggestions</code></td><td><code>{'{q}'}</code> → <code>{'{suggestions: [{value, count}]}'}</code>, kuni kaksteist valikut. Piir 80 märki; alla kahe märgi korral tühi loend.</td></tr>
               <tr><td><code>GET /api/health</code></td><td>Protsessi tervis, <code>revision</code> ja aeg; ei tõesta kõigi sõltuvuste töökorda.</td></tr>
               <tr><td><code>GET /api/health/container-readiness</code></td><td>Konteineri vastuvõtuvalmidus; sulgemisel HTTP 503.</td></tr>
               <tr><td><code>GET /api/corpus</code></td><td>Allikakihi koondstatistika, mitte dokumentide eksport.</td></tr>

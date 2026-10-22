@@ -19,10 +19,14 @@ export const REVIEWED_FORESTRY_SEARCH_SUGGESTIONS = Object.freeze([
   "Kas kuusk või mänd domineerib Eestis?",
   "Kas kaitsealadel raiutakse?",
   "Kui palju metsa on minu koduvallas?",
+  "Kui palju metsa on Eestis?",
 ]);
 
 export const REVIEWED_ENVIRONMENT_SEARCH_SUGGESTIONS = Object.freeze([
   "Kust leida põhjavee seireandmeid?",
+  "Mis oli Tartu Emajõe viimati avaldatud veetase?",
+  "Milline on homne ilmaprognoos Eestis?",
+  "Milline on õhutemperatuur praegu Tartus?",
   "Milline on õhukvaliteet Tallinnas praegu?",
   "Kust leida jäätmekäitluskohti Tartus?",
   "Kas Lahemaa loodusala on Natura ala?",
@@ -49,6 +53,29 @@ export const REVIEWED_ENVIRONMENT_SEARCH_SUGGESTIONS = Object.freeze([
   "Mis oli 2024. aasta keskmine õhutemperatuur Eestis?",
   "Kust leida üleujutusohu prognoosid?",
   "Kust leida merevee taseme mõõtmisandmeid?",
+
+  "Kuidas taotleda keskkonnaluba?",
+  "Kuidas teatada reostusest?",
+  "Kuhu viia ohtlikud jäätmed?",
+  "Kuhu viia vana elektroonika?",
+  "Mida teha vanade ravimitega?",
+  "Kuidas kompostida biojäätmeid?",
+  "Kuidas sorteerida pakendeid?",
+  "Kust leida jäätmekäitluskohti?",
+  "Kuidas kaitsta kodu radooni eest?",
+  "Kuidas hoida ära hallitust kodus?",
+  "Kust leida joogivee kvaliteedi andmeid?",
+  "Kust leida suplusvee andmeid?",
+  "Kuidas taotleda metsateatist?",
+  "Millal algab linnujaht?",
+  "Kuidas kaitsta kaitsealust liiki?",
+  "Kust leida Natura alasid?",
+  "Kuidas taotleda kaevuluba?",
+  "Kuidas hinnata keskkonnamõju?",
+  "Milline on Eesti kliima tulevik?",
+  "Mida teha reostunud pinnasega?",
+  "Kuidas taotleda välisõhu saasteluba?",
+  "Kust leida keskkonnaregistri andmeid?",
 ]);
 
 export const REVIEWED_SEARCH_SUGGESTIONS = Object.freeze([
@@ -88,6 +115,49 @@ const REVIEWED_SOURCE_CODE_ALIASES = new Map([
   ["merevee tase", ["Kust leida merevee taseme mõõtmisandmeid?"]],
   ["tiik", ["Kas väikese tiigi rajamiseks on luba vaja?"]],
   ["parnu rand", ["Kas Pärnu rannas võib ujuda?"]],
+  ["vesi", [
+    "Kui suur oli Eesti veevõtt 2024. aastal?",
+    "Kas Emajõgi on avalik veekogu?",
+    "Mis oli Tartu Emajõe viimati avaldatud veetase?",
+    "Kust leida põhjavee seireandmeid?",
+    "Kust leida joogivee kvaliteedi andmeid?",
+    "Kust leida suplusvee andmeid?",
+    "Kust leida üleujutusohu prognoosid?",
+    "Kust leida merevee taseme mõõtmisandmeid?",
+  ]],
+  ["jaatmed", [
+    "Kui palju tekkis Eestis 2024. aastal ohtlikke jäätmeid?",
+    "Kui palju jäätmeid taaskasutati Eestis 2024. aastal?",
+    "Kuhu viia ohtlikud jäätmed?",
+    "Kuhu viia vana elektroonika?",
+    "Mida teha vanade ravimitega?",
+    "Kuidas kompostida biojäätmeid?",
+    "Kuidas sorteerida pakendeid?",
+    "Kust leida jäätmekäitluskohti?",
+    "Mis on Eesti jäätmete ringlussevõtu määr?",
+  ]],
+  ["luba", [
+    "Kuidas taotleda keskkonnaluba?",
+      "Kuidas taotleda välisõhu saasteluba?",
+    "Kuidas taotleda kaevuluba?",
+    "Kuidas taotleda metsateatist?",
+    "Kas väikese tiigi rajamiseks on luba vaja?",
+    "Kuidas kontrollida KOTKAS keskkonnaloa menetluse staatust?",
+  ]],
+  ["mets", [
+    "Kui palju metsa on Eestis?",
+    "Kui suur osa Eestist on kaetud metsaga?",
+    "Kas Eestis raiutakse rohkem kui metsa juurde kasvab?",
+    "Mis vahe on SMI-l ja metsaregistril?",
+    "Kui suur osa metsadest on kaitse all?",
+    "Kuidas mõjutab kliimamuutus metsi?",
+    "Mis on metsateatis?",
+    "Kuidas taotleda metsateatist?",
+    "Kas kaitsealadel raiutakse?",
+    "Kuidas arvutatakse juurdekasvu?",
+    "Kui palju lageraiet on viimase 10 aasta jooksul tehtud?",
+    "Kust leida konkreetse kinnistu metsaandmeid?",
+  ]],
 ]);
 
 const REVIEWED_ALIAS_SURFACE_PATTERN = /^[a-z0-9õäöüšž]+(?:[ _-][a-z0-9õäöüšž]+)*$/iu;
@@ -150,7 +220,7 @@ function reviewedTokenMatches(queryToken, token) {
     .some((length) => editDistanceAtMostOne(queryToken, token.slice(0, length)));
 }
 
-export function suggestionsForValue(value, remote = {}, local = [], limit = 8) {
+export function suggestionsForValue(value, remote = {}, local = [], limit = 12) {
   const originalQuery = String(value || "").trim();
   if (originalQuery.length > REMOTE_SUGGESTION_MAX_LENGTH) return [];
   const canonicalQuery = originalQuery.normalize("NFKC");

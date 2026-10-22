@@ -528,7 +528,7 @@ export function answerForestryQuestion(question) {
 
 export function getForestrySuggestions(query, limit = 5) {
   const clean = String(query || "").replace(/\s+/g, " ").trim().slice(0, 80);
-  const safeLimit = Math.max(1, Math.min(Number(limit) || 5, 8));
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 5, 12));
   if (!clean || isBroadForestryQuestion(clean)) return BROAD_SUGGESTIONS.slice(0, safeLimit);
   const normalized = normalizeForestryText(clean);
   const normalizedTokens = normalized.match(/[0-9a-zõäöüšž]+/giu) || [];

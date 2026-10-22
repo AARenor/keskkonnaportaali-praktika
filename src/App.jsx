@@ -374,7 +374,7 @@ function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoF
   }, [value]);
 
   const suggestions = useMemo(() => {
-    return suggestionsForValue(value, remoteSuggestions, REVIEWED_SEARCH_SUGGESTIONS, 8);
+    return suggestionsForValue(value, remoteSuggestions, REVIEWED_SEARCH_SUGGESTIONS, 12);
   }, [remoteSuggestions, value]);
 
   useEffect(() => setActiveIndex(-1), [value, suggestions.length]);
