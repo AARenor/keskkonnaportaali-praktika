@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseSearchStreamLine, readSearchStream } from "../src/search-stream.js";
+import { fetchSearchStream, parseSearchStreamLine, readSearchStream } from "../src/search-stream.js";
 
 function streamedResponse(chunks, init = { status: 200 }) {
   const encoder = new TextEncoder();
@@ -76,4 +76,46 @@ test("a chart on the final answer event passes the stream parser untouched", () 
   const chart = { kind: "line", title: "T", unit: "%", series: [{ id: "a", label: "A", points: [{ x: 2020, y: 1 }, { x: 2021, y: 2 }] }], citation: 1 };
   const event = parseSearchStreamLine(JSON.stringify({ type: "answer", result: { answer: { title: "x" }, chart } }));
   assert.deepEqual(event.result.chart, chart);
+});
+
+
+test("search transport retries one transient gateway failure", async () => {
+  const calls = [];
+  const responses = [
+    new Response("bad gateway", { status: 502 }),
+    new Response("ok", { status: 200 }),
+  ];
+  const response = await fetchSearchStream("/api/search/stream", {}, {
+    retryDelayMs: 0,
+    fetchImpl: async (...args) => {
+      calls.push(args);
+      return responses.shift();
+    },
+  });
+  assert.equal(response.status, 200);
+  assert.equal(calls.length, 2);
+});
+
+test("search transport retries one network failure and preserves aborts", async () => {
+  let calls = 0;
+  const response = await fetchSearchStream("/api/search/stream", {}, {
+    retryDelayMs: 0,
+    fetchImpl: async () => {
+      calls += 1;
+      if (calls === 1) throw new TypeError("fetch failed");
+      return new Response("ok", { status: 200 });
+    },
+  });
+  assert.equal(response.status, 200);
+  assert.equal(calls, 2);
+
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(
+    fetchSearchStream("/api/search/stream", { signal: controller.signal }, {
+      retryDelayMs: 0,
+      fetchImpl: async () => { throw new TypeError("fetch failed"); },
+    }),
+    /fetch failed/u,
+  );
 });

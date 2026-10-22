@@ -33,7 +33,7 @@ import {
   shouldFetchRemoteSuggestions,
   suggestionsForValue,
 } from "./search-suggestions.js";
-import { readSearchStream } from "./search-stream.js";
+import { fetchSearchStream, readSearchStream } from "./search-stream.js";
 import AnswerChart, { chartSourceDiffers } from "./AnswerChart.jsx";
 import { APP_BUILD_MISMATCH_EVENT, noteServerBuild } from "./app-build.js";
 
@@ -1472,7 +1472,7 @@ export function App() {
     let latestListing = null;
     let latestSafeResult = null;
     try {
-      const response = await fetch("/api/search/stream", {
+      const response = await fetchSearchStream("/api/search/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestPayload),

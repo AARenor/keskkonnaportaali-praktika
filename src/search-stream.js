@@ -1,5 +1,29 @@
 const MAX_STREAM_BUFFER = 2_000_000;
 const EVENT_TYPES = new Set(["results", "draft", "answer"]);
+const RETRYABLE_STATUSES = new Set([502, 503, 504]);
+
+export async function fetchSearchStream(input, init = {}, {
+  retries = 1,
+  retryDelayMs = 700,
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  let attempt = 0;
+  while (true) {
+    try {
+      const response = await fetchImpl(input, init);
+      if (response.ok || !RETRYABLE_STATUSES.has(response.status) || attempt >= retries) {
+        return response;
+      }
+      await response.body?.cancel().catch(() => undefined);
+    } catch (error) {
+      if (init?.signal?.aborted || attempt >= retries || !(error instanceof TypeError)) throw error;
+    }
+    attempt += 1;
+    if (retryDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    }
+  }
+}
 
 export function parseSearchStreamLine(line) {
   const value = JSON.parse(String(line || ""));
