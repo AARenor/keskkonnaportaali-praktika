@@ -2220,7 +2220,7 @@ function topicRoot(word) {
   if (word.startsWith("keskkonnateab") || word.startsWith("keskonnateab")) return "keskkond";
   if (word.startsWith("keskkonnateenus") || word.startsWith("keskonnateenus")) return "keskkond";
   if (word.startsWith("veeregis")) return "vesi";
-  if (word === "eelis" || word.startsWith("eelise")) return "register";
+  if (word === "eelis" || word.startsWith("eelise")) return "eelis";
   if (word.startsWith("keskkonnakohust") || word.startsWith("keskonnakohust")) return "piirang";
   if (word.startsWith("keskkonnaoig") || word.startsWith("keskonnaoig")) return "piirang";
   if (word.startsWith("keskkonnaobj") || word.startsWith("keskonnaobj")) return "register";
@@ -2688,6 +2688,9 @@ export function queryTerms(query) {
       }
       if (word.startsWith("saask") || word.startsWith("mosquito")) return ["putukas", "saask"];
       if (word === "soo" || /^(?:soid|soode|soos|soost|sooga)$/u.test(word)) return "margala";
+      if (word.startsWith("soostik")) return "margala";
+      if (word.startsWith("rohepoore")) return "rohepoore";
+      if (word.startsWith("keskkonnaandm")) return "keskkonnaandmed";
       if (word.startsWith("kuumalaine")) return "kuumalaine";
       if (word.startsWith("arvuti") || word.startsWith("sulearvuti")) return ["jaat", "jaatmekaitluskoht", "arvuti"];
       // A named game species stays a term of its own, so a passage about
@@ -2978,6 +2981,9 @@ export function queryRootVariants(root) {
   if (root === "tulevik") return ["tulevik", "prognoos", "lahiaast"];
   if (root === "kadumine") return ["kadum", "kaob", "kaovad", "havim", "havib", "havivad", "otsa saam", "enam metsa pole"];
   if (root === "andmed") return ["andme", "avaand", "data"];
+  if (root === "keskkonnaandmed") return ["keskkonnaandm", "avaand", "andme"];
+  if (root === "eelis") return ["eelis", "eelise", "looduse infosusteem"];
+  if (root === "rohepoore") return ["rohepoore", "rohepoore", "green transition"];
   if (root === "metaandmed") return ["metaandm", "andmekirjeld", "andmestiku kirjeld"];
   if (root === "api") return ["api", "openapi", "clidata", "pxweb"];
   if (root === "metsaregister") return ["metsaregis", "metsaressursi arvestuse"];
@@ -3081,7 +3087,7 @@ const DOMAIN_ROOTS = new Set([
   "jaat", "jaatmekaitluskoht", "prugi", "rehv", "polet", "ringmajandus", "ringlussevott", "loodus", "looduskaitse", "elurikkus", "elupaik",
   "kaitseala", "natura", "liik", "seire", "loodusvaatlus", "eutrofeerumine", "keskkond", "keskkonnaportaal", "keskkonnaluba", "menetlus", "piirang", "lubatavus",
   "suplusvesi", "joogivesi", "reovesi", "kohtkaitlus", "pestitsiid", "nitraat", "mereprugi", "rannikuvesi", "asbest", "biojaatmed", "plastijaatmed", "mikroplast",
-  "rohevorgustik", "voorliik", "uluk", "margala", "pais", "kala", "osoon", "paikesepaneel", "jalajalg", "susinik",
+  "rohevorgustik", "rohepoore", "voorliik", "uluk", "margala", "pais", "kala", "osoon", "paikesepaneel", "jalajalg", "susinik", "eelis", "keskkonnaandmed",
   "putukas", "saask",
   "tuulepark", "aku", "uleujutusrisk",
   "kodus", "kalapuuk", "ranne", "klaas", "suurjaatmed", "puu",
