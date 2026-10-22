@@ -172,10 +172,6 @@
       "intent": "source_reconciliation",
       "title": "Metsaandmete erinev arv ei tähenda automaatselt vastuolu",
       "question_aliases": [
-        "Miks eri allikad annavad eri andmeid?",
-        "Miks erinevad allikad annavad eri andmeid?",
-        "Miks eri allikad näitavad erinevaid andmeid?",
-        "Miks andmed erinevad allikati?",
         "Miks metsaandmed ei klapi?",
         "Milline metsa tagavara number on õige?",
         "Kas metsa tagavara on üks kindel vaieldamatu number?"
