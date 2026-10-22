@@ -1037,8 +1037,8 @@ test("progressive answer endpoint and broad result pagination remain separate co
   assert.doesNotMatch(app, /Vastuses viidatud allikad/u);
   const resultsView = app.match(/function SearchResults[\s\S]*?function PrivacyDisclosure/u)?.[0] || "";
   assert.match(resultsView, /<BroadSearchResults/u);
-  assert.match(resultsView, /\{aiUnavailable \? broadResults : null\}[\s\S]*?<article className="answer-card">/u);
-  assert.match(resultsView, /\{aiUnavailable \? null : broadResults\}/u);
+  assert.match(resultsView, /\{resultsFirst \? broadResults : null\}[\s\S]*?<article className="answer-card">/u);
+  assert.match(resultsView, /\{resultsFirst \? null : broadResults\}/u);
   assert.doesNotMatch(resultsView, /sources-section|sources-list|Kõik viidatud allikad/u);
   assert.match(server, /searchPage\(request, "page_size", 12, 50\)/u);
   assert.match(server, /app\.post\("\/api\/search\/stream"/u);
