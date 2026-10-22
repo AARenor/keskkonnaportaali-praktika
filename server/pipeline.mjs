@@ -73,7 +73,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 // written under an older policy cannot be served without regeneration.
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v70-source-pack-portal-expansion";
+export const SEARCH_RESPONSE_REVISION = "answer-v71-source-difference-detail";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
