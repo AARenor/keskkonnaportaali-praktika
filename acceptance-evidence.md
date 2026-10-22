@@ -29,11 +29,11 @@ Algne päris HTTP-kontroll näitas, et metsa valeväidete artikkel oli esimene o
 | Tootmise API | „Millised on levinud valeväited Eesti metsa kohta?” → neli märgistatud plokki, avaldamisaeg 17.03.2023, kokku 15 051, artikkel esimene, 6,6 s; korduspäring taasesitas sama `generatedAt`-i. „Miks on radoon ohtlik?” → viidatud põhjuslik vastus ilma täpsustusnõudeta |
 | Tootmise brauser | `https://praktika.arle.top/otsi`: neli plokki, numberlingid õigele keskkonnaagentuur.ee artiklile, ajaloolise piirangu tekst nähtav, horisontaalne overflow puudub |
 | Mudelitee seis | 22.10.2026 päris gateway-vastus oli `429 usage_limit_reached`; tootmises jäi seetõttu alles deterministlik viidatud vastus. Lühikesed ühe allika vastused on sellel perioodil ootuspärased, mitte vaikselt kadunud mudelivastus |
-| Kogu komplekt | `npm test` (781 testi, 848 s): 780 läbis, 1 ebaõnnestus. Ainus viga oli `public-forestry` sünteesitest, mis läbib selle faili eraldi jooksus 32/32 ja üksikuna korduvalt, ka CPU-koormuse all; see on ridadevahelise koormuse tõttu ebastabiilne test, mitte korratav tooteviga |
+| Kogu komplekt | `MULTILINGUAL_SEARCH_ENABLED=true node --test --test-concurrency=4 tests/*.test.mjs` commit'il `90f72f4`: 781/781, 730 s. Üks varasem koondjooks samal päeval nägi `public-forestry` sünteesitestis üht ebaõnnestumist koormuse all; see fail läbib eraldi 32/32 ja kordusjooksus ei korranud |
 | Rollinõuete mudelvastus | `public-forestry` sünteesitest nõuab, et mudeliviide sisaldaks iga planeerija nõutud rolli tõendit; rolli kaotav vastus lükatakse tagasi ja deterministlik mitmeosaline vastus jääb alles |
-| Avaliku otsingu testifail | `public-search`: 47/47 eraldi jooksus; fail ei ripu, vaid teeb 147-päringulise maatriksi ja live-avastuse |
+| Avaliku otsingu testifail | `public-search`: 47/47 eraldi jooksus (888 s); fail ei ripu, vaid teeb 147-päringulise maatriksi ja live-avastuse |
 
-Kogu `npm test` ei olnud ühe jooksuga roheline: 780/781. Ainus ebaõnnestunud test läbib oma faili eraldi jooksus täielikult (32/32). `public-search` vajab eraldi jooksu, sest 147-päringuline maatriks koos live-avastusega ületab koondjooksu praktilise kestuse. Sihitud komplektid ei asenda kogu komplekti edukat läbimist ega tõenda provider'i cache-tabamusi. Ajutised integratsioonimoodulid ei kuulu tarnitavasse koodi.
+Kogu `npm test` läbis commit'i `90f72f4` tööpuul 781/781 testi 730 sekundiga. Samal päeval nähtud üksik ebaõnnestumine `public-forestry` sünteesitestis ei korranud, fail läbib eraldi 32/32 ning testi enda lepingut kontrolliti mõlemas suunas (kõik rollid viidatud → aktsepteeritud; roll puudub → `local-rejected`). Sihitud komplektid ei tõenda provider'i cache-tabamusi: 22.10.2026 gateway vastas `429 usage_limit_reached`, mistõttu mudelipõhist sünteesi ega `cached_tokens`-i ei saanud sel päeval mõõta. Ajutised integratsioonimoodulid ei kuulu tarnitavasse koodi.
 
 
 ## Agents SDK, uued ametlikud allikad ja ressursipiirid 26.08.2026
