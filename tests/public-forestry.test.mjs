@@ -329,20 +329,40 @@ test("generic forest synthesis retains the visible SMI definition and rejects mi
   for (const role of plan.requiredRoles) {
     assert.equal(evidencePack.roleWitnesses[role]?.documentId, plan.roleWitnesses[role].documentId, role);
   }
+  const citationFor = (documentId) => draft.sources.find((source) => source.id === documentId)?.citation;
+  // A model synthesis must keep every planner-required role witness cited;
+  // an answer that silently drops the condition or registry facet is rejected
+  // and the deterministic multi-part answer stays in place.
+  const roleEvidenceParts = ["condition", "registry"].map((role) => ({
+    text: plan.roleWitnesses[role].passages[0],
+    citations: [citationFor(plan.roleWitnesses[role].documentId)],
+  }));
   const validated = validateGroundedAnswer({
     intro: draft.answer.intro,
     intro_citations: draft.answer.introCitations,
     parts: [
       { text: definition, citations: [method.citation] },
       { text: scope, citations: [method.citation] },
+      ...roleEvidenceParts,
     ],
   }, draft, "mets", evidencePack);
   assert.ok(validated.answer);
   assert.equal(validated.rejectionReason, null);
   assert.ok(validated.acceptedClaims.length > 0);
+  const withoutRole = validateGroundedAnswer({
+    intro: draft.answer.intro,
+    intro_citations: draft.answer.introCitations,
+    parts: [{ text: definition, citations: [method.citation] }],
+  }, draft, "mets", evidencePack);
+  assert.equal(withoutRole.answer, null);
+  assert.equal(withoutRole.rejectionReason, "local-rejected");
   const result = publicResponse({ ...draft, answer: validated.answer });
   assert.ok(result.answer.parts.some((part) => part.text === definition));
   assert.ok(result.answer.parts.some((part) => part.text === scope));
+  const used = usedCitations(result);
+  for (const role of plan.requiredRoles) {
+    assert.ok(used.has(citationFor(plan.roleWitnesses[role].documentId)), `required role ${role} stays cited`);
+  }
   const methodSource = result.sources.find((source) => source.id === "smi");
   assert.ok(methodSource);
   assert.ok(visible.some((source) => source.url === methodSource.url));
