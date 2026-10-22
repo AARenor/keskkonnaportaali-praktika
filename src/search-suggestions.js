@@ -3,7 +3,6 @@ export const REMOTE_SUGGESTION_MAX_LENGTH = 80;
 export const REVIEWED_FORESTRY_SEARCH_SUGGESTIONS = Object.freeze([
   "Kui suur osa Eestist on kaetud metsaga?",
   "Kas Eestis raiutakse rohkem kui metsa juurde kasvab?",
-  "Miks annavad eri allikad erinevaid numbreid?",
   "Mis vahe on SMI-l ja metsaregistril?",
   "Kuidas arvutatakse juurdekasvu?",
   "Miks ei võrdu tagavara raiutava puidukogusega?",

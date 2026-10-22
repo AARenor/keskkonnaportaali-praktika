@@ -72,7 +72,7 @@
         {"source_id": "kkp-smi-overview", "locator": "SMI kui üleriigiline valikuuring, üldistatud hinnang ja statistiline viga"},
         {"source_id": "kkp-protected-forest-indicator", "locator": "Kui suur on Eesti metsamaa pindala?: SMI 2024 pindala, osakaal ja suhteline standardviga"}
       ],
-      "related_questions": ["Mis vahe on SMI ja metsaandmete vahel?", "Mis vahe on metsamaal ja puistute pindalal?", "Miks annavad eri allikad erinevaid numbreid?"]
+      "related_questions": ["Mis vahe on SMI ja metsaandmete vahel?", "Mis vahe on metsamaal ja puistute pindalal?"]
     },
     {
       "id": "smi-versus-metsaregister",
@@ -108,7 +108,7 @@
         {"source_id": "kkp-current-forest", "locator": "Metsateatised; RMK metsade olem; Metsainventeerimisandmed"},
         {"source_id": "kkp-metsaregister-data", "locator": "Metsaregistri inventeerimis-, metsateatise ja välitööde andmestikud; Metsaportaal ning WMS/WFS levitused"}
       ],
-      "related_questions": ["Kui palju metsa on Eestis?", "Mis vahe on SMI-l ja metsaregistril?", "Kust leida konkreetse kinnistu metsaandmeid?", "Miks annavad eri allikad erinevaid numbreid?"]
+      "related_questions": ["Kui palju metsa on Eestis?", "Mis vahe on SMI-l ja metsaregistril?", "Kust leida konkreetse kinnistu metsaandmeid?"]
     },
     {
       "id": "increment-method",
@@ -172,7 +172,6 @@
       "intent": "source_reconciliation",
       "title": "Metsaandmete erinev arv ei tähenda automaatselt vastuolu",
       "question_aliases": [
-        "Miks annavad eri allikad erinevaid numbreid?",
         "Miks eri allikad annavad eri andmeid?",
         "Miks erinevad allikad annavad eri andmeid?",
         "Miks eri allikad näitavad erinevaid andmeid?",
@@ -308,7 +307,7 @@
         {"source_id": "kkp-smi-overview", "locator": "SMI valikuuringu ulatus"},
         {"source_id": "smi-2024-tables", "locator": "riigimetskondade ja teiste valdajate eraldi veerud"}
       ],
-      "related_questions": ["Miks annavad eri allikad erinevaid numbreid?", "Mis vahe on SMI-l ja metsaregistril?"]
+      "related_questions": ["Mis vahe on SMI-l ja metsaregistril?"]
     },
     {
       "id": "climate-impact",
@@ -586,7 +585,7 @@
         {"source_id": "kkp-smi-overview", "locator": "valikuuring ja statistiline viga"},
         {"source_id": "smi-2024-tables", "locator": "suhtelise vea veerud"}
       ],
-      "related_questions": ["Mis vahe on SMI-l ja metsaregistril?", "Miks annavad eri allikad erinevaid numbreid?"]
+      "related_questions": ["Mis vahe on SMI-l ja metsaregistril?"]
     },
     {
       "id": "clearcut-value-judgement",
