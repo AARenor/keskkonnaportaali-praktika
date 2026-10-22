@@ -518,7 +518,7 @@ test("live suggestions use per-client fair admission while preserving query coal
 });
 
 test("reviewed autocomplete fallback surfaces structured environmental sources without forestry noise", () => {
-  assert.equal(REVIEWED_ENVIRONMENT_SUGGESTIONS.length, 53);
+  assert.equal(REVIEWED_ENVIRONMENT_SUGGESTIONS.length, 52);
   const hazardousWaste = getReviewedSearchSuggestions("ohtlikud jäätmed", 5);
   assert.equal(hazardousWaste[0], "Kui palju tekkis Eestis 2024. aastal ohtlikke jäätmeid?");
   assert.ok(hazardousWaste.every((value) => /jäätm/iu.test(value)));
@@ -1115,7 +1115,7 @@ test("autocomplete never renders a late response under a newer query", () => {
     "Kas Eestis saab mets otsa?",
   ];
   assert.equal(suggestionsForValue("", {}, reviewed).length, 5);
-  assert.equal(REVIEWED_SEARCH_SUGGESTIONS.length, 71);
+  assert.equal(REVIEWED_SEARCH_SUGGESTIONS.length, 70);
   assert.ok(suggestionsForValue("m", {}, reviewed).every((item) => item.value.endsWith("?")));
   assert.deepEqual(suggestionsForValue("me", {}, ["How is forest increment calculated?"]), []);
   const rawClimate = { query: "kliima", items: [{ value: "kliima", count: 42 }, { value: "kliimamuutused", count: 18 }] };

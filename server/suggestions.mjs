@@ -36,7 +36,6 @@ export const REVIEWED_ENVIRONMENT_SUGGESTIONS = Object.freeze([
 
   "Kuidas taotleda keskkonnaluba?",
   "Kuidas teatada reostusest?",
-  "Kuhu viia ohtlikud jäätmed?",
   "Kuhu viia vana elektroonika?",
   "Mida teha vanade ravimitega?",
   "Kuidas kompostida biojäätmeid?",
@@ -107,8 +106,7 @@ const REVIEWED_SOURCE_CODE_ALIASES = new Map([
   ["jaatmed", [
     "Kui palju tekkis Eestis 2024. aastal ohtlikke jäätmeid?",
     "Kui palju jäätmeid taaskasutati Eestis 2024. aastal?",
-    "Kuhu viia ohtlikud jäätmed?",
-    "Kuhu viia vana elektroonika?",
+      "Kuhu viia vana elektroonika?",
     "Mida teha vanade ravimitega?",
     "Kuidas kompostida biojäätmeid?",
     "Kuidas sorteerida pakendeid?",
