@@ -81,7 +81,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v75-forest-only-direct-agency-first";
+export const SEARCH_RESPONSE_REVISION = "answer-v76-forest-only-permission-check";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
@@ -1326,10 +1326,6 @@ export async function createPortalDraft(query, {
   } else if (genericForestOverviewFallback) {
     draft.answer = genericForestOverviewFallback;
     draft.evidence.syntheticFallback = "forest-overview";
-  } else if (officialForestryFallback && !answersPermissionQuestion(retrievalQuery, officialForestryFallback.intro)) {
-    draft.answer.eyebrow = NO_ANSWER_EYEBROW;
-    draft.answer.intro = NO_ANSWER_INTRO;
-    draft.answer.introCitations = [];
   } else if (officialForestryFallback) {
     draft.answer = officialForestryFallback;
     draft.evidence.syntheticFallback = "official-forestry-evidence";
@@ -1344,6 +1340,12 @@ export async function createPortalDraft(query, {
     draft.answer.eyebrow = "Allikapõhine kokkuvõte";
     draft.answer.intro = directExtract;
     draft.answer.introCitations = [directCitation];
+  }
+  // Every route above can fill the card, so this rule check runs after all of
+  // them. The model may still answer from the same sources.
+  if (!forestBalance && !answersPermissionQuestion(retrievalQuery, draft.answer?.intro || "")) {
+    draft.answer = { ...draft.answer, eyebrow: NO_ANSWER_EYEBROW, intro: NO_ANSWER_INTRO, introCitations: [], parts: [] };
+    draft.clarification = null;
   }
   const definitionRoots = queryTerms(retrievalQuery);
   let packPlan = plannedEvidence;
