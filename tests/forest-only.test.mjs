@@ -198,6 +198,16 @@ test("a non-forest question that looks private gets the plain no-answer", async 
   });
 });
 
+test("the scope card follows the same rule on every route", async () => {
+  await withForestOnly(async () => {
+    for (const query of ["mura normid elamualal", "keskkonnaministeerium kontakt (vana nimi?)"]) {
+      assert.equal(composeScopeResponse(query, assessSearchQuery(query)).answer.eyebrow, "Vastust ei leitud", query);
+    }
+    const forest = "Jaan Tamme metsa omanik";
+    assert.notEqual(composeScopeResponse(forest, assessSearchQuery(forest)).answer.eyebrow, "Vastust ei leitud");
+  });
+});
+
 test("a private lookup about a forest keeps its refusal", async () => {
   await withForestOnly(async () => {
     const result = await searchEnvironmentLive("Jaan Tamme metsa omanik", { generateAnswer: () => assert.fail("model must not run"), recordSearch: () => {}, useCache: false });
@@ -220,6 +230,10 @@ test("an answer must speak to the concept the question asks about", () => {
   assert.equal(answersAskedConcept("kui palju on eramets", "Erametsad moodustavad poole metsamaast."), true);
   assert.equal(answersAskedConcept("kaitsevöönd jõe ääres", "Veekogu kalda kaitsevööndis on lageraie keelatud."), true);
   assert.equal(answersAskedConcept("Kui palju raiutakse eestis metsa", landCover), true);
+  assert.equal(answersAskedConcept("KIK metsandustoetused", ages), false);
+  assert.equal(answersAskedConcept("mis on noorendik", ages), false);
+  assert.equal(answersAskedConcept("mis on okasmets", "Okasmetsad moodustavad poole metsast."), true);
+  assert.equal(answersAskedConcept("mis on metsateatis", "Metsateatis on dokument, millega omanik teatab raiest."), true);
 });
 
 test("a short follow-up with ka continues the conversation", () => {

@@ -8929,7 +8929,7 @@ export function answersPermissionQuestion(query, text) {
 // national land cover. Each row names one concept and the words an answer to it
 // must use, so a card never presents a side fact as the answer.
 const ASKED_CONCEPTS = [
-  { asks: /\b(?:toetus\w*|taotlus\w*|huvitis\w*)/u, answers: /toetus|toetami|taotl|rahasta|huvit|kompens|meetm/u },
+  { asks: /toetus|taotlus|huvitis/u, answers: /toetus|toetami|taotl|rahasta|huvit|kompens|meetm/u },
   { asks: /\beramets\w*|\beraomand\w*/u, answers: /eramets|eraomand|erao|metsaomanik/u },
   { asks: /kaitsevoon\w*.*\b(?:joe|jogi|joge|jarve|veekogu\w*|kalda\w*)\b/u, answers: /veekogu|\bjo(?:e|gi|ge)\b|jarve|kalda|ranna/u },
 ];
@@ -8938,6 +8938,9 @@ export function answersAskedConcept(query, text) {
   if (!answersPermissionQuestion(query, text)) return false;
   const normalizedQuery = normalize(query);
   const normalizedText = normalize(text);
+  // "Mis on X" asks for X itself, so the answer has to name it.
+  const defined = normalizedQuery.match(/^mis on (\p{L}{4,})\??$/u)?.[1];
+  if (defined && !normalizedText.includes(defined.slice(0, Math.max(4, defined.length - 2)))) return false;
   return ASKED_CONCEPTS.every(({ asks, answers }) => !asks.test(normalizedQuery) || answers.test(normalizedText));
 }
 
@@ -9289,7 +9292,8 @@ function responseSources(ids) {
 export function composeScopeResponse(query, assessment) {
   const canonicalInput = canonicalizePublicSearchQuery(query);
   const cleanQuery = canonicalInput.ok ? canonicalInput.query : "";
-  if (!isAllEnvironmentSearchEnabled() && assessment.reason === "outside-environment-domain") {
+  if (!isAllEnvironmentSearchEnabled() && (assessment.reason === "outside-environment-domain"
+    || (assessment.reason === "personal-data-lookup" && !isForestRelatedQuery(cleanQuery)))) {
     return composeNoAnswerResponse(cleanQuery);
   }
   if (assessment.kind === "live-weather") {
