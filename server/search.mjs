@@ -8206,7 +8206,8 @@ function documentCarriesFactCheckPair(document, terms) {
 
 export function assessEvidence(query, documents = []) {
   const terms = queryTerms(query);
-  // Among documents that can answer, Keskkonnaagentuur and its portal go first.
+  // Among documents that directly answer, Keskkonnaagentuur and its portal go
+  // first. The broad path matches loosely, so it keeps relevance order.
   // Every check below still applies, and a far weaker match cannot jump ahead.
   const topCandidateScore = Number(documents?.[0]?.score || 0);
   const inSourceOrder = (matches, candidateList) => matches
@@ -8316,8 +8317,8 @@ export function assessEvidence(query, documents = []) {
   const locationQuestion = /\b(?:kus|kust|kuhu)\s+(?:asub|asuvad|paikneb|paiknevad|on)\b/u.test(normalizedQuery);
   const broadDocument = (strong || asksForMeasurement || broadGenericIntent || locationQuestion || !preferredSubject)
     ? null
-    : inSourceOrder(perDocument, candidates).find((match) => {
-      const document = documentForMatch(match, candidates);
+    : perDocument.find((match, index) => {
+      const document = candidates[index];
       if (document._answerEvidenceEligible === false || document.evidencePolicy === "route-only" || document.delivery === "structured-or-download") return false;
       if (!documentCanDirectlyAnswerQuery(query, document)) return false;
       if (!factCheckDocument(document)) return false;
@@ -8912,6 +8913,13 @@ export function extractAnswersQuery(query, extract) {
     .every((term) => textHasQueryRoot(extract, term));
 }
 
+// A question about what is allowed needs a passage that states a rule, not one
+// that only shares its subject ("lageraie lubatud pindala" and a statistic).
+export function answersPermissionQuestion(query, text) {
+  if (!/\b(?:lubatud|lubatav\w*|keelatud)\b/u.test(normalize(query))) return true;
+  return /\b(?:luba\w*|tohi\w*|keela\w*|nou[dt]\w*|piirang\w*|voib|voi[bm]\w*|peab|seadus\w*|maarus\w*|kuni)\b/u.test(normalize(text));
+}
+
 export function composeNoAnswerResponse(query) {
   return composeSearchResponse(query, [], { answerable: false, hasRelevantResults: false, total: 0, related: [] });
 }
@@ -9260,6 +9268,9 @@ function responseSources(ids) {
 export function composeScopeResponse(query, assessment) {
   const canonicalInput = canonicalizePublicSearchQuery(query);
   const cleanQuery = canonicalInput.ok ? canonicalInput.query : "";
+  if (!isAllEnvironmentSearchEnabled() && assessment.reason === "outside-environment-domain") {
+    return composeNoAnswerResponse(cleanQuery);
+  }
   if (assessment.kind === "live-weather") {
     const sources = responseSources(["weather-forecast", "kaia-service"]);
     return {

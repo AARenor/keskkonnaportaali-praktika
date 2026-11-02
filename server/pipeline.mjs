@@ -48,6 +48,7 @@ import {
   assessSearchQuery,
   canonicalizePublicSearchQuery,
   composeNoAnswerResponse,
+  answersPermissionQuestion,
   extractAnswersQuery,
   isAllEnvironmentSearchEnabled,
   isForestRelatedQuery,
@@ -80,7 +81,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v74-forest-only-plain-no-answer";
+export const SEARCH_RESPONSE_REVISION = "answer-v75-forest-only-direct-agency-first";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
@@ -865,14 +866,14 @@ function finalizeVisibleAnswerWitnesses(draft, query, evidencePack) {
   if (!claimHasVisibleWitnessInDraft(attached, introClaim)) {
     return {
       ...attached,
-      clarification: "Leitud allikad ei kata vastuse kõiki väiteid piisavalt selge nähtava väljavõttega.",
+      clarification: null,
       answer: {
         ...attached.answer,
-        eyebrow: "Täpsustust on vaja",
-        intro: "Leitud ametlike allikate põhjal ei saanud koostada väitehaaval kontrollitava viitega vastust. Täpsusta näitajat, aastat või võrdlust.",
+        eyebrow: NO_ANSWER_EYEBROW,
+        intro: NO_ANSWER_INTRO,
         introCitations: [],
         parts: [],
-        note: "Allikad on kuvatud allpool, kuid neist ei koostatud osaliselt viidatud faktivastust.",
+        note: "",
       },
       evidence: {
         ...attached.evidence,
@@ -1325,6 +1326,10 @@ export async function createPortalDraft(query, {
   } else if (genericForestOverviewFallback) {
     draft.answer = genericForestOverviewFallback;
     draft.evidence.syntheticFallback = "forest-overview";
+  } else if (officialForestryFallback && !answersPermissionQuestion(retrievalQuery, officialForestryFallback.intro)) {
+    draft.answer.eyebrow = NO_ANSWER_EYEBROW;
+    draft.answer.intro = NO_ANSWER_INTRO;
+    draft.answer.introCitations = [];
   } else if (officialForestryFallback) {
     draft.answer = officialForestryFallback;
     draft.evidence.syntheticFallback = "official-forestry-evidence";

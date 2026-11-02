@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assessEvidence, containsPrivatePersonLookup, composeSearchResponse, extractAnswersQuery, isForestRelatedQuery, isNonAnswerText } from "../server/search.mjs";
+import { answersPermissionQuestion, assessEvidence, assessSearchQuery, composeScopeResponse, containsPrivatePersonLookup, composeSearchResponse, extractAnswersQuery, isForestRelatedQuery, isNonAnswerText } from "../server/search.mjs";
 import { searchEnvironmentLive } from "../server/pipeline.mjs";
 import { blockedFollowUpAssessment, contextualRetrievalQuery } from "../server/retrieval.mjs";
 
@@ -55,6 +55,8 @@ test("a question outside the environment domain gets the same message, not a ref
     const result = await searchEnvironmentLive("mis on Prantsusmaa pealinn", { recordSearch: () => {} });
     assert.equal(result.answer.eyebrow, "Vastust ei leitud");
     assert.equal(result.clarification, null);
+    const route = composeScopeResponse("mis on Prantsusmaa pealinn", assessSearchQuery("mis on Prantsusmaa pealinn"));
+    assert.equal(route.answer.eyebrow, "Vastust ei leitud");
   });
 });
 
@@ -146,4 +148,22 @@ test("a Keskkonnaagentuur page that answers is preferred over a higher ranked on
     document("kaur", "https://keskkonnaagentuur.ee/metsateatis", "Keskkonnaagentuur", 10),
   ]);
   assert.equal(weak.directDocumentId, "rmk");
+});
+
+test("a loose broad match never replaces a better ranked page because of its publisher", () => {
+  const query = "kas tohin oma metsast kutet votta";
+  const page = (id, url, organization, score, text) => ({ id, url, organization, score, title: text, summary: text, content: text, sourceTier: "official" });
+  const guide = "Metsaomanik tohib oma metsast küttepuid võtta ja raiuda kuni 20 tihumeetrit aastas.";
+  const result = assessEvidence(query, [
+    page("guide", "https://keskkonnaamet.ee/juhis", "Keskkonnaamet", 30, guide),
+    page("kaur", "https://keskkonnaagentuur.ee/juurdekasv", "Keskkonnaagentuur", 28, guide),
+  ]);
+  assert.notEqual(result.broadDocumentId, "kaur");
+});
+
+test("a question about what is allowed needs a passage that states a rule", () => {
+  const query = "lageraie lubatud pindala erametsas";
+  assert.equal(answersPermissionQuestion(query, "Noorte metsade pindala kasvu põhjustab raie ja metsastumine."), false);
+  assert.equal(answersPermissionQuestion(query, "Lageraie langi suurim lubatud pindala on 7 hektarit."), true);
+  assert.equal(answersPermissionQuestion("kui palju on eestis metsa", "Metsamaa pindala on 2,3 miljonit hektarit."), true);
 });
