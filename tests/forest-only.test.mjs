@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { answersPermissionQuestion, assessEvidence, assessSearchQuery, composeScopeResponse, containsPrivatePersonLookup, composeSearchResponse, extractAnswersQuery, isForestRelatedQuery, isNonAnswerText } from "../server/search.mjs";
+import { answersAskedConcept, answersPermissionQuestion, assessEvidence, assessSearchQuery, composeScopeResponse, containsPrivatePersonLookup, composeSearchResponse, extractAnswersQuery, isForestRelatedQuery, isNonAnswerText } from "../server/search.mjs";
 import { searchEnvironmentLive } from "../server/pipeline.mjs";
-import { blockedFollowUpAssessment, contextualRetrievalQuery } from "../server/retrieval.mjs";
+import { blockedFollowUpAssessment, contextualRetrievalQuery, isContinuationFollowUp } from "../server/retrieval.mjs";
 
 // Forest-only contract (production default: ALL_ENVIRONMENT_SEARCH_ENABLED
 // unset/false). These tests force the flag off regardless of the outer
@@ -166,4 +166,63 @@ test("a question about what is allowed needs a passage that states a rule", () =
   assert.equal(answersPermissionQuestion(query, "Noorte metsade pindala kasvu põhjustab raie ja metsastumine."), false);
   assert.equal(answersPermissionQuestion(query, "Lageraie langi suurim lubatud pindala on 7 hektarit."), true);
   assert.equal(answersPermissionQuestion("kui palju on eestis metsa", "Metsamaa pindala on 2,3 miljonit hektarit."), true);
+});
+
+test("forest compounds reach the search instead of stopping at the topic check", () => {
+  for (const word of ["okasmets", "lehtmets", "okasmetsad", "noormets", "vanamets", "majandusmets", "turbemets", "alusmets", "kaasik", "noorendik", "kuusik", "lepik", "haavik"]) {
+    const query = `mis on ${word}`;
+    assert.equal(isForestRelatedQuery(query), true, query);
+    assert.notEqual(assessSearchQuery(query).reason, "outside-environment-domain", query);
+  }
+  for (const query of ["mis on Prantsusmaa pealinn", "mis on käsk", "metsik loodus"]) {
+    assert.equal(assessSearchQuery(query).kind === "answerable" && isForestRelatedQuery(query), false, query);
+  }
+});
+
+test("a family forest question is private only when it names a person or contact field", () => {
+  const dryTrees = "tahaks teada et meie pere metsas laane-virumaal on palju kuivanud puid, kas peame need ara votma voi voib jatta, ja kas riik midagi maksab kui raie teeme";
+  assert.equal(containsPrivatePersonLookup(dryTrees), false);
+  assert.equal(containsPrivatePersonLookup("tahaks teada et meie pere metsas on kuivanud puid"), false);
+  for (const query of ["Jaan Tamme metsa omanik", "Jaan Tamme pere metsa aadress", "meie pere metsa naabri Mari Kase telefon", "tahaks teada et meie pere metsa naabri Mari Kase telefon"]) {
+    assert.equal(containsPrivatePersonLookup(query), true, query);
+  }
+});
+
+test("a non-forest question that looks private gets the plain no-answer", async () => {
+  await withForestOnly(async () => {
+    for (const query of ["mura normid elamualal", "keskkonnaministeerium kontakt (vana nimi?)", "miks lubatakse tuuleparkide mura elamute lahedale"]) {
+      const result = await searchEnvironmentLive(query, { generateAnswer: () => assert.fail("model must not run"), recordSearch: () => {}, useCache: false });
+      assert.equal(result.answer.eyebrow, "Vastust ei leitud", query);
+      assert.deepEqual(result.sources, [], query);
+    }
+  });
+});
+
+test("a private lookup about a forest keeps its refusal", async () => {
+  await withForestOnly(async () => {
+    const result = await searchEnvironmentLive("Jaan Tamme metsa omanik", { generateAnswer: () => assert.fail("model must not run"), recordSearch: () => {}, useCache: false });
+    assert.notEqual(result.answer.eyebrow, "Vastust ei leitud");
+    assert.deepEqual(result.sources, []);
+  });
+});
+
+test("an answer must speak to the concept the question asks about", () => {
+  const register = "Metsaregister on Eesti riiklik andmekogu, kuhu kogutakse andmeid metsa pindala kohta. Teatiste vaatamiseks kasuta metsaregistrit.";
+  const ages = "Jätkuvalt suureneb nii noorte kui vanade metsade pindala.";
+  const landCover = "2023. aastal moodustas metsamaa 51,6% Eesti pindalast.";
+  assert.equal(answersAskedConcept("kui suur peab olema metsaomaniku kinnistu et saada toetust", register), false);
+  assert.equal(answersAskedConcept("ja millal tuleb taotlus esitada", register), false);
+  assert.equal(answersAskedConcept("kas peale lageraied saab uut metsa istutamise toetust", ages), false);
+  assert.equal(answersAskedConcept("kui palju metsast eestis on eramets 2023", landCover), false);
+  assert.equal(answersAskedConcept("ja kui on kaitsevöönd jõe ääres", "Piiranguvööndis on lageraie keelatud kaitseala valitseja loata."), false);
+  assert.equal(answersAskedConcept("metsaomaniku toetus", "KIK avas metsameetme taotlusvooru erametsaomanikele."), true);
+  assert.equal(answersAskedConcept("kas uue metsa istutamiseks saab toetust", "Metsa uuendamise toetust saavad erametsaomanikud."), true);
+  assert.equal(answersAskedConcept("kui palju on eramets", "Erametsad moodustavad poole metsamaast."), true);
+  assert.equal(answersAskedConcept("kaitsevöönd jõe ääres", "Veekogu kalda kaitsevööndis on lageraie keelatud."), true);
+  assert.equal(answersAskedConcept("Kui palju raiutakse eestis metsa", landCover), true);
+});
+
+test("a short follow-up with ka continues the conversation", () => {
+  assert.equal(isContinuationFollowUp("kas noore metsa hooldus ka sobib"), true);
+  assert.equal(isContinuationFollowUp("kas noore metsa hooldus on vajalik"), false);
 });

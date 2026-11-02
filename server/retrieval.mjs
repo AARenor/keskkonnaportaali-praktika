@@ -2756,7 +2756,7 @@ function contextAssessmentIsBlocked(assessment) {
     && ["unsafe-instruction", "personal-data-lookup"].includes(assessment.reason);
 }
 
-const CONTINUATION_FOLLOW_UP_PATTERN = /^(?:ja|aga|kuid|ning|v[oõ]i)\s|(?:^|\s)(?:see|seda|selle|sellel|selles|sellest|seal|sinna|sealt|need|neid|nende|sama|samuti)(?=\s|$)/iu;
+const CONTINUATION_FOLLOW_UP_PATTERN = /^(?:ja|aga|kuid|ning|v[oõ]i)\s|(?:^|\s)(?:see|seda|selle|sellel|selles|sellest|seal|sinna|sealt|need|neid|nende|sama|samuti)(?=\s|$)|\ska\s+(?:sobib|kehtib|kaib|käib|loeb)(?=\s|[?!.]|$)/iu;
 
 export function isContinuationFollowUp(value) {
   return CONTINUATION_FOLLOW_UP_PATTERN.test(String(value || "").trim());

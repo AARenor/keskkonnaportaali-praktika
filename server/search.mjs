@@ -2136,7 +2136,8 @@ export function isAllEnvironmentSearchEnabled() {
 
 // Stems are listed by inflected form because "kuus", "kasu" and "puudub" must
 // not count as trees. "metsik" and "metsloom" are wildlife, not forest.
-const FOREST_VOCABULARY_PATTERN = /\b(?:(?!metsik|metsloom)\p{L}*mets\p{L}*|\p{L}*raie\p{L}*|\p{L}*raiu\p{L}*|\p{L}*puu(?:d|de|l|le|lt|s|st|ga|t|desse)?|pui(?:d|dude|dudel)|puit\p{L}*|puidu\p{L}*|puuliik\p{L}*|puistu\p{L}*|\p{L}*urask\p{L}*|feromoon\p{L}*|juurepess\p{L}*|harvendus\p{L}*|kuusk\p{L}*|kuuse\p{L}*|mand|manni\p{L}*|kask|kaske|kase|kasel|kasesid|haab|haava|lepp|lepa|tamm|tamme|smi|rmk|lulucf)\b/iu;
+const FOREST_STAND_PATTERN = /\b(?:(?!metsik|metsloom)\p{L}*mets\p{L}*|(?:kaasik|kuusik|lepik|haavik|tammik|noorendik)\p{L}*)\b/iu;
+const FOREST_VOCABULARY_PATTERN = /\b(?:(?!metsik|metsloom)\p{L}*mets\p{L}*|(?:kaasik|kuusik|lepik|haavik|tammik|noorendik)\p{L}*|\p{L}*raie\p{L}*|\p{L}*raiu\p{L}*|\p{L}*puu(?:d|de|l|le|lt|s|st|ga|t|desse)?|pui(?:d|dude|dudel)|puit\p{L}*|puidu\p{L}*|puuliik\p{L}*|puistu\p{L}*|\p{L}*urask\p{L}*|feromoon\p{L}*|juurepess\p{L}*|harvendus\p{L}*|kuusk\p{L}*|kuuse\p{L}*|mand|manni\p{L}*|kask|kaske|kase|kasel|kasesid|haab|haava|lepp|lepa|tamm|tamme|smi|rmk|lulucf)\b/iu;
 
 export function isForestRelatedQuery(value) {
   const canonical = canonicalizePublicSearchQuery(value, { maximumLength: 1_400 });
@@ -5279,9 +5280,12 @@ export function containsPrivatePersonLookup(value, {
 } = {}) {
   if (hasForeignPrivatePersonClause(decodeSecurityEscapes(value))) return true;
   const canonicalText = canonicalSecurityText(value);
-  // "Meie pere metsas" is a first-person forest statement. Classify the same
-  // text without "pere", so any name or contact field in it still fails.
-  const familyForest = canonicalText.replace(/^meie\s+pere(?=\s+mets)/iu, "meie");
+  // "Tahaks teada et meie pere metsas" is a first-person forest statement.
+  // Classify the same text without that opening, so any name or contact field
+  // in it still fails.
+  const familyForest = canonicalText
+    .replace(/^(?:tahaks(?:in)?|soovi(?:n|ksin))\s+teada,?\s+et\s+(?=meie\s+(?:pere\s+)?mets)/iu, "")
+    .replace(/^meie\s+pere(?=\s+mets)/iu, "meie");
   if (familyForest !== canonicalText) {
     return containsPrivatePersonLookup(familyForest, { allowReviewedPublicClauseComposition, allowReviewedCountyRequestPrefix });
   }
@@ -7767,7 +7771,7 @@ export function assessSearchQuery(query, options = {}) {
       clarification: null,
     };
   }
-  if (!domainRoots.length && !forestryIntent && !hasRecognizedLiveRoute) {
+  if (!domainRoots.length && !forestryIntent && !hasRecognizedLiveRoute && !FOREST_STAND_PATTERN.test(normalized)) {
     return {
       kind: "out-of-scope",
       topic: null,
@@ -8918,6 +8922,23 @@ export function extractAnswersQuery(query, extract) {
 export function answersPermissionQuestion(query, text) {
   if (!/\b(?:lubatud|lubatav\w*|keelatud)\b/u.test(normalize(query))) return true;
   return /\b(?:luba\w*|tohi\w*|keela\w*|nou[dt]\w*|piirang\w*|voib|voi[bm]\w*|peab|seadus\w*|maarus\w*|kuni)\b/u.test(normalize(text));
+}
+
+// A passage can share a question's subject and still skip what was asked: a
+// grant question answered with register text, a share of private forest with
+// national land cover. Each row names one concept and the words an answer to it
+// must use, so a card never presents a side fact as the answer.
+const ASKED_CONCEPTS = [
+  { asks: /\b(?:toetus\w*|taotlus\w*|huvitis\w*)/u, answers: /toetus|toetami|taotl|rahasta|huvit|kompens|meetm/u },
+  { asks: /\beramets\w*|\beraomand\w*/u, answers: /eramets|eraomand|erao|metsaomanik/u },
+  { asks: /kaitsevoon\w*.*\b(?:joe|jogi|joge|jarve|veekogu\w*|kalda\w*)\b/u, answers: /veekogu|\bjo(?:e|gi|ge)\b|jarve|kalda|ranna/u },
+];
+
+export function answersAskedConcept(query, text) {
+  if (!answersPermissionQuestion(query, text)) return false;
+  const normalizedQuery = normalize(query);
+  const normalizedText = normalize(text);
+  return ASKED_CONCEPTS.every(({ asks, answers }) => !asks.test(normalizedQuery) || answers.test(normalizedText));
 }
 
 export function composeNoAnswerResponse(query) {
