@@ -1923,8 +1923,10 @@ export function validateGroundedAnswer(payload, draft, query, evidencePack) {
   }
   try {
     return validateGroundedProposal(payload, draft, query, evidencePack);
-  } catch {
-    return { answer: null, acceptedClaims: [], rejectionReason: "local-rejected" };
+  } catch (error) {
+    // The parenthesis can quote evidence words, so only the fixed text leaves.
+    const rejectionDetail = String(error?.message || "").replace(/\s*\(.*$/su, "").slice(0, 120);
+    return { answer: null, acceptedClaims: [], rejectionReason: "local-rejected", rejectionDetail };
   }
 }
 
@@ -2188,6 +2190,7 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
           provider: `${orchestrated ? "openai-agents" : "codex-gateway"}/${model}`,
           status: validated.answer ? "ready" : "degraded",
           reason: validated.rejectionReason || "none",
+          ...(validated.rejectionDetail ? { detail: validated.rejectionDetail } : {}),
         },
       };
     } catch (error) {

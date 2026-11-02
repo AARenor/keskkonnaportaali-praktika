@@ -1753,7 +1753,14 @@ async function searchWithinBudget(cleanQuery, {
   // Status words only, never question or provider text: why the model did or
   // did not contribute is otherwise visible only inside the database.
   const response = outcome.attempt
-    ? { ...outcome.response, answerAttempt: { status: outcome.attempt.status, reason: outcome.attempt.reason } }
+    ? {
+      ...outcome.response,
+      answerAttempt: {
+        status: outcome.attempt.status,
+        reason: outcome.attempt.reason,
+        ...(llmResult.attempt?.detail ? { detail: llmResult.attempt.detail } : {}),
+      },
+    }
     : outcome.response;
 
   if (requestCanStillPersist({ signal, deadlineAt })) {

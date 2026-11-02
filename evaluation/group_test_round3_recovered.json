@@ -1,0 +1,322 @@
+{
+ "dataset_id": "group-test-round-3-recovered",
+ "note": "Forest questions from group test round 3, recovered from a session transcript. Incomplete: the source report was overwritten.",
+ "count": 63,
+ "queries": [
+  {
+   "id": "Q001",
+   "type": "FAKT",
+   "q": "Kui palju on Eestis metsamaad?"
+  },
+  {
+   "id": "Q002",
+   "type": "FAKT",
+   "q": "Mitu protsenti Eestist on metsa all?"
+  },
+  {
+   "id": "Q003",
+   "type": "FAKT",
+   "q": "Milline on Eesti kõige levinum puuliik?"
+  },
+  {
+   "id": "Q004",
+   "type": "FAKT",
+   "q": "Kui suur on Eesti metsade kogutagavara?"
+  },
+  {
+   "id": "Q005",
+   "type": "FAKT",
+   "q": "Kui palju metsa kasvab Eestis aastas juurde?"
+  },
+  {
+   "id": "Q006",
+   "type": "FAKT",
+   "q": "Kui suur osa Eesti metsast on riigimets?"
+  },
+  {
+   "id": "Q007",
+   "type": "FAKT",
+   "q": "Mitu erametsaomanikku on Eestis?"
+  },
+  {
+   "id": "Q008",
+   "type": "FAKT",
+   "q": "Kui palju on Eestis vääriselupaiku?"
+  },
+  {
+   "id": "Q009",
+   "type": "FAKT",
+   "q": "Mis on metsaregister?"
+  },
+  {
+   "id": "Q010",
+   "type": "FAKT",
+   "q": "Kui palju on Eestis rangelt kaitstud metsa?"
+  },
+  {
+   "id": "Q011",
+   "type": "FAKT",
+   "q": "Kui palju süsinikku seovad Eesti metsad aastas?"
+  },
+  {
+   "id": "Q012",
+   "type": "FAKT",
+   "q": "Kui palju metsa raiuti Eestis 2023. aastal?"
+  },
+  {
+   "id": "Q013",
+   "type": "AASTA",
+   "q": "Kui palju lageraiet tehti Eestis 2022. aastal hektarites?"
+  },
+  {
+   "id": "Q014",
+   "type": "AASTA",
+   "q": "Kuidas on raiemaht muutunud aastatel 2015–2024?"
+  },
+  {
+   "id": "Q015",
+   "type": "AASTA",
+   "q": "Mitu metsateatist esitati 2024. aastal?"
+  },
+  {
+   "id": "Q016",
+   "type": "AASTA",
+   "q": "Kui palju metsa istutati Eestis 2023. aastal?"
+  },
+  {
+   "id": "Q017",
+   "type": "PIIRKOND",
+   "q": "Milline maakond on Eestis kõige metsasem?"
+  },
+  {
+   "id": "Q018",
+   "type": "PIIRKOND",
+   "q": "Kui palju on metsa Võrumaal?"
+  },
+  {
+   "id": "Q019",
+   "type": "PIIRKOND",
+   "q": "Kui palju raiuti Harjumaal eelmisel aastal?"
+  },
+  {
+   "id": "Q020",
+   "type": "PIIRKOND",
+   "q": "Kui suur osa Saaremaast on metsaga kaetud?"
+  },
+  {
+   "id": "Q021",
+   "type": "PIIRKOND",
+   "q": "Kus maakonnas on kõige rohkem kaitsealuseid metsi?"
+  },
+  {
+   "id": "Q022",
+   "type": "PIIRKOND",
+   "q": "Mitu hektarit riigimetsa on Ida-Virumaal?"
+  },
+  {
+   "id": "Q023",
+   "type": "SEADUS",
+   "q": "Kas mul on vaja metsateatist, kui tahan oma metsas paar puud maha võtta?"
+  },
+  {
+   "id": "Q024",
+   "type": "SEADUS",
+   "q": "Kui kaua kehtib metsateatis?"
+  },
+  {
+   "id": "Q025",
+   "type": "SEADUS",
+   "q": "Mis on männi raievanus metsaseaduse järgi?"
+  },
+  {
+   "id": "Q026",
+   "type": "SEADUS",
+   "q": "Mis on kase ja kuuse raievanused?"
+  },
+  {
+   "id": "Q027",
+   "type": "SEADUS",
+   "q": "Kas sihtkaitsevööndis tohib metsa raiuda?"
+  },
+  {
+   "id": "Q028",
+   "type": "SEADUS",
+   "q": "Mis vahe on sihtkaitsevööndil ja piiranguvööndil?"
+  },
+  {
+   "id": "Q029",
+   "type": "SEADUS",
+   "q": "Millal on lindude pesitsusperioodil raierahu?"
+  },
+  {
+   "id": "Q030",
+   "type": "SEADUS",
+   "q": "Kui suur võib olla lageraie langi maksimaalne pindala? (What is the maximum size of"
+  },
+  {
+   "id": "Q068",
+   "type": "KIRJAVIGA",
+   "q": "vääriselupaik mis see on"
+  },
+  {
+   "id": "Q069",
+   "type": "KIRJAVIGA",
+   "q": "kuskohas see sihtkaitse värk siis on"
+  },
+  {
+   "id": "Q070",
+   "type": "KIRJAVIGA",
+   "q": "palju kuuski eestis on??"
+  },
+  {
+   "id": "Q071",
+   "type": "MITMEOSALINE",
+   "q": "Kui palju on Eestis metsa, kui palju sellest on kaitse all ja kui palju raiutakse aastas?"
+  },
+  {
+   "id": "Q072",
+   "type": "MITMEOSALINE",
+   "q": "Mis on männi raievanus ja kas lageraie on lubatud piiranguvööndis?"
+  },
+  {
+   "id": "Q073",
+   "type": "MITMEOSALINE",
+   "q": "Kui palju on riigimetsa ja erametsa ning kumbas raiutakse rohkem?"
+  },
+  {
+   "id": "Q074",
+   "type": "MITMEOSALINE",
+   "q": "Kuidas esitada metsateatist ja kui kaua selle menetlemine aega võtab?"
+  },
+  {
+   "id": "Q075",
+   "type": "MITMEOSALINE",
+   "q": "Milline on kõige metsasem maakond ja mis puuliigid seal valitsevad?"
+  },
+  {
+   "id": "Q076",
+   "type": "JÄTK, jätk Q012-le",
+   "q": "aga eelmisel aastal?"
+  },
+  {
+   "id": "Q077",
+   "type": "JÄTK, jätk Q017-le",
+   "q": "ja kõige vähem metsane?"
+  },
+  {
+   "id": "Q078",
+   "type": "JÄTK, jätk Q025-le",
+   "q": "aga kuusel?"
+  },
+  {
+   "id": "Q079",
+   "type": "JÄTK, jätk Q018-le",
+   "q": "kui palju sellest on riigimets?"
+  },
+  {
+   "id": "Q080",
+   "type": "JÄTK, jätk Q013-le",
+   "q": "ja kuidas see võrdub 2023. aastaga?"
+  },
+  {
+   "id": "Q081",
+   "type": "JÄTK, jätk Q036-le",
+   "q": "aga kaitsealal?"
+  },
+  {
+   "id": "Q082",
+   "type": "JÄTK, jätk Q030-le",
+   "q": "kas see kehtib ka erametsas?"
+  },
+  {
+   "id": "Q083",
+   "type": "VASTUSETA",
+   "q": "Kui palju metsa raiutakse Eestis aastal 2035?"
+  },
+  {
+   "id": "Q084",
+   "type": "VASTUSETA",
+   "q": "Mitu puud kasvab täpselt minu naabri metsas?"
+  },
+  {
+   "id": "Q085",
+   "type": "VASTUSETA",
+   "q": "Kui palju metsa oli Eestis aastal 1200?"
+  },
+  {
+   "id": "Q086",
+   "type": "VASTUSETA",
+   "q": "Kes on Eesti kõige suurem erametsaomanik nimeliselt?"
+  },
+  {
+   "id": "Q087",
+   "type": "PIIRJUHT",
+   "q": "Kui palju on Soomes metsa võrreldes Eestiga?"
+  },
+  {
+   "id": "Q088",
+   "type": "PIIRJUHT",
+   "q": "Kui palju maksab tihumeeter männipalki praegu?"
+  },
+  {
+   "id": "Q089",
+   "type": "PIIRJUHT",
+   "q": "How much forest is there in Estonia?"
+  },
+  {
+   "id": "Q090",
+   "type": "PIIRJUHT",
+   "q": "Kas parkides ja linnahaljastuses olevad puud loetakse metsaks?"
+  },
+  {
+   "id": "Q091",
+   "type": "PIIRJUHT",
+   "q": "Kas võsastunud põllumaa on metsamaa?"
+  },
+  {
+   "id": "Q092",
+   "type": "PIIRJUHT",
+   "q": "Kirjuta mulle luuletus Eesti metsast."
+  },
+  {
+   "id": "Q093",
+   "type": "KORDUS, kordab Q001",
+   "q": "Kui suur on Eesti metsamaa pindala?"
+  },
+  {
+   "id": "Q094",
+   "type": "KORDUS, kordab Q003",
+   "q": "Mis puud Eestis kõige rohkem kasvab?"
+  },
+  {
+   "id": "Q095",
+   "type": "KORDUS, kordab Q025",
+   "q": "Mis vanuses tohib männikut lageraiega raiuda?"
+  },
+  {
+   "id": "Q096",
+   "type": "KORDUS, kordab Q006",
+   "q": "Kui palju metsast kuulub riigile?"
+  },
+  {
+   "id": "Q097",
+   "type": "KORDUS, kordab Q029",
+   "q": "Millal on raierahu?"
+  },
+  {
+   "id": "Q098",
+   "type": "KORDUS, kordab Q052",
+   "q": "Kas Eestis kasvab metsa juurde rohkem, kui raiutakse?"
+  },
+  {
+   "id": "Q099",
+   "type": "KORDUS, kordab Q017",
+   "q": "Mis maakonnas on kõige rohkem metsa?"
+  },
+  {
+   "id": "Q100",
+   "type": "KORDUS, kordab Q010",
+   "q": "Kui suur osa Eesti metsadest on range kaitse all?"
+  }
+ ]
+}
