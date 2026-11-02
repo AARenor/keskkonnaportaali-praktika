@@ -5719,23 +5719,21 @@ test("related official results are not described as if no evidence was found", a
   });
   assert.equal(draft.evidence.answerable, false);
   assert.equal(draft.sources[0]?.id, "open-data-downloader");
-  assert.match(draft.answer.intro, /Leidsin küsimusega seotud ametlikke/u);
-  assert.doesNotMatch(draft.answer.intro, /Täpset ja piisavalt asjakohast ametlikku tõendit ei leitud/u);
+  assert.match(draft.answer.intro, /Meil ei ole sellele küsimusele vastust/u);
 });
 
-test("search copy distinguishes related official results from a true zero result", () => {
+test("search copy says plainly when there is no answer, with or without results", () => {
   const source = officialServiceCatalogueDocuments()
     .find((document) => document.id === "open-data-downloader");
   const related = composeSearchResponse("täpsustamata andmepäring", [source], {
     answerable: false,
   });
-  assert.match(related.answer.intro, /nähtavad tõendilõigud ei kata/u);
-  assert.doesNotMatch(related.answer.intro, /ametlikku tõendit ei leitud/u);
+  assert.match(related.answer.intro, /Meil ei ole sellele küsimusele vastust/u);
 
   const empty = composeSearchResponse("täpsustamata andmepäring", [], {
     answerable: false,
   });
-  assert.match(empty.answer.intro, /ametlikku tõendit ei leitud/u);
+  assert.match(empty.answer.intro, /Meil ei ole sellele küsimusele vastust/u);
 });
 
 test("broad ambiguous-domain questions route to their reviewed official service", () => {
@@ -5809,15 +5807,14 @@ test("an unrelated subject never claims related official results", () => {
   assert.ok(fillerOnly.length > 0, "ranking still returns incidental matches");
   assert.equal(rankedSetCoversSubject("Näita mulle Eurobaromeetri andmeid", fillerOnly), false);
   const response = searchEnvironment("Näita mulle Eurobaromeetri andmeid");
-  assert.match(response.answer.intro, /Täpset ja piisavalt asjakohast ametlikku tõendit ei leitud/u);
-  assert.doesNotMatch(response.answer.intro, /Leidsin küsimusega seotud ametlikke tulemusi/u);
-  assert.equal(response.answer.eyebrow, "Vajan täpsustust");
+  assert.match(response.answer.intro, /Meil ei ole sellele küsimusele vastust/u);
+  assert.equal(response.answer.eyebrow, "Vastust ei leitud");
 
   // A query whose subject is genuinely present keeps the related-results copy.
   const assessmentRanked = rankDocuments("Millal tuleb teha keskkonnamõju hindamist");
   assert.equal(rankedSetCoversSubject("Millal tuleb teha keskkonnamõju hindamist", assessmentRanked), true);
   const covered = searchEnvironment("Millal tuleb teha keskkonnamõju hindamist");
-  assert.match(covered.answer.intro, /Leidsin küsimusega seotud ametlikke tulemusi/u);
+  assert.match(covered.answer.intro, /Meil ei ole sellele küsimusele vastust/u);
 });
 
 test("current evidence fallback selects the observed age direction, not a nearby side metric", () => {

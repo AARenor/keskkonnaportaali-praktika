@@ -1,3 +1,4 @@
+import { forestrySourcePreference } from "./forestry-source-policy.mjs";
 import { bindSourceToVisibleService } from "./source-identity.mjs";
 import { createHash } from "node:crypto";
 import { specialistSubjectRoot, specialistSubjectVariants } from "./topic-keywords.mjs";
@@ -2125,6 +2126,22 @@ export function forestEvidenceIntent(query) {
 // Set MULTILINGUAL_SEARCH_ENABLED=true to restore multilingual retrieval.
 export function isMultilingualSearchEnabled() {
   return String(process.env.MULTILINGUAL_SEARCH_ENABLED ?? "").trim().toLowerCase() === "true";
+}
+
+// Search answers forest questions only. Set ALL_ENVIRONMENT_SEARCH_ENABLED=true
+// to restore answers on every environmental topic.
+export function isAllEnvironmentSearchEnabled() {
+  return String(process.env.ALL_ENVIRONMENT_SEARCH_ENABLED ?? "").trim().toLowerCase() === "true";
+}
+
+// Stems are listed by inflected form because "kuus", "kasu" and "puudub" must
+// not count as trees. "metsik" and "metsloom" are wildlife, not forest.
+const FOREST_VOCABULARY_PATTERN = /\b(?:(?!metsik|metsloom)\p{L}*mets\p{L}*|\p{L}*raie\p{L}*|\p{L}*raiu\p{L}*|\p{L}*puu(?:d|de|l|le|lt|s|st|ga|t|desse)?|pui(?:d|dude|dudel)|puit\p{L}*|puidu\p{L}*|puuliik\p{L}*|puistu\p{L}*|\p{L}*urask\p{L}*|feromoon\p{L}*|juurepess\p{L}*|harvendus\p{L}*|kuusk\p{L}*|kuuse\p{L}*|mand|manni\p{L}*|kask|kaske|kase|kasel|kasesid|haab|haava|lepp|lepa|tamm|tamme|smi|rmk|lulucf)\b/iu;
+
+export function isForestRelatedQuery(value) {
+  const canonical = canonicalizePublicSearchQuery(value, { maximumLength: 1_400 });
+  if (!canonical.ok) return false;
+  return FOREST_VOCABULARY_PATTERN.test(normalize(canonical.query)) || Boolean(forestEvidenceIntent(canonical.query));
 }
 
 export function buildDiscoveryQueries(query, limit = 3) {  const canonicalInput = canonicalizePublicSearchQuery(query);
@@ -5262,6 +5279,12 @@ export function containsPrivatePersonLookup(value, {
 } = {}) {
   if (hasForeignPrivatePersonClause(decodeSecurityEscapes(value))) return true;
   const canonicalText = canonicalSecurityText(value);
+  // "Meie pere metsas" is a first-person forest statement. Classify the same
+  // text without "pere", so any name or contact field in it still fails.
+  const familyForest = canonicalText.replace(/^meie\s+pere(?=\s+mets)/iu, "meie");
+  if (familyForest !== canonicalText) {
+    return containsPrivatePersonLookup(familyForest, { allowReviewedPublicClauseComposition, allowReviewedCountyRequestPrefix });
+  }
   // Unsupported-language residence and ownership clauses must fail before a
   // public environmental prefix can admit the complete text. This guard is
   // intentionally ahead of every reviewed public exception and is shared by
@@ -8183,6 +8206,18 @@ function documentCarriesFactCheckPair(document, terms) {
 
 export function assessEvidence(query, documents = []) {
   const terms = queryTerms(query);
+  // Among documents that can answer, Keskkonnaagentuur and its portal go first.
+  // Every check below still applies, and a far weaker match cannot jump ahead.
+  const topCandidateScore = Number(documents?.[0]?.score || 0);
+  const inSourceOrder = (matches, candidateList) => matches
+    .map((match, index) => ({
+      match,
+      agency: forestrySourcePreference(candidateList[index]) >= AGENCY_SOURCE_PREFERENCE
+        && Number(candidateList[index].score || 0) >= topCandidateScore * AGENCY_COMPARABLE_SCORE_SHARE,
+    }))
+    .sort((left, right) => Number(right.agency) - Number(left.agency))
+    .map(({ match }) => match);
+  const documentForMatch = (match, candidateList) => candidateList.find((document) => document.id === match.id);
   const factCheckIntent = forestEvidenceIntent(query)?.kind === "forest-fact-check";
   const factCheckDocument = (document) => !factCheckIntent || documentCarriesFactCheckPair(document, terms);
   const evidenceDomainTerms = terms.filter((term) => rootIsDomain(term)
@@ -8226,8 +8261,8 @@ export function assessEvidence(query, documents = []) {
   const directDocument = broadGenericIntent ? null : factCheckIntent
     ? perDocument.find((_match, index) => documentCanDirectlyAnswerQuery(query, candidates[index])
       && documentCarriesFactCheckPair(candidates[index], terms))
-    : perDocument.find((match, index) => {
-      const document = candidates[index];
+    : inSourceOrder(perDocument, candidates).find((match) => {
+      const document = documentForMatch(match, candidates);
       if (!documentCanDirectlyAnswerQuery(query, document)) return false;
       const passageTerms = terms.filter((term) => !ADMIN_CONTEXT_ROOTS.has(term));
       const requiredPassageMatches = passageTerms.length <= 3
@@ -8281,8 +8316,8 @@ export function assessEvidence(query, documents = []) {
   const locationQuestion = /\b(?:kus|kust|kuhu)\s+(?:asub|asuvad|paikneb|paiknevad|on)\b/u.test(normalizedQuery);
   const broadDocument = (strong || asksForMeasurement || broadGenericIntent || locationQuestion || !preferredSubject)
     ? null
-    : perDocument.find((match, index) => {
-      const document = candidates[index];
+    : inSourceOrder(perDocument, candidates).find((match) => {
+      const document = documentForMatch(match, candidates);
       if (document._answerEvidenceEligible === false || document.evidencePolicy === "route-only" || document.delivery === "structured-or-download") return false;
       if (!documentCanDirectlyAnswerQuery(query, document)) return false;
       if (!factCheckDocument(document)) return false;
@@ -8849,6 +8884,38 @@ export function rankDocuments(query, documents = SEARCH_DOCUMENTS, { russianRoot
     });
 }
 
+export const NO_ANSWER_EYEBROW = "Vastust ei leitud";
+export const NO_ANSWER_INTRO = "Meil ei ole sellele küsimusele vastust. Meie allikatest ei leidnud me selget ja usaldusväärset vastust.";
+
+// One plain message for everything search does not answer. Any listing the
+// route already found stays visible beside it.
+const AGENCY_SOURCE_PREFERENCE = 0.5;
+const AGENCY_COMPARABLE_SCORE_SHARE = 0.8;
+const NON_ANSWER_TEXT_PATTERN = /^(?:esileht|avaleht)\b|\b(?:esileht\s+uudised|loe\s+edasi|laadi\s+alla|jaga\s+lehte|blogi\s+\d{2}\.\d{2}\.\d{4})\b/iu;
+
+// Page furniture, file lists and a heading glued to its own sentence are not
+// answers, even when they contain the words of the question.
+export function isNonAnswerText(value) {
+  const text = String(value || "").replace(/\s+/gu, " ").trim();
+  if (text.length < 25 || NON_ANSWER_TEXT_PATTERN.test(text)) return true;
+  if ((text.match(/\.(?:pdf|xlsx?|docx?|zip|csv)\b/giu) || []).length >= 2) return true;
+  const [first, second] = text.split(" ").map((word) => normalize(word));
+  return Boolean(first && second && first.length >= 4 && second.startsWith(first));
+}
+
+// A raw extract is shown with no model to read it, so unlike the evidence gate
+// it must carry every content word of the question and not only most of them.
+export function extractAnswersQuery(query, extract) {
+  if (isNonAnswerText(extract)) return false;
+  return queryTerms(query)
+    .filter((term) => !ADMIN_CONTEXT_ROOTS.has(term) && !GENERIC_QUERY_CONTEXT_TERMS.has(term))
+    .every((term) => textHasQueryRoot(extract, term));
+}
+
+export function composeNoAnswerResponse(query) {
+  return composeSearchResponse(query, [], { answerable: false, hasRelevantResults: false, total: 0, related: [] });
+}
+
 export function composeSearchResponse(query, rankedDocuments, options = {}) {
   const canonicalInput = canonicalizePublicSearchQuery(query);
   const cleanQuery = canonicalInput.ok ? canonicalInput.query : "";
@@ -8875,13 +8942,11 @@ export function composeSearchResponse(query, rankedDocuments, options = {}) {
     answer: {
       eyebrow: directEvidence
         ? "Kontrollitud allikaotsing"
-        : hasRelevantResults ? "Ametlikud tulemused leitud" : "Vajan täpsustust",
+        : NO_ANSWER_EYEBROW,
       title,
       intro: directEvidence
         ? "Leidsin küsimusega seotud ametlikud allikad, kuid usaldusväärset koondvastust ei õnnestunud praegu koostada. Ava allikad või proovi hetke pärast uuesti."
-        : hasRelevantResults
-          ? "Leidsin küsimusega seotud ametlikke tulemusi, kuid nende nähtavad tõendilõigud ei kata küsimust piisavalt täpselt. Ava tulemused või täpsusta objekti, näitajat, piirkonda või aastat."
-          : "Täpset ja piisavalt asjakohast ametlikku tõendit ei leitud. Ma ei asenda puuduvat tõendit üldteadmise ega juhusliku artikliga.",
+        : NO_ANSWER_INTRO,
       introCitations: [],
       parts: [],
       note: "",
@@ -8891,7 +8956,7 @@ export function composeSearchResponse(query, rankedDocuments, options = {}) {
       tags: (tags || []).slice(0, 5),
     })),
     related: options.related || relatedQueries(cleanQuery, chosen),
-    clarification: options.clarification || (directEvidence ? null : "Lisa näitaja, piirkond, objekt või ajavahemik."),
+    clarification: options.clarification || null,
     evidence: {
       kind: options.evidenceKind || "portal-discovery",
       answerable: directEvidence,

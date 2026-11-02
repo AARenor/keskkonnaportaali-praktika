@@ -29,7 +29,7 @@ import {
 import { safeExternalHref } from "./url-safety.js";
 import { citationColor, latestSourceUpdates, sourceDateMeta, sourceOrganizationLabel } from "./source-label.js";
 import {
-  REVIEWED_SEARCH_SUGGESTIONS,
+  REVIEWED_FORESTRY_SEARCH_SUGGESTIONS,
   shouldFetchRemoteSuggestions,
   suggestionsForValue,
 } from "./search-suggestions.js";
@@ -374,7 +374,7 @@ function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoF
   }, [value]);
 
   const suggestions = useMemo(() => {
-    return suggestionsForValue(value, remoteSuggestions, REVIEWED_SEARCH_SUGGESTIONS, 12);
+    return suggestionsForValue(value, remoteSuggestions, REVIEWED_FORESTRY_SEARCH_SUGGESTIONS, 12);
   }, [remoteSuggestions, value]);
 
   useEffect(() => setActiveIndex(-1), [value, suggestions.length]);

@@ -2740,7 +2740,9 @@ export function contextualRetrievalQuery(rootQuery, question, previousQuestions 
     .map(safeFragment)
     .filter(Boolean)
     .slice(-3);
-  if (followUp && assessSearchQuery(followUp).kind === "answerable") return followUp;
+  // A complete question that continues nothing starts a new subject. Everything
+  // else keeps the conversation topic, even when it also passes on its own.
+  if (followUp && !isContinuationFollowUp(followUp) && assessSearchQuery(followUp).kind === "answerable") return followUp;
   let retrievalQuery = "";
   for (const fragment of [followUp, previous.at(-1), root].filter(Boolean)) {
     const candidate = canonicalizePublicSearchQuery([retrievalQuery, fragment].filter(Boolean).join(" "));
@@ -2752,6 +2754,12 @@ export function contextualRetrievalQuery(rootQuery, question, previousQuestions 
 function contextAssessmentIsBlocked(assessment) {
   return assessment?.kind === "out-of-scope"
     && ["unsafe-instruction", "personal-data-lookup"].includes(assessment.reason);
+}
+
+const CONTINUATION_FOLLOW_UP_PATTERN = /^(?:ja|aga|kuid|ning|v[oõ]i)\s|(?:^|\s)(?:see|seda|selle|sellel|selles|sellest|seal|sinna|sealt|need|neid|nende|sama|samuti)(?=\s|$)/iu;
+
+export function isContinuationFollowUp(value) {
+  return CONTINUATION_FOLLOW_UP_PATTERN.test(String(value || "").trim());
 }
 
 export function isSafeEllipticalFollowUp(value) {
@@ -2767,6 +2775,8 @@ export function isSafeEllipticalFollowUp(value) {
   // answer. Admit it only inside an already accepted conversation, where the
   // root supplies the indicator and subject.
   if (/^(?:aga\s+)?kas\s+(?:19|20)\d{2}\s+aastal$/u.test(normalized)) return true;
+  if (/^(?:ja\s+|aga\s+)?(?:eelmisel|m[oõ]{1}[oö]dunud|sel|tänavu|järgmisel)\s+aastal$/u.test(normalized)) return true;
+  if (/^(?:ja\s+|aga\s+)?millal\s+tuleb\s+(?:taotlus|teatis|see)\s+esitada$/u.test(normalized)) return true;
   // A bare period request ("näita 2000-2025", "alates 2000", "viimase 20
   // aasta jooksul") widens a dated answer's window. The root supplies the
   // indicator; nothing else may ride along in the string.

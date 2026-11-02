@@ -74,6 +74,8 @@ import {
   assessSearchQuery,
   canonicalizePublicSearchQuery,
   composeScopeResponse,
+  isAllEnvironmentSearchEnabled,
+  isForestRelatedQuery,
 } from "./search.mjs";
 
 const app = express();
@@ -881,7 +883,10 @@ async function handleSuggestions(request, response) {
   if (query.length < 2) return response.json({ suggestions: [] });
   const assessment = assessSearchQuery(query);
   const reviewedAlias = isReviewedSearchSuggestionAlias(query);
-  const curated = getReviewedSearchSuggestions(query, 12).map((value) => ({ value, count: null }));
+  const offerable = (value) => isAllEnvironmentSearchEnabled() || isForestRelatedQuery(value);
+  const curated = getReviewedSearchSuggestions(query, 12)
+    .filter(offerable)
+    .map((value) => ({ value, count: null }));
   // Exact reviewed aliases never need to leave the process. An out-of-scope
   // query gets no upstream autocomplete call even if a future classifier or
   // normalizer change makes it resemble one of those local aliases.
@@ -900,7 +905,7 @@ async function handleSuggestions(request, response) {
     const suggestions = [...curated, ...result.suggestions]
       .filter((item) => {
         const key = String(item.value || "").toLocaleLowerCase("et");
-        if (!key || seen.has(key)) return false;
+        if (!key || seen.has(key) || !offerable(item.value)) return false;
         seen.add(key);
         return true;
       })

@@ -34,6 +34,7 @@ import {
   evidenceDocumentsFromListing,
   currentListingEvidencePlan,
   isContextAnchoredFollowUp,
+  isContinuationFollowUp,
   isSafeEllipticalFollowUp,
   prepareRankedSearchResults,
   rankPublicSearchCandidates,
@@ -46,6 +47,13 @@ import {
   assessEvidence,
   assessSearchQuery,
   canonicalizePublicSearchQuery,
+  composeNoAnswerResponse,
+  extractAnswersQuery,
+  isAllEnvironmentSearchEnabled,
+  isForestRelatedQuery,
+  isNonAnswerText,
+  NO_ANSWER_EYEBROW,
+  NO_ANSWER_INTRO,
   composeOfficialServiceNavigationResponse,
   composeAmbiguousDomainGuidanceResponse,
   composeScopeResponse,
@@ -72,8 +80,9 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v73-intent-grounded-cache-prefix";
+export const SEARCH_RESPONSE_REVISION = "answer-v74-forest-only-plain-no-answer";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
+const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
   "official-structured-eelis-natura",
@@ -1249,7 +1258,10 @@ export async function createPortalDraft(query, {
     const broadCitation = broadDocument
       ? answerDocuments.findIndex((document) => document.id === broadDocument.id) + 1
       : 0;
-    if (extract && broadCitation > 0) {
+    if (extract && isNonAnswerText(extract)) {
+      draft.answer = { ...draft.answer, eyebrow: NO_ANSWER_EYEBROW, intro: NO_ANSWER_INTRO };
+      draft.clarification = null;
+    } else if (extract && broadCitation > 0) {
       draft.answer = {
         eyebrow: "Allikapõhine vastus",
         title: draft.answer.title,
@@ -1316,6 +1328,13 @@ export async function createPortalDraft(query, {
   } else if (officialForestryFallback) {
     draft.answer = officialForestryFallback;
     draft.evidence.syntheticFallback = "official-forestry-evidence";
+  } else if (directExtract && !plannedEvidence?.strong && !REVIEWED_RETRIEVAL_PATTERN.test(direct.retrieval || "")
+    && !extractAnswersQuery(retrievalQuery, directExtract)) {
+    // The model may still answer from these sources. Without it, say there is
+    // no answer rather than presenting a passage that does not answer.
+    draft.answer.eyebrow = NO_ANSWER_EYEBROW;
+    draft.answer.intro = NO_ANSWER_INTRO;
+    draft.answer.introCitations = [];
   } else if (directExtract) {
     draft.answer.eyebrow = "Allikapõhine kokkuvõte";
     draft.answer.intro = directExtract;
@@ -1724,7 +1743,11 @@ async function searchWithinBudget(cleanQuery, {
       ? { ...llmResult.attempt, reason: "visible-rejected" } : llmResult.attempt,
     evidenceKind, cacheEligible, publishedBindings,
   });
-  const response = outcome.response;
+  // Status words only, never question or provider text: why the model did or
+  // did not contribute is otherwise visible only inside the database.
+  const response = outcome.attempt
+    ? { ...outcome.response, answerAttempt: { status: outcome.attempt.status, reason: outcome.attempt.reason } }
+    : outcome.response;
 
   if (requestCanStillPersist({ signal, deadlineAt })) {
     await retainSearchPersistence(persistSearch({
@@ -1956,6 +1979,14 @@ export async function searchEnvironmentLive(query, options = {}) {
     return publicResponse(composeScopeResponse("", assessSearchQuery(rejectedValue)), { now: startedAt });
   }
   const contextualAssessment = assessSearchQuery(assessmentInput.query);
+  if (!isAllEnvironmentSearchEnabled()
+    && (directAssessment.kind !== "out-of-scope" || directAssessment.reason === "outside-environment-domain")
+    && !isForestRelatedQuery(cleanQuery)
+    && !(options.allowSafeEllipticalFollowUp === true
+      && isContinuationFollowUp(cleanQuery)
+      && isForestRelatedQuery(assessmentInput.query))) {
+    return publicResponse(composeNoAnswerResponse(cleanQuery), { now: startedAt });
+  }
   const validatedEllipticalFollowUp = options.allowSafeEllipticalFollowUp === true
     && directAssessment.kind === "out-of-scope"
     && (isSafeEllipticalFollowUp(cleanQuery)
