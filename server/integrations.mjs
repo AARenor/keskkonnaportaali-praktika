@@ -965,8 +965,14 @@ export function articleText(body) {
 export async function hydrateOfficialDocuments(documents, limit = 5, options = {}) {
   const selected = (documents || []).slice(0, Math.max(1, Math.min(Number(limit) || 5, 10)));
   return Promise.all(selected.map(async (document) => {
+    // A cached body is reused only while it is still citable. A page whose
+    // evidence window has expired is re-read here, in the answer path, so the
+    // reader always gets a citation to text that was verified recently —
+    // frozen corpus text must never be cited indefinitely on the strength of
+    // an old download.
     if (document.retrieval !== "official-federated-search"
-      && String(document.content || "").length >= 120) return document;
+      && String(document.content || "").length >= 120
+      && sourceEvidenceEligibility(document).eligible) return document;
     try {
       const { content, finalUrl, fetchedAt, stale } = await sharedHydration(document.url, {
         timeoutMs: options.timeoutMs || 4_500,

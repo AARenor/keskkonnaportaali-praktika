@@ -66,6 +66,30 @@ const SERIES = Object.freeze({
   "MM03:5-3": { worksheet: 34, years: [1999, 2024], values: [3176, 2869, 2917, 2535, 2669, 1897, 1447, 838, 873, 866, 1043, 1072, 1307, 1022, 1402, 1124, 1238, 1073, 1207, 1440, 1409, 1347, 1029, 1347, 1542, 1857] },
 });
 
+// Worksheet 11 "Metsamaa tagavara juurdekasv enamuspuuliigiti": the "Keskmine"
+// row is the whole-country annual increment on forest land, all owners. The
+// worksheet footnote says the increment is model-based, and its relative error
+// is the sampling error of that estimate.
+export const SMI_2025_INCREMENT = Object.freeze({
+  worksheet: 11,
+  dataYear: 2025,
+  thousandM3PerYear: 15458.258,
+  relativeErrorPercent: 1.43831333749447,
+  cubicMetresPerHectareYear: 6.55,
+  owners: "kõik omanikud",
+  footnote: "juurdekasv on arvutatud mudeli alusel (TÜ matemaatikute täiendust ei ole arvestatud)",
+});
+
+// Worksheet 23 "Viie aasta keskmine raiete maht metsamaal": the "Raied kokku"
+// row. The worksheet publishes the average itself and never names its calendar
+// window, so no window is asserted here.
+export const SMI_2025_FIVE_YEAR_CUT = Object.freeze({
+  worksheet: 23,
+  thousandM3: 11896.779,
+  relativeErrorPercent: 7.59423886435224,
+  areaThousandHa: 106.41,
+});
+
 function seriesKey(table, indicatorCode) {
   return `${table}:${indicatorCode}`;
 }
@@ -86,6 +110,15 @@ export function smiSeriesPoints(table, indicatorCode, years) {
     points.push({ year, value: series.values[year - FIRST_YEAR] });
   }
   return points;
+}
+
+// The latest published point of a reviewed series, for composers that compare
+// the newest year against another published quantity.
+export function smiSeriesLatestPoint(table, indicatorCode) {
+  const series = SERIES[seriesKey(table, indicatorCode)];
+  if (!series) return null;
+  const last = series.years[1];
+  return { year: last, value: series.values[last - FIRST_YEAR] };
 }
 
 // Resource equality is insufficient: a different worksheet/row at the same

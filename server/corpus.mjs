@@ -3352,6 +3352,10 @@ export async function hydrateCorpusBacklog({ limit = 300, concurrency = 2, delay
             OR source_key IN ('official-sitemap', 'official-live-search')
             OR (source_key = 'official-page-hydration'
               AND metadata->>'source_kind' IS DISTINCT FROM 'official-page-hydration')
+            -- A page read once must be read again eventually: otherwise its
+            -- evidence window expires for good and the corpus can only cite
+            -- whatever was downloaded in its first week.
+            OR fetched_at < NOW() - INTERVAL '30 days'
           )
           AND (
             NOT (metadata ? 'hydration_attempted_at')

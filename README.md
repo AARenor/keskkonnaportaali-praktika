@@ -54,9 +54,12 @@ Tervisekontroll: `GET /api/health`.
 06.10.2026 seadistuse cutover kasutab olemasolevat autenditud Codex gateway'd:
 `LLM_BASE_URL=https://terrapoint.arle.top/v1`,
 `LLM_MODEL=openai-codex/gpt-6-luna`, `LLM_REASONING_EFFORT=low` ja
-`LLM_TIMEOUT_MS=23000`, `LLM_ORCHESTRATION=direct`. Otsene mudelikõne hoiab
-alles viite- ja tõendikontrollid: JSON-otsingu ülempiir on 22 sekundit ja voo
-otsingueelarve 25 sekundit;
+`LLM_TIMEOUT_MS=45000`, `LLM_ORCHESTRATION=direct`. Otsene mudelikõne hoiab
+alles viite- ja tõendikontrollid. Ajaeelarve on tahtlikult helde: kui mudel
+või allikate lugemine võtab kauem, ootab lugeja kauem, selle asemel et kaotada
+tõendatud vastus taimeri taha. JSON-otsingu ülempiir on 50 sekundit ja voo
+otsingueelarve 60 sekundit, avaliku vastuse jõudeaeg 60 ja absoluutne ülempiir
+150 sekundit;
 neljakutseline `agents` režiim ületas varasemas live-kontrollis ajapiiri.
 Transport on alati Responses API; teist varumudelit ei kasutata.
 `LLM_API_KEY` saab ainult serveri runtime-keskkonnas

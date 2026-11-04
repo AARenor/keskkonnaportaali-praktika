@@ -27,6 +27,7 @@ import {
   forestHarvestBalanceDocumentsFromJson,
   isForestHarvestBalanceQuery,
   loadStructuredIndicatorDocuments,
+  SMI_HARVEST_BALANCE_DOCUMENT_ID,
 } from "../server/indicators.mjs";
 import {
   FORESTRY_BALANCE_VARIANTS,
@@ -1416,9 +1417,26 @@ test("an upstream forest-balance outage still reaches the final public answer wi
   });
   const response = publicResponse(draft);
   assert.equal(draft.evidence.kind, "structured-forest-balance");
-  assert.match(response.answer.intro, /2023[\s\S]*11,6[\s\S]*9,1[\s\S]*2,5 miljoni m³/iu);
+  // The reviewed SMI workbook answers this question even when the live Eurostat
+  // dataset is down, so the outage must not push the answer back to a text that
+  // has no current source.
+  assert.match(response.answer.intro, /SMI 2025 andmetel/iu);
+  const introWitness = response.sources
+    .filter((source) => response.answer.introCitations.includes(source.citation))
+    .map((source) => source.evidenceExcerpt || "")
+    .join("\n");
+  assert.match(introWitness, /15 458[\s\S]*12 500/iu);
+  const snapshotOnly = await createPortalDraft(query, {
+    deadlineAt: Date.now(),
+    searchResults: {
+      total: documents.filter((document) => document.id !== SMI_HARVEST_BALANCE_DOCUMENT_ID).length,
+      items: documents.filter((document) => document.id !== SMI_HARVEST_BALANCE_DOCUMENT_ID),
+    },
+  });
+  const snapshotResponse = publicResponse(snapshotOnly);
+  assert.match(snapshotResponse.answer.intro, /2023[\s\S]*11,6[\s\S]*9,1[\s\S]*2,5 miljoni m³/iu);
   assert.match(
-    response.sources.find((source) => response.answer.introCitations.includes(source.citation))?.evidenceExcerpt || "",
+    snapshotResponse.sources.find((source) => snapshotResponse.answer.introCitations.includes(source.citation))?.evidenceExcerpt || "",
     /2023[\s\S]*9,1[\s\S]*11,6[\s\S]*2,5 miljoni m³/iu,
   );
 });

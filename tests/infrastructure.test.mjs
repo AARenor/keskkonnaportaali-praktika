@@ -2147,7 +2147,7 @@ test("model credentials are bound to the exact approved HTTPS gateway base", () 
 });
 
 test("provider generation limits cannot exceed the public deadline or output cap", () => {
-  assert.equal(resolveLlmTimeout(60_000), 23_000);
+  assert.equal(resolveLlmTimeout(600_000), 60_000);
   assert.equal(resolveLlmTimeout(500), 500);
   assert.equal(resolveMaxTokens(100_000), 3_200);
   assert.equal(resolveMaxTokens(1), 1_000);

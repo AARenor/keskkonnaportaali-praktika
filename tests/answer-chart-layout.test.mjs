@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { chartDescription, formatChartValue, niceDomain, seriesPrecision, splitRuns, xTickStep } from "../src/answer-chart-layout.js";
+import { chartDescription, chartDomain, formatChartValue, niceDomain, seriesPrecision, splitRuns, xTickStep } from "../src/answer-chart-layout.js";
 
 test("niceDomain pads a line domain and starts a bar domain at zero", () => {
   const line = niceDomain(2310.6, 2360.2, { fromZero: false });
@@ -13,6 +13,21 @@ test("niceDomain pads a line domain and starts a bar domain at zero", () => {
   assert.ok(bar.hi >= 14.4);
   const flat = niceDomain(51, 51, { fromZero: false });
   assert.ok(flat.hi > flat.lo);
+});
+
+test("a quantity series is drawn from zero so a small change cannot look like a doubling", () => {
+  const raiemaht = chartDomain([10931, 13347, 10143, 12500]);
+  assert.equal(raiemaht.lo, 0);
+  assert.ok(raiemaht.hi >= 13347);
+  assert.equal(raiemaht.ticks[0], 0);
+  // A bar chart always starts at zero, even for a series with a negative value.
+  const bar = chartDomain([-2, 8], { kind: "bar" });
+  assert.ok(bar.lo <= -2);
+  // Only a series that really has negative values keeps a padded axis.
+  const temperature = chartDomain([-4.2, 21.6]);
+  assert.ok(temperature.lo < -4.2);
+  assert.ok(temperature.hi > 21.6);
+  assert.equal(chartDomain([]).lo, 0);
 });
 
 test("splitRuns breaks a series at missing years", () => {

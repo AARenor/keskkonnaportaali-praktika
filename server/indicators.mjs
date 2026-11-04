@@ -54,6 +54,7 @@ import {
 } from "./statistics.mjs";
 import {
   composeForestSeriesResponse,
+  etNumber as etNumberWithDigits,
   FOREST_SERIES_KK51_API_URL,
   FOREST_SERIES_MM03_API_URL,
   forestSeriesFromJson,
@@ -63,6 +64,14 @@ import {
   resolveForestSeriesIntent,
   smiForestSeriesDocument,
 } from "./forest-series.mjs";
+import { forestEvidenceIntent } from "./search.mjs";
+import {
+  SMI_2025_FIVE_YEAR_CUT,
+  SMI_2025_INCREMENT,
+  SMI_2025_TABLES_URL,
+  SMI_2025_YEAR,
+  smiSeriesLatestPoint,
+} from "./smi-tables.mjs";
 
 export { composeForestSeriesResponse };
 
@@ -1600,6 +1609,224 @@ function forestBalanceKaurDocuments() {
   ];
 }
 
+// Metsandusteatmik is a printed handbook: the portal may name the work, its
+// authors and its ISBN, but it must never pretend to quote the book. The
+// reviewed catalogue entry is the source, so the answer stays a bibliographic
+// identification with an explicit limit.
+export function composeMetsandusteatmikResponse(query, documents = [], options = {}) {
+  if (forestEvidenceIntent(query)?.kind !== "metsandusteatmik-definition") return null;
+  const source = (documents || []).find((document) => document?.id === "metsandusteatmik");
+  if (!source) return null;
+  const total = Number(options.total || documents.length || 1);
+  const generatedAt = new Date(Number.isFinite(Number(options.now)) ? Number(options.now) : Date.now()).toISOString();
+  return {
+    query: String(query || "").trim(),
+    total,
+    generatedAt,
+    answer: {
+      eyebrow: "Metsanduse teatmik",
+      title: "Metsandusteatmik (Atlex, 2023)",
+      intro: "Metsandusteatmik on 2023. aastal ilmunud 432-leheküljeline paberväljaanne, mis seletab metsanduslikke mõisteid ja märksõnu eesti ja inglise keeles. Raamat ilmus 2023. aastal, on 432 lehekülge, formaat B5, ISBN 978-9916-620-22-9.",
+      introCitations: [1],
+      parts: [{
+        title: "Mida sellest allikast saab ja mida mitte",
+        text: "Tegemist on paberväljaandega, mille täistekst ei ole avalikus veebis kättesaadav. Otsing saab viidata raamatu bibliograafilisele kirjele ja kirjastuse tutvustusele, mitte tsitaadile teose sisust.",
+        citations: [1],
+      }],
+      note: "Kui vajad ühe mõiste selgitust, küsi mõistet ennast: metsanduse mõisted on portaalil ka ametlike allikate sõnastuses.",
+    },
+    sources: [{ ...source, citation: 1, evidenceExcerpt: source.content }],
+    related: [
+      "Mis on metsanduslikud mõisted?",
+      "Kus on metsanduse mõisted ametlikult sõnastatud?",
+      "Mis on metsa aastaraamat?",
+    ],
+    clarification: null,
+    evidence: {
+      kind: "structured-reviewed-definition",
+      answerable: true,
+      documentIds: [source.id],
+    },
+  };
+}
+
+export const SMI_INCREMENT_DOCUMENT_ID = "forest-increment-smi2025";
+
+export function isForestIncrementQuestion(query) {
+  return forestEvidenceIntent(query)?.kind === "forest-increment-overview";
+}
+
+// The SMI 2025 workbook's worksheet 11 is the current, primary annual
+// increment estimate. The 2024 PDF that used to answer this question states
+// 15,4303 million m³ under the previous calculation; both are official, but a
+// reader asking how much wood grows back today must get the newest edition and
+// its own wording.
+export function smiIncrementDocument() {
+  const increment = SMI_2025_INCREMENT;
+  const cut = smiSeriesLatestPoint("MM03", "1-3");
+  const content = [
+    `Keskkonnaagentuuri SMI ${SMI_2025_YEAR} tulemuste töölehe ${increment.worksheet} järgi oli metsamaa tagavara juurdekasv kõigil omanikel ${etNumberWithDigits(increment.thousandM3PerYear, 0)} tuhat m³ aastas ehk ${etNumberWithDigits(increment.cubicMetresPerHectareYear, 2)} m³ hektari kohta aastas; hinnangu suhteline viga oli ±${etNumberWithDigits(increment.relativeErrorPercent, 1)}%.`,
+    `Töölehe ${increment.worksheet} joonealuse märkuse järgi on juurdekasv arvutatud mudeli alusel (TÜ matemaatikute täiendust ei ole arvestatud).`,
+    `Juurdekasv on metsamaal kasvava metsa tagavara aastane juurdekasv.`,
+    ...(cut ? [`Sama töövihiku töölehe 34 järgi oli koguraie raiemaht ${cut.year}. aastal ${etNumberWithDigits(cut.value, 0)} tuhat m³.`] : []),
+  ].join(" ");
+  return {
+    id: SMI_INCREMENT_DOCUMENT_ID,
+    title: `SMI ${SMI_2025_YEAR}: metsamaa tagavara juurdekasv`,
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Metsastatistika andmetabel",
+    published: "",
+    url: SMI_2025_TABLES_URL,
+    locator: `SMI ${SMI_2025_YEAR} tulemuste töövihik, tööleht ${increment.worksheet}: metsamaa tagavara juurdekasv enamuspuuliigiti (rida „Keskmine“).`,
+    summary: `SMI ${SMI_2025_YEAR} andmetel oli metsamaa tagavara juurdekasv ${etNumberWithDigits(increment.thousandM3PerYear, 0)} tuhat m³ aastas ehk ${etNumberWithDigits(increment.cubicMetresPerHectareYear, 2)} m³ hektari kohta aastas.`,
+    content,
+    topics: ["mets", "juurdekasv", "SMI", "tagavara", String(SMI_2025_YEAR)],
+    tags: ["mets", "juurdekasv", "SMI", "tagavara", String(SMI_2025_YEAR)],
+    sourceTier: "official",
+    retrieval: "official-structured-forestry-source",
+    evidencePolicy: "claim-specific",
+    freshness: {
+      class: "annual-historical-statistic",
+      basis: "reference-year",
+      maxAgeMs: null,
+      requiresSourceTimestamp: false,
+    },
+    _publishedAt: null,
+    dataYear: String(SMI_2025_YEAR),
+    _answerEvidenceEligible: true,
+    _contentHash: createHash("sha256").update(`${SMI_INCREMENT_DOCUMENT_ID}\n${content}`).digest("hex"),
+  };
+}
+
+export function composeSmiIncrementResponse(query, documents = [], options = {}) {
+  if (!isForestIncrementQuestion(query)) return null;
+  const source = (documents || []).find((document) => document?.id === SMI_INCREMENT_DOCUMENT_ID);
+  if (!source) return null;
+  const increment = SMI_2025_INCREMENT;
+  const total = Number(options.total || documents.length || 1);
+  const generatedAt = new Date(Number.isFinite(Number(options.now)) ? Number(options.now) : Date.now()).toISOString();
+  return {
+    query: String(query || "").trim(),
+    total,
+    generatedAt,
+    answer: {
+      eyebrow: `Keskkonnaagentuur, SMI ${SMI_2025_YEAR}`,
+      title: `Juurdekasv SMI ${SMI_2025_YEAR} andmetel: ${etNumberWithDigits(increment.thousandM3PerYear, 0)} tuhat m³ aastas`,
+      intro: `SMI ${SMI_2025_YEAR} andmetel oli metsamaa tagavara juurdekasv kõigil omanikel ${etNumberWithDigits(increment.thousandM3PerYear, 0)} tuhat m³ aastas ehk ${etNumberWithDigits(increment.cubicMetresPerHectareYear, 2)} m³ hektari kohta aastas (suhteline viga ±${etNumberWithDigits(increment.relativeErrorPercent, 1)}%).`,
+      introCitations: [1],
+      parts: [{
+        title: "Mida see hinnang tähendab",
+        text: "Juurdekasv on metsamaal kasvava metsa tagavara aastane juurdekasv ja see on arvutatud mudeli alusel, mitte kõigi puude otsese ülelugemisena.",
+        citations: [1],
+      }],
+      note: "Kogujuurdekasv ja netojuurdekasv ei ole sama näitaja: netojuurdekasvust arvatakse maha looduslik suremus. See on SMI aastahinnang kogu Eesti metsamaa kohta, mitte ühe kinnistu ega maakonna näitaja.",
+    },
+    sources: [{ ...source, citation: 1, evidenceExcerpt: source.content }],
+    related: [
+      "Kas Eestis raiutakse rohkem kui juurde kasvab?",
+      "Kui palju on raiemaht?",
+      "Mis vahe on kogu- ja netojuurdekasvul?",
+    ],
+    clarification: null,
+    evidence: {
+      kind: "structured-forest-increment",
+      answerable: true,
+      documentIds: [source.id],
+    },
+  };
+}
+
+export const SMI_HARVEST_BALANCE_DOCUMENT_ID = "forest-balance-smi2025";
+
+// The SMI 2025 workbook publishes the whole-country annual increment (worksheet
+// 11), the felling volume by year (worksheet 34) and the five-year average
+// felling volume (worksheet 23). Together they answer the harvest-versus-
+// increment question from one primary publisher, in the same edition and the
+// same methodology, instead of comparing Eurostat removals with an SMI
+// estimate. The extract is reviewed constants, so the workbook itself is the
+// only witness the reader has to open.
+export function smiHarvestBalanceProjection() {
+  const cut = smiSeriesLatestPoint("MM03", "1-3");
+  if (!cut || !Number.isFinite(cut.value)) return null;
+  const increment = SMI_2025_INCREMENT;
+  const fiveYear = SMI_2025_FIVE_YEAR_CUT;
+  return {
+    edition: SMI_2025_YEAR,
+    worksheetIncrement: increment.worksheet,
+    worksheetCut: "34",
+    worksheetFiveYear: fiveYear.worksheet,
+    incrementThousandM3PerYear: increment.thousandM3PerYear,
+    incrementRelativeErrorPercent: increment.relativeErrorPercent,
+    incrementCubicMetresPerHectareYear: increment.cubicMetresPerHectareYear,
+    cutYear: cut.year,
+    cutThousandM3: cut.value,
+    fiveYearCutThousandM3: fiveYear.thousandM3,
+    fiveYearCutRelativeErrorPercent: fiveYear.relativeErrorPercent,
+    fiveYearCutAreaThousandHa: fiveYear.areaThousandHa,
+    differenceThousandM3: increment.thousandM3PerYear - cut.value,
+    removalsHigher: cut.value > increment.thousandM3PerYear,
+  };
+}
+
+export function smiHarvestBalanceDocument() {
+  const projection = smiHarvestBalanceProjection();
+  if (!projection) return null;
+  const origin = `Keskkonnaagentuuri SMI ${SMI_2025_YEAR} tulemuste töölehe`;
+  const relation = projection.removalsHigher ? "suurem" : "väiksem";
+  const content = [
+    `${origin} ${projection.worksheetIncrement} järgi oli metsamaa tagavara juurdekasv kõigil omanikel ${etNumberWithDigits(projection.incrementThousandM3PerYear, 0)} tuhat m³ aastas ehk ${etNumberWithDigits(projection.incrementCubicMetresPerHectareYear, 2)} m³ hektari kohta aastas; hinnangu suhteline viga oli ±${etNumberWithDigits(projection.incrementRelativeErrorPercent, 1)}%.`,
+    `Töölehe ${projection.worksheetCut} järgi oli koguraie raiemaht ${projection.cutYear}. aastal ${etNumberWithDigits(projection.cutThousandM3, 0)} tuhat m³.`,
+    `Töölehe ${projection.worksheetFiveYear} järgi oli viie aasta keskmine raiemaht metsamaal ${etNumberWithDigits(projection.fiveYearCutThousandM3, 0)} tuhat m³ ja raiepindala ${etNumberWithDigits(projection.fiveYearCutAreaThousandHa, 2)} tuhat hektarit; raiemahu suhteline viga oli ±${etNumberWithDigits(projection.fiveYearCutRelativeErrorPercent, 1)}%.`,
+    `${projection.cutYear}. aasta raiemaht oli aastasest juurdekasvust ${etNumberWithDigits(Math.abs(projection.differenceThousandM3), 0)} tuhat m³ ${relation}.`,
+    `Töölehe ${projection.worksheetIncrement} joonealuse märkuse järgi on juurdekasv arvutatud mudeli alusel.`,
+  ].join(" ");
+  const projectionHash = createHash("sha256")
+    .update(JSON.stringify(projection))
+    .digest("hex");
+  return {
+    id: SMI_HARVEST_BALANCE_DOCUMENT_ID,
+    title: `SMI ${SMI_2025_YEAR}: metsamaa juurdekasv ja raiemaht`,
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Metsastatistika andmetabel",
+    published: "",
+    url: SMI_2025_TABLES_URL,
+    locator: `SMI ${SMI_2025_YEAR} tulemuste töövihik, töölehed ${projection.worksheetIncrement}, ${projection.worksheetCut} ja ${projection.worksheetFiveYear}: juurdekasv, raiemaht ja viie aasta keskmine raiemaht.`,
+    summary: `SMI ${SMI_2025_YEAR} andmetel oli metsamaa tagavara juurdekasv ${etNumberWithDigits(projection.incrementThousandM3PerYear, 0)} tuhat m³ aastas ja ${projection.cutYear}. aasta koguraie raiemaht ${etNumberWithDigits(projection.cutThousandM3, 0)} tuhat m³.`,
+    content,
+    topics: ["mets", "juurdekasv", "netojuurdekasv", "raiemaht", "SMI", String(projection.cutYear)],
+    tags: ["mets", "juurdekasv", "netojuurdekasv", "raiemaht", "SMI", String(projection.cutYear)],
+    sourceTier: "official",
+    retrieval: "official-structured-forestry-source",
+    evidencePolicy: "claim-specific",
+    freshness: {
+      class: "annual-historical-statistic",
+      basis: "reference-year",
+      maxAgeMs: null,
+      requiresSourceTimestamp: false,
+    },
+    _publishedAt: null,
+    dataYear: String(SMI_2025_YEAR),
+    _answerEvidenceEligible: true,
+    _contentHash: projectionHash,
+    _smiHarvestBalanceHash: projectionHash,
+    _smiHarvestBalance: projection,
+  };
+}
+
+export function validatedSmiHarvestBalanceProjection(document) {
+  if (!document || document.id !== SMI_HARVEST_BALANCE_DOCUMENT_ID) return null;
+  const projection = document._smiHarvestBalance;
+  const projectionHash = String(document._smiHarvestBalanceHash || "").trim();
+  if (!projection || typeof projection !== "object" || Array.isArray(projection)) return null;
+  if (!Number.isFinite(Number(projection.incrementThousandM3PerYear))
+    || !Number.isFinite(Number(projection.cutThousandM3))
+    || !Number.isFinite(Number(projection.cutYear))) return null;
+  const expectedHash = createHash("sha256")
+    .update(JSON.stringify(projection))
+    .digest("hex");
+  return expectedHash === projectionHash ? projection : null;
+}
+
 export function forestHarvestBalanceDocumentsFromJson(query, payload, options = {}) {
   if (!isForestHarvestBalanceQuery(query)) return [];
   const observations = forestBalanceObservations(payload);
@@ -1715,9 +1942,77 @@ function forestObservationStatusSentence(observations = []) {
   return details.length ? ` Eurostati kvaliteedimärgendid: ${details.join("; ")}.` : "";
 }
 
+// Keskkonnaagentuur's own SMI 2025 edition answers the harvest-versus-
+// increment question with one publisher, one edition and one methodology.
+// Eurostat removal accounting stays the fallback for the same question; it is
+// a different measurement of a different definition, which is why the answer
+// only leads with it when the SMI workbook extract is unavailable.
+function composeSmiHarvestBalanceAnswer(query, sources = [], controlQuery = query, comparisonIntent = "neutral") {
+  const index = (sources || []).findIndex((source) => source?.id === SMI_HARVEST_BALANCE_DOCUMENT_ID);
+  if (index < 0) return null;
+  const document = sources[index];
+  const projection = validatedSmiHarvestBalanceProjection(document);
+  if (!projection) return null;
+  const citationFor = (id) => {
+    const position = (sources || []).findIndex((source) => source?.id === id);
+    return position >= 0 ? position + 1 : null;
+  };
+  const smiCitation = index + 1;
+  const methodCitation = citationFor("forest-balance-kaur-methodology");
+  const handbookCitation = citationFor("forest-balance-eurostat-handbook");
+  const cutYear = Number(projection.cutYear);
+  const explicitYear = requestedYear(String(controlQuery || query));
+  const difference = Math.abs(Number(projection.differenceThousandM3));
+  // Only numbers that the cited workbook extract states verbatim may appear in
+  // the answer: a derived share would have no visible witness.
+  const relationSentence = `${cutYear}. aasta koguraie raiemaht oli ${etNumberWithDigits(projection.cutThousandM3, 0)} tuhat m³, seega aastasest juurdekasvust ${etNumberWithDigits(difference, 0)} tuhat m³ ${projection.removalsHigher ? "suurem" : "väiksem"}.`;
+  const lead = comparisonIntent === "removals-greater"
+    ? projection.removalsHigher ? "Jah." : "Ei."
+    : comparisonIntent === "removals-lower"
+      ? projection.removalsHigher ? "Ei." : "Jah."
+      : "";
+  const yearCaveat = explicitYear && explicitYear !== cutYear
+    ? ` Küsisid ${explicitYear}. aastat, kuid SMI ${SMI_2025_YEAR} töövihik avaldab juurdekasvu ühe aastahinnanguna ja raiemahu aastate kaupa kuni ${cutYear}. aastani.`
+    : "";
+  const parts = [];
+  if (methodCitation) {
+    parts.push({
+      title: "Mida juurdekasv ja netojuurdekasv tähendavad",
+      text: "Netojuurdekasv saadakse, kui juurdekasvust arvatakse maha looduslik suremus. Viimase kümnendi keskmisena on elusate puude raiemaht olnud kõrgem kui majandatavate metsade netojuurdekasv, kuid 20 aasta pikkuses vaates alla netojuurdekasvu.",
+      citations: [methodCitation],
+    });
+  }
+  if (handbookCitation) {
+    parts.push({
+      title: "Miks teise allika arvud erinevad",
+      text: "Eurostati metsa arvepidamise raiemaht (removals) mõõdab perioodil metsast eemaldatud elusate ja surnud puude mahtu koorega ning võib hõlmata looduslikku väljalangemist, varem langetatud puitu ja mittetüvepuitu. See ei ole üks-ühele sama mis ühe aasta SMI raiemaht, seega ei tohi kahe avaldaja ridu omavahel lahutada.",
+      citations: [handbookCitation, smiCitation],
+    });
+  }
+  return {
+    answer: {
+      eyebrow: `Keskkonnaagentuur, SMI ${SMI_2025_YEAR}`,
+      title: projection.removalsHigher
+        ? `SMI ${SMI_2025_YEAR} andmetel raiutakse rohkem kui juurde kasvab`
+        : `SMI ${SMI_2025_YEAR} andmetel kasvab mets juurde rohkem kui raiutakse`,
+      intro: `${lead ? `${lead} ` : ""}SMI ${SMI_2025_YEAR} andmetel oli metsamaa tagavara juurdekasv kõigil omanikel ${etNumberWithDigits(projection.incrementThousandM3PerYear, 0)} tuhat m³ aastas ehk ${etNumberWithDigits(projection.incrementCubicMetresPerHectareYear, 2)} m³ hektari kohta aastas (suhteline viga ±${etNumberWithDigits(projection.incrementRelativeErrorPercent, 1)}%). ${relationSentence} Viie aasta keskmine raiemaht metsamaal oli ${etNumberWithDigits(projection.fiveYearCutThousandM3, 0)} tuhat m³.${yearCaveat}`,
+      introCitations: [smiCitation],
+      parts,
+      note: `Võrdlus pärineb ühest allikast, ühest väljaandest ja ühest metoodikast: juurdekasv on aastahinnang kõigil omanikel, raiemaht on ${cutYear}. aasta koguraie. Kogujuurdekasv ei ole netojuurdekasv ja ühe aasta või ühe näitaja põhjal ei saa teha lõplikku järeldust metsamajanduse kestlikkuse kohta.`,
+    },
+    related: [
+      "Mis vahe on kogu- ja netojuurdekasvul?",
+      "Kui suur oli raiemaht viimastel aastatel?",
+      "Kuidas on raiemaht ja juurdekasv ajas muutunud?",
+    ],
+  };
+}
+
 export function composeForestHarvestBalanceAnswer(query, sources = [], controlQuery = query) {
   const comparisonIntent = forestHarvestComparisonIntent(query);
   if (!comparisonIntent) return null;
+  const smiBalance = composeSmiHarvestBalanceAnswer(query, sources, controlQuery, comparisonIntent);
+  if (smiBalance) return smiBalance;
   const citationFor = (id) => {
     const index = sources.findIndex((source) => source.id === id);
     return index >= 0 ? index + 1 : null;
@@ -2146,7 +2441,12 @@ export async function loadStructuredIndicatorDocuments(query, options = {}) {
       // The rest of the ranked official search remains available.
     }
   }
+  if (isForestIncrementQuestion(query)) {
+    documents.push(smiIncrementDocument());
+  }
   if (isForestHarvestBalanceQuery(query)) {
+    const smiDocument = smiHarvestBalanceDocument();
+    if (smiDocument) documents.push(smiDocument);
     const reviewedDocuments = () => forestHarvestBalanceDocumentsFromJson(
       query,
       reviewedForestBalanceSnapshot(),

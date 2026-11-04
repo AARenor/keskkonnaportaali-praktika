@@ -1,0 +1,188 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  composeForestHarvestBalanceAnswer,
+  composeMetsandusteatmikResponse,
+  composeSmiIncrementResponse,
+  isForestIncrementQuestion,
+  smiHarvestBalanceDocument,
+  smiIncrementDocument,
+  validatedSmiHarvestBalanceProjection,
+} from "../server/indicators.mjs";
+import { searchTimeoutFallback } from "../server/pipeline.mjs";
+import { selectAnswerEvidence } from "../server/retrieval.mjs";
+import { sourceCanSupportPublicCitation } from "../server/source-registry.mjs";
+import { ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS } from "../server/forestry-public.mjs";
+import { SMI_2025_TABLES_URL } from "../server/smi-tables.mjs";
+
+const NOW = Date.parse("2026-11-04T12:00:00.000Z");
+
+function synthesisDocuments() {
+  const smi = smiHarvestBalanceDocument();
+  const methodology = {
+    id: "forest-balance-kaur-methodology",
+    title: "Netojuurdekasvu ja raie tasakaal",
+    organization: "Keskkonnaagentuur",
+    type: "Analüüs",
+    url: "https://keskkonnaagentuur.ee/node/2720",
+    summary: "",
+    content: "Netojuurdekasv saadakse, kui juurdekasvust arvatakse maha looduslik suremus. Viimase kümnendi keskmisena on elusate puude raiemaht olnud kõrgem kui majandatavate metsade netojuurdekasv.",
+    topics: ["mets"],
+    tags: ["mets"],
+    sourceTier: "official",
+    retrieval: "official-structured-forestry-source",
+    evidencePolicy: "claim-specific",
+    _answerEvidenceEligible: true,
+  };
+  const handbook = {
+    id: "forest-balance-eurostat-handbook",
+    title: "European Forest Accounts Handbook",
+    organization: "Eurostat",
+    type: "Metoodika",
+    url: "https://ec.europa.eu/eurostat/web/products-manuals-and-guidelines/w/ks-gq-24-015",
+    summary: "",
+    content: "EFA raiemaht (removals) mõõdab aruandeperioodil metsast eemaldatud elusate ja surnud puude mahtu koorega ega ole üks-ühele sama mis ühe aasta SMI raiemaht.",
+    topics: ["mets"],
+    tags: ["mets"],
+    sourceTier: "official",
+    retrieval: "official-eurostat-methodology",
+    evidencePolicy: "claim-specific",
+    _answerEvidenceEligible: true,
+  };
+  return [smi, methodology, handbook];
+}
+
+test("the SMI 2025 balance extract carries the workbook values and rejects tampering", () => {
+  const document = smiHarvestBalanceDocument();
+  assert.equal(document.url, SMI_2025_TABLES_URL);
+  assert.match(document.content, /15 458 tuhat m³ aastas/u);
+  assert.match(document.content, /12 500 tuhat m³/u);
+  assert.match(document.content, /11 897 tuhat m³/u);
+  assert.match(document.content, /mudeli alusel/u);
+  assert.equal(sourceCanSupportPublicCitation(document).eligible, true);
+
+  const projection = validatedSmiHarvestBalanceProjection(document);
+  assert.equal(projection.incrementThousandM3PerYear, 15458.258);
+  assert.equal(projection.cutYear, 2024);
+  assert.equal(projection.removalsHigher, false);
+
+  const tampered = {
+    ...document,
+    _smiHarvestBalance: { ...projection, incrementThousandM3PerYear: 9_000 },
+  };
+  assert.equal(validatedSmiHarvestBalanceProjection(tampered), null);
+  assert.equal(validatedSmiHarvestBalanceProjection({ ...document, id: "other" }), null);
+});
+
+test("harvest versus increment answers from the SMI 2025 edition, not from Eurostat removals", () => {
+  const documents = synthesisDocuments();
+  const direct = composeForestHarvestBalanceAnswer("kas Eestis raiutakse rohkem kui juurde kasvab", documents, "kas Eestis raiutakse rohkem kui juurde kasvab");
+  assert.equal(direct.answer.eyebrow, "Keskkonnaagentuur, SMI 2025");
+  assert.match(direct.answer.title, /kasvab mets juurde rohkem kui raiutakse/u);
+  assert.match(direct.answer.intro, /^Ei\. SMI 2025 andmetel/u);
+  assert.match(direct.answer.intro, /15 458 tuhat m³/u);
+  assert.match(direct.answer.intro, /12 500 tuhat m³/u);
+  assert.match(direct.answer.intro, /2 958 tuhat m³/u);
+  assert.deepEqual(direct.answer.introCitations, [1]);
+  assert.equal(direct.answer.parts.length, 2);
+  assert.deepEqual(direct.answer.parts.map((part) => part.citations), [[2], [3, 1]]);
+  assert.doesNotMatch(direct.answer.intro, /Eurostat/u);
+
+  const reverse = composeForestHarvestBalanceAnswer("kas juurde kasvab rohkem kui raiutakse", documents, "kas juurde kasvab rohkem kui raiutakse");
+  assert.match(reverse.answer.intro, /^Jah\./u);
+});
+
+test("without the SMI workbook extract the same question keeps its Eurostat fallback", () => {
+  const documents = synthesisDocuments().filter((document) => document.id !== "forest-balance-smi2025");
+  const fallback = composeForestHarvestBalanceAnswer("kas Eestis raiutakse rohkem kui juurde kasvab", documents, "kas Eestis raiutakse rohkem kui juurde kasvab");
+  assert.equal(fallback, null, "Eurostat observations are absent here, so no invented answer is produced");
+});
+
+test("an increment question is answered from the SMI 2025 worksheet, not the 2024 PDF", () => {
+  assert.equal(isForestIncrementQuestion("kui palju puitu juurde kasvab Eestis"), true);
+  const document = smiIncrementDocument();
+  assert.equal(document.url, SMI_2025_TABLES_URL);
+  assert.equal(sourceCanSupportPublicCitation(document).eligible, true);
+  const response = composeSmiIncrementResponse("kui palju puitu juurde kasvab Eestis", [document]);
+  assert.match(response.answer.title, /Juurdekasv SMI 2025 andmetel: 15 458 tuhat m³ aastas/u);
+  assert.match(response.answer.intro, /6,55 m³ hektari kohta/u);
+  assert.deepEqual(response.answer.introCitations, [1]);
+  assert.equal(response.sources.length, 1);
+  assert.equal(composeSmiIncrementResponse("kui palju on raiemaht", [document]), null);
+});
+
+test("Metsandusteatmik is identified from its reviewed entry, never quoted", () => {
+  const entry = ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS.find((document) => document.id === "metsandusteatmik");
+  assert.ok(entry);
+  const document = {
+    ...entry,
+    sourceTier: "official",
+    evidencePolicy: "claim-specific",
+    _answerEvidenceEligible: true,
+    _evidenceStatusAt: new Date(NOW).toISOString(),
+    freshness: { class: "reviewed-catalogue-extract", basis: "reviewed-at", maxAgeMs: 366 * 24 * 60 * 60 * 1_000, requiresSourceTimestamp: true },
+  };
+  const response = composeMetsandusteatmikResponse("metsandusteatmik", [document], { now: NOW });
+  assert.match(response.answer.intro, /432/u);
+  assert.match(response.answer.intro, /978-9916-620-22-9/u);
+  assert.match(response.answer.parts[0].text, /paberväljaandega/u);
+  assert.deepEqual(response.answer.introCitations, [1]);
+});
+
+test("circulating forest allegations are answered from the reviewed claim and correction pairs", () => {
+  const entry = ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS.find((document) => document.id === "mets-fact-check-corrections");
+  assert.ok(entry, "the correction article must stay a reviewed document");
+  assert.equal(entry.published, "17.03.2023");
+  assert.equal(entry._publishedAt, "2023-03-17");
+  assert.match(entry.url, /keskkonnaagentuur\.ee\/uudised\/keskkonnaagentuur-lukkab-umber-metsastatistika-kohta-kaivad-valevaited/u);
+  assert.deepEqual(entry._forestryIntentKinds, ["forest-fact-check"]);
+
+  // Mirrors what `officialServiceCatalogueDocuments()` hands the retriever:
+  // a reviewed catalogue extract is versioned evidence with a review window.
+  const document = {
+    ...entry,
+    sourceTier: "official",
+    retrieval: "official-service-directory",
+    evidencePolicy: "versioned",
+    _answerEvidenceEligible: true,
+    _evidenceVersion: "c0ffee",
+    _evidenceStatusAt: new Date(NOW).toISOString(),
+    freshness: { class: "reviewed-catalogue-extract", basis: "reviewed-at", maxAgeMs: 366 * 24 * 60 * 60 * 1_000, requiresSourceTimestamp: true },
+  };
+  const selection = selectAnswerEvidence("metsa kohta levivad valeväited", [document], { now: NOW });
+  assert.equal(selection.kind, "forest-fact-check");
+  assert.equal(selection.strong, true);
+  assert.equal(selection.claimPairs.length, 4);
+  assert.match(selection.claimPairs[0].claim, /raieküps mets Eestis otsas/u);
+  assert.ok(selection.claimPairs.every((pair) => pair.corrections.length >= 1));
+});
+
+test("a timed-out answer still leads with a cited source extract", () => {
+  const ranked = [{
+    id: "forest-area",
+    title: "SMI 2024: Eesti metsamaa pindala",
+    url: "https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI2024/SMI_2024.pdf",
+    organization: "Keskkonnaagentuur / Keskkonnaportaal",
+    type: "Statistika",
+    sourceTier: "official",
+    retrieval: "official-structured-forestry-source",
+    evidencePolicy: "claim-specific",
+    _answerEvidenceEligible: true,
+    freshness: { class: "annual-historical-statistic", basis: "reference-year", maxAgeMs: null, requiresSourceTimestamp: false },
+    summary: "SMI 2024 järgi oli metsamaa pindala 2 350,6 tuhat hektarit.",
+    content: "SMI 2024 järgi oli metsamaa pindala 2 350,6 tuhat hektarit: 51,84% kogu Eesti pindalast. Pindalahinnangu suhteline viga oli ±1,2%.",
+  }];
+  const result = searchTimeoutFallback("kui suur on metsamaa pindala", {
+    assessmentQuery: "kui suur on metsamaa pindala",
+    searchResults: { items: ranked, total: 1 },
+  });
+  assert.equal(result.answer.eyebrow, "Allika viidatud väljavõte");
+  assert.match(result.answer.intro, /2 350,6 tuhat hektarit/u);
+  assert.deepEqual(result.answer.introCitations, [1]);
+  assert.equal(result.answer.aiUnavailable, true);
+  assert.equal(result.sources.length, 1);
+
+  const empty = searchTimeoutFallback("kui suur on metsamaa pindala", { assessmentQuery: "kui suur on metsamaa pindala" });
+  assert.deepEqual(empty.answer.introCitations, []);
+  assert.equal(empty.answer.parts.length, 0);
+});
