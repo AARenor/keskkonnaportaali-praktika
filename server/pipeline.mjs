@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { specialistSubjectVariants } from "./topic-keywords.mjs";
 import { boundedChart, validPublicChart } from "./answer-chart.mjs";
-import { withForestContextChart } from "./forest-series.mjs";
+import { asksOnlyForestAmount, withForestContextChart } from "./forest-series.mjs";
 import { composeHarvestShareResponse } from "./harvest-share.mjs";
 import { withLandUseShareChart } from "./land-use-share.mjs";
 import { officialCitationUrlEligibility, publicSourceAllowed } from "./citation-policy.mjs";
@@ -81,7 +81,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v78-forest-asked-concept";
+export const SEARCH_RESPONSE_REVISION = "answer-v79-smi-amount-only";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
@@ -922,7 +922,8 @@ export function publicResponse(draft, { now = Date.now() } = {}) {
       const { actionUrl: _actionUrl, actionLabel: _actionLabel, ...safeSource } = source;
       return safeSource;
     });
-  const chartCandidate = validPublicChart(response.chart, sources) ? boundedChart(response.chart) : null;
+  // A card that says it has no answer never shows a figure next to that.
+  const chartCandidate = response.answer?.eyebrow !== NO_ANSWER_EYEBROW && validPublicChart(response.chart, sources) ? boundedChart(response.chart) : null;
   const chart = chartCandidate
     && sourceCanSupportPublicCitation(
       sources.find((source) => Number(source?.citation) === chartCandidate.citation) || {},
@@ -1404,6 +1405,8 @@ export async function createPortalDraft(query, {
     : attachEvidenceExcerpts(draft, retrievalQuery, evidencePack);
 }
 
+const SMI_FIGURE_PATTERN = /Eesti metsamaa pindala \d/u;
+
 function answerCardText(draft) {
   return [draft.answer?.intro, ...(draft.answer?.parts || []).map((part) => part?.text)].filter(Boolean).join(" ");
 }
@@ -1415,7 +1418,10 @@ function answerCardText(draft) {
 function withoutOffTargetAnswer(draft, query) {
   if (!draft.answer?.intro || draft.answer.eyebrow === NO_ANSWER_EYEBROW) return draft;
   if (draft.evidence?.kind === "structured-forest-balance") return draft;
-  if (answersAskedConcept(query, answerCardText(draft))) return draft;
+  const statesSmiFigure = SMI_FIGURE_PATTERN.test(draft.answer.intro);
+  // An area figure does not answer a question about the growing stock.
+  const wrongSmiFigure = statesSmiFigure && /tagavara|üldvaru/iu.test(query) && !/tagavara|üldvaru|\bm3\b|m³|tihumeet/iu.test(answerCardText(draft));
+  if (answersAskedConcept(query, answerCardText(draft)) && !wrongSmiFigure && (!statesSmiFigure || asksOnlyForestAmount(query))) return draft;
   return {
     ...draft,
     answer: { ...draft.answer, eyebrow: NO_ANSWER_EYEBROW, intro: NO_ANSWER_INTRO, introCitations: [], parts: [] },

@@ -73,7 +73,9 @@ import {
 import {
   assessSearchQuery,
   canonicalizePublicSearchQuery,
+  composeNoAnswerResponse,
   composeScopeResponse,
+  repeatsEarlierAnswer,
   isAllEnvironmentSearchEnabled,
   isForestRelatedQuery,
 } from "./search.mjs";
@@ -741,6 +743,11 @@ app.post("/api/search/follow-up", async (request, response) => {
   const previousInputs = previousQuestionValues.length <= 4
     ? previousQuestionValues.map((value) => canonicalizePublicSearchQuery(value))
     : [];
+  // Only compared with the new answer, never passed to retrieval or the model.
+  const previousAnswers = (Array.isArray(request.body?.previous_answers) ? request.body.previous_answers : [])
+    .slice(0, 5)
+    .filter((value) => typeof value === "string")
+    .map((value) => value.slice(0, 4000));
   const rootQuery = rootInput.query;
   const question = questionInput.query;
   const previousQuestions = previousInputs.filter((input) => input.ok).map((input) => input.query);
@@ -812,6 +819,10 @@ app.post("/api/search/follow-up", async (request, response) => {
         llmClientKey,
         onBackgroundCleanup: cleanupLease.track,
       });
+      const answerText = [result.answer?.intro, ...(result.answer?.parts || []).map((part) => part?.text)].filter(Boolean).join(" ");
+      if (repeatsEarlierAnswer(answerText, previousAnswers)) {
+        return { ...composeNoAnswerResponse(question), searchResults: publicSearchListing(searchResults) };
+      }
       return { ...result, searchResults: publicSearchListing(searchResults) };
     })(), deadlineAt - Date.now(), () => ({
       ...searchTimeoutFallback(question, { assessmentQuery: retrievalQuery }),

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { asksOnlyForestAmount } from "../server/forest-series.mjs";
+import { repeatsEarlierAnswer } from "../server/search.mjs";
 import { answersAskedConcept, answersPermissionQuestion, assessEvidence, assessSearchQuery, composeScopeResponse, containsPrivatePersonLookup, composeSearchResponse, extractAnswersQuery, isForestRelatedQuery, isNonAnswerText } from "../server/search.mjs";
 import { searchEnvironmentLive } from "../server/pipeline.mjs";
 import { blockedFollowUpAssessment, contextualRetrievalQuery, isContinuationFollowUp } from "../server/retrieval.mjs";
@@ -239,4 +241,20 @@ test("an answer must speak to the concept the question asks about", () => {
 test("a short follow-up with ka continues the conversation", () => {
   assert.equal(isContinuationFollowUp("kas noore metsa hooldus ka sobib"), true);
   assert.equal(isContinuationFollowUp("kas noore metsa hooldus on vajalik"), false);
+});
+
+test("number cards answer only the amount that was asked", () => {
+  for (const query of ["kui palju maksab metsa hektar", "mitu metsaühistut on eestis", "palju säilikpuid hektarile jätta"]) {
+    assert.equal(asksOnlyForestAmount(query), false, query);
+  }
+  for (const query of ["mitu ha metsa on eestis", "metsa kogutagavara 2025 mitu miljonit tihumeetrit", "lageraie pindala 2015-2024"]) {
+    assert.equal(asksOnlyForestAmount(query), true, query);
+  }
+});
+
+test("a follow-up card that restates an earlier answer is caught, a new one is not", () => {
+  const earlier = "Kuuse-kooreüraski tõrjeks tuleb asustatud puud metsast välja vedada ja püünispuid kasutada kevadel enne mardikate lendu.";
+  assert.equal(repeatsEarlierAnswer(earlier, [earlier]), true);
+  assert.equal(repeatsEarlierAnswer("Harvendusraie korral riigilõivu ei maksta, sest tasu rakendub ainult uuendusraiele ja raadamisele.", [earlier]), false);
+  assert.equal(repeatsEarlierAnswer(earlier, []), false);
 });

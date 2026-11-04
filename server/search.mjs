@@ -2136,8 +2136,8 @@ export function isAllEnvironmentSearchEnabled() {
 
 // Stems are listed by inflected form because "kuus", "kasu" and "puudub" must
 // not count as trees. "metsik" and "metsloom" are wildlife, not forest.
-const FOREST_STAND_PATTERN = /\b(?:(?!metsik|metsloom)\p{L}*mets\p{L}*|(?:kaasik|kuusik|lepik|haavik|tammik|noorendik)\p{L}*)\b/iu;
-const FOREST_VOCABULARY_PATTERN = /\b(?:(?!metsik|metsloom)\p{L}*mets\p{L}*|(?:kaasik|kuusik|lepik|haavik|tammik|noorendik)\p{L}*|\p{L}*raie\p{L}*|\p{L}*raiu\p{L}*|\p{L}*puu(?:d|de|l|le|lt|s|st|ga|t|desse)?|pui(?:d|dude|dudel)|puit\p{L}*|puidu\p{L}*|puuliik\p{L}*|puistu\p{L}*|\p{L}*urask\p{L}*|feromoon\p{L}*|juurepess\p{L}*|harvendus\p{L}*|kuusk\p{L}*|kuuse\p{L}*|mand|manni\p{L}*|kask|kaske|kase|kasel|kasesid|haab|haava|lepp|lepa|tamm|tamme|smi|rmk|lulucf)\b/iu;
+const FOREST_STAND_PATTERN = /\b(?:(?!metsik|metsloom)\p{L}*mets\p{L}*|(?:kaasik|kuusik|lepik|haavik|tammik|noorendik|raadam|raadat|saaresurm|puit|puidu)\p{L}*|\p{L}{3,}puu(?:d|de|l|le|lt|s|st|ga|t|desse)?)\b/iu;
+const FOREST_VOCABULARY_PATTERN = /\b(?:(?!metsik|metsloom)\p{L}*mets\p{L}*|(?:kaasik|kuusik|lepik|haavik|tammik|noorendik|raadam|raadat|saaresurm)\p{L}*|\p{L}*raie\p{L}*|\p{L}*raiu\p{L}*|\p{L}*puu(?:d|de|l|le|lt|s|st|ga|t|desse)?|pui(?:d|dude|dudel)|puit\p{L}*|puidu\p{L}*|puuliik\p{L}*|puistu\p{L}*|\p{L}*urask\p{L}*|feromoon\p{L}*|juurepess\p{L}*|harvendus\p{L}*|kuusk\p{L}*|kuuse\p{L}*|mand|manni\p{L}*|kask|kaske|kase|kasel|kasesid|haab|haava|lepp|lepa|tamm|tamme|smi|rmk|lulucf)\b/iu;
 
 export function isForestRelatedQuery(value) {
   const canonical = canonicalizePublicSearchQuery(value, { maximumLength: 1_400 });
@@ -2314,6 +2314,7 @@ function topicRoot(word) {
   if (word.startsWith("tagavara") || word.startsWith("tihumeet")) return "mets";
   if (word.startsWith("valim") || word.startsWith("proovitukk")) return "mets";
   if (word.startsWith("puist")) return "mets";
+  if (word.startsWith("saaresurm")) return "saaresurm";
   if (word.startsWith("lagerai")) return "raie";
   if (word.startsWith("metsateatis") || word.startsWith("raieteatis")) return "mets";
   if (word.startsWith("kuusk") || word.startsWith("kuuse") || word.startsWith("kuusik")) return "mets";
@@ -5283,9 +5284,15 @@ export function containsPrivatePersonLookup(value, {
   // "Tahaks teada et meie pere metsas" is a first-person forest statement.
   // Classify the same text without that opening, so any name or contact field
   // in it still fails.
+  // "Eelmine omanik" is a role in a buyer's own question, not an identity.
   const familyForest = canonicalText
     .replace(/^(?:tahaks(?:in)?|soovi(?:n|ksin))\s+teada,?\s+et\s+(?=meie\s+(?:pere\s+)?mets)/iu, "")
-    .replace(/^meie\s+pere(?=\s+mets)/iu, "meie");
+    .replace(/^meie\s+pere(?=\s+mets)/iu, "meie")
+    .replace(/^(ostsin\s+metsa\b.*?)\beelmine\s+omanik\s+/iu, "$1");
+  // A forest term with "mis see tähendab", and the size of RMK's holding, name
+  // no person. Both grammars are closed, so an added name misses them.
+  if (/^\p{L}*(?:mets|raie)\p{L}*(?:\s+\p{L}+mine)?\s+(?:mis|mida)\s+see\s+t[aä]hendab[?.!]?$/iu.test(canonicalText)
+    || /^(?:kui\s+)?palju\s+\p{L}*mets\p{L}*\s+on\s+rmk\s+valduses(?:\s+(?:19|20)\d{2})?[?.!]?$/iu.test(canonicalText)) return false;
   if (familyForest !== canonicalText) {
     return containsPrivatePersonLookup(familyForest, { allowReviewedPublicClauseComposition, allowReviewedCountyRequestPrefix });
   }
@@ -8903,6 +8910,10 @@ const NON_ANSWER_TEXT_PATTERN = /^(?:esileht|avaleht)\b|\b(?:esileht\s+uudised|l
 export function isNonAnswerText(value) {
   const text = String(value || "").replace(/\s+/gu, " ").trim();
   if (text.length < 25 || NON_ANSWER_TEXT_PATTERN.test(text)) return true;
+  // A passage opening with "Loomulikult" replies to text we do not show.
+  if (/^loomulikult\b/iu.test(text)) return true;
+  // Map service layer names are data labels, not prose.
+  if (/\b[a-z]{2,}__[a-z_]+/u.test(text)) return true;
   if ((text.match(/\.(?:pdf|xlsx?|docx?|zip|csv)\b/giu) || []).length >= 2) return true;
   const [first, second] = text.split(" ").map((word) => normalize(word));
   return Boolean(first && second && first.length >= 4 && second.startsWith(first));
@@ -8930,6 +8941,7 @@ export function answersPermissionQuestion(query, text) {
 // must use, so a card never presents a side fact as the answer.
 const ASKED_CONCEPTS = [
   { asks: /toetus|taotlus|huvitis/u, answers: /toetus|toetami|taotl|rahasta|huvit|kompens|meetm/u },
+  { asks: /puhapaev|laupaev|nadalavahetus|riigipuha/u, answers: /puhapaev|laupaev|nadalavahetus|riigipuha/u },
   { asks: /\beramets\w*|\beraomand\w*/u, answers: /eramets|eraomand|erao|metsaomanik/u },
   { asks: /kaitsevoon\w*.*\b(?:joe|jogi|joge|jarve|veekogu\w*|kalda\w*)\b/u, answers: /veekogu|\bjo(?:e|gi|ge)\b|jarve|kalda|ranna/u },
 ];
@@ -8942,6 +8954,19 @@ export function answersAskedConcept(query, text) {
   const defined = normalizedQuery.match(/^mis on (\p{L}{4,})\??$/u)?.[1];
   if (defined && !normalizedText.includes(defined.slice(0, Math.max(4, defined.length - 2)))) return false;
   return ASKED_CONCEPTS.every(({ asks, answers }) => !asks.test(normalizedQuery) || answers.test(normalizedText));
+}
+
+// A follow-up asks something new, so a card that mostly restates an earlier
+// answer in the thread has not answered it.
+const REPEATED_ANSWER_SHARE = 0.8;
+
+export function repeatsEarlierAnswer(text, earlierAnswers = []) {
+  const words = new Set(normalize(text).split(/\s+/u).filter((word) => word.length > 3));
+  if (words.size < 5) return false;
+  return earlierAnswers.some((earlier) => {
+    const seen = new Set(normalize(earlier).split(/\s+/u));
+    return [...words].filter((word) => seen.has(word)).length / words.size >= REPEATED_ANSWER_SHARE;
+  });
 }
 
 export function composeNoAnswerResponse(query) {

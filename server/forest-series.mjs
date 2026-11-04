@@ -44,7 +44,7 @@ const KK51_INDICATORS = Object.freeze([
   { code: "34", label: "Territooriumi metsasus, %", name: "Territooriumi metsasus", unit: "%", key: "metsasus", max: 100, pattern: /\bmetsasus\w*/u },
   { code: "18", label: "Puistute keskmine hektarivaru, m³/ha", name: "Puistute keskmine hektarivaru", unit: "m³/ha", key: "hektarivaru", max: 1_000, pattern: /\bhektarivaru\w*|\bhektari\s+(?:tagavara|varu)\w*|\b(?:tagavara|varu)\w*\s+hektari\s+kohta\b/u },
   { code: "26", label: "Puistute varu juurdekasv enamuspuuliigiti aastas, m³/ha", name: "Puistute varu juurdekasv aastas", unit: "m³/ha", key: "juurdekasv", max: 100, pattern: /\bjuurdekasv\w*/u },
-  { code: "10", label: "Puistute üldvaru, tuhat m³", name: "Puistute üldvaru", unit: "tuhat m³", key: "uldvaru", max: 1_000_000, pattern: /\btagavara\w*|\buldvaru\w*|\bpuidu\s?varu\w*|\bmetsavaru\w*|\bkasvava\s+metsa\s+varu\w*/u },
+  { code: "10", label: "Puistute üldvaru, tuhat m³", name: "Puistute üldvaru", unit: "tuhat m³", key: "uldvaru", max: 1_000_000, pattern: /\b(?:kogu)?tagavara\w*|\buldvaru\w*|\bpuidu\s?varu\w*|\bmetsavaru\w*|\bkasvava\s+metsa\s+varu\w*/u },
   { code: "2", label: "Puistute pindala, tuhat ha", name: "Puistute pindala", unit: "tuhat ha", key: "puistute-pindala", max: 5_000, pattern: /\bpuistu\w*\s+pindala\w*|\bmetsaga\s+kaetud\b/u },
   { code: "1", label: "Metsamaa pindala, tuhat ha", name: "Metsamaa pindala", unit: "tuhat ha", key: "metsamaa-pindala", max: 5_000, pattern: /\bmetsamaa\w*|\bmetsa(?:de)?\s+pindala\w*|\bmetsa\s+maa\b/u },
 ].map((item) => Object.freeze(item)));
@@ -74,7 +74,7 @@ const NUMBER_WORDS = new Map([
 // "raiereeglid"/"raiepiirangud"/"metsareeglid" still count as out of scope.
 const UNSUPPORTED_SCOPE = /\b(?:maakon\w*|vald\w*|valla\w*|linn\w*|piirkon\w*|rmk|riigimets\w*|eramets\w*|omanik\w*|omand\w*|kaitse\w*|natura|puuliik\w*|mand|mann(?:i|ik)\w*|kuus(?:k|e|ik)\w*|kas(?:k|e)|kaasik\w*|haab\w*|haav(?:a|ik)\w*|lep(?:p|a|ik)\w*|prognoos\w*|tulevi\w*|planeeri\w*|eesmark\w*|siht\w*|euroopa\w*|soome\w*|lati\w*|leedu\w*|rootsi\w*|sanitaar\w*|valgustus\w*|valikraie\w*|kinnist\w*|katastri\w*|metsateati\w*|raiedokument\w*|hukkun\w*|kahjust\w*|harjumaa\w*|hiiumaa\w*|ida virumaa\w*|jogevamaa\w*|jarvamaa\w*|laanemaa\w*|laane virumaa\w*|polvamaa\w*|parnumaa\w*|raplamaa\w*|saaremaa\w*|tartumaa\w*|valgamaa\w*|viljandimaa\w*|vorumaa\w*|virumaa\w*|tallinn\w*|tartu\w*|parnu\w*|narva\w*|hind\w*|hinna\w*|maks\w*|seadus\w*|oigus\w*|luba\w*|load\w*|vanus\w*|raievanus\w*|moju\w*|vana\b|vanad\w*|vanade\w*|kliima\w*|arengukava\w*|tamm\w*|tamme\w*|saar\w*|jalaka\w*|parn\w*|vaher\w*|vahtra\w*|okaspuu\w*|lehtpuu\w*|(?:\w*(?:raie|metsa))?reegl(?!ina\b|ipar)\w*|(?:\w*(?:raie|metsa))?piirang\w*)\b/u;
 const TREND_WORDS = /\b(?:aegri\w*|aegrea\w*|aastate\s+loikes|aastate\s+kaupa|aasta\s+aastalt|aastati|trend\w*|muutu\w*|dunaamika\w*|ajalug\w*|ajalooli\w*|areng\w*|kasvanud|vahenenud|langenud|tousnud|suurenenud|kahanenud|aja\s+jooksul|viimas\w*\s+aastate\w*|viimas\w*\s+aastatel\b|viimas\w*\s+aastat\b|aastakumne\w*|kumnendi\w*)\b/u;
-const COMPARISON_WORDS = /\b(?:rohkem|vahem|vorrel\w*|kui|praegu|nuud|tana|varem|suurem|vaiksem|erine\w*)\b/u;
+const COMPARISON_WORDS = /\b(?:rohkem|vahem|vorrel\w*|kui|praegu\w*|nuud|territoorium\w*|how|much|many|there|does|estonia|have|it|measured|what|the|in|is|of|forest|forests|area|hectares|tana|varem|suurem|vaiksem|erine\w*)\b/u;
 const AREA_MEASURE = /pindala\w*|\bhektar\w*|\bha\b/u;
 const VOLUME_MEASURE = /maht\w*|mahu\w*|\bm3\b|\btihumeet\w*|\bkuupmeet\w*|\btm\b/u;
 const FELLING_VOLUME_CUE = /\b(?:raiuti|raiutakse|raiutud|langeta\w*)\b/u;
@@ -154,10 +154,23 @@ function mentionsFelling(text) {
     || mentionsFellingVerb(text);
 }
 
+// The series and SMI cards state one national figure. Every word of the question
+// must belong to that figure's vocabulary: a leftover word ("hind", "sailikpuid",
+// "metsauhistut") means something else was asked, and the figure would not answer it.
+const FOREST_AMOUNT_WORD = /^(?:\d+|\d+[.,]\d+|kui|kas|palju|jooksul|perioodil|vahemikus|naita|reeglina|muutub|seda|kuidas|moodetakse|hinnatakse|mitu|mis|milline|millised|suur\w*|vaiksem\w*|osa|on|oli|olid|oleks|ja|ning|ka|eesti\w*|riigis?|aasta\w*|praegu\w*|nuud|territoorium\w*|how|much|many|there|does|estonia|have|it|and|measured|what|the|in|is|of|forest|forests|area|hectares|tana|varem|hetkel|kokku|meil|viimas\w*|tagasi|alates|kuni|kumne\w*|kumnendi\w*|aastakumne\w*|kahe|kolme|viie|rohkem|vahem|vorrel\w*|muutu\w*|trend\w*|aegri\w*|loikes|kaupa|dunaamika\w*|kasvanud|kasvab|vahenenud|vaheneb|langenud|tousnud|suurenenud|suureneb|ajalug\w*|ajalooli\w*|areng\w*|dunaamika|maha|voetakse|voeti|langeta\w*|pindala\w*|hektar\w*|ha|tuhat|tuhandet|miljon\w*|mln|protsent\w*|osakaal\w*|maht\w*|mahu\w*|m3|tihumeet\w*|tm|kuupmeet\w*|kogus\w*|mets|metsa|metsad|metsade|metsas|metsi|metsaga|kaetud|metsamaa\w*|metsasus\w*|raie\w*|raiu\w*|lageraie\w*|harvendus\w*|koguraie\w*|puistu\w*|kogutagavara\w*|tagavara\w*|uldvaru\w*|puidu|puit\w*|varu\w*|hektarivaru\w*|juurdekasv\w*|netojuurdekasv\w*|kasvava|kasvav|keskmi\w*|eemalda\w*)$/u;
+const FOREST_MEASURE_WORD = /\b(?:pindala\w*|hektar\w*|ha|maht\w*|mahu\w*|osakaal\w*|tagavara\w*|kogutagavara\w*|metsasus\w*)\b/u;
+
+export function asksOnlyForestAmount(query) {
+  const text = normalize(query);
+  if (!text) return false;
+  if (/^mis on\b/u.test(text) && !FOREST_MEASURE_WORD.test(text)) return false;
+  return text.split(" ").every((word) => FOREST_AMOUNT_WORD.test(word));
+}
+
 export function forestSeriesIntent(query) {
   if (typeof query !== "string" || query.length > MAX_QUERY_LENGTH) return null;
   const text = normalize(query);
-  if (!text || isUnsupportedForestScope(text)) return null;
+  if (!text || isUnsupportedForestScope(text) || !asksOnlyForestAmount(text)) return null;
   if (/\btaotl\w*|\btaotle\w*/u.test(text)) return null;
   const hasRaie = mentionsFelling(text);
   // No leading boundary: "netojuurdekasv" must also route to the Eurostat adapter.
@@ -218,7 +231,7 @@ export function forestContextSeriesIntent(query) {
   if (typeof query !== "string" || query.length > MAX_QUERY_LENGTH) return null;
   if (forestSeriesIntent(query)) return null;
   const text = normalize(query);
-  if (!text || isUnsupportedForestScope(text) || PERIOD_SIGNAL.test(text) || TREND_WORDS.test(text)) return null;
+  if (!text || isUnsupportedForestScope(text) || !asksOnlyForestAmount(text) || PERIOD_SIGNAL.test(text) || TREND_WORDS.test(text)) return null;
   if (/\btaotl\w*|\btaotle\w*/u.test(text)) return null;
   const hasRaie = mentionsFelling(text);
   const hasIncrement = /juurdekasv\w*/u.test(text);

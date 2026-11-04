@@ -1165,6 +1165,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
           root_query: result.query || query,
           question: cleanQuestion,
           previous_questions: followUps.map((turn) => turn.question),
+          previous_answers: [result, ...followUps.map((turn) => turn.result)].map(answerTextOf).filter(Boolean),
           filters: appliedFilters,
         }),
         signal: controller.signal,
@@ -1447,6 +1448,10 @@ function TerrapointEmbed() {
       </div>
     </main>
   );
+}
+
+function answerTextOf(item) {
+  return [item?.answer?.intro, ...(item?.answer?.parts || []).map((part) => part?.text)].filter(Boolean).join(" ");
 }
 
 export function App() {
