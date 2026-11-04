@@ -264,3 +264,7 @@ test("a term asked as 'X mis see tähendab' must be named, and a news list is no
   assert.equal(answersAskedConcept("kaitsemets mis see tähendab", "Kaitsemets on mets, mille majandamist piiratakse seadusega."), true);
   assert.equal(isNonAnswerText("Hiljutised uudised Vaata kõiki Mets RMK avas rakendusuuringute taotlusvooru RMK 25.09.2026"), true);
 });
+
+test("a news list on any route fails the card check", () => {
+  assert.equal(answersAskedConcept("kui palju metsa on rmk valduses", "Hiljutised uudised Vaata kõiki Mets RMK avas taotlusvooru"), false);
+});

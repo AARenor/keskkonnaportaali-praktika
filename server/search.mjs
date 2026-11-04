@@ -8952,6 +8952,8 @@ export function answersAskedConcept(query, text) {
   if (!answersPermissionQuestion(query, text)) return false;
   const normalizedQuery = normalize(query);
   const normalizedText = normalize(text);
+  // A news list or a map layer name never answers anything, on any route.
+  if (/^hiljutised uudised\b|\bvaata koiki\b/u.test(normalizedText) || /\b[a-z]{2,}__[a-z_]+/u.test(String(text))) return false;
   // "Mis on X" asks for X itself, so the answer has to name it.
   const defined = normalizedQuery.match(/^mis on (\p{L}{4,})\??$/u)?.[1]
     || normalizedQuery.match(/^(\p{L}{4,}) (?:mis|mida) see tahendab\??$/u)?.[1];
