@@ -8912,6 +8912,8 @@ export function isNonAnswerText(value) {
   if (text.length < 25 || NON_ANSWER_TEXT_PATTERN.test(text)) return true;
   // A passage opening with "Loomulikult" replies to text we do not show.
   if (/^loomulikult\b/iu.test(text)) return true;
+  // A site's news list is navigation, not a statement about the question.
+  if (/^hiljutised uudised\b|\bvaata k[oõ]iki\b/iu.test(text)) return true;
   // Map service layer names are data labels, not prose.
   if (/\b[a-z]{2,}__[a-z_]+/u.test(text)) return true;
   if ((text.match(/\.(?:pdf|xlsx?|docx?|zip|csv)\b/giu) || []).length >= 2) return true;
@@ -8951,7 +8953,8 @@ export function answersAskedConcept(query, text) {
   const normalizedQuery = normalize(query);
   const normalizedText = normalize(text);
   // "Mis on X" asks for X itself, so the answer has to name it.
-  const defined = normalizedQuery.match(/^mis on (\p{L}{4,})\??$/u)?.[1];
+  const defined = normalizedQuery.match(/^mis on (\p{L}{4,})\??$/u)?.[1]
+    || normalizedQuery.match(/^(\p{L}{4,}) (?:mis|mida) see tahendab\??$/u)?.[1];
   if (defined && !normalizedText.includes(defined.slice(0, Math.max(4, defined.length - 2)))) return false;
   return ASKED_CONCEPTS.every(({ asks, answers }) => !asks.test(normalizedQuery) || answers.test(normalizedText));
 }

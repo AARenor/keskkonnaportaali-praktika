@@ -81,7 +81,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v79-smi-amount-only";
+export const SEARCH_RESPONSE_REVISION = "answer-v80-no-news-list-answers";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([

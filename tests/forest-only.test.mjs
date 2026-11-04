@@ -258,3 +258,9 @@ test("a follow-up card that restates an earlier answer is caught, a new one is n
   assert.equal(repeatsEarlierAnswer("Harvendusraie korral riigilõivu ei maksta, sest tasu rakendub ainult uuendusraiele ja raadamisele.", [earlier]), false);
   assert.equal(repeatsEarlierAnswer(earlier, []), false);
 });
+
+test("a term asked as 'X mis see tähendab' must be named, and a news list is not an answer", () => {
+  assert.equal(answersAskedConcept("kaitsemets mis see tähendab", "Eesti metsa seisundit hinnatakse statistilise metsainventeerimise abil."), false);
+  assert.equal(answersAskedConcept("kaitsemets mis see tähendab", "Kaitsemets on mets, mille majandamist piiratakse seadusega."), true);
+  assert.equal(isNonAnswerText("Hiljutised uudised Vaata kõiki Mets RMK avas rakendusuuringute taotlusvooru RMK 25.09.2026"), true);
+});
