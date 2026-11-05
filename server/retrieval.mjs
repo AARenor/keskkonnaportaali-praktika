@@ -2488,8 +2488,10 @@ export function rankPublicSearchCandidates(query, documents = [], {
 
 // Keskkonnaagentuur and the reviewed pages stay first: the law only leads when
 // no other page in the results defines the term itself.
-function withFocusedLawSection(query, ranked, available) {
+export function withFocusedLawSection(query, ranked, available) {
+  // A page that may not be cited cannot answer, so it cannot stand in for the law.
   const alreadyDefined = ranked.slice(0, 12).some((document) => !document._lawSection
+    && sourceCanSupportPublicCitation(document).eligible
     && definesLawTerm(query, `${document.summary || ""} ${document.content || ""}`));
   const focused = alreadyDefined ? null : focusedLawSection(query, available);
   if (!focused) return ranked;

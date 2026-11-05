@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { rankPublicSearchCandidates } from "../server/retrieval.mjs";
+import { rankPublicSearchCandidates, withFocusedLawSection } from "../server/retrieval.mjs";
 import { FOREST_LAWS, currentForestLawDocuments, definesLawTerm, focusedLawSection, forestLawVersionStamp, parseLawSections, refreshForestLaws, resetForestLawsForTests, reviewedLawSummaryIsOutdated } from "../server/law-texts.mjs";
 import { asksOnlyForestAmount } from "../server/forest-series.mjs";
 import { officialServiceCatalogueDocuments, repeatsEarlierAnswer } from "../server/search.mjs";
@@ -387,6 +387,26 @@ test("a law definition is shown word for word with its citation, without the mod
     assert.equal(result.answer.intro, "Vääriselupaik on ala, kus haruldaste liikide esinemise tõenäosus on suur.");
     assert.match(result.sources[result.answer.introCitations[0] - 1].url, /riigiteataja\.ee\/akt\/.*#para23b1$/u);
     assert.equal(modelCalls, 0);
+  } finally {
+    FOREST_LAWS.forEach((law, index) => { law.minimumSections = minimums[index]; });
+    resetForestLawsForTests();
+  }
+});
+
+test("a page that cannot be cited does not stop the law from defining the term", async () => {
+  resetForestLawsForTests();
+  const minimums = FOREST_LAWS.map((law) => law.minimumSections);
+  FOREST_LAWS.forEach((law) => { law.minimumSections = 1; });
+  try {
+    await refreshForestLaws({ fetchImpl: lawFeed().fetchImpl });
+    const laws = officialServiceCatalogueDocuments().filter((document) => document._lawSection);
+    const newsPage = {
+      id: "news", title: "Uudis", url: "https://kliimaministeerium.ee/uudised/uudis", sourceTier: "official",
+      evidencePolicy: "route-only", _answerEvidenceEligible: false,
+      content: "Vääriselupaik on uudise sõnul eriline paik metsas, mida tasub hoida.",
+    };
+    const [first] = withFocusedLawSection("mis on vääriselupaik", [newsPage, ...laws], laws);
+    assert.equal(first._focusedLawTerm, "vaariselupaik");
   } finally {
     FOREST_LAWS.forEach((law, index) => { law.minimumSections = minimums[index]; });
     resetForestLawsForTests();
