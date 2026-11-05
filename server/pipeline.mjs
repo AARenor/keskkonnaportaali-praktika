@@ -86,7 +86,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v86-citable-definitions-only";
+export const SEARCH_RESPONSE_REVISION = "answer-v87-law-leads-over-news";
 const DEFAULT_SEARCH_DEADLINE_MS = 60_000;
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
@@ -1125,7 +1125,12 @@ export async function createPortalDraft(query, {
   // search never spends six page requests on cards discarded immediately.
   const rankingOptions = { sort, now: Date.now() };
   const retainedPlan = currentListingEvidencePlan(listing, retrievalQuery, candidates, sort);
-  const ranked = retainedPlan ? candidates : rankPortalDocuments(retrievalQuery, candidates, rankingOptions);
+  const focusedLawCandidate = candidates.find((document) => document._focusedLawTerm);
+  const portalRanked = retainedPlan ? candidates : rankPortalDocuments(retrievalQuery, candidates, rankingOptions);
+  // The asked term's law section stays in the running whatever else ranks above it.
+  const ranked = focusedLawCandidate
+    ? [focusedLawCandidate, ...portalRanked.filter((document) => document.id !== focusedLawCandidate.id)]
+    : portalRanked;
   const hydrationBudget = remainingBudget(deadlineAt, 7_000);
   const answerCandidates = retainedPlan
     ? ranked.filter((source) => retainedPlan.supportingDocumentIds.includes(source.id))

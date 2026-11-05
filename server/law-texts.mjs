@@ -8,6 +8,7 @@
 const API_BASE = "https://www.riigiteataja.ee/public-api/api/v1/akt";
 const REQUEST_TIMEOUT_MS = 20_000;
 const CHECK_INTERVAL_MS = 60 * 60 * 1_000;
+const RETRY_AFTER_FAILURE_MS = 5 * 60 * 1_000;
 const MAX_VERIFICATION_AGE_MS = 24 * 60 * 60 * 1_000;
 const MINIMUM_SECTION_LENGTH = 40;
 
@@ -262,8 +263,12 @@ export function reviewedLawSummaryIsOutdated(document) {
 }
 
 export function startForestLawChecks() {
-  void refreshForestLaws().catch(() => undefined);
-  const timer = setInterval(() => void refreshForestLaws().catch(() => undefined), CHECK_INTERVAL_MS);
+  // A failed first check must not leave the laws out for a whole hour.
+  const check = () => refreshForestLaws().then((complete) => {
+    if (!complete) setTimeout(() => void check(), RETRY_AFTER_FAILURE_MS).unref();
+  }).catch(() => undefined);
+  void check();
+  const timer = setInterval(() => void check(), CHECK_INTERVAL_MS);
   timer.unref();
   return timer;
 }

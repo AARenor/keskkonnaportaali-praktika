@@ -407,6 +407,11 @@ test("a page that cannot be cited does not stop the law from defining the term",
     };
     const [first] = withFocusedLawSection("mis on vääriselupaik", [newsPage, ...laws], laws);
     assert.equal(first._focusedLawTerm, "vaariselupaik");
+    const citableNews = { ...newsPage, evidencePolicy: "versioned", _answerEvidenceEligible: true, _catalogueReviewedAt: new Date().toISOString(), organization: "Kliimaministeerium" };
+    assert.equal(withFocusedLawSection("mis on vääriselupaik", [citableNews, ...laws], laws)[0]._focusedLawTerm, "vaariselupaik");
+    const reviewed = officialServiceCatalogueDocuments().find((document) => document.id === "forest-law");
+    const reviewedDefinition = { ...reviewed, content: "Vääriselupaik on ala, mille kohta see ülevaade annab ametliku selgituse." };
+    assert.equal(withFocusedLawSection("mis on vääriselupaik", [reviewedDefinition, ...laws], laws)[0].id, "forest-law");
   } finally {
     FOREST_LAWS.forEach((law, index) => { law.minimumSections = minimums[index]; });
     resetForestLawsForTests();
