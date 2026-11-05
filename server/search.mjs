@@ -2137,8 +2137,8 @@ export function isAllEnvironmentSearchEnabled() {
 
 // Stems are listed by inflected form because "kuus", "kasu" and "puudub" must
 // not count as trees. "metsik" and "metsloom" are wildlife, not forest.
-const FOREST_STAND_PATTERN = /\b(?:(?!metsik|metsloom)\p{L}*mets\p{L}*|(?:kaasik|kuusik|lepik|haavik|tammik|noorendik|raadam|raadat|saaresurm|puit|puidu)\p{L}*|\p{L}{3,}puu(?:d|de|l|le|lt|s|st|ga|t|desse)?)\b/iu;
-const FOREST_VOCABULARY_PATTERN = /\b(?:(?!metsik|metsloom)\p{L}*mets\p{L}*|(?:kaasik|kuusik|lepik|haavik|tammik|noorendik|raadam|raadat|saaresurm)\p{L}*|\p{L}*raie\p{L}*|\p{L}*raiu\p{L}*|\p{L}*puu(?:d|de|l|le|lt|s|st|ga|t|desse)?|pui(?:d|dude|dudel)|puit\p{L}*|puidu\p{L}*|puuliik\p{L}*|puistu\p{L}*|\p{L}*urask\p{L}*|feromoon\p{L}*|juurepess\p{L}*|harvendus\p{L}*|kuusk\p{L}*|kuuse\p{L}*|mand|manni\p{L}*|kask|kaske|kase|kasel|kasesid|haab|haava|lepp|lepa|tamm|tamme|smi|rmk|lulucf)\b/iu;
+const FOREST_STAND_PATTERN = /\b(?:(?!metsik|metsloom)\p{L}*mets\p{L}*|(?:kaasik|kuusik|lepik|haavik|tammik|noorendik|raadam|raadat|saaresurm|vaarisel|vääriselupai|puit|puidu)\p{L}*|\p{L}{3,}puu(?:d|de|l|le|lt|s|st|ga|t|desse)?)\b/iu;
+const FOREST_VOCABULARY_PATTERN = /\b(?:(?!metsik|metsloom)\p{L}*mets\p{L}*|(?:kaasik|kuusik|lepik|haavik|tammik|noorendik|raadam|raadat|saaresurm|vaarisel|vääriselupai)\p{L}*|\p{L}*raie\p{L}*|\p{L}*raiu\p{L}*|\p{L}*puu(?:d|de|l|le|lt|s|st|ga|t|desse)?|pui(?:d|dude|dudel)|puit\p{L}*|puidu\p{L}*|puuliik\p{L}*|puistu\p{L}*|\p{L}*urask\p{L}*|feromoon\p{L}*|juurepess\p{L}*|harvendus\p{L}*|kuusk\p{L}*|kuuse\p{L}*|mand|manni\p{L}*|kask|kaske|kase|kasel|kasesid|haab|haava|lepp|lepa|tamm|tamme|smi|rmk|lulucf)\b/iu;
 
 export function isForestRelatedQuery(value) {
   const canonical = canonicalizePublicSearchQuery(value, { maximumLength: 1_400 });

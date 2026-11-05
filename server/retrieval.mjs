@@ -1,3 +1,4 @@
+import { definesLawTerm, focusedLawSection } from "./law-texts.mjs";
 import { createHash } from "node:crypto";
 import { publicSourceAllowed } from "./citation-policy.mjs";
 import { sameSourceResource, sourceComparisonWitnessKey, sourceEvidenceBinding, sourceResourceKey, sourceWitnessKey } from "./source-identity.mjs";
@@ -2482,7 +2483,21 @@ export function rankPublicSearchCandidates(query, documents = [], {
     Number.isFinite(Number(rankingOptions.now)) ? Number(rankingOptions.now) : Date.now(),
   ).filter(publicSourceAllowed);
   retainOverviewPlan(result, query, forestry.plan, rankingOptions.sort || "relevance");
-  return result;
+  return withFocusedLawSection(query, result, [...intentDocuments, ...documents]);
+}
+
+// Keskkonnaagentuur and the reviewed pages stay first: the law only leads when
+// no other page in the results defines the term itself.
+function withFocusedLawSection(query, ranked, available) {
+  const alreadyDefined = ranked.slice(0, 12).some((document) => !document._lawSection
+    && definesLawTerm(query, `${document.summary || ""} ${document.content || ""}`));
+  const focused = alreadyDefined ? null : focusedLawSection(query, available);
+  if (!focused) return ranked;
+  const reordered = [focused, ...ranked.filter((document) => document.id !== focused.id)];
+  for (const key of Object.keys(ranked)) {
+    if (!/^\d+$/u.test(key)) reordered[key] = ranked[key];
+  }
+  return reordered;
 }
 
 // The candidate set is a few hundred catalogue entries and the corpus adds a

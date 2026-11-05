@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { FOREST_LAWS, currentForestLawDocuments, forestLawVersionStamp, parseLawSections, refreshForestLaws, resetForestLawsForTests, reviewedLawSummaryIsOutdated } from "../server/law-texts.mjs";
+import { FOREST_LAWS, currentForestLawDocuments, definesLawTerm, focusedLawSection, forestLawVersionStamp, parseLawSections, refreshForestLaws, resetForestLawsForTests, reviewedLawSummaryIsOutdated } from "../server/law-texts.mjs";
 import { asksOnlyForestAmount } from "../server/forest-series.mjs";
 import { repeatsEarlierAnswer } from "../server/search.mjs";
 import { answersAskedConcept, answersPermissionQuestion, assessEvidence, assessSearchQuery, composeScopeResponse, containsPrivatePersonLookup, composeSearchResponse, extractAnswersQuery, isForestRelatedQuery, isNonAnswerText } from "../server/search.mjs";
@@ -341,4 +341,24 @@ test("law text is withheld when it can no longer be confirmed, and replaced when
     FOREST_LAWS.forEach((law, index) => { law.minimumSections = minimums[index]; });
     resetForestLawsForTests();
   }
+});
+
+test("a question about one legal term gets the sentence defining it, not the section's other rules", () => {
+  const section = (id, summary, content) => ({ id, summary, content, _lawSection: true });
+  const raadamine = section("a", "Raadamine", "(1) Raadamine on raie, mida tehakse, et võimaldada maa kasutamist muul otstarbel kui metsa majandamiseks. (4) Raadamise eest tasutakse tasu keskkonnatasude seaduse järgi.");
+  const other = section("b", "Metsateatis", "(1) Kui metsateatis on esitatud paberil, saadab Keskkonnaamet väljavõtte. Raadamine on selles paragrahvis ainult nimetatud näitena.");
+  assert.equal(focusedLawSection("raadamine mida see tähendab", [other, raadamine]).id, "a");
+  assert.match(focusedLawSection("mis on raadamine", [raadamine]).content, /^\(1\) Raadamine on raie/u);
+  const notice = section("c", "Registriväljavõte", "(1) Kui metsateatis on esitatud paberil, saadab Keskkonnaamet väljavõtte ja märgib selle metsaregistrisse.");
+  assert.equal(focusedLawSection("mis on metsateatis", [notice]), null);
+  assert.equal(focusedLawSection("raie", [raadamine]), null);
+  assert.equal(focusedLawSection("kui palju raadamine maksab", [raadamine]), null);
+  assert.equal(definesLawTerm("mis on metsateatis", "Metsateatis on dokument, mille omanik esitab."), true);
+  assert.equal(definesLawTerm("mis on metsateatis", "Kui metsateatis on esitatud paberil."), false);
+  const dead = section("d", "Metsa uuendamine", "(5) Käesoleva seaduse tähenduses loetakse hukkunuks mets, milles tuulekahjustuste tõttu on elusate puude võrade liitus alla 30 protsendi.");
+  assert.equal(focusedLawSection("hukkunud mets mõiste", [dead]).id, "d");
+});
+
+test("vääriselupaik counts as a forest word", () => {
+  assert.equal(isForestRelatedQuery("mis on vääriselupaik"), true);
 });

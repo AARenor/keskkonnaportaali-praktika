@@ -171,6 +171,74 @@ export function currentForestLawDocuments({ now = Date.now() } = {}) {
   });
 }
 
+function plainWord(value) {
+  return String(value || "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("et");
+}
+
+// Search shortens compounds ("valgustusraie" to "raie"), which is too broad for
+// asking what one legal term means, so these questions look for the whole term.
+const GENERIC_TERM_WORDS = new Set(["mets", "metsa", "metsad", "raie", "raied", "seadus", "eeskiri", "metsamaa", "puit", "puud"]);
+
+export function askedLawTerm(query) {
+  const text = plainWord(query).replace(/[?!.,]+/gu, " ").replace(/\s+/gu, " ").trim();
+  const asked = text.match(/^mis on (\p{L}+(?: \p{L}+)?)$/u)?.[1]
+    || text.match(/^(\p{L}+(?: \p{L}+)?) (?:mis|mida) see tahendab$/u)?.[1]
+    || text.match(/^(\p{L}+(?: \p{L}+)?) (?:moiste|tahendus|definitsioon)$/u)?.[1]
+    || text.match(/^(\p{L}+)$/u)?.[1];
+  if (!asked) return null;
+  const words = asked.split(" ");
+  if (words.every((word) => GENERIC_TERM_WORDS.has(word)) || !words.some((word) => word.length >= 6)) return null;
+  return words;
+}
+
+// A definition opens the sentence: "Raadamine on raie", "Mets on hukkunud, kui".
+// "Kui metsateatis on esitatud" only mentions the term, so it does not count.
+function definitionPattern(stems) {
+  const orders = stems.length === 2 ? [stems, [...stems].reverse()] : [stems];
+  const forms = orders.map((order) => order.map((stem) => `${stem}\\p{L}*`).join(stems.length === 2 ? " (?:on )?" : " "));
+  return new RegExp(`(?:^|[.;:] |loetakse )\\p{L}{0,12}(?:${forms.join("|")})(?: on\\b|,? (?:mis|mille|milles) )`, "u");
+}
+
+function stemOf(word) {
+  return word.slice(0, Math.max(5, word.length - 3));
+}
+
+const textForLookup = (text) => plainWord(text);
+
+// Picks the sentences of one section that speak about the asked term, with a
+// definition first. The narrowed text is still the law's own words, and the
+// model then cannot answer "what is raadamine" from the section's fee rule.
+export function focusedLawSection(query, documents = []) {
+  const words = askedLawTerm(query);
+  if (!words) return null;
+  const stems = words.map(stemOf);
+  const mentions = (text) => stems.every((stem) => new RegExp(`(?:^|[^\\p{L}])\\p{L}{0,12}${stem}`, "u").test(text));
+  const defines = (text) => definitionPattern(stems).test(text);
+  const ranked = [];
+  for (const document of documents) {
+    if (!document?._lawSection) continue;
+    const sentences = String(document.content || "").split(/(?<=[.;:])\s+(?=\(?\d*[¹²³⁴⁵⁶⁷⁸⁹]*\)?\s*\p{Lu}|\(\d)/u);
+    const matching = sentences.filter((sentence) => mentions(textForLookup(sentence)));
+    if (!matching.length) continue;
+    const defining = matching.filter((sentence) => defines(textForLookup(sentence).replace(/^\(\d+[^)]*\)\s*/u, "")));
+    const opening = matching.filter((sentence) => new RegExp(`^(?:\\(\\d+[^)]*\\)\\s*)?${stems[0]}`, "u").test(textForLookup(sentence)));
+    const inHeading = mentions(textForLookup(document.summary));
+    const score = (defining.length ? 4 : 0) + (inHeading ? 2 : 0) + (opening.length ? 1 : 0);
+    if (!score) continue;
+    const lead = [...new Set([...defining, ...opening, ...matching])].slice(0, 5);
+    ranked.push({ document, score, content: lead.join(" ") });
+  }
+  const best = ranked.sort((left, right) => right.score - left.score)[0];
+  if (!best || best.content.length < MINIMUM_SECTION_LENGTH) return null;
+  return { ...best.document, content: best.content, _focusedLawTerm: words.join(" ") };
+}
+
+export function definesLawTerm(query, text) {
+  const words = askedLawTerm(query);
+  if (!words) return false;
+  return definitionPattern(words.map(stemOf)).test(plainWord(text));
+}
+
 export function forestLawVersionStamp({ now = Date.now() } = {}) {
   return FOREST_LAWS.map((law) => {
     const state = lawState.get(law.key);

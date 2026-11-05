@@ -86,7 +86,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v83-current-law-sections";
+export const SEARCH_RESPONSE_REVISION = "answer-v84-focused-law-term";
 const DEFAULT_SEARCH_DEADLINE_MS = 60_000;
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
@@ -1161,6 +1161,7 @@ export async function createPortalDraft(query, {
   const plannedMandateOk = !mandateOrganizationQuery
     || (plannedEvidence?.passages || []).some((passage) => textHasQueryRoot(passage, mandateTerms[0])
       && /\b(?:teeb|tegevus\w*|ulesanne\w*|ülesanne\w*|haldab|korraldab|vastutab|pakub)\b/u.test(normalize(passage)));
+  const focusedLawDocument = reranked.find((document) => document._focusedLawTerm) || null;
   const quality = directOverview
     ? {
       ...conventionalQuality,
@@ -1186,6 +1187,14 @@ export async function createPortalDraft(query, {
         directDocumentId: null,
         answerIntent: plannedEvidence.kind,
         supportingDocumentIds: [],
+      }
+    : focusedLawDocument
+      ? {
+        ...conventionalQuality,
+        answerable: true,
+        broad: true,
+        directDocumentId: focusedLawDocument.id,
+        broadDocumentId: focusedLawDocument.id,
       }
     : conventionalQuality;
 
@@ -1261,7 +1270,10 @@ export async function createPortalDraft(query, {
     // is unavailable. Use the most query-relevant passage from the same
     // document that passed the broad eligibility check.
     const broadDocument = answerDocuments.find((document) => document.id === quality.broadDocumentId);
-    const extract = broadDocument ? directEvidenceExtract(retrievalQuery, broadDocument, null, { requireSubject: true }) : "";
+    // A focused law section already holds only the sentences about the term.
+    const extract = broadDocument?._focusedLawTerm
+      ? String(broadDocument.content).split(/(?<=[.;])\s/u)[0].replace(/^\(\d+[^)]*\)\s*/u, "")
+      : broadDocument ? directEvidenceExtract(retrievalQuery, broadDocument, null, { requireSubject: true }) : "";
     const broadCitation = broadDocument
       ? answerDocuments.findIndex((document) => document.id === broadDocument.id) + 1
       : 0;
@@ -1632,7 +1644,8 @@ async function searchWithinBudget(cleanQuery, {
   }) || composeAmbiguousDomainGuidanceResponse(cleanQuery, searchResults?.items, {
     total: searchResults?.total,
   });
-  const structuredIndicatorDraft = draftMatchesListingAndFilters(
+  // A topic overview must not answer "what is X" over the law section defining X.
+  const structuredIndicatorDraft = !searchResults?.items?.[0]?._focusedLawTerm && draftMatchesListingAndFilters(
     structuredIndicatorCandidate,
     searchResults,
     filters,
