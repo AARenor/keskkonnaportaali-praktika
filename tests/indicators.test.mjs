@@ -26,6 +26,7 @@ import {
   MUNICIPAL_WASTE_RECYCLING_CSV_URL,
   MUNICIPAL_WASTE_RECYCLING_PAGE_URL,
   nationalWeatherForecastFromXml,
+  SMI_HARVEST_BALANCE_DOCUMENT_ID,
   WEATHER_FORECAST_XML_URL,
 } from "../server/indicators.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
@@ -923,8 +924,17 @@ test("forest balance keeps its reviewed official snapshot when the live dataset 
       now: Date.parse("2027-09-26T00:00:00Z"),
     }).eligible, false);
     assert.match(snapshot?.summary || "", /2023\. aastal oli netojuurdekasv 9,1[\s\S]*11,6 miljonit m³/iu);
+    // The reviewed SMI workbook is the primary source for this question, so it
+    // owns the answer even while the live Eurostat dataset is unreachable.
     const draft = composeForestHarvestBalanceAnswer(query, documents);
-    assert.match(draft?.answer?.intro || "", /2023[\s\S]*11,6[\s\S]*9,1[\s\S]*2,5 miljoni m³/iu);
+    assert.match(draft?.answer?.intro || "", /SMI 2025 andmetel/iu);
+    assert.match(draft?.answer?.intro || "", /15 458|15,?458/u);
+    // With the workbook out of reach the reviewed Eurostat snapshot must still
+    // answer on its own.
+    const snapshotOnly = composeForestHarvestBalanceAnswer(query, documents.filter(
+      (document) => document.id !== SMI_HARVEST_BALANCE_DOCUMENT_ID,
+    ));
+    assert.match(snapshotOnly?.answer?.intro || "", /2023[\s\S]*11,6[\s\S]*9,1[\s\S]*2,5 miljoni m³/iu);
   }
 
   const internalTimeout = await loadStructuredIndicatorDocuments(query, {
@@ -933,7 +943,8 @@ test("forest balance keeps its reviewed official snapshot when the live dataset 
       throw new DOMException("upstream timeout", "AbortError");
     },
   });
-  assert.equal(internalTimeout[0]?.retrieval, "reviewed-official-eurostat-snapshot");
+  const timeoutSnapshot = internalTimeout.find((document) => document.id === "forest-balance-eurostat");
+  assert.equal(timeoutSnapshot?.retrieval, "reviewed-official-eurostat-snapshot");
 
   const live = await loadStructuredIndicatorDocuments(query, {
     now,

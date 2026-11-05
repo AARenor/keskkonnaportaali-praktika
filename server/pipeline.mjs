@@ -1,3 +1,4 @@
+import { forestLawVersionStamp } from "./law-texts.mjs";
 import { createHash } from "node:crypto";
 import { specialistSubjectVariants } from "./topic-keywords.mjs";
 import { boundedChart, validPublicChart } from "./answer-chart.mjs";
@@ -28,7 +29,9 @@ import {
   composeForestSeriesResponse,
   composeLatestPublishedHydrologyResponse,
   composeMunicipalWasteRecyclingResponse,
+  composeMetsandusteatmikResponse,
   composeNationalWeatherForecastResponse,
+  composeSmiIncrementResponse,
 } from "./indicators.mjs";
 import {
   evidenceDocumentsFromListing,
@@ -39,6 +42,7 @@ import {
   prepareRankedSearchResults,
   rankPublicSearchCandidates,
   resultMatchesFilters,
+  resultPublishedAt,
   selectAnswerEvidence,
   selectSmiDefinitionEvidence,
   stablePublicResultId,
@@ -77,12 +81,13 @@ import {
   textHasQueryRoot,
 } from "./search.mjs";
 import { sourceCanSupportPublicCitation } from "./source-registry.mjs";
+import { queryNeedsFreshness } from "./corpus.mjs";
 import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs";
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v82-current-law-sections";
-const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
+export const SEARCH_RESPONSE_REVISION = "answer-v83-current-law-sections";
+const DEFAULT_SEARCH_DEADLINE_MS = 60_000;
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
@@ -1432,10 +1437,12 @@ function withoutOffTargetAnswer(draft, query) {
 // Law text is precise and easy to misread out of context, so a section is only
 // shown after the model has answered from it and passed the checks. Without
 // that, the card says there is no answer instead of pasting a fragment.
+const LAW_SECTION_URL = /riigiteataja\.ee\/.*#para/u;
+
 function citesRawLawSection(draft) {
   const answer = draft.answer || {};
   const cited = [...(answer.introCitations || []), ...(answer.parts || []).flatMap((part) => part?.citations || [])];
-  return cited.some((citation) => /riigiteataja\.ee\/.*#para/u.test(draft.sources?.[Number(citation) - 1]?.url || ""));
+  return cited.some((citation) => LAW_SECTION_URL.test(draft.sources?.[Number(citation) - 1]?.url || ""));
 }
 
 function withoutRawLawSection(draft) {
@@ -1563,7 +1570,8 @@ async function searchWithinBudget(cleanQuery, {
     && [undefined, "", "all"].includes(filters?.source)
     && [undefined, "", "relevance"].includes(filters?.sort);
   const cacheEnabled = useCache && defaultFilters && isSearchCacheEnabled();
-  const cacheRevision = `${SEARCH_RESPONSE_REVISION}:${searchListingRevision(searchResults)}`;
+  // A saved answer may rest on a law, so it ends when that law's version changes.
+  const cacheRevision = `${SEARCH_RESPONSE_REVISION}:${forestLawVersionStamp()}:${searchListingRevision(searchResults)}`;
   const listingBackedCache = cacheEnabled && Boolean(searchResults?.items?.length);
   if (listingBackedCache) {
     const cached = await readSearchCache(cleanQuery, cacheRevision, { signal, deadlineAt });
@@ -1588,6 +1596,12 @@ async function searchWithinBudget(cleanQuery, {
     total: searchResults?.total,
     now: startedAt,
   }) || composeHarvestShareResponse(retrievalQuery, searchResults?.items, {
+    total: searchResults?.total,
+    now: startedAt,
+  }) || composeMetsandusteatmikResponse(retrievalQuery, searchResults?.items, {
+    total: searchResults?.total,
+    now: startedAt,
+  }) || composeSmiIncrementResponse(retrievalQuery, searchResults?.items, {
     total: searchResults?.total,
     now: startedAt,
   }) || composeForestSeriesResponse(retrievalQuery, searchResults?.items, {
@@ -1929,6 +1943,49 @@ export function searchTimeoutFallback(cleanQuery, {
     limit: 6,
     quality,
   });
+  // A timeout or an unavailable source must not leave the reader with an empty
+  // answer card above the result list. When one already ranked official page
+  // carries the answer as its own sentence, show that sentence with its
+  // citation and say plainly that the model wording did not arrive. The result
+  // list stays below the card either way.
+  // A single sentence from one document only answers a single-value question.
+  // A query about the present ("tänavu", "praegu", "viimati") needs a current
+  // document, and a query that compares, aggregates or tracks change over time
+  // needs the comparison itself, so both fall back to the honest timeout card
+  // instead of lifting one unrelated observation into the answer slot.
+  const freshnessSensitive = queryNeedsFreshness(cleanQuery);
+  const multiObservationQuery = /(?:^|[^\p{L}])(?:v[oõ]rdl\w*|erinevu\w*|muutu\w*|trend\w*|keskmis\w*|ajalug\w*|areng\w*|summa\w*|k[oõ]rgem\w*|madalam\w*|suurem\w*|v[aä]iksem\w*|k[uü]mnend\w*|aastat(?:e|el|eil)\w*|aastan[ui]|aastas\w*|saadik\w*|alguse\w*|periood\w*|vahemik\w*|viimase\w*|viimast\w*|p[aä]rast\w*|t[äa]navu\w*|t[äa]na\w*|praegu\w*|praegus\w*|hetke\w*|j[äa]rgmis\w*|eelmis\w*|mullu\w*|m[öo]ödunud\w*|üleeelmis\w*|üleeel\w*|k[aä]esolev\w*|tuleval?\w*)\b/iu.test(cleanQuery);
+  const requestedYear = new Date(startedAt).getFullYear();
+  const extractDocument = !multiObservationQuery
+    ? ranked.find((document) => {
+      if (!sourceCanSupportPublicCitation(document, { now: startedAt }).eligible) return false;
+      if (LAW_SECTION_URL.test(document.url || "")) return false;
+      if (!freshnessSensitive) return true;
+      const publishedAt = resultPublishedAt(document);
+      return publishedAt !== null && new Date(publishedAt).getFullYear() >= requestedYear;
+    })
+    : null;
+  const citedExtract = extractDocument ? directEvidenceExtract(cleanQuery, extractDocument, null, { requireSubject: true }) : "";
+  const citedExtractCitation = citedExtract
+    ? sourceCitation(draft.sources.find((source) => source.id === extractDocument.id))
+    : 0;
+  if (citedExtract && citedExtractCitation) {
+    draft.sources = draft.sources.map((source) => (source.id === extractDocument.id
+      ? { ...source, evidenceExcerpt: String(extractDocument.content || extractDocument.summary || "") }
+      : source));
+    // The extract is the visible witness the reader can open; the citation is
+    // kept only if that witness really contains it.
+    if (claimHasVisibleWitness(citedExtract, String(extractDocument.content || extractDocument.summary || ""), citedExtract, cleanQuery)) {
+      draft.answer.eyebrow = "Allika viidatud väljavõte";
+      draft.answer.intro = citedExtract;
+      draft.answer.introCitations = [citedExtractCitation];
+      draft.answer.parts = [];
+      draft.answer.aiUnavailable = true;
+      draft.answer.note = `Allika enda sõnastus, mitte mudeli koondvastus.${capacityLimited ? " Otsing teenindas samal ajal mitut päringut." : sourceUnavailable ? " Osa värskeid allikaid ei vastanud." : ""}`;
+      draft.answer.aiUnavailableExtract = true;
+      return publicResponse(draft, { now: startedAt });
+    }
+  }
   draft.answer.eyebrow = capacityLimited
     ? "Otsing on praegu koormatud"
     : sourceUnavailable ? "Osa allikaid ei vastanud" : "Otsing võttis liiga kaua";
@@ -2084,7 +2141,7 @@ export async function searchEnvironmentLive(query, options = {}) {
   const bestAvailableFallback = (reason) => acceptedGroundedDraft
     || searchTimeoutFallback(cleanQuery, { ...canonicalFallbackOptions, reason });
 
-  const configuredDeadlineMs = Math.max(1_000, Math.min(Number(process.env.SEARCH_DEADLINE_MS) || DEFAULT_SEARCH_DEADLINE_MS, 15_000));
+  const configuredDeadlineMs = Math.max(1_000, Math.min(Number(process.env.SEARCH_DEADLINE_MS) || DEFAULT_SEARCH_DEADLINE_MS, DEFAULT_SEARCH_DEADLINE_MS));
   const absoluteDeadline = Number(options.deadlineAt) || startedAt + configuredDeadlineMs;
   if (absoluteDeadline <= Date.now()) {
     return searchTimeoutFallback(cleanQuery, canonicalFallbackOptions);

@@ -659,7 +659,7 @@ test("the context chart prefers the SMI workbook and reuses the citation of the 
   assert.equal(fallback.sources[0].id, kk51.id);
 });
 
-test("the live pipeline keeps the portal answer and adds the context chart under it", async () => {
+test("a starved budget never invents a chart and never leaves the answer empty", async () => {
   const query = "mitu ha metsa on eestis";
   const [seriesDocument] = forestSeriesFromJson(query, kk51Fixture({}, { years: CONTEXT_YEARS, values: CONTEXT_VALUES }), {
     now: NOW,
@@ -680,22 +680,71 @@ test("the live pipeline keeps the portal answer and adds the context chart under
     topics: ["mets", "metsamaa", "pindala", "SMI"],
     tags: ["mets", "metsamaa", "pindala", "SMI"],
   };
-  const live = await searchEnvironmentLive(query, {
+  const starved = await searchEnvironmentLive(query, {
     startedAt: NOW,
     deadlineAt: NOW + 1_000,
     useCache: false,
     searchResults: { items: [portal, seriesDocument], total: 2 },
   });
-  if (live.evidence?.answerable === false || !live.answer.introCitations.length) {
-    // Without a reviewed extract the deterministic pipeline may abstain; the
-    // contract under test is only that an abstention never carries a chart.
-    assert.equal(live.chart, undefined);
-    return;
+  assert.equal(starved.chart, undefined);
+  if (starved.answer.introCitations.length) {
+    // A cited extract from the same visible result set is the only acceptable
+    // non-model answer: it must point at a source the reader can open.
+    assert.equal(starved.answer.aiUnavailable, true);
+    assert.ok(starved.sources.some((source) => source.citation === starved.answer.introCitations[0]));
   }
-  assert.notEqual(live.answer.eyebrow, "Statistikaameti tabel KK51");
-  assert.equal(live.chart.kind, "line");
-  const citedSource = live.sources.find((source) => source.citation === live.chart.citation);
-  assert.equal(citedSource.url, FOREST_SERIES_KK51_TABLE_URL);
+});
+
+test("the live pipeline keeps the portal answer and adds the context chart under it", async () => {
+  const query = "mitu ha metsa on eestis";
+  // The series must look freshly fetched to the pipeline, so this case runs on
+  // the wall clock end to end instead of the frozen `NOW` timeline.
+  const startedAt = Date.now();
+  const [seriesDocument] = forestSeriesFromJson(query, kk51Fixture({}, { years: CONTEXT_YEARS, values: CONTEXT_VALUES }), {
+    now: startedAt,
+    fetchedAt: startedAt,
+  });
+  const portal = {
+    id: "smi-2025-forest-area",
+    title: "SMI 2025: Eesti metsamaa pindala",
+    url: "https://keskkonnaportaal.ee/et/smi-2025",
+    summary: "SMI 2025 järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast.",
+    content: "Keskkonnaagentuuri SMI 2025 tulemuste järgi oli Eesti metsamaa pindala 2,36 miljonit hektarit ehk 52,1% Eesti pindalast.",
+    organization: "Keskkonnaagentuur",
+    type: "Statistika",
+    published: "2026",
+    sourceTier: "official",
+    evidencePolicy: "claim-specific",
+    _answerEvidenceEligible: true,
+    topics: ["mets", "metsamaa", "pindala", "SMI"],
+    tags: ["mets", "metsamaa", "pindala", "SMI"],
+  };
+  const live = await searchEnvironmentLive(query, {
+    startedAt,
+    deadlineAt: startedAt + 30_000,
+    useCache: false,
+    searchResults: { items: [portal, seriesDocument], total: 2 },
+  });
+  // Statistikaamet is excluded as a public publisher, so a KK51 series can be
+  // validated internally yet never become a citable chart: the chart is
+  // withheld rather than citing a publisher the product has excluded.
+  assert.equal(live.chart, undefined);
+  assert.equal(live.sources.some((source) => source.url === FOREST_SERIES_KK51_TABLE_URL), false);
+
+  // The same portal answer with the citable Keskkonnaagentuur workbook series
+  // in the set does carry the chart, and it cites that series.
+  const smiSeries = smiForestSeriesDocument(query);
+  assert.ok(smiSeries);
+  const withSmi = await searchEnvironmentLive(query, {
+    startedAt,
+    deadlineAt: startedAt + 30_000,
+    useCache: false,
+    searchResults: { items: [portal, smiSeries], total: 2 },
+  });
+  assert.equal(withSmi.chart?.kind, "line");
+  const citedSource = withSmi.sources.find((source) => source.citation === withSmi.chart.citation);
+  assert.equal(citedSource.url, SMI_2025_TABLES_URL);
+  assert.notEqual(withSmi.answer.eyebrow, "Statistikaameti tabel KK51");
 });
 
 test("an excluded Statistics Estonia series cannot enter the visible results even for its own question", () => {

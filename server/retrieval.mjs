@@ -16,6 +16,7 @@ import {
   isLatestPublishedHydrologyQuery,
   loadStructuredIndicatorDocuments,
   validatedForestBalanceProjection,
+  validatedSmiHarvestBalanceProjection,
 } from "./indicators.mjs";
 import { resolveForestSeriesIntent, validatedForestSeriesProjection } from "./forest-series.mjs";
 import { forestrySourcePreference } from "./forestry-source-policy.mjs";
@@ -1133,6 +1134,17 @@ function intentEvidenceForDocument(intent, document, edition = null, year = "") 
 }
 
 function forestBalanceClaimEvidence(query, document) {
+  const smiBalance = validatedSmiHarvestBalanceProjection(document);
+  if (smiBalance) {
+    // The same edition publishes both sides of the comparison: the annual
+    // increment and the felling volume of the newest year.
+    return {
+      satisfies: true,
+      score: 0,
+      roles: ["measurement"],
+      passages: claimBearingEvidenceSourcePassages(document),
+    };
+  }
   const projection = hasValidatedForestBalanceProjection(document) ? validatedForestBalanceProjection(document) : null;
   if (projection) {
     const year = requestedQueryYear(query);
@@ -1707,6 +1719,21 @@ function isMiningWaterImpactIntent(roots) {
     && roots.some((root) => ["vesi", "pohjavesi", "puurkaev", "joogivesi", "polevkivi"].includes(root));
 }
 
+// Keskkonnaagentuur published one article that pairs each circulating
+// forestry allegation with its own correction. It is the only evidence shape
+// that can answer "which claims about the forest are false": the pairs must be
+// quoted from that page, never paraphrased, so the page itself has to enter the
+// answer candidate set even when a broad question's wording ranks it below the
+// generic statistics pages.
+const REVIEWED_FOREST_FACT_CHECK_URLS = Object.freeze([
+  "https://keskkonnaagentuur.ee/uudised/keskkonnaagentuur-lukkab-umber-metsastatistika-kohta-kaivad-valevaited",
+  "https://keskkonnaportaal.ee/et/uudised/keskkonnaagentuur-lukkab-umber-metsastatistika-kohta-kaivad-valevaited",
+]);
+
+function isReviewedForestFactCheckSource(document) {
+  return REVIEWED_FOREST_FACT_CHECK_URLS.some((url) => sameSourceResource(document?.url, url));
+}
+
 function isForestOverviewDocument(document) {
   return document?.id === "forest-overview"
     || sameSourceResource(document?.url, FOREST_OVERVIEW_URL);
@@ -1728,6 +1755,9 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
     if (document.id === "protected-area-construction") return 7;
     if (document.id === "protected-nature-guidance") return 3;
   }
+  if (forestEvidenceIntent(query)?.kind === "forest-fact-check") {
+    if (isReviewedForestFactCheckSource(document)) return 7;
+  }
   const climateDailyMean = isClimateDailyMeanQuery(query);
   const requestsHistoricalYear = /\b(?:19|20)\d{2}\b/u.test(normalizedQuery);
   const requestsHistoricalObservations = requestsHistoricalYear
@@ -1741,6 +1771,10 @@ function serviceIntentPriority(query, roots, document, analysis = analyzePublicS
       "wms", "wfs", "geojson", "ruumikiht",
     ].includes(root));
   if (isForestHarvestBalanceQuery(query)) {
+    // The SMI 2025 workbook extract answers the same question from the primary
+    // publisher, so it leads; Eurostat removals stay as the documented
+    // fallback and the methodological qualifier.
+    if (document.id === "forest-balance-smi2025") return 7;
     if (document.id === "forest-balance-eurostat") return 6;
     if (document.id === "forest-balance-eurostat-handbook") return 5.5;
     if (document.id === "forest-balance-kaur-methodology") return 5;
@@ -2275,15 +2309,46 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
   };
 }
 
-export function rankSearchCandidates(query, documents = [], { sort = "relevance", now = Date.now(), reuseRankings } = {}) {
+// Scoring one catalogue document costs a few milliseconds of synchronous regex
+// work, and one search ranks the same document set two or three times. A
+// request-scoped cache keyed by the document's own identity and the measurement
+// edition keeps every decision identical while removing the repeats.
+function measurementEditionKey(edition) {
+  if (!edition) return "none";
+  return `${edition.year}|${edition.dataYear}|${edition.revised ? "revised" : ""}|${edition.artifactSha256 || edition.resourceKey || ""}`;
+}
+
+function rankingCacheKey(query, document, index, now, edition, positionSensitive) {
+  // Freshness scoring reads `now`, so the key carries a minute bucket; the two
+  // rankings inside one request then share every score. A forestry query has no
+  // upstream position bonus, so its scores travel across document orders.
+  return [
+    String(query),
+    positionSensitive ? index : "",
+    document?.id || "",
+    document?._contentHash || "",
+    measurementEditionKey(edition),
+    Math.floor(now / 60_000),
+  ].join("\u0000");
+}
+
+export function rankSearchCandidates(query, documents = [], { sort = "relevance", now = Date.now(), reuseRankings, scoreCache } = {}) {
   const analysis = analyzePublicSearchQuery(query);
   const edition = measurementEdition(query, documents, now);
+  const positionSensitive = !forestEvidenceIntent(query);
   return documents
-    .map((document, index) => ({
-      ...document,
-      _ranking: reuseRankings?.has(document) ? document._ranking
-        : scoreSearchCandidate(query, document, index, now, analysis, { edition }),
-    }))
+    .map((document, index) => {
+      let ranking;
+      const cacheKey = scoreCache instanceof Map
+        ? rankingCacheKey(query, document, index, now, edition, positionSensitive)
+        : null;
+      const cached = cacheKey === null ? undefined : scoreCache.get(cacheKey);
+      if (cached !== undefined) ranking = cached;
+      else if (reuseRankings?.has(document)) ranking = document._ranking;
+      else ranking = scoreSearchCandidate(query, document, index, now, analysis, { edition });
+      if (cacheKey !== null && cached === undefined && ranking) scoreCache.set(cacheKey, ranking);
+      return { ...document, _ranking: ranking };
+    })
     // A reviewed, intent-specific service route is itself a deterministic
     // match signal. Do not discard it merely because a terse directory card
     // has too little lexical overlap to clear the generic numeric score.
@@ -2329,7 +2394,13 @@ function ensureForestryIntentCandidates(query, ranked = [], available = [], opti
   const byId = new Map([...available, ...ranked].map((document) => [document.id, document]));
   const required = requiredIds.map((id) => byId.get(id)).filter(Boolean);
   const missing = required.filter((source) => !ranked.includes(source));
-  const combined = missing.length ? rankAndDeduplicate(query, [...ranked, ...missing], options) : ranked;
+  // The documents in `ranked` already carry their ranking from the pass that
+  // produced them, and forestry scoring has no upstream position bonus, so only
+  // the intent documents that were not in the set need a score. Re-scoring the
+  // whole catalogue here cost seconds of blocking CPU on every forest query.
+  const combined = missing.length
+    ? rankAndDeduplicate(query, [...ranked, ...missing], { ...options, reuseRankings: new Set(ranked) })
+    : ranked;
   const plan = currentListingEvidencePlan(options.previouslyRanked, query, combined, options.sort || "relevance")
     || selectAnswerEvidence(query, combined.filter((document) => document.sourceTier === "official"), { ...options, preRanked: true });
   const lead = combined.find((document) => document.id === plan?.directDocumentId) || combined[0];
@@ -2414,8 +2485,48 @@ export function rankPublicSearchCandidates(query, documents = [], {
   return result;
 }
 
+// The candidate set is a few hundred catalogue entries and the corpus adds a
+// thousand rows, so both duplicate passes must stay near-linear. Scanning every
+// stored document per candidate (the earlier shape) cost seconds of blocking
+// CPU per search on this machine. The index below preserves the exact same
+// decisions: sameDisplayWitness only bridges documents that share a resource,
+// and nearDuplicateTitle needs the same host, the same years and a token-set
+// size within 15 %.
+function nearDuplicateSignature(document) {
+  const titleKey = normalizedTitleKey(document.title);
+  const years = [...titleKey.matchAll(/\b(?:19|20)\d{2}\b/gu)].map((match) => match[0]).join(",");
+  const tokens = new Set(titleKey.split(/\s+/u).filter((token) => token.length >= 3));
+  return {
+    key: `${resultHost(document.url)}|${years}`,
+    size: tokens.size,
+  };
+}
+
+function nearDuplicateSizeRange(size) {
+  return {
+    minimum: Math.max(0, Math.ceil(size * 0.85)),
+    maximum: Math.floor(size / 0.85),
+  };
+}
+
 export function deduplicateResults(documents = []) {
   const byUrl = new Map();
+  const byResource = new Map();
+  const remember = (key, resource, document) => {
+    byUrl.set(key, document);
+    if (!resource) return;
+    const bucket = byResource.get(resource);
+    if (bucket) bucket.add(key);
+    else byResource.set(resource, new Set([key]));
+  };
+  const forget = (key, resource) => {
+    byUrl.delete(key);
+    if (!resource) return;
+    const bucket = byResource.get(resource);
+    if (!bucket) return;
+    bucket.delete(key);
+    if (!bucket.size) byResource.delete(resource);
+  };
   for (const document of documents) {
     if (!document?.url || !document?.title) continue;
     const key = sourceComparisonWitnessKey(document);
@@ -2423,47 +2534,94 @@ export function deduplicateResults(documents = []) {
       byUrl.set(document, document);
       continue;
     }
+    const resource = sourceResourceKey(document.url);
     let current = byUrl.get(key);
-    if (!current) {
-      for (const [storedKey, stored] of byUrl) {
-        if (!sameDisplayWitness(stored, document)) continue;
+    let matchedKey = key;
+    if (!current && resource) {
+      // Only a document that shares this very resource can be the same display
+      // witness under a different key, so the search stays inside one bucket.
+      for (const storedKey of byResource.get(resource) || []) {
+        const stored = byUrl.get(storedKey);
+        if (!stored || !sameDisplayWitness(stored, document)) continue;
         current = stored;
-        byUrl.delete(storedKey);
+        matchedKey = storedKey;
         break;
       }
     }
     if (!current) {
-      byUrl.set(key, document);
+      remember(key, resource, document);
       continue;
     }
-    byUrl.set(key, mergeDuplicate(current, document));
+    forget(matchedKey, sourceResourceKey(current.url));
+    remember(key, resource, mergeDuplicate(current, document));
   }
   const byTitle = new Map();
   const distinct = [];
+  // Near-duplicate index: host + year signature + token-set size bucket.
+  const nearBuckets = new Map();
+  const bucketKeyOf = (signature) => `${signature.key}|${signature.size}`;
+  const nearCandidates = (document) => {
+    const signature = nearDuplicateSignature(document);
+    const { minimum, maximum } = nearDuplicateSizeRange(signature.size);
+    const found = [];
+    for (let size = minimum; size <= maximum; size += 1) {
+      const bucket = nearBuckets.get(`${signature.key}|${size}`);
+      if (bucket) found.push(...bucket);
+    }
+    return found;
+  };
+  const removeFromNearBuckets = (document, index) => {
+    const bucket = nearBuckets.get(bucketKeyOf(nearDuplicateSignature(document)));
+    if (!bucket) return;
+    bucket.delete(index);
+    if (!bucket.size) nearBuckets.delete(bucketKeyOf(nearDuplicateSignature(document)));
+  };
+  const addToNearBuckets = (document, index) => {
+    if (normalizedTitleKey(document.title).length < 20) return;
+    const signature = nearDuplicateSignature(document);
+    if (signature.size < 5) return;
+    const key = bucketKeyOf(signature);
+    const bucket = nearBuckets.get(key);
+    if (bucket) bucket.add(index);
+    else nearBuckets.set(key, new Set([index]));
+  };
   for (const document of byUrl.values()) {
     const titleKey = normalizedTitleKey(document.title);
     if (titleKey.length < 20) {
       distinct.push(document);
       continue;
     }
-    const nearDuplicateIndex = distinct.findIndex((candidate) => nearDuplicateTitle(candidate, document));
+    let nearDuplicateIndex = -1;
+    for (const index of nearCandidates(document)) {
+      if (distinct[index] && nearDuplicateTitle(distinct[index], document)) {
+        nearDuplicateIndex = index;
+        break;
+      }
+    }
     if (nearDuplicateIndex >= 0) {
-      distinct[nearDuplicateIndex] = mergeDuplicate(distinct[nearDuplicateIndex], document);
+      const previous = distinct[nearDuplicateIndex];
+      const merged = mergeDuplicate(previous, document);
+      distinct[nearDuplicateIndex] = merged;
+      removeFromNearBuckets(previous, nearDuplicateIndex);
+      addToNearBuckets(merged, nearDuplicateIndex);
       continue;
     }
     const currentIndex = byTitle.get(titleKey);
     if (currentIndex === undefined) {
       byTitle.set(titleKey, distinct.length);
+      addToNearBuckets(document, distinct.length);
       distinct.push(document);
       continue;
     }
     const current = distinct[currentIndex];
     if (distinctPdfPageLocations(current.url, document.url)) {
+      addToNearBuckets(document, distinct.length);
       distinct.push(document);
       continue;
     }
     if (sameSourceResource(current.url, document.url)
       && sourceComparisonWitnessKey(current) !== sourceComparisonWitnessKey(document)) {
+      addToNearBuckets(document, distinct.length);
       distinct.push(document);
       continue;
     }
@@ -2574,6 +2732,9 @@ export async function prepareRankedSearchResults(query, {
   }
   throwIfRetrievalClosed(signal, deadlineAt);
   const prefixLocalLimit = 50;
+  // One request ranks the same catalogue documents two or three times; share
+  // one score cache so only the first pass pays for scoring.
+  const scoreCache = new Map();
   const directory = shouldUseLiveDiscovery(safePage)
     ? officialServiceCatalogueDocuments().filter((document) => resultMatchesFilters(document, appliedFilters))
     : [];
@@ -2582,7 +2743,7 @@ export async function prepareRankedSearchResults(query, {
     preferSnapshot: false, filters: appliedFilters, signal, deadlineAt,
   });
   const reviewedDirectory = forestEvidenceIntent(query)?.kind === "forest-overview"
-    ? rankPublicSearchCandidates(query, directory, { sort: appliedFilters.sort, intentDocuments: directory })
+    ? rankPublicSearchCandidates(query, directory, { sort: appliedFilters.sort, intentDocuments: directory, scoreCache })
     : null;
   const reviewedPlan = currentListingEvidencePlan(reviewedDirectory, query, reviewedDirectory || [], appliedFilters.sort);
   let reviewedRankedPrefix = null;
@@ -2591,7 +2752,11 @@ export async function prepareRankedSearchResults(query, {
     throwIfRetrievalClosed(signal, deadlineAt);
     const ranked = local?.items?.length
       ? rankPublicSearchCandidates(query, [...local.items, ...directory], {
-          sort: appliedFilters.sort, intentDocuments: directory, previouslyRanked: reviewedDirectory,
+          sort: appliedFilters.sort,
+          intentDocuments: directory,
+          previouslyRanked: reviewedDirectory,
+          reuseRankings: new Set(reviewedDirectory),
+          scoreCache,
         })
       : reviewedDirectory;
     // Reuse only the unchanged actual role set. A changed required snapshot
@@ -2642,9 +2807,16 @@ export async function prepareRankedSearchResults(query, {
   const rankedPrefix = reviewedRankedPrefix || rankPublicSearchCandidates(query, [...(local.items || []), ...filteredStructured, ...filteredLive, ...directory], {
     sort: appliedFilters.sort,
     intentDocuments: directory,
+    scoreCache,
   });
   const localUrls = new Set((local.items || []).map((document) => sourceWitnessKey(document)));
-  const facetExtras = (reviewedRankedPrefix || rankAndDeduplicate(acceptedQuery, [...filteredStructured, ...filteredLive, ...directory]))
+  // Facet counts are computed from the ranked set itself. Re-ranking the same
+  // documents a second time only to count their sources, categories and years
+  // doubled the blocking CPU of every search; the retained-plan path keeps its
+  // own ranking because its prefix is a filtered subset.
+  const facetExtras = (reviewedRankedPrefix
+    ? rankAndDeduplicate(acceptedQuery, [...filteredStructured, ...filteredLive, ...directory])
+    : rankedPrefix)
     .filter((document) => !localUrls.has(sourceWitnessKey(document)));
   let selected = rankedPrefix.slice(offset, offset + safePageSize);
   const missing = safePageSize - selected.length;

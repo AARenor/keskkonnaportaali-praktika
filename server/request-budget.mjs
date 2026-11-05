@@ -1,10 +1,11 @@
-export const DEFAULT_SEARCH_DEADLINE_MS = 25_000;
-export const JSON_SEARCH_DEADLINE_CEILING_MS = 22_000;
+export const DEFAULT_SEARCH_DEADLINE_MS = 60_000;
+export const JSON_SEARCH_DEADLINE_CEILING_MS = 50_000;
 export const DEFAULT_SEARCH_CONCURRENCY = 8;
 export const DEFAULT_SEARCH_QUEUE = 32;
 // Slow listings still leave enough time for hydration, grounded synthesis,
-// citation rebinding and transport under the 15 s public request deadline.
-const FINAL_RESPONSE_RESERVE_MS = 7_500;
+// citation rebinding and transport under the 90 s public response budget. A
+// reader waits longer rather than losing the grounded answer to a timeout.
+const FINAL_RESPONSE_RESERVE_MS = 12_000;
 
 export function configuredSearchBudgetMs(
   value = process.env.SEARCH_DEADLINE_MS,

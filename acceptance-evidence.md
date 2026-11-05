@@ -259,7 +259,7 @@ Mudeli sisend sisaldab küsimust, ranget skeemi ja kuni kümne juba järjestatud
 | Ühine järjestatud hetktõmmis | `server/retrieval.mjs`, `server/pipeline.mjs` | 24 qrel'i, filtri- ja viitetestid |
 | Tüübikindel ametlik arvunäitaja | `server/indicators.mjs`, `server/integrations.mjs` | CSV-fixtuuri unit-testid ja live grounding-audit |
 | Luna range JSON ja maandatus | `server/llm.mjs` | adversariaalsed LLM unit-testid, live grounding audit |
-| Progressiivse voo 15 s ja kõik-korraga liidese 12 s vastusepiir | `server/index.mjs`, `server/request-budget.mjs`, `server/pipeline.mjs` | fault-injection ja live load audit |
+| Progressiivse voo 60 s ja kõik-korraga liidese 50 s vastusepiir | `server/index.mjs`, `server/request-budget.mjs`, `server/pipeline.mjs` | fault-injection ja live load audit |
 | Upstream'i voogedastav baitpiir, cache-baidieelarve ja autocomplete'i värav | `server/upstream.mjs`, `server/integrations.mjs`, `server/index.mjs` | chunked-body, LRU, koondamise, concurrency ja abort unit-testid |
 | Globaalne ja kliendipõhine tasulise LLM-töö eelarve | `server/llm-budget.mjs`, `server/agent-orchestrator.mjs`, `server/llm.mjs` | halvima juhu reservatsiooni, kliendieralduse, manageri ja mõlema spetsialisti koondkasutuse, hilise/varase katkestuse, valideerimisvea, akna aegumise ning fallback-oleku unit-testid |
 | Terrapointi täisrakendus | `src/App.jsx`, CSP `frame-src` | desktopi/mobiili Playwrighti teekond |

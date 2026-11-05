@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { FOREST_LAWS, currentForestLawDocuments, parseLawSections, refreshForestLaws, resetForestLawsForTests, reviewedLawSummaryIsOutdated } from "../server/law-texts.mjs";
+import { FOREST_LAWS, currentForestLawDocuments, forestLawVersionStamp, parseLawSections, refreshForestLaws, resetForestLawsForTests, reviewedLawSummaryIsOutdated } from "../server/law-texts.mjs";
 import { asksOnlyForestAmount } from "../server/forest-series.mjs";
 import { repeatsEarlierAnswer } from "../server/search.mjs";
 import { answersAskedConcept, answersPermissionQuestion, assessEvidence, assessSearchQuery, composeScopeResponse, containsPrivatePersonLookup, composeSearchResponse, extractAnswersQuery, isForestRelatedQuery, isNonAnswerText } from "../server/search.mjs";
@@ -333,6 +333,8 @@ test("law text is withheld when it can no longer be confirmed, and replaced when
     await refreshForestLaws({ fetchImpl: lawFeed({ inForce: "200000000001" }).fetchImpl, now: LAW_NOW });
     assert.equal(currentForestLawDocuments({ now: LAW_NOW })[0]._lawVersionId, "200000000001");
     assert.equal(reviewedLawSummaryIsOutdated(summary), true);
+    assert.equal(forestLawVersionStamp({ now: LAW_NOW }), "200000000001,200000000001");
+    assert.equal(forestLawVersionStamp({ now: LAW_NOW + 25 * 3_600_000 }), "none,none");
     // A version that ends is dropped even if nothing newer could be read.
     assert.equal(currentForestLawDocuments({ now: Date.parse("2033-01-01T00:00:00Z") }).length, 0);
   } finally {

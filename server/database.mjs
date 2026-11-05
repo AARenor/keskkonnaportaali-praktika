@@ -166,7 +166,7 @@ const databaseTlsConfiguration = databaseUrl ? resolveDatabaseTls({ url: databas
 assertSearchHashSecret({ databaseUrl, secret: searchHashSecret });
 const DATABASE_QUERY_TIMEOUT_MS = Math.max(
   500,
-  Math.min(Number(process.env.DATABASE_QUERY_TIMEOUT_MS) || 4_000, 10_000),
+  Math.min(Number(process.env.DATABASE_QUERY_TIMEOUT_MS) || 8_000, 20_000),
 );
 
 export function queryFingerprint(query, revision = "legacy", secret = searchHashSecret) {

@@ -82,7 +82,7 @@ eraldi lokaalse stack'i leping ega määra selle tootmisrakenduse runtime'i.
    gateway bearer'iga, `LLM_BASE_URL=https://terrapoint.arle.top/v1`,
    `LLM_MODEL=openai-codex/gpt-6-luna`,
    `LLM_ORCHESTRATION=direct`, `LLM_ENABLED=true`, `LLM_REASONING_EFFORT=low`
-   ja `LLM_TIMEOUT_MS=23000`. Hoia olemasolevad concurrency-, tokeni-,
+   ja `LLM_TIMEOUT_MS=45000`. Hoia olemasolevad concurrency-, tokeni-,
    eelarve-, proxy-, andmebaasi- ja privaatsuspiirid alles.
    Toetatud effort'id on `low` ja `medium`; `minimal` ja `none` peatavad
    käivituse. 3200 väljundtokeni taotlus on rakenduse eelarvereserv, mitte

@@ -26,6 +26,19 @@ export function niceDomain(min, max, { fromZero = false } = {}) {
   return { lo, hi, ticks };
 }
 
+// A quantity series is drawn from zero. An axis that starts just below the
+// smallest published value makes a 14 % change look like a doubling, which is
+// exactly how a reader misreads a raiemaht or pindala chart. Only a series
+// that actually contains a negative value keeps a padded domain, because zero
+// is not its natural floor.
+export function chartDomain(values = [], { kind = "line" } = {}) {
+  const numbers = (Array.isArray(values) ? values : []).filter((value) => Number.isFinite(value));
+  if (!numbers.length) return niceDomain(0, 1, { fromZero: true });
+  const minimum = Math.min(...numbers);
+  const maximum = Math.max(...numbers);
+  return niceDomain(minimum, maximum, { fromZero: kind === "bar" || minimum >= 0 });
+}
+
 export function splitRuns(points = []) {
   const runs = [];
   let current = [];

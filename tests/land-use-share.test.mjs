@@ -171,9 +171,15 @@ test("structured loader adds the SMI land-category split without fetching KK07 a
     topics: ["mets", "metsamaa", "pindala", "SMI"],
     tags: ["mets", "metsamaa", "pindala", "SMI"],
   };
+  // `NOW` is a frozen calendar instant in the past, so a deadline derived from
+  // it would starve the pipeline before it could attach the chart. This case
+  // therefore runs on the wall clock and lets the deterministic path finish;
+  // the starved-budget contract (no chart without a cited answer) is asserted
+  // right below.
+  const startedAt = Date.now();
   const live = await searchEnvironmentLive(query, {
-    startedAt: NOW,
-    deadlineAt: NOW + 1_000,
+    startedAt,
+    deadlineAt: startedAt + 30_000,
     useCache: false,
     searchResults: { items: [portal, smi], total: 2 },
   });
@@ -181,6 +187,13 @@ test("structured loader adds the SMI land-category split without fetching KK07 a
     assert.equal(live.chart, undefined);
     return;
   }
+  const starved = await searchEnvironmentLive(query, {
+    startedAt,
+    deadlineAt: startedAt + 1_000,
+    useCache: false,
+    searchResults: { items: [portal, smi], total: 2 },
+  });
+  assert.equal(starved.chart, undefined);
   assert.equal(live.chart.kind, "share");
   assert.equal(live.sources.find((source) => source.citation === live.chart.citation).url, SMI_2025_TABLES_URL);
 });

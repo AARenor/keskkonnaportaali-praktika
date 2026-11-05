@@ -1,6 +1,6 @@
 const DEFAULT_HTTP_CONNECTIONS = 256;
-const DEFAULT_RESPONSE_IDLE_TIMEOUT_MS = 30_000;
-const DEFAULT_RESPONSE_ABSOLUTE_TIMEOUT_MS = 60_000;
+const DEFAULT_RESPONSE_IDLE_TIMEOUT_MS = 60_000;
+const DEFAULT_RESPONSE_ABSOLUTE_TIMEOUT_MS = 150_000;
 
 const RESERVED_HEALTH_PATHS = new Set([
   "/api/health",
@@ -66,13 +66,13 @@ export function resolvePublicResponseBudget(environment = {}) {
     environment.PUBLIC_RESPONSE_IDLE_TIMEOUT_MS,
     DEFAULT_RESPONSE_IDLE_TIMEOUT_MS,
     5_000,
-    30_000,
+    120_000,
   );
   const absoluteTimeoutMs = boundedInteger(
     environment.PUBLIC_RESPONSE_ABSOLUTE_TIMEOUT_MS,
     DEFAULT_RESPONSE_ABSOLUTE_TIMEOUT_MS,
     idleTimeoutMs + 1_000,
-    120_000,
+    240_000,
   );
   return {
     maximumConnections,
@@ -201,12 +201,12 @@ export function createPublicResponseBudget({
     1,
     Math.min(clientLimit, generalLimit),
   );
-  const idleLimitMs = boundedInteger(idleTimeoutMs, DEFAULT_RESPONSE_IDLE_TIMEOUT_MS, 1_000, 30_000);
+  const idleLimitMs = boundedInteger(idleTimeoutMs, DEFAULT_RESPONSE_IDLE_TIMEOUT_MS, 1_000, 120_000);
   const absoluteLimitMs = boundedInteger(
     absoluteTimeoutMs,
     DEFAULT_RESPONSE_ABSOLUTE_TIMEOUT_MS,
     idleLimitMs + 1,
-    120_000,
+    240_000,
   );
   const activeByClient = new Map();
   const generalByClient = new Map();

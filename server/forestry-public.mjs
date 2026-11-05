@@ -108,6 +108,20 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     _forestryIntentKinds: ["clearcut-over-time", "clearcut-last-ten-years"],
   },
   {
+    id: "mets-fact-check-corrections",
+    title: "Keskkonnaagentuur lükkab ümber metsastatistika kohta käivad valeväited",
+    organization: "Keskkonnaagentuur",
+    type: "Uudis",
+    published: "17.03.2023",
+    url: "https://keskkonnaagentuur.ee/uudised/keskkonnaagentuur-lukkab-umber-metsastatistika-kohta-kaivad-valevaited",
+    tags: ["mets", "valeväited", "metsastatistika", "SMI", "desinformatsioon", "raiemaht", "juurdekasv"],
+    summary: "Keskkonnaagentuur vastab viiele metsastatistika kohta levivale väitele ja selgitab iga väite juures, mida näitavad SMI andmed ja metsakorralduse juhend. Artikkel eristab väite allika enda selgitusest; see on 2023. aasta avaldamisaegne vastus, mitte hinnang väidete praegusele levimusele.",
+    content: "Viimastel päevadel ja kuul on ilmunud mitmeid artikleid metsastatistika teemal. Olles mures võimaliku eksitava informatsiooni leviku pärast ning tasakaalustatuma arvamuse kujundamiseks soovime omalt poolt kommenteerida olulisemaid väiteid. 1. 10 aasta pärast on raieküps mets Eestis otsas ja oodata on puidupuudust. Praegune üleraie ei saa enam pikalt kesta. Keskkonnaagentuur on korduvalt öelnud, et võimalik raiemaht hakkab tasapisi langema, mingit krahhi aga oodata ei ole. 2021. aasta lageraiete pind koos sanitaarse seisundi tõttu raiutud lageraietega oli ca 30 000 ha, ühtlase kasutuse langiks on Keskkonnaagentuuri hinnangul 25 400 ha (ilma sanitaarse seisundi tõttu lageraieteta). Arvutus ei sisalda range kaitsega metsi, madala tootlikkusega metsi ja väga väikese levikuga enamuspuuliikide metsi, samuti on kaitsemetsade raievõimalus vähendatud pindalaga. Ka liikumisel ühtlase kasutuseni ei oleks võimalike raiemahtude langus drastiline. 2. Metsaregistrile esitatakse valeandmeid. Metsaregistrisse esitatavad andmed on korrektsed ja lubatud veamäära ei ületa. Erinevused SMI-ga tulenevad metoodikate erinevusest. Näiteks ei arvestata metsakorralduses täies mahus teist rinnet ja järelkasvu. Metsa korraldamise juhend sätestab, et esimese rinde tagavara viga ei tohi ületada keskealistes ja vanemates puistutes 20% ning latimetsades 30%. Noorendike tagavara arvutamisele juhend veaprotsente ei määra. II rinde tagavara määramisele viga ei sätestata, kuid II rinne on kohustuslik kirjeldada, kui selle täius on vähemalt 15% (hektaritagavara alates ca 20 m3). 3. SMI metoodika näitab suuremat hektaritagavara kui tavametsakorraldus. Silmamõõdulise tavametsakorralduse metsa tagavara alahindamine sai selgeks peale SMI puu tasemel mõõtmise alustamist 2000ndate alguses. Täpsemalt on teemat selgitatud meie blogis. 4. Netojuurdekasvu mõiste. Võrreldava tulemuse saamiseks tuleks võrrelda samu näitajaid ja kasutada korrektseid mõisteid. Postimehe MAH uuring nimetab netojuurdekasvuks ja kohati ka keskmiseks juurdekasvuks arvutust: „metsa juurdekasv võrdub metsa puidutagavara jagatud vanusega“. See on vale, tegelikkuses ei ole see kumbki, mõlemad mõisted on rahvusvaheliselt üheselt mõistetavalt defineeritud. MAH arvutus näitab tegelikult keskmise metsa tagavara muutumise keskmist. On loogiline, et see on väiksem ka proovitüki keskmisest tagavara muutumisest, rääkimata netojuurdekasvust või ka keskmisest juurdekasvust. 5. KAUR esitab Forest Europe’le valeandmeid. Raportile State of Europe’s Forest esitatakse andmed iga viie aasta tagant. 2018. aastal esitati andmed, kus kogu metsamaa suremus 2,2 mln m3/a arvutati 2000 − 2017 aastate keskmisena. Selle hinnangu üldist kehtivust on väga lihtne kontrollida. SMI järgi oli aastal 2000 tagavara 431 mln m3 ning aastal 2017 tagavara 490 mln m3, st tagavara suurenes perioodil 2000 − 2017 59 mln m3 võrra. Kui lahutada perioodi 2000 − 2017 iga aasta kohta jooksvast juurdekasvust suremus ja raiemaht, siis saame tagavara suurenemiseks 61 mln m3. Need hinnangud klapivad pikema perioodi kohta SMIga kenasti kokku. Keskkonnaagentuur on seisukohal, et statistiline metsainventuur ehk SMI praegune andmekogumise süsteem on otstarbekas ja võimaldab saada adekvaatsed statistilised hinnangud metsa näitajate kohta. Loomulikult saab andmeid täpsemaks ja kasutajasõbralikumaks muuta, selle poole püüdleb ka Keskkonnaagentuur. Oleme sama meelt selles, et mets ja selle jätkusuutlik majandamine on eestimaalastele oluline ning raiemahtude üle tuleb arutada ja teha tarku otsuseid.",
+    locator: "Artikli sisu tervikuna: numereeritud väited 1–5 ja Keskkonnaagentuuri selgitused nende järel.",
+    _publishedAt: "2023-03-17",
+    _forestryIntentKinds: ["forest-fact-check"],
+  },
+  {
     id: "forest-balance-kaur-methodology",
     title: "Netojuurdekasvu ja raie tasakaal",
     organization: "Keskkonnaagentuur",
@@ -867,12 +881,15 @@ const INTENTS = {
     minimumSupportingDocuments: 1,
   },
   "forest-increment-overview": {
-    serviceDocumentIds: ["forest-area", "forest-smi-2025-presentation", "increment-method"],
-    discoveryQueries: ["SMI metsamaa juurdekasv 15,4303 miljonit tihumeetrit", "metsa juurdekasv hektari kohta"],
+    serviceDocumentIds: ["increment-method", "forest-area", "forest-smi-2025-presentation"],
+    discoveryQueries: ["SMI metsamaa juurdekasv 15 458 tuhat m³", "metsa juurdekasv hektari kohta"],
+    // The newest SMI edition states the increment as 15 458 thousand m³ per
+    // year (6,55 m³/ha); the previous edition's 15,4303 million m³ stays
+    // acceptable so an older official PDF is not silently disqualified.
     evidenceGroups: [
-      ["15,4303"],
+      ["15 458", "15,458", "15,4303"],
       ["juurdekasv"],
-      ["6,6"],
+      ["6,55", "6,6"],
       ["±1,4%", "1,4%"],
     ],
     minimumSupportingDocuments: 1,
@@ -1141,7 +1158,7 @@ const INTENTS = {
     requiresQueryBoundObservation: true,
   },
   "forest-fact-check": {
-    serviceDocumentIds: [],
+    serviceDocumentIds: ["mets-fact-check-corrections"],
     discoveryQueries: ["metsastatistika valeväited", "Keskkonnaagentuur lükkab ümber valeväited"],
     evidenceGroups: [],
     minimumSupportingDocuments: 1,

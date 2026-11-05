@@ -1037,8 +1037,11 @@ test("progressive answer endpoint and broad result pagination remain separate co
   assert.doesNotMatch(app, /Vastuses viidatud allikad/u);
   const resultsView = app.match(/function SearchResults[\s\S]*?function PrivacyDisclosure/u)?.[0] || "";
   assert.match(resultsView, /<BroadSearchResults/u);
-  assert.match(resultsView, /\{resultsFirst \? broadResults : null\}[\s\S]*?<article className="answer-card">/u);
-  assert.match(resultsView, /\{resultsFirst \? null : broadResults\}/u);
+  // The answer card leads even when no model answer was produced: the ranked
+  // list stays below it, and the card carries either a cited source extract or
+  // an explicit statement that no grounded answer was produced.
+  assert.doesNotMatch(resultsView, /resultsFirst/u);
+  assert.match(resultsView, /<article className="answer-card">[\s\S]*?\{broadResults\}/u);
   assert.doesNotMatch(resultsView, /sources-section|sources-list|Kõik viidatud allikad/u);
   assert.match(server, /searchPage\(request, "page_size", 12, 50\)/u);
   assert.match(server, /app\.post\("\/api\/search\/stream"/u);

@@ -445,6 +445,9 @@ async function handleSearch(request, response) {
   const lifecycle = bindRequestAbort(request, response);
   const { controller } = lifecycle;
   let releaseSearch = () => undefined;
+  // Declared outside the inner try so the outer catch can reuse a listing that
+  // retrieval already resolved before the answer budget ran out.
+  let resolvedListing = null;
   const cleanupLease = createDeadlineCleanupLease(() => {
     releaseSearch();
     lifecycle.cleanup();
@@ -465,6 +468,9 @@ async function handleSearch(request, response) {
     // The legacy all-at-once JSON route must leave enough transport margin for
     // clients and reverse proxies. The browser uses the progressive stream,
     // which keeps the full configured answer budget and emits results first.
+    // A timeout must not discard a listing that retrieval already resolved: the
+    // fallback answer is built from those very results, so the same ranking
+    // backs both the answer card and the visible list.
     const payload = await settleWithinDeadline((async () => {
       const searchResults = await prepareRankedSearchResults(query, {
         page,
@@ -474,6 +480,7 @@ async function handleSearch(request, response) {
         signal: controller.signal,
         clientKey: llmClientKey,
       });
+      resolvedListing = searchResults;
       const result = await searchEnvironmentLive(query, {
         startedAt,
         deadlineAt,
@@ -485,8 +492,13 @@ async function handleSearch(request, response) {
       });
       return { ...result, searchResults: publicSearchListing(searchResults) };
     })(), deadlineAt - Date.now(), () => ({
-      ...searchTimeoutFallback(query, { assessmentQuery: query }),
-      searchResults: emptySearchListing(filters, page, pageSize),
+      ...searchTimeoutFallback(query, {
+        assessmentQuery: query,
+        ...(resolvedListing ? { searchResults: resolvedListing } : {}),
+      }),
+      searchResults: resolvedListing
+        ? publicSearchListing(resolvedListing)
+        : emptySearchListing(filters, page, pageSize),
     }), controller, { onBackgroundCleanup: cleanupLease.track });
     // The response echoes the query for rendering. Keep it out of the browser's
     // persistent HTTP cache; the server-side hash-keyed cache remains available.
@@ -501,8 +513,14 @@ async function handleSearch(request, response) {
     }));
     response.setHeader("Cache-Control", "no-store");
     return response.status(200).json({
-      ...searchTimeoutFallback(query, { assessmentQuery: query, reason: "source-error" }),
-      searchResults: emptySearchListing(filters, page, pageSize),
+      ...searchTimeoutFallback(query, {
+        assessmentQuery: query,
+        reason: "source-error",
+        ...(resolvedListing ? { searchResults: resolvedListing } : {}),
+      }),
+      searchResults: resolvedListing
+        ? publicSearchListing(resolvedListing)
+        : emptySearchListing(filters, page, pageSize),
     });
   } finally {
     cleanupLease.finish();

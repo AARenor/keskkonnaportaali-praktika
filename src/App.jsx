@@ -914,7 +914,7 @@ function sourceTierLabel(value) {
   return "Veebiallikas";
 }
 
-function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRef, interactive = true, onSearch = null, aiUnavailable = false }) {
+function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRef, interactive = true, onSearch = null, aiUnavailable = false, answerCited = false }) {
   if (!listing && !busy) return null;
   const total = Number(listing?.total || 0);
   const distinctTotal = Number(listing?.distinctTotal || total);
@@ -939,7 +939,9 @@ function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRe
           <h2 id="broad-results-title" ref={headingRef} tabIndex={-1}>Otsingutulemused</h2>
           <p>{aiUnavailable
             ? total
-              ? "AI-vastust ei saanud koostada. Leitud tulemused on esitatud enne vastusekaarti."
+              ? answerCited
+                ? "AI-sõnastust ei saanud koostada. Ülal olev vastusekaart esitab allika enda viidatud väljavõtte."
+                : "AI-sõnastust ei saanud koostada. Leitud tulemused on esitatud allpool."
               : "AI-vastust ei saanud koostada. Laiast indeksist tulemusi ei leitud."
             : distinctTotal < total
               ? `Leidsin ${total.toLocaleString("et-EE")} vastet ja ühendasin need ${distinctTotal.toLocaleString("et-EE")} eri leheks. Ülal olev koondvastus kasutab sama filtreeritud tulemuste hulka.`
@@ -1089,7 +1091,10 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
   const appliedFilters = clientSearchFilters(listing?.appliedFilters || result?.searchResults?.appliedFilters);
   const aiUnavailable = Boolean(result?.answer?.aiUnavailable);
   const visibleListing = listing || result?.searchResults || previewListing;
-  const resultsFirst = aiUnavailable && Number(visibleListing?.total || 0) > 0;
+  // The answer card always leads. A missing model answer is a status of that
+  // card, never a reason to push the ranked list above it: the card still
+  // carries either the cited source extract or an explicit statement that no
+  // grounded answer was produced.
   const loadListingPage = async (page) => {
     listingRequestRef.current.controller?.abort();
     const id = listingRequestRef.current.id + 1;
@@ -1139,6 +1144,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
       onPage={loadListingPage}
       onSearch={onSearch}
       aiUnavailable={aiUnavailable}
+      answerCited={Boolean(result?.answer?.introCitations?.length)}
     />
   );
   const askFollowUp = async (questionValue) => {
@@ -1205,7 +1211,6 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
         {error ? <div className="search-error" role="alert"><CircleHelp size={22} /><div><strong>Otsingut ei saanud lõpetada</strong><p>{error}</p><button className="error-retry" disabled={busy} onClick={() => onSearch(query, { filters: appliedFilters })} type="button">Proovi uuesti</button></div></div> : null}
         {hasResult ? (
           <>
-            {resultsFirst ? broadResults : null}
             <article className="answer-card">
               {busy ? <div className="answer-progress"><LoaderCircle className="spin" size={16} /> Kontrollin veel AI-sõnastust …</div> : null}
               <div className="answer-label"><Sparkles size={17} /><span>{result.answer.eyebrow || "AI koondvastus"}</span></div>
@@ -1288,7 +1293,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
               </div>
             </article>
 
-            {resultsFirst ? null : broadResults}
+            {broadResults}
 
             {result.related?.length ? (
               <section className="related-section">

@@ -171,6 +171,13 @@ export function currentForestLawDocuments({ now = Date.now() } = {}) {
   });
 }
 
+export function forestLawVersionStamp({ now = Date.now() } = {}) {
+  return FOREST_LAWS.map((law) => {
+    const state = lawState.get(law.key);
+    return usable(state, now) ? state.versionId : "none";
+  }).join(",");
+}
+
 // The short reviewed summaries were written against one version. Once the feed
 // names another, what they say may no longer hold, so they step aside.
 export function reviewedLawSummaryIsOutdated(document) {

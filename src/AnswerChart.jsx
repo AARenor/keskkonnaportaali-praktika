@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { chartDescription, formatChartValue, niceDomain, seriesPrecision, shareArcs, splitRuns, xTickStep } from "./answer-chart-layout.js";
+import { chartDescription, chartDomain, formatChartValue, seriesPrecision, shareArcs, splitRuns, xTickStep } from "./answer-chart-layout.js";
 import { sourceOrganizationLabel } from "./source-label.js";
 
 const HEIGHT = 260;
@@ -62,7 +62,7 @@ function SeriesChart({ chart, citation = null, sourceDiffers = false }) {
     const series = chart.series;
     const years = [...new Set(series.flatMap((item) => item.points.map((point) => point.x)))].sort((a, b) => a - b);
     const values = series.flatMap((item) => item.points.map((point) => point.y));
-    const domain = niceDomain(Math.min(...values), Math.max(...values), { fromZero: chart.kind === "bar" });
+    const domain = chartDomain(values, { kind: chart.kind });
     const plotWidth = Math.max(80, width - MARGIN.left - MARGIN.right);
     const plotHeight = HEIGHT - MARGIN.top - MARGIN.bottom;
     const minYear = years[0];
