@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { rankPublicSearchCandidates } from "../server/retrieval.mjs";
 import { FOREST_LAWS, currentForestLawDocuments, definesLawTerm, focusedLawSection, forestLawVersionStamp, parseLawSections, refreshForestLaws, resetForestLawsForTests, reviewedLawSummaryIsOutdated } from "../server/law-texts.mjs";
 import { asksOnlyForestAmount } from "../server/forest-series.mjs";
-import { repeatsEarlierAnswer } from "../server/search.mjs";
+import { officialServiceCatalogueDocuments, repeatsEarlierAnswer } from "../server/search.mjs";
 import { answersAskedConcept, answersPermissionQuestion, assessEvidence, assessSearchQuery, composeScopeResponse, containsPrivatePersonLookup, composeSearchResponse, extractAnswersQuery, isForestRelatedQuery, isNonAnswerText } from "../server/search.mjs";
 import { searchEnvironmentLive } from "../server/pipeline.mjs";
 import { blockedFollowUpAssessment, contextualRetrievalQuery, isContinuationFollowUp } from "../server/retrieval.mjs";
@@ -273,6 +274,7 @@ test("a news list on any route fails the card check", () => {
 const LAW_XML = `<?xml version="1.0"?><oigusakt><metaandmed><vastuvoetud><aktikuupaev>2006-06-07</aktikuupaev></vastuvoetud><avaldamismarge id="a"><RTosa>RT I</RTosa><avaldamineKuupaev>2026-05-12+03:00</avaldamineKuupaev><RTartikkel>20</RTartikkel></avaldamismarge></metaandmed>
 <paragrahv id="para23b1"><paragrahvNr ylaIndeks="1">23</paragrahvNr><kuvatavNr><![CDATA[§ 23<sup>1</sup>. ]]></kuvatavNr><paragrahvPealkiri id="p">Vääriselupaik</paragrahvPealkiri>
 <loige id="l1"><kuvatavNr><![CDATA[(1)]]></kuvatavNr><sisuTekst><tavatekst>Vääriselupaiga korra kehtestab </tavatekst><viide><kuvatavTekst>valdkonna eest vastutav minister</kuvatavTekst></viide><tavatekst> määrusega ja see kehtib kogu Eestis.</tavatekst></sisuTekst><muutmismarge id="m"><tavatekst>RT mark - </tavatekst></muutmismarge></loige>
+<loige id="l0"><kuvatavNr><![CDATA[(4)]]></kuvatavNr><sisuTekst><tavatekst>Vääriselupaik on ala, kus haruldaste liikide esinemise tõenäosus on suur.</tavatekst></sisuTekst></loige>
 <loige id="l2"><kuvatavNr id="n"><![CDATA[(2)]]></kuvatavNr><muutmismarge id="x"><tavatekst>Kehtetu - </tavatekst></muutmismarge></loige>
 <loige id="l3"><kuvatavNr><![CDATA[(3)]]></kuvatavNr><sisuTekst><tavatekst>Rinnaspindala ei tohi olla väiksem kui:</tavatekst></sisuTekst><sisuTekst><HTMLKonteiner><![CDATA[<table><tr><td>mänd</td><td>16</td></tr></table>]]></HTMLKonteiner></sisuTekst></loige></paragrahv></oigusakt>`;
 
@@ -349,16 +351,44 @@ test("a question about one legal term gets the sentence defining it, not the sec
   const other = section("b", "Metsateatis", "(1) Kui metsateatis on esitatud paberil, saadab Keskkonnaamet väljavõtte. Raadamine on selles paragrahvis ainult nimetatud näitena.");
   assert.equal(focusedLawSection("raadamine mida see tähendab", [other, raadamine]).id, "a");
   assert.match(focusedLawSection("mis on raadamine", [raadamine]).content, /^\(1\) Raadamine on raie/u);
+  assert.match(focusedLawSection("mis on raadamine", [raadamine])._lawDefinition, /^Raadamine on raie, mida tehakse/u);
   const notice = section("c", "Registriväljavõte", "(1) Kui metsateatis on esitatud paberil, saadab Keskkonnaamet väljavõtte ja märgib selle metsaregistrisse.");
   assert.equal(focusedLawSection("mis on metsateatis", [notice]), null);
   assert.equal(focusedLawSection("raie", [raadamine]), null);
   assert.equal(focusedLawSection("kui palju raadamine maksab", [raadamine]), null);
   assert.equal(definesLawTerm("mis on metsateatis", "Metsateatis on dokument, mille omanik esitab."), true);
   assert.equal(definesLawTerm("mis on metsateatis", "Kui metsateatis on esitatud paberil."), false);
+  const seed = section("e", "Seemnepuud", "(2) Seemnepuud, mis ei ole säilikpuud, võib koristada sanitaarraie korras pärast nende ülesande täitmist.");
+  assert.equal(focusedLawSection("seemnepuud", [seed])._lawDefinition, "");
   const dead = section("d", "Metsa uuendamine", "(5) Käesoleva seaduse tähenduses loetakse hukkunuks mets, milles tuulekahjustuste tõttu on elusate puude võrade liitus alla 30 protsendi.");
   assert.equal(focusedLawSection("hukkunud mets mõiste", [dead]).id, "d");
 });
 
 test("vääriselupaik counts as a forest word", () => {
   assert.equal(isForestRelatedQuery("mis on vääriselupaik"), true);
+});
+
+test("a law definition is shown word for word with its citation, without the model", async () => {
+  resetForestLawsForTests();
+  const minimums = FOREST_LAWS.map((law) => law.minimumSections);
+  FOREST_LAWS.forEach((law) => { law.minimumSections = 1; });
+  try {
+    await refreshForestLaws({ fetchImpl: lawFeed().fetchImpl });
+    const query = "mis on vääriselupaik";
+    const directory = officialServiceCatalogueDocuments();
+    const items = rankPublicSearchCandidates(query, directory, { intentDocuments: directory }).slice(0, 12);
+    let modelCalls = 0;
+    const result = await searchEnvironmentLive(query, {
+      searchResults: { total: items.length, items },
+      useCache: false,
+      deadlineAt: Date.now() + 9_000,
+      generateAnswer: async () => { modelCalls += 1; return { answer: null, acceptedClaims: [], attempt: {} }; },
+    });
+    assert.equal(result.answer.intro, "Vääriselupaik on ala, kus haruldaste liikide esinemise tõenäosus on suur.");
+    assert.match(result.sources[result.answer.introCitations[0] - 1].url, /riigiteataja\.ee\/akt\/.*#para23b1$/u);
+    assert.equal(modelCalls, 0);
+  } finally {
+    FOREST_LAWS.forEach((law, index) => { law.minimumSections = minimums[index]; });
+    resetForestLawsForTests();
+  }
 });

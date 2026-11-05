@@ -86,7 +86,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v84-focused-law-term";
+export const SEARCH_RESPONSE_REVISION = "answer-v85-law-definition-verbatim";
 const DEFAULT_SEARCH_DEADLINE_MS = 60_000;
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
@@ -1272,7 +1272,7 @@ export async function createPortalDraft(query, {
     const broadDocument = answerDocuments.find((document) => document.id === quality.broadDocumentId);
     // A focused law section already holds only the sentences about the term.
     const extract = broadDocument?._focusedLawTerm
-      ? String(broadDocument.content).split(/(?<=[.;])\s/u)[0].replace(/^\(\d+[^)]*\)\s*/u, "")
+      ? broadDocument._lawDefinition || String(broadDocument.content).split(/(?<=[.;])\s/u)[0].replace(/^\(\d+[^)]*\)\s*/u, "")
       : broadDocument ? directEvidenceExtract(retrievalQuery, broadDocument, null, { requireSubject: true }) : "";
     const broadCitation = broadDocument
       ? answerDocuments.findIndex((document) => document.id === broadDocument.id) + 1
@@ -1290,6 +1290,8 @@ export async function createPortalDraft(query, {
         note: "",
       };
       draft.clarification = null;
+      // The law's own definition, word for word, needs no rewording by the model.
+      if (broadDocument?._lawDefinition) draft.evidence.lawDefinitionIntro = extract;
     }
   }
   if (forestBalance) {
@@ -1459,6 +1461,7 @@ function citesRawLawSection(draft) {
 
 function withoutRawLawSection(draft) {
   if (!draft.answer?.intro || !citesRawLawSection(draft)) return draft;
+  if (draft.evidence?.lawDefinitionIntro && draft.answer.intro === draft.evidence.lawDefinitionIntro) return draft;
   return {
     ...draft,
     answer: { ...draft.answer, eyebrow: NO_ANSWER_EYEBROW, intro: NO_ANSWER_INTRO, introCitations: [], parts: [] },
@@ -1716,7 +1719,8 @@ async function searchWithinBudget(cleanQuery, {
   draft = withoutOffTargetAnswer(draft, retrievalQuery);
   draft.generatedAt = new Date().toISOString();
   const evidencePack = draft.evidence?.sourceEvidencePack;
-  const canGenerate = shouldGenerateGroundedAnswer(draft) && evidencePack?.complete === true;
+  const canGenerate = shouldGenerateGroundedAnswer(draft) && evidencePack?.complete === true
+    && !(draft.evidence?.lawDefinitionIntro && draft.answer?.intro === draft.evidence.lawDefinitionIntro);
   const llmBudget = remainingBudget(deadlineAt, 300);
   if (canGenerate && llmBudget >= 500 && typeof onDraft === "function" && !citesRawLawSection(draft)) {
     throwIfRequestAborted(signal);

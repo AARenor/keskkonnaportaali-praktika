@@ -196,7 +196,8 @@ export function askedLawTerm(query) {
 function definitionPattern(stems) {
   const orders = stems.length === 2 ? [stems, [...stems].reverse()] : [stems];
   const forms = orders.map((order) => order.map((stem) => `${stem}\\p{L}*`).join(stems.length === 2 ? " (?:on )?" : " "));
-  return new RegExp(`(?:^|[.;:] |loetakse )\\p{L}{0,12}(?:${forms.join("|")})(?: on\\b|,? (?:mis|mille|milles) )`, "u");
+  const term = `\\p{L}{0,12}(?:${forms.join("|")})`;
+  return new RegExp(`(?:^|[.;:] )${term} on\\b|\\bloetakse ${term}`, "u");
 }
 
 function stemOf(word) {
@@ -226,11 +227,16 @@ export function focusedLawSection(query, documents = []) {
     const score = (defining.length ? 4 : 0) + (inHeading ? 2 : 0) + (opening.length ? 1 : 0);
     if (!score) continue;
     const lead = [...new Set([...defining, ...opening, ...matching])].slice(0, 5);
-    ranked.push({ document, score, content: lead.join(" ") });
+    ranked.push({ document, score, content: lead.join(" "), definition: defining[0] });
   }
   const best = ranked.sort((left, right) => right.score - left.score)[0];
   if (!best || best.content.length < MINIMUM_SECTION_LENGTH) return null;
-  return { ...best.document, content: best.content, _focusedLawTerm: words.join(" ") };
+  return {
+    ...best.document,
+    content: best.content,
+    _focusedLawTerm: words.join(" "),
+    _lawDefinition: best.definition ? best.definition.replace(/^\(\d+[^)]*\)\s*/u, "").trim() : "",
+  };
 }
 
 export function definesLawTerm(query, text) {
