@@ -1675,6 +1675,47 @@ test("a grounded SMI comparison may state the supported non-synonym conclusion",
   assert.deepEqual(answer.introCitations, [1, 2]);
 });
 
+test("a long model introduction is kept complete instead of being cut inside a sentence", () => {
+  const query = "Mis vahe on SMI ja metsaandmed?";
+  const sentences = [
+    "Metsaandmed on mitmel viisil kogutavate andmete katusmõiste, mis hõlmab nii statistilist valikuuringut kui ka kinnistupõhist registrit.",
+    "SMI on üleriigiline proovitükkidega valikuuring, mille põhjal koostatakse kogu Eesti metsade kohta üldistatud statistiline hinnang.",
+    "Metsaregister sisaldab kinnistute metsainventeerimise andmeid ja seda täidetakse metsateatiste ning ekspertiiside kaudu.",
+    "Seetõttu ei ole metsaandmed SMI sünonüüm, vaid laiem katusmõiste, mille üks osa on statistiline valikuuring ja teine osa registriandmed.",
+    "Lugeja jaoks tähendab see, et mõõdetav objekt, katvus ja andmete kogumise viis tuleb vastuses alati eraldi nimetada.",
+    "Kui neid kihte omavahel segada, tekib mulje, et üks allikas asendab teist, kuigi tegelikult täiendavad need teineteist eri otstarvetel.",
+    "Statistilise valikuuringu tugevus on üleriigiline üldistus ja ajas võrreldavus, sest proovitükid valitakse kindla metoodika järgi igal aastal uuesti.",
+    "Registri tugevus on omakorda kinnistupõhine täpsus, mis vastab küsimusele, mida konkreetsel maatükil tehti ja millal seda inventeeriti.",
+    "Seepärast peab vastus nimetama mõlema allika rolli, mõõdetava objekti ja andmete kogumise viisi, mitte valima neist ainult ühte esindama kogu metsa.",
+  ];
+  const longIntro = sentences.join(" ");
+  assert.ok(longIntro.length > 900);
+  const draft = {
+    evidence: { kind: "ranked-search-results", answerable: true },
+    answer: {
+      title: query,
+      intro: "Metsaandmed on katusmõiste. SMI on statistiline valikuuring.",
+      introCitations: [1],
+      parts: [],
+      note: "Kontrolli algallikat.",
+    },
+    sources: [{
+      citation: 1,
+      title: "Metsandus: SMI ja Metsaregister",
+      content: longIntro,
+    }],
+  };
+
+  const { answer } = validateGroundedAnswer({
+    intro: longIntro,
+    intro_citations: [1],
+    parts: [],
+  }, explicitEvidenceDraft(draft), query, buildEvidencePack({ sources: explicitEvidenceDraft(draft).sources, query: query, plan: null }));
+
+  assert.ok(answer.intro.length > 900, `expected the full introduction, got ${answer.intro.length} characters`);
+  assert.ok(answer.intro.trim().endsWith(sentences.at(-1)), "expected the last complete sentence to survive");
+});
+
 test("LLM citation binding removes an unrelated aggregate source", () => {
   const query = "Tallinn air quality monitoring at permanent stations";
   const draft = {
