@@ -23,6 +23,8 @@ import {
   createRollingLlmBudget,
   createClientScopedLlmBudget,
   estimatedLlmBudgetUsage,
+  MAX_ANSWER_INTRO_CHARS,
+  MAX_ANSWER_PART_CHARS,
   llmBudgetDenial,
   normalizedProviderUsage,
   resolveLlmRollingBudget,
@@ -44,10 +46,6 @@ export function resolveLlmTimeout(value = process.env.LLM_TIMEOUT_MS) {
   return Math.max(500, Math.min(Number(value) || 45_000, 60_000));
 }
 const timeoutMs = resolveLlmTimeout();
-export function resolveMaxTokens(value = process.env.LLM_MAX_TOKENS) {
-  return Math.max(1_000, Math.min(Number(value) || 3_200, 3_200));
-}
-const maxTokens = resolveMaxTokens();
 const llmRollingLimits = resolveLlmRollingBudget();
 const llmRollingBudget = createRollingLlmBudget(llmRollingLimits);
 const llmClientLimits = resolveLlmClientBudget();
@@ -124,13 +122,31 @@ function validCitations(values, sourceCount) {
     .filter((citation) => Number.isInteger(citation) && citation >= 1 && citation <= sourceCount))];
 }
 
+// A length bound is a sanity limit, never a knife: text that runs past it is
+// cut back to its last complete sentence, and text with no sentence boundary is
+// kept whole, because a fragment in the middle of a sentence is rejected by
+// every grounding check and the reader loses the answer entirely.
+function trimToCompleteSentence(text, maximumLength) {
+  if (text.length <= maximumLength) return text;
+  const window = text.slice(0, maximumLength);
+  const boundary = Math.max(
+    window.lastIndexOf(". "),
+    window.lastIndexOf("! "),
+    window.lastIndexOf("? "),
+    window.lastIndexOf("."),
+    window.lastIndexOf("!"),
+    window.lastIndexOf("?"),
+  );
+  return boundary > 0 ? window.slice(0, boundary + 1).trim() : text;
+}
+
 function cleanGeneratedText(value, maxLength) {
-  return String(value || "")
+  const cleaned = String(value || "")
     .replace(/\s*\[(?:\s*\d+\s*(?:,\s*\d+\s*)*)\]/gu, "")
     .replace(/[\t\r\n\u2028\u2029]+/gu, "; ")
     .replace(/\s+/gu, " ")
-    .trim()
-    .slice(0, maxLength);
+    .trim();
+  return trimToCompleteSentence(cleaned, maxLength);
 }
 
 
@@ -1742,7 +1758,7 @@ function validateGroundedProposal(payload, draft, query, evidencePack) {
     ? suppliedIntroCitations
     : (sourceCount === 1 ? [1] : []);
   const directDraftCitations = validCitations(draft.answer?.introCitations, sourceCount);
-  const proposedIntro = cleanGeneratedText(payload?.intro || draft.answer.intro || "", 900);
+  const proposedIntro = cleanGeneratedText(payload?.intro || draft.answer.intro || "", MAX_ANSWER_INTRO_CHARS);
   const proposedText = [proposedIntro, ...(Array.isArray(payload?.parts) ? payload.parts : []).map((part) => String(part?.text || ""))].join("\n");
   if (glossaryAvoidHits(proposedText, evidencePack?.entries).length) {
     throw new Error("LLM used a forestry term the glossary marks as a mistranslation");
@@ -1789,7 +1805,7 @@ function validateGroundedProposal(payload, draft, query, evidencePack) {
       })?.title;
       return {
         title: cleanGeneratedText(reviewedTitle || (index === 0 ? "Põhivastus" : "Oluline täpsustus"), 120),
-        text: cleanGeneratedText(part?.text || "", 1_200),
+        text: cleanGeneratedText(part?.text || "", MAX_ANSWER_PART_CHARS),
         citations,
       };
     })
@@ -1955,7 +1971,6 @@ export function buildLlmRequest({
   query,
   evidence,
   singleSource,
-  selectedMaxTokens = maxTokens,
   conversationContext = "",
   directIntroCitations = [],
   directIntro = "",
@@ -2016,10 +2031,10 @@ export function buildLlmRequest({
     detail_requirement: "Pikkus peab tulema uuest viidatud selgitusest, piirangust või praktilisest kontrollsammust; kui evidence seda ei toeta, vasta lühemalt ja ära lisa täidet.",
   };
   if (singleSource) {
-    outputContract.length_guidance = "Ühe allika korral kirjuta 3–5 sisukat lauset, üldjuhul 70–130 sõna, ja jäta parts tühjaks.";
+    outputContract.length_guidance = "Ühe allika korral kirjuta nii palju sisukaid lauseid, kui tõend vastust kannab, ja jäta parts tühjaks. Vastuse pikkusel ei ole ülempiiri.";
     outputContract.source_rule = "Intro ja iga parts.text faktilised laused vali evidence.content lausete hulgast ning jäta nende sõnastus muutmata. Võid tõendilauseid valida ja järjestada, kuid ära lisa parafraase, analoogiaid ega tõendist tuletatud järeldusi. Lühendi selgituseks kasuta ainult tõendi enda definitsioonilauset. Viitenumbrid pane ainult intro_citations ja parts.citations väljadele, mitte teksti.";
   } else if (answerIntent?.kind !== "forest-overview") {
-    outputContract.length_guidance = "Kirjuta 2–4-lauseline otsene intro ning 2–4 lühikest parts-osa; kogu vastuse siht on üldjuhul 100–190 sõna.";
+    outputContract.length_guidance = "Kirjuta otsene intro ning nii palju parts-osi, kui tõendist tuleb sisulisi eristusi. Vastuse pikkusel ei ole ülempiiri: pikkus tuleb tõendatud selgitusest, mitte lühendamise nõudest.";
   }
   const user = JSON.stringify({
     evidence,
@@ -2048,7 +2063,6 @@ export function buildLlmRequest({
           schema: GROUNDED_RESPONSE_SCHEMA,
         },
       },
-      max_output_tokens: selectedMaxTokens,
       store: false,
       stream: false,
     },
@@ -2103,7 +2117,6 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
       query,
       evidence,
       singleSource,
-      selectedMaxTokens: maxTokens,
       conversationContext: options.conversationContext || "",
       directIntroCitations: validCitations(draft.answer?.introCitations, draft.sources.length),
       directIntro: draft.answer?.intro || "",
@@ -2114,7 +2127,6 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
     if (!orchestrated) {
       reservation = llmScopedBudget.reserve(clientScopeKey, estimatedLlmBudgetUsage({
         orchestrated: false,
-        maxTokens,
         inputBytes: Buffer.byteLength(requestBody, "utf8"),
       }));
       if (!reservation.ok) {
@@ -2139,7 +2151,6 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
           baseUrl,
           model,
           reasoningEffort,
-          maxTokens,
           systemInstructions,
           userInput,
           signal,

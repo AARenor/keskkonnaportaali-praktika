@@ -9,6 +9,8 @@ import {
 import {
   AGENT_MANAGER_MAX_TURNS,
   AGENT_SPECIALIST_MAX_TOKENS,
+  MAX_ANSWER_INTRO_CHARS,
+  MAX_ANSWER_PART_CHARS,
   AGENT_SPECIALIST_MAX_TURNS,
   estimatedInputTokensFromBytes,
   normalizedProviderUsage,
@@ -23,11 +25,14 @@ const requiredReviewByManager = new WeakMap();
 
 const citationList = z.array(z.number().int().min(1).max(10)).max(10);
 
+// The answer schema carries no length ceiling: a complete, sourced explanation
+// may be longer than the earlier 900/1 200 character windows, and a slice in the
+// middle of a sentence is no longer the way an overlong answer is handled.
 export const GROUNDED_AGENT_OUTPUT = z.object({
-  intro: z.string().min(1).max(900),
+  intro: z.string().min(1).max(MAX_ANSWER_INTRO_CHARS),
   intro_citations: citationList,
   parts: z.array(z.object({
-    text: z.string().min(1).max(1_200),
+    text: z.string().min(1).max(MAX_ANSWER_PART_CHARS),
     citations: citationList,
   }).strict()).max(5),
 }).strict();
@@ -35,7 +40,6 @@ export const GROUNDED_AGENT_OUTPUT = z.object({
 export function createGroundedSearchAgents({
   model = LLM_GATEWAY_MODEL,
   reasoningEffort = "low",
-  maxTokens = 3_200,
   systemInstructions = "",
   runner,
   reviewInput = "",
@@ -109,7 +113,6 @@ export function createGroundedSearchAgents({
     modelSettings: {
       reasoning: { effort },
       text: { verbosity: "medium" },
-      maxTokens: Math.max(600, Math.min(Number(maxTokens) || 3_200, 4_000)),
       toolChoice: "review_evidence",
       parallelToolCalls: false,
       store: false,
@@ -421,7 +424,6 @@ export async function runGroundedSearchOrchestration({
   baseUrl,
   model,
   reasoningEffort,
-  maxTokens,
   systemInstructions,
   userInput,
   signal,
@@ -460,7 +462,6 @@ export async function runGroundedSearchOrchestration({
   const { manager } = createGroundedSearchAgents({
     model,
     reasoningEffort,
-    maxTokens,
     systemInstructions,
     runner,
     reviewInput: userInput,

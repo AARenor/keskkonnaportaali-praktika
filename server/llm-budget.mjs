@@ -7,6 +7,12 @@ function boundedInteger(value, fallback, minimum, maximum) {
 export const AGENT_MANAGER_MAX_TURNS = 2;
 export const AGENT_SPECIALIST_MAX_TURNS = 1;
 export const AGENT_SPECIALIST_MAX_TOKENS = 700;
+// The answer itself has no output-token ceiling; only the rolling budget
+// reservation needs an estimate, and the answer shape needs a sanity bound wide
+// enough that a complete explanation is never cut inside a sentence.
+export const AGENT_MANAGER_ANSWER_TOKENS = 4_000;
+export const MAX_ANSWER_INTRO_CHARS = 6_000;
+export const MAX_ANSWER_PART_CHARS = 4_000;
 
 export function estimatedInputTokensFromBytes(inputBytes = 0) {
   const boundedInputBytes = nonnegativeInteger(inputBytes) ?? 0;
@@ -43,8 +49,8 @@ export function resolveLlmClientBudget({
   };
 }
 
-export function estimatedLlmBudgetUsage({ orchestrated = false, maxTokens = 3_200, inputBytes = 0 } = {}) {
-  const managerTokens = boundedInteger(maxTokens, 3_200, 256, 4_000);
+export function estimatedLlmBudgetUsage({ orchestrated = false, inputBytes = 0 } = {}) {
+  const managerTokens = AGENT_MANAGER_ANSWER_TOKENS;
   const estimatedInputTokens = estimatedInputTokensFromBytes(inputBytes);
   const inputReservation = estimatedInputTokens > 0 ? estimatedInputTokens + 512 : 0;
   if (!orchestrated) return { requests: 1, tokens: managerTokens + inputReservation };

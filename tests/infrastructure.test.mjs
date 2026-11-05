@@ -29,6 +29,7 @@ import { createCoalescedTtlSnapshot } from "../server/corpus.mjs";
 import {
   createRollingLlmBudget,
   createClientScopedLlmBudget,
+  AGENT_MANAGER_ANSWER_TOKENS,
   estimatedLlmBudgetUsage,
   estimatedLlmBudgetTokens,
   resolveLlmRollingBudget,
@@ -44,7 +45,6 @@ import {
   numericClaimBindingsMatch,
   resolveLlmConcurrency,
   resolveLlmTimeout,
-  resolveMaxTokens,
   validateGroundedAnswer,
 } from "../server/llm.mjs";
 import { buildEvidencePack } from "../server/evidence-pack.mjs";
@@ -2146,11 +2146,9 @@ test("model credentials are bound to the exact approved HTTPS gateway base", () 
   }
 });
 
-test("provider generation limits cannot exceed the public deadline or output cap", () => {
+test("provider generation limits cannot exceed the public deadline", () => {
   assert.equal(resolveLlmTimeout(600_000), 60_000);
   assert.equal(resolveLlmTimeout(500), 500);
-  assert.equal(resolveMaxTokens(100_000), 3_200);
-  assert.equal(resolveMaxTokens(1), 1_000);
 });
 
 test("unsupported reasoning effort exits the actual server before listening", () => {
@@ -2221,24 +2219,26 @@ test("successful LLM work consumes one process-wide rolling allowance", () => {
     requestBudget: 60,
     tokenBudget: 240_000,
   });
-  assert.equal(estimatedLlmBudgetTokens({ orchestrated: false, maxTokens: 3_200 }), 3_200);
-  assert.deepEqual(estimatedLlmBudgetUsage({ orchestrated: false, maxTokens: 3_200 }), {
+  assert.equal(estimatedLlmBudgetTokens({ orchestrated: false }), AGENT_MANAGER_ANSWER_TOKENS);
+  assert.deepEqual(estimatedLlmBudgetUsage({ orchestrated: false }), {
     requests: 1,
-    tokens: 3_200,
+    tokens: AGENT_MANAGER_ANSWER_TOKENS,
   });
   assert.deepEqual(estimatedLlmBudgetUsage({
     orchestrated: false,
-    maxTokens: 3_200,
     inputBytes: 1_000,
   }), {
     requests: 1,
-    tokens: 4_712,
+    tokens: AGENT_MANAGER_ANSWER_TOKENS + 1_512,
   });
-  assert.deepEqual(estimatedLlmBudgetUsage({ orchestrated: true, maxTokens: 3_200 }), {
+  assert.deepEqual(estimatedLlmBudgetUsage({ orchestrated: true }), {
     requests: 4,
-    tokens: 7_800,
+    tokens: 2 * AGENT_MANAGER_ANSWER_TOKENS + 1_400,
   });
-  assert.equal(estimatedLlmBudgetTokens({ orchestrated: true, maxTokens: 3_200 }), 7_800);
+  assert.equal(
+    estimatedLlmBudgetTokens({ orchestrated: true }),
+    2 * AGENT_MANAGER_ANSWER_TOKENS + 1_400,
+  );
 });
 
 test("rolling LLM reservations reconcile aggregate agent usage without erasing partial work", () => {
@@ -2381,7 +2381,6 @@ test("Luna uses the Responses API with strict structured output", () => {
     query: "Ｋａｓ metsad muutuvad nooremaks?",
     evidence,
     singleSource: true,
-    selectedMaxTokens: 1_600,
   });
   assert.equal(request.endpoint, "/responses");
   assert.equal(request.body.model, "openai-codex/gpt-6-luna");
@@ -2392,7 +2391,7 @@ test("Luna uses the Responses API with strict structured output", () => {
   assert.equal(request.body.stream, false);
   assert.equal(request.body.messages, undefined);
   assert.equal(request.body.temperature, undefined);
-  assert.equal(request.body.max_output_tokens, 1_600);
+  assert.equal(request.body.max_output_tokens, undefined);
   assert.equal(
     JSON.parse(request.body.input[1].content[0].text).question,
     "Kas metsad muutuvad nooremaks?",
@@ -2407,7 +2406,6 @@ test("Luna uses the Responses API with strict structured output", () => {
     query: "Mida see tähendab?",
     evidence,
     singleSource: true,
-    selectedMaxTokens: 1_600,
     conversationContext: safeContext,
   });
   const followUpPayload = JSON.parse(followUpRequest.body.input[1].content[0].text);

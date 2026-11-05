@@ -40,7 +40,6 @@ test("Agents SDK manager owns the answer and exposes one mandatory composite rev
   const { manager } = createGroundedSearchAgents({
     model: "openai-codex/gpt-6-luna",
     reasoningEffort: "low",
-    maxTokens: 9_999,
     systemInstructions: "Kasuta ainult evidence'i.",
   });
 
@@ -48,7 +47,7 @@ test("Agents SDK manager owns the answer and exposes one mandatory composite rev
   assert.equal(manager.modelSettings.toolChoice, "review_evidence");
   assert.equal(manager.modelSettings.parallelToolCalls, false);
   assert.equal(manager.modelSettings.store, false);
-  assert.equal(manager.modelSettings.maxTokens, 4_000);
+  assert.equal(manager.modelSettings.maxTokens, undefined);
 });
 
 test("agent orchestration is the default but retains an explicit direct escape hatch", () => {
@@ -717,7 +716,6 @@ test("the real SDK Responses transport preserves the Codex selector, tool review
     baseUrl: "https://terrapoint.arle.top/v1",
     model: "openai-codex/gpt-6-luna",
     reasoningEffort: "low",
-    maxTokens: 1_600,
     systemInstructions: "Kasuta ainult evidence'i ja tagasta nõutud JSON.",
     userInput,
     timeoutMs: 1_000,

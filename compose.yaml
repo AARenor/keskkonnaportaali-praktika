@@ -29,7 +29,6 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:-https://terrapoint.arle.top/v1}
       LLM_MODEL: ${LLM_MODEL:-openai-codex/gpt-6-luna}
       LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-23000}
-      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-3200}
       LLM_REASONING_EFFORT: ${LLM_REASONING_EFFORT:-low}
       LLM_ORCHESTRATION: ${LLM_ORCHESTRATION:-direct}
       LLM_CIRCUIT_BREAK_MS: ${LLM_CIRCUIT_BREAK_MS:-900000}
