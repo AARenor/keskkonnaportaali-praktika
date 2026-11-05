@@ -1,3 +1,4 @@
+import { currentForestLawDocuments, reviewedLawSummaryIsOutdated } from "./law-texts.mjs";
 import { forestrySourcePreference } from "./forestry-source-policy.mjs";
 import { bindSourceToVisibleService } from "./source-identity.mjs";
 import { createHash } from "node:crypto";
@@ -8624,7 +8625,13 @@ export function officialServiceCatalogueDocuments() {
     sourceTier: "official",
     retrieval: "official-service-directory",
   }));
-  return [...directory, ...forestryDirectory, ...cadastreSourceDocuments()]
+  const lawSections = currentForestLawDocuments().map((document) => withReviewedCatalogueEvidence({
+    ...document,
+    topics: [...document.tags],
+    sourceTier: "official",
+    retrieval: "official-service-directory",
+  }));
+  return [...directory, ...forestryDirectory.filter((document) => !reviewedLawSummaryIsOutdated(document)), ...lawSections, ...cadastreSourceDocuments()]
     .map(withOfficialSourceProfile);
 }
 

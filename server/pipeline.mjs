@@ -81,7 +81,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v81-no-news-list-answers";
+export const SEARCH_RESPONSE_REVISION = "answer-v82-current-law-sections";
 const DEFAULT_SEARCH_DEADLINE_MS = 15_000;
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
@@ -1429,6 +1429,24 @@ function withoutOffTargetAnswer(draft, query) {
   };
 }
 
+// Law text is precise and easy to misread out of context, so a section is only
+// shown after the model has answered from it and passed the checks. Without
+// that, the card says there is no answer instead of pasting a fragment.
+function citesRawLawSection(draft) {
+  const answer = draft.answer || {};
+  const cited = [...(answer.introCitations || []), ...(answer.parts || []).flatMap((part) => part?.citations || [])];
+  return cited.some((citation) => /riigiteataja\.ee\/.*#para/u.test(draft.sources?.[Number(citation) - 1]?.url || ""));
+}
+
+function withoutRawLawSection(draft) {
+  if (!draft.answer?.intro || !citesRawLawSection(draft)) return draft;
+  return {
+    ...draft,
+    answer: { ...draft.answer, eyebrow: NO_ANSWER_EYEBROW, intro: NO_ANSWER_INTRO, introCitations: [], parts: [] },
+    clarification: null,
+  };
+}
+
 function stableRevisionValue(value) {
   if (Array.isArray(value)) return value.map(stableRevisionValue);
   if (value && typeof value === "object") {
@@ -1673,7 +1691,7 @@ async function searchWithinBudget(cleanQuery, {
   const evidencePack = draft.evidence?.sourceEvidencePack;
   const canGenerate = shouldGenerateGroundedAnswer(draft) && evidencePack?.complete === true;
   const llmBudget = remainingBudget(deadlineAt, 300);
-  if (canGenerate && llmBudget >= 500 && typeof onDraft === "function") {
+  if (canGenerate && llmBudget >= 500 && typeof onDraft === "function" && !citesRawLawSection(draft)) {
     throwIfRequestAborted(signal);
     onDraft(publicResponse(withForestContextChart(withLandUseShareChart(draft, retrievalQuery, searchResults?.items, { now: startedAt }), retrievalQuery, searchResults?.items, { now: startedAt }), { now: startedAt }));
   }
@@ -1726,9 +1744,9 @@ async function searchWithinBudget(cleanQuery, {
     // supported by the bounded excerpt a reader can actually inspect.
     visibleRejected = !answerClaimsHaveVisibleWitnesses(modelDraft)
       || !answersAskedConcept(retrievalQuery, answerCardText(modelDraft));
-    draft = visibleRejected ? deterministicDraft : modelDraft;
+    draft = visibleRejected ? withoutRawLawSection(deterministicDraft) : modelDraft;
   } else {
-    draft = deterministicDraft;
+    draft = withoutRawLawSection(deterministicDraft);
   }
   // Related navigation is reviewed local product copy, never provider output.
   draft.related = reviewedRelatedQuestions(draft.related, 6);

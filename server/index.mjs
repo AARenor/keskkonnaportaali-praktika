@@ -1,3 +1,4 @@
+import { startForestLawChecks } from "./law-texts.mjs";
 import express from "express";
 import { createServer } from "node:http";
 import path from "node:path";
@@ -1156,6 +1157,7 @@ server.listen(port, "0.0.0.0", () => {
   corpusRefreshInterval.unref();
   continuousCorpusBackfillTimer = startContinuousCorpusBackfill();
   void refreshReviewedCatalogue().catch(() => undefined);
+  startForestLawChecks();
   scheduleOfficialDiscoveryMaintenance();
   officialDiscoveryMaintenanceTimer = setInterval(
     () => scheduleOfficialDiscoveryMaintenance(),

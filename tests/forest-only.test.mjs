@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { FOREST_LAWS, currentForestLawDocuments, parseLawSections, refreshForestLaws, resetForestLawsForTests, reviewedLawSummaryIsOutdated } from "../server/law-texts.mjs";
 import { asksOnlyForestAmount } from "../server/forest-series.mjs";
 import { repeatsEarlierAnswer } from "../server/search.mjs";
 import { answersAskedConcept, answersPermissionQuestion, assessEvidence, assessSearchQuery, composeScopeResponse, containsPrivatePersonLookup, composeSearchResponse, extractAnswersQuery, isForestRelatedQuery, isNonAnswerText } from "../server/search.mjs";
@@ -267,4 +268,75 @@ test("a term asked as 'X mis see tähendab' must be named, and a news list is no
 
 test("a news list on any route fails the card check", () => {
   assert.equal(answersAskedConcept("kui palju metsa on rmk valduses", "Hiljutised uudised Vaata kõiki Mets RMK avas taotlusvooru"), false);
+});
+
+const LAW_XML = `<?xml version="1.0"?><oigusakt><metaandmed><vastuvoetud><aktikuupaev>2006-06-07</aktikuupaev></vastuvoetud><avaldamismarge id="a"><RTosa>RT I</RTosa><avaldamineKuupaev>2026-05-12+03:00</avaldamineKuupaev><RTartikkel>20</RTartikkel></avaldamismarge></metaandmed>
+<paragrahv id="para23b1"><paragrahvNr ylaIndeks="1">23</paragrahvNr><kuvatavNr><![CDATA[§ 23<sup>1</sup>. ]]></kuvatavNr><paragrahvPealkiri id="p">Vääriselupaik</paragrahvPealkiri>
+<loige id="l1"><kuvatavNr><![CDATA[(1)]]></kuvatavNr><sisuTekst><tavatekst>Vääriselupaiga korra kehtestab </tavatekst><viide><kuvatavTekst>valdkonna eest vastutav minister</kuvatavTekst></viide><tavatekst> määrusega ja see kehtib kogu Eestis.</tavatekst></sisuTekst><muutmismarge id="m"><tavatekst>RT mark - </tavatekst></muutmismarge></loige>
+<loige id="l2"><kuvatavNr id="n"><![CDATA[(2)]]></kuvatavNr><muutmismarge id="x"><tavatekst>Kehtetu - </tavatekst></muutmismarge></loige>
+<loige id="l3"><kuvatavNr><![CDATA[(3)]]></kuvatavNr><sisuTekst><tavatekst>Rinnaspindala ei tohi olla väiksem kui:</tavatekst></sisuTekst><sisuTekst><HTMLKonteiner><![CDATA[<table><tr><td>mänd</td><td>16</td></tr></table>]]></HTMLKonteiner></sisuTekst></loige></paragrahv></oigusakt>`;
+
+function lawFeed({ inForce = "112052026020", starts = "2026-06-30T21:00:00Z", ends = "2032-12-30T22:00:00Z", agreed = inForce, status = 200 } = {}) {
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(url);
+    const respond = (body) => ({ ok: status === 200, status, json: async () => body, text: async () => body });
+    if (url.endsWith("/redaktsioonid")) return respond({ kehtivRedaktsioon: agreed });
+    if (url.endsWith("/blob-xml")) return respond(LAW_XML);
+    const title = url.includes("12771900") ? "Metsa majandamise eeskiri" : "Metsaseadus";
+    return respond({ kehtivId: inForce, grupiId: 1, aktiParameetrid: { pealkiri: title, kehtivuseAlgus: starts, kehtivuseLopp: ends } });
+  };
+  return { fetchImpl, calls };
+}
+const LAW_NOW = Date.parse("2026-11-05T12:00:00Z");
+const LAWS_WITH_ONE_SECTION = FOREST_LAWS.length;
+
+test("law text keeps linked phrases and tables, and drops amendment marks and repealed subsections", () => {
+  const [section] = parseLawSections(LAW_XML);
+  assert.equal(section.number, "§ 23¹");
+  assert.match(section.text, /kehtestab valdkonna eest vastutav minister määrusega/u);
+  assert.match(section.text, /mänd \| 16/u);
+  assert.doesNotMatch(section.text, /Kehtetu|RT mark|\(2\)/u);
+});
+
+test("only the law version in force today, confirmed by the feed, is ever used", async () => {
+  resetForestLawsForTests();
+  for (const feed of [
+    lawFeed({ starts: "2032-12-31T22:00:00Z" }), // published but not in force yet
+    lawFeed({ ends: "2026-01-01T00:00:00Z" }), // no longer in force
+    lawFeed({ agreed: "999" }), // the two feed answers disagree
+    lawFeed({ status: 503 }), // the feed is down
+  ]) {
+    await refreshForestLaws({ fetchImpl: feed.fetchImpl, now: LAW_NOW });
+    assert.equal(currentForestLawDocuments({ now: LAW_NOW }).length, 0);
+  }
+  resetForestLawsForTests();
+});
+
+test("law text is withheld when it can no longer be confirmed, and replaced when a new version starts", async () => {
+  resetForestLawsForTests();
+  const minimums = FOREST_LAWS.map((law) => law.minimumSections);
+  FOREST_LAWS.forEach((law) => { law.minimumSections = 1; });
+  try {
+    await refreshForestLaws({ fetchImpl: lawFeed().fetchImpl, now: LAW_NOW });
+    assert.equal(currentForestLawDocuments({ now: LAW_NOW }).length, LAWS_WITH_ONE_SECTION);
+    const [document] = currentForestLawDocuments({ now: LAW_NOW });
+    assert.match(document.locator, /RT I, 12\.05\.2026, 20/u);
+    assert.equal(document.url, "https://www.riigiteataja.ee/akt/MS#para23b1");
+    // A failed check keeps the last good text only for a day.
+    await refreshForestLaws({ fetchImpl: lawFeed({ status: 503 }).fetchImpl, now: LAW_NOW + 3_600_000 });
+    assert.equal(currentForestLawDocuments({ now: LAW_NOW + 3_600_000 }).length, LAWS_WITH_ONE_SECTION);
+    assert.equal(currentForestLawDocuments({ now: LAW_NOW + 25 * 3_600_000 }).length, 0);
+    // A new version in force replaces the text and retires the written summary.
+    const summary = { _reviewedLawVersion: "112052026020", _reviewedLawKey: "metsaseadus" };
+    assert.equal(reviewedLawSummaryIsOutdated(summary), false);
+    await refreshForestLaws({ fetchImpl: lawFeed({ inForce: "200000000001" }).fetchImpl, now: LAW_NOW });
+    assert.equal(currentForestLawDocuments({ now: LAW_NOW })[0]._lawVersionId, "200000000001");
+    assert.equal(reviewedLawSummaryIsOutdated(summary), true);
+    // A version that ends is dropped even if nothing newer could be read.
+    assert.equal(currentForestLawDocuments({ now: Date.parse("2033-01-01T00:00:00Z") }).length, 0);
+  } finally {
+    FOREST_LAWS.forEach((law, index) => { law.minimumSections = minimums[index]; });
+    resetForestLawsForTests();
+  }
 });

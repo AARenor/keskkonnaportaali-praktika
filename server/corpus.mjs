@@ -2183,6 +2183,8 @@ async function saveQuerySnapshot(client, query, total, urls, {
 
 export function reviewedCatalogueCorpusRecords() {
   const records = officialServiceCatalogueDocuments()
+    // Law sections are read fresh from the feed; a saved copy could go out of date.
+    .filter((document) => !document._lawSection)
     .filter((document) => typeof (document?.content || document?.summary) === "string"
       && (document.content || document.summary).length >= 40
       && /^https:\/\//u.test(String(document?.url || "")))
