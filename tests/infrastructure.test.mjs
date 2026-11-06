@@ -1683,6 +1683,11 @@ test("an answer in its own words still satisfies a covered-area and a climate qu
     () => assertAnswerAddressesQuery("Kliimamuutus on ülemaailmne teema.", climate),
     /does not connect the climate driver to a forest effect/u,
   );
+  // "kliimamuutus" must not supply the direction word on its own.
+  assert.throws(
+    () => assertAnswerAddressesQuery("Kliimamuutuse mõju ei ole kirjeldatud, metsad kasvavad.", climate),
+    /does not connect the climate driver to a forest effect/u,
+  );
 });
 
 test("a grounded SMI comparison may state the supported non-synonym conclusion", () => {

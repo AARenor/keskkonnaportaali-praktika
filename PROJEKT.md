@@ -100,6 +100,36 @@ Deterministlik fallback tähendab üht kolmest selgelt piiritletud liigist:
 
 Sõna „kontrollitud” tähendab siin praktikaprojekti tehnilist kontrolli, mitte Keskkonnaagentuuri sisueksperdi kinnitust. Dünaamilise allika viite lubamiseks peab URL jääma `server/integrations.mjs` ametlike HTTPS-hostide lubatud nimekirja ka pärast ümbersuunamist. Lause ja viite temaatilist seost kontrollitakse viidatud tõendi, mitte kogu vastuse vastu. Autoriteetne allikate ja API-de register on `docs/ALLIKAD.md`; runtime'i kataloog on `server/search.mjs` ning metsakorpuse register `server/knowledge/forestry/sources.json`.
 
+### Vastuse staatused, intentide valideerimine ja mõõtmine
+
+Iga vastus kannab sisemist katsemetaandmet (`answerAttempt`), mis ütleb, kust vastuse tekst pärineb. Seda tuleb lugeda enne, kui hinnata, kas parandus midagi muutis:
+
+| `status` / `reason` | Mida lugeja näeb |
+| --- | --- |
+| `ready` / `none` | mudeli enda sõnastatud, serveri poolt kinnitatud tekst; kaardil märgis „AI koondvastus” |
+| `ready` / `no-new-contribution` | mudel vastas, kuid kõik tema väited olid juba deterministlikus algvastuses; näidatakse algvastust |
+| `not-applicable` | struktureeritud või deterministlik tee vastas ilma mudelikõneta |
+| `degraded` / `local-rejected` | mudelivastus läbis kutse, kuid kontroll lükkas selle tagasi; näidatakse algvastust |
+| `budget-exhausted` / `budget`, `timeout`, `capacity` | mudelikõnet ei tehtud või see katkes; näidatakse algvastust |
+
+Seetõttu ei ole „roheline staatus” sama mis „mudel vastas”: lühikese mõõtmisküsimuse puhul on deterministlik viidatud väljavõte toote otsus, mitte regressioon. Kvaliteedimõõtmises tuleb eraldi lugeda `reason === "none"` osakaal (`ready` hulgast) ja vastuse sõnade arv.
+
+Kontroll ei ole üks reegel, vaid intentide kaupa. Igal järgneval intentil on oma nõue, mis asendab üldise võtmesõna-kattuvuse:
+
+- `protected-forest-share`: ETAK, metsamaa, aasta ja projekteeritava ala tingimus;
+- `forest-area` ja `forest-area-method`: metsamaa/metsasuse mõiste ja pindala- või protsendimõõt (meetodi korral lisaks valikuuringu selgitus);
+- `forest-covered-area`: metsamaa/metsasus ja pindala- või protsendimõõt, ilma küsimuse sõnade („osa”, „kaetud”) nõudeta;
+- `forest-species-share`: puuliigi nimi ja protsendiline osakaal;
+- `climate-impact`: kliimategur, metsamõju ja suund. Suunakomplektis ei ole `muut`, sest „kliimamuutus” rahuldab juba teguri tingimust ja muidu läbiks vabandav lause;
+- `forest-data-sources`, `forest-depletion`: oma sisulised kontrollid;
+- kõik muud: vähemalt 75% küsimuse tüvedest peavad vastuses esinema.
+
+Intentide klassifitseerija peab tabama ka käändevorme: puuduv `\w*` lõi varem kolm tavalist küsimust rajalt välja (`kuivad suved`, `kaitsealuseid metsi`, `puuliigid`). `kuivendus` (kuivendamine) ei ole kliimateema ja jääb välja. Muutes klassifitseerijat või kontrolli, lisa alati nii positiivne kui ka eitav test.
+
+Tõenditekstis on avaldatud täpsus, mitte arvutustabeli toorväärtus: `2 350,8 tuhat ha`, mitte `2350,8188831296102`. Lahtrite toorväärtused jäävad `locator`-isse, mida mudelile ei saadeta, sest mudel kordab talle antud arvu sõna-sõnalt vastuses.
+
+Libiseva akna eelarve on protsessisisene ja kliendipõhine: üks klient saab tunnis piiratud arvu mudelikõnesid (vaikimisi 15 päringut ja 120 000 tokenit), seejärel näidatakse deterministlikku algvastust. Mõõtebaterii tuleb teha värskelt kliendilt või pärast konteineri taaskäivitust, muidu mõõdetakse kvooti, mitte kvaliteeti.
+
 ## Regressiooni- ja võrdluskorpus
 
 Failid asuvad kaustas `server/knowledge/forestry/`:

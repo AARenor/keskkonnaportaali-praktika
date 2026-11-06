@@ -1685,7 +1685,10 @@ export function assertAnswerAddressesQuery(text, query, label = "answer") {
     // a driver, a forest effect and a direction.
     const namesDriver = /\b(?:kliima\w*|pou\w*|kuiv(?!end)\w*|soojen\w*|urask\w*|torm\w*|sadem\w*)\b/u.test(answer);
     const namesEffect = /\b(?:juurdekasv\w*|kasv\w*|kahjust\w*|suremus\w*|seisund\w*|tervis\w*|stress\w*|viljakus\w*|kadu\w*)\b/u.test(answer);
-    const statesDirection = /\b(?:suuren\w*|vahen\w*|kahan\w*|lang\w*|paran\w*|halven\w*|mojut\w*|ohust\w*|kannat\w*|muut\w*|nouab\w*)\b/u.test(answer);
+    // "muut" is deliberately absent: the noun "kliimamuutus" already satisfies
+    // the driver test, so it would also satisfy the direction test and let a
+    // hedge such as "kliimamuutuse mõju ei ole kirjeldatud" through.
+    const statesDirection = /\b(?:suuren\w*|vahen\w*|kahan\w*|lang\w*|paran\w*|halven\w*|mojut\w*|ohust\w*|kannat\w*|nouab\w*)\b/u.test(answer);
     if (!namesDriver || !namesEffect || !statesDirection) {
       throw new Error(`LLM ${label} does not connect the climate driver to a forest effect`);
     }
