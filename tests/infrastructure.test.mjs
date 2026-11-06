@@ -1661,6 +1661,19 @@ test("an answer in its own words still satisfies a covered-area and a climate qu
     true,
   );
 
+  const species = "Millised puuliigid Eesti metsades kasvavad?";
+  assert.equal(
+    assertAnswerAddressesQuery(
+      "Tabeli 6 järgi olid Eesti metsamaa peamiste puuliikide osakaalud enamuspuuliigi alusel kask 30%, mänd 29% ja kuusk 19%.",
+      species,
+    ),
+    true,
+  );
+  assert.throws(
+    () => assertAnswerAddressesQuery("Eesti metsad on mitmekesised.", species),
+    /does not name the forest species with their shares/u,
+  );
+
   // A refusal, or an answer that names only the driver, must still fail.
   assert.throws(
     () => assertAnswerAddressesQuery("Meil ei ole sellele küsimusele vastust.", climate),

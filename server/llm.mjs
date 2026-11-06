@@ -1668,6 +1668,16 @@ export function assertAnswerAddressesQuery(text, query, label = "answer") {
     // share; it does not have to repeat the question's words "osa" or "kaetud".
     if (answerIntent.kind === "forest-covered-area") return true;
   }
+  if (answerIntent?.kind === "forest-species-share") {
+    // "Millised puuliigid metsades kasvavad?" is answered by naming the species
+    // and their shares; it does not have to repeat the verb "kasvavad".
+    const namesSpecies = /\b(?:kask|man[dn]|kuusk|haab|lepp|tamm|saar|vaher|pihlak|okaspuu|lehtpuu|enamusp(uu)?liik)\w*/u.test(answer);
+    const namesShare = numberOccurrences(text).some((occurrence) => occurrence.units.has("percent"));
+    if (!namesSpecies || !namesShare) {
+      throw new Error(`LLM ${label} does not name the forest species with their shares`);
+    }
+    return true;
+  }
   if (answerIntent?.kind === "climate-impact") {
     // The question names a climate driver and asks for its effect on forests.
     // Demanding the literal verb "mõjutab" rejected correct answers in the
