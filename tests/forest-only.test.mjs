@@ -417,3 +417,28 @@ test("a page that cannot be cited does not stop the law from defining the term",
     resetForestLawsForTests();
   }
 });
+
+test("a found law section reaches the model even when no passage can be shown on its own", async () => {
+  resetForestLawsForTests();
+  const minimums = FOREST_LAWS.map((law) => law.minimumSections);
+  FOREST_LAWS.forEach((law) => { law.minimumSections = 1; });
+  try {
+    await refreshForestLaws({ fetchImpl: lawFeed().fetchImpl });
+    const query = "kes kehtestab vääriselupaiga korra";
+    const directory = officialServiceCatalogueDocuments();
+    const items = rankPublicSearchCandidates(query, directory, { intentDocuments: directory }).slice(0, 12);
+    let modelCalls = 0;
+    const result = await searchEnvironmentLive(query, {
+      searchResults: { total: items.length, items },
+      useCache: false,
+      deadlineAt: Date.now() + 9_000,
+      generateAnswer: async () => { modelCalls += 1; return { answer: null, acceptedClaims: [], attempt: {} }; },
+    });
+    assert.equal(modelCalls, 1);
+    // Without a model answer the card still says plainly that there is none.
+    assert.equal(result.answer.eyebrow, "Vastust ei leitud");
+  } finally {
+    FOREST_LAWS.forEach((law, index) => { law.minimumSections = minimums[index]; });
+    resetForestLawsForTests();
+  }
+});

@@ -2115,10 +2115,10 @@ export function extractLlmBudgetUsage(payload, apiStyle) {
 
 export async function generateGroundedAnswer(query, draft, options = {}) {
   const attemptedProvider = `${agentOrchestrationEnabled() ? "openai-agents" : "codex-gateway"}/${model}`;
-  const rejected = (status, reason) => ({
+  const rejected = (status, reason, detail = "") => ({
     answer: null,
     acceptedClaims: [],
-    attempt: { provider: attemptedProvider, status, reason },
+    attempt: { provider: attemptedProvider, status, reason, ...(detail ? { detail } : {}) },
   });
   const evidencePack = options.evidencePack;
   if (!evidencePackMatchesSources(evidencePack, draft?.sources)) return rejected("degraded", "evidence-insufficient");
@@ -2159,7 +2159,7 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
         inputBytes: Buffer.byteLength(requestBody, "utf8"),
       }));
       if (!reservation.ok) {
-        return rejected("budget-exhausted", "budget");
+        return rejected("budget-exhausted", "budget", reservation.reason);
       }
     }
 
@@ -2236,7 +2236,7 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
     } catch (error) {
       const denial = llmBudgetDenial(error);
       if (denial) {
-        return rejected("budget-exhausted", "budget");
+        return rejected("budget-exhausted", "budget", denial);
       }
       const locallyTimedOut = error.name === "AbortError"
         && controller.signal.aborted

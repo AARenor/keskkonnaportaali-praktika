@@ -2409,6 +2409,25 @@ test("one client cannot exhaust another client's share of the global LLM allowan
   assert.equal(budget.reserve("client-a", { requests: 1, tokens: 500 }).ok, true);
 });
 
+test("a model budget of 0 or off switches that limit off instead of allowing one answer", () => {
+  for (const off of ["0", "off", "none", "unlimited", 0]) {
+    const rolling = resolveLlmRollingBudget({ requestBudget: off, tokenBudget: off });
+    assert.equal(rolling.requestBudget, Infinity);
+    assert.equal(rolling.tokenBudget, Infinity);
+    const client = resolveLlmClientBudget({ requestBudget: off, tokenBudget: off });
+    assert.equal(client.requestBudget, Infinity);
+    assert.equal(client.tokenBudget, Infinity);
+  }
+  const budget = createRollingLlmBudget({ requestBudget: "0", tokenBudget: "off" });
+  for (let index = 0; index < 500; index += 1) {
+    const reservation = budget.reserve({ requests: 4, tokens: 50_000 });
+    assert.equal(reservation.ok, true);
+    assert.equal(reservation.commit({ requests: 4, tokens: 50_000 }), true);
+  }
+  assert.equal(resolveLlmClientBudget({ requestBudget: "25" }).requestBudget, 25);
+  assert.equal(resolveLlmClientBudget({ requestBudget: "nonsense" }).requestBudget, 15);
+});
+
 test("unknown dispatched work is charged at its full reservation and observed overruns remain visible", () => {
   const budget = createRollingLlmBudget({
     requestBudget: 10,

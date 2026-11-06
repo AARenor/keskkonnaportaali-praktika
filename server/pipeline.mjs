@@ -86,7 +86,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v87-law-leads-over-news";
+export const SEARCH_RESPONSE_REVISION = "answer-v88-model-after-placeholder";
 const DEFAULT_SEARCH_DEADLINE_MS = 60_000;
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
@@ -882,7 +882,12 @@ function finalizeVisibleAnswerWitnesses(draft, query, evidencePack) {
       },
       evidence: {
         ...attached.evidence,
-        answerable: false,
+        // An uncited placeholder ("Leidsin seotud allikad, kuid …") claims
+        // nothing, so it shows as a no-answer while the model may still answer
+        // from the same sources. Only a cited claim without a witness is unanswerable.
+        // A planned intent (a figure that needs its method source, …) keeps its
+        // own stricter rule: its missing evidence never goes to the model.
+        answerable: introClaim.citations.length === 0 && !attached.evidence?.quality?.answerIntent,
       },
     };
   }
