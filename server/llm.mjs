@@ -1651,7 +1651,7 @@ export function assertAnswerAddressesQuery(text, query, label = "answer") {
     }
     return true;
   }
-  if (["forest-area", "forest-area-method"].includes(answerIntent?.kind)) {
+  if (["forest-area", "forest-area-method", "forest-covered-area"].includes(answerIntent?.kind)) {
     const hasAreaConcept = /\b(?:metsamaa\w*|metsaga\s+kaetud|metsasus\w*|metsa\s+pindala|metsade\s+pindala)\b/iu.test(text);
     const hasAreaMeasurement = numberOccurrences(text)
       .some((occurrence) => occurrence.units.has("area") || occurrence.units.has("percent"));
@@ -1664,6 +1664,22 @@ export function assertAnswerAddressesQuery(text, query, label = "answer") {
       }
       return true;
     }
+    // A cover question is answered by naming the forest area and its measured
+    // share; it does not have to repeat the question's words "osa" or "kaetud".
+    if (answerIntent.kind === "forest-covered-area") return true;
+  }
+  if (answerIntent?.kind === "climate-impact") {
+    // The question names a climate driver and asks for its effect on forests.
+    // Demanding the literal verb "mõjutab" rejected correct answers in the
+    // model's own words, so the check follows the claim instead of the wording:
+    // a driver, a forest effect and a direction.
+    const namesDriver = /\b(?:kliima\w*|pou\w*|kuiv(?!end)\w*|soojen\w*|urask\w*|torm\w*|sadem\w*)\b/u.test(answer);
+    const namesEffect = /\b(?:juurdekasv\w*|kasv\w*|kahjust\w*|suremus\w*|seisund\w*|tervis\w*|stress\w*|viljakus\w*|kadu\w*)\b/u.test(answer);
+    const statesDirection = /\b(?:suuren\w*|vahen\w*|kahan\w*|lang\w*|paran\w*|halven\w*|mojut\w*|ohust\w*|kannat\w*|muut\w*|nouab\w*)\b/u.test(answer);
+    if (!namesDriver || !namesEffect || !statesDirection) {
+      throw new Error(`LLM ${label} does not connect the climate driver to a forest effect`);
+    }
+    return true;
   }
   if (answerIntent?.kind === "forest-data-sources") {
     const mentionsSmi = /\b(?:smi|statistilise\s+metsainvent\w*)/iu.test(text);

@@ -1642,6 +1642,36 @@ test("LLM intent validation distinguishes a rate from a regulation", () => {
   );
 });
 
+test("an answer in its own words still satisfies a covered-area and a climate question", () => {
+  const covered = "Kui suur osa Eestist on kaetud metsaga?";
+  assert.equal(
+    assertAnswerAddressesQuery(
+      "SMI 2025 tabelite järgi oli Eesti metsamaa pindala 2 360,2 tuhat hektarit ehk 52,1% kogu Eesti pindalast.",
+      covered,
+    ),
+    true,
+  );
+
+  const climate = "Kuidas mõjutab kliimamuutus metsi?";
+  assert.equal(
+    assertAnswerAddressesQuery(
+      "Metsa juurdekasv on viimastel aastatel vähenenud, mis on tõenäoliselt tingitud põudadest ja kliimamuutusega kaasnevatest teguritest.",
+      climate,
+    ),
+    true,
+  );
+
+  // A refusal, or an answer that names only the driver, must still fail.
+  assert.throws(
+    () => assertAnswerAddressesQuery("Meil ei ole sellele küsimusele vastust.", climate),
+    /does not connect the climate driver to a forest effect/u,
+  );
+  assert.throws(
+    () => assertAnswerAddressesQuery("Kliimamuutus on ülemaailmne teema.", climate),
+    /does not connect the climate driver to a forest effect/u,
+  );
+});
+
 test("a grounded SMI comparison may state the supported non-synonym conclusion", () => {
   const query = "Mis vahe on SMI ja metsaandmed?";
   const draft = {

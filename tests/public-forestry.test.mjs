@@ -1738,3 +1738,29 @@ test("the supplied legal, guide and terminology sources are cited directly", asy
     assertNumericClaimsHaveVisibleWitnesses(draft, query);
   }
 });
+
+test("everyday inflections still reach the reviewed forestry intent", () => {
+  assert.equal(
+    forestEvidenceIntent("Kuidas mõjutavad kuivad suved metsade kasvu?")?.kind,
+    "climate-impact",
+  );
+  assert.equal(
+    forestEvidenceIntent("Kui palju on Eestis kaitsealuseid metsi?")?.kind,
+    "protected-forest-share",
+  );
+  assert.equal(
+    forestEvidenceIntent("Millised puuliigid Eesti metsades kasvavad?")?.kind,
+    "forest-species-share",
+  );
+  assert.equal(
+    forestEvidenceIntent("Kuidas mõjutab kuivendus metsade kasvu?")?.kind === "climate-impact",
+    false,
+  );
+});
+
+test("reviewed SMI evidence carries published precision, not raw spreadsheet floats", () => {
+  const document = officialServiceCatalogueDocuments().find((entry) => entry.id === "forest-smi-2025-tables");
+  assert.ok(document?.content);
+  assert.doesNotMatch(document.content, /\d+[.,]\d{4,}/u);
+  assert.match(document.content, /2 350,8 tuhat ha/u);
+});

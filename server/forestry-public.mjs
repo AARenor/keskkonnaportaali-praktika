@@ -176,7 +176,7 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     tags: ["mets", "SMI", "puuliigid", "omandivorm", "okaspuu", "vanuseklass", "2025"],
     summary: "SMI 2025 töövihik annab metsamaa pindala puuliigi, omandivormi ja vanuseklassi järgi ning sisaldab 1999–2025 aegridu.",
     content: "SMI 2025 tabelite järgi oli Eesti metsamaa pindala 2 360,2 tuhat hektarit ehk 52,1% kogu Eesti 4 533,9 tuhande hektari suurusest pindalast koos Peipsi ja Võrtsjärvega; pindalahinnangu suhteline viga oli ±1,2%. Metsaga metsamaa ehk puistute pindala oli 2 151,2 tuhat hektarit ehk 47,45%; metsamaa ja metsaga kaetud metsamaa on eri näitajad. Tabeli 6 järgi olid Eesti metsamaa peamiste puuliikide osakaalud enamuspuuliigi alusel kask 30%, mänd 29% ja kuusk 19%. Need osakaalud kirjeldavad metsamaa enamuspuuliiki, mitte kõigi üksikpuude arvu. Omandivormi tabelis oli riigimetskondade metsamaad 1 088,108 tuhat hektarit ja muud riigimaad 93,158 tuhat hektarit ehk riigimaad kokku 1 181,266 tuhat hektarit ehk 50,0% metsamaast. Füüsiliste isikute metsamaad oli 618,223 ja juriidiliste isikute metsamaad 559,618 tuhat hektarit ehk eramaad kokku 1 177,841 tuhat hektarit ehk 49,9%; 1,093 tuhande hektari omand oli määramata. Töölehe 31 aegridade järgi oli männikute ja kuusikute ehk okaspuupuistute pindala 2016. aastal kokku 1 164,8 tuhat hektarit ning 2025. aastal 1 132,9 tuhat hektarit: vähenemine oli 31,9 tuhat ehk ümardatult 32 000 hektarit. Vanuseklasside tabeli järgi oli 2025. aastal üle 100-aastaste puistute pindala 184,0 tuhat hektarit. Kõrge vanus ise ei anna puistule automaatset õiguslikku kaitset; kaitsestaatus tuleb kontrollida kaitstava objekti, vööndi ja kehtivate ruumiandmete järgi. SMI 2025 väljaande töölehe 25 ajaloolises reas oli 2024. aasta Eesti metsamaa pindala 2 350,8 tuhat hektarit; see on hilisema väljaande muudetud hinnang, mitte SMI 2024 PDF-i 2 350,6 tuhande hektari hinnang. Töövihik ei selgita selle revisjoni põhjust ja eri väljaannete hinnanguid ei ühendata trendiks. "
-      + "SMI 2025 töölehe 1 Metsamaa real oli Eesti metsamaa pindala 2360,2 tuhat ha, osakaal kogu Eesti pindalast 52,056406819666321% ning pindalahinnangu suhteline viga ±1,2021727079294899%. Töölehe 25 sama väljaande ajaloolise rea järgi oli Eesti metsamaa pindala 2024. aastal 2350,8188831296102 tuhat ha ja 2025. aastal 2360,20037264553 tuhat ha.",
+      + "SMI 2025 töölehe 1 Metsamaa real oli Eesti metsamaa pindala 2 360,2 tuhat ha, osakaal kogu Eesti pindalast 52,1% ning pindalahinnangu suhteline viga ±1,2%. Töölehe 25 sama väljaande ajaloolise rea järgi oli Eesti metsamaa pindala 2024. aastal 2 350,8 tuhat ha ja 2025. aastal 2 360,2 tuhat ha.",
     locator: `${SMI_2025_EDITION.measurementLocator} ${SMI_2025_EDITION.historicalLocator} Töölehed 2, 6, 13 ja 31: omandivorm, enamuspuuliik ning vanuseklassid.`,
     _forestryIntentKinds: ["forest-overview", "forest-area", "forest-area-method", "forest-covered-area", "forest-species-share", "forest-ownership-share", "conifer-area-trend", "old-forest-area-protection"],
   },
@@ -1596,7 +1596,7 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
   // closed on query-bound geography instead.
   if (hasForest && !regionalScope && !municipalityScope && /\b(?:mittemajandatav\w*|majanduspiirang\w*|piiranguga\s+metsamaa)\b/u.test(text)
     && /\b(?:kui\s+suur|kui\s+palju|mitu|osa|osakaal|protsent\w*)\b/u.test(text)) return resolved("forest-management-category-share");
-  if (hasForest && !regionalScope && !municipalityScope && /\b(?:kaitse\s+all|kaitstud|kaitsealuse|kaitstav\w*|range\s+kaitse|rangelt\s+kaitstav)\b/u.test(text)
+  if (hasForest && !regionalScope && !municipalityScope && /\b(?:kaitse\s+all|kaitstud|kaitsealuse\w*|kaitstav\w*|range\s+kaitse|rangelt\s+kaitstav)\b/u.test(text)
     && /\b(?:kui\s+suur|kui\s+palju|mitu|osa|osakaal|protsent\w*)\b/u.test(text)) return resolved("protected-forest-share");
   if (hasForest && !regionalScope && !municipalityScope
     && /\b(?:kaitsealune\s+mets|kaitstud\s+mets|kaitsealune\s+metsamaa|kaitse\s+all\s+olev\s+mets)\b/u.test(text)
@@ -1614,7 +1614,16 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
       || /\bvanusjaot\w*\b/u.test(text))) {
     return resolved("forest-age-trend");
   }
-  if (hasForest && /\b(?:kliim\w*|pou\w*|kuivus\w*|soojen\w*|urask\w*)\b/u.test(text)) return resolved("climate-impact");
+  // "kuivad suved" is the everyday phrasing of a climate question; the older
+  // pattern only matched the noun "kuivus", so those questions fell through to
+  // generic retrieval and ended as a no-answer. "kuivendus" (drainage) is a
+  // different topic and stays out.
+  if (hasForest && /\b(?:kliim\w*|pou\w*|kuiv(?!end)\w*|soojen\w*|urask\w*)\b/u.test(text)) return resolved("climate-impact");
+  if (hasForest && !regionalScope && !municipalityScope
+    && /\b\p{L}*puuli(?:ik|ig)\p{L}*\b/u.test(text)
+    && /\b(?:millised|mis|peamised|levinumad|osakaal\w*|jaotus\w*|liigid)\b/u.test(text)) {
+    return resolved("forest-species-share");
+  }
   if ((hasIncrement || /\bjuurdekasvu\s+numb\w*/u.test(text))
     && /\b(?:kestlik\w*|jatkusuutlik\w*)\b/u.test(text)
     && /\b(?:toesta\w*|automaats\w*)\b/u.test(text)) return resolved("forest-harvest-balance");
