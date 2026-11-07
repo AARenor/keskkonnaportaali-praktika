@@ -1413,7 +1413,7 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
   }
   if (/^statistiline\s+metsainventuur$/u.test(text)) return resolved("smi-definition");
   if (/\b(?:(?:kuuse\s*)?koore)?urask\w*\b/u.test(text)
-    && /\b(?:tund\w*|ara\s+tund\w*|torj\w*|valdi\w*|hoid\w*)\b/u.test(text)) {
+    && /\b(?:tund\w*|ara\s+tund\w*|torj\w*|valdi\w*|hoid\w*|kaits\w*|vahenda\w*|ennet\w*|voidel\w*|voitl\w*|takista\w*|mida\s+teha)\b/u.test(text)) {
     return resolved("bark-beetle-guidance");
   }
   if (/\b(?:(?:kuuse\s*)?koore)?urask\w*\b/u.test(text)
@@ -1436,6 +1436,18 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
     return resolved("forest-notice-exception-fee");
   }
   if (hasNotice && /\b(?:küttepuu\w*|kuttepuu\w*|oma\s+mets\w*)\b/u.test(text)) {
+    return resolved("forest-notice-exception");
+  }
+  // "Kas ma tohin oma metsas puid langetada ilma loata", "kas metsaomanik vajab
+  // raieks luba": an owner's permission-to-fell question asks about the forest
+  // notice even when it never says "metsateatis". Protected areas, clear-cut
+  // size, sanitary cutting, old or aged forest, nesting season and named years
+  // keep their own routes.
+  if (!hasNotice && !hasProtection && !hasClearcut
+    && !/\b(?:19|20)\d{2}\b|\bsanitaar\w*|\bvana\w*|\bvanu\w*|\braievanu\w*|\bpoliseid\w*|\blinnu\w*|\bpesitsus\w*|\bkevad\w*|\bsuvel?\b|\baasta\w*/u.test(text)
+    && /\b(?:mets\w*|kinnistu\w*|metsaomanik\w*)\b/u.test(text)
+    && /\b(?:rai(?:e|u|d|t|s)\w*|langet\w*|kuttepu\w*|puid\s+(?:votta|maha))\b/u.test(text)
+    && /\b(?:luba\w*|loa\w*|loata|tohi\w*|voi(?:n|b|me|vad)|pea(?:n|b|me|vad)|vaja\w*|ilma)\b/u.test(text)) {
     return resolved("forest-notice-exception");
   }
   if (/\b(?:ule\s+100|100\s*aasta)\w*\b/u.test(text)
@@ -1619,9 +1631,26 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
   // generic retrieval and ended as a no-answer. "kuivendus" (drainage) is a
   // different topic and stays out.
   if (hasForest && /\b(?:kliim\w*|pou\w*|kuiv(?!end)\w*|soojen\w*|urask\w*)\b/u.test(text)) return resolved("climate-impact");
-  if (hasForest && !regionalScope && !municipalityScope
+  // "Puuliik" is itself forest vocabulary: "milline puuliik on Eestis kõige
+  // levinum" names no other forest word.
+  if (!regionalScope && !municipalityScope
     && /\b\p{L}*puuli(?:ik|ig)\p{L}*\b/u.test(text)
-    && /\b(?:millised|mis|peamised|levinumad|osakaal\w*|jaotus\w*|liigid)\b/u.test(text)) {
+    && /\b(?:millised|milline|mis|peamised|levinu\w*|enim\w*|koige|osakaal\w*|jaotus\w*|liigid)\b/u.test(text)) {
+    return resolved("forest-species-share");
+  }
+  // "männikute pindala", "kui suur osa metsast on kuusikud": a stand named by
+  // its tree species asks for that species' share, not the national forest
+  // area. Age, felling and pine-versus-spruce questions resolved above.
+  if (!regionalScope && !municipalityScope && !/\b(?:19|20)\d{2}\b/u.test(text)
+    && /\b(?:mannik|kuusik|kaasik|haavik|lepik|sanglepik|hall?lepik|mannimets|kuusemets|kasemets)\w*\b/u.test(text)
+    && /\b(?:pindala\w*|osakaal\w*|protsent\w*|kui\s+palju|kui\s+suur|palju|levinu\w*)\b/u.test(text)) {
+    return resolved("forest-species-share");
+  }
+  // "männi osakaal", "kase osakaal metsamaast": one species and a share.
+  if (!regionalScope && !municipalityScope && !/\b(?:19|20)\d{2}\b/u.test(text)
+    && /\b(?:mand|manni|kuusk|kuuse|kask|kase|haab|haava)\b/u.test(text)
+    && /\b(?:osakaal\w*|protsent\w*)\b/u.test(text)
+    && !/\b(?:rai\w*|tagavara\w*|vanus\w*|urask\w*)\b/u.test(text)) {
     return resolved("forest-species-share");
   }
   if ((hasIncrement || /\bjuurdekasvu\s+numb\w*/u.test(text))
