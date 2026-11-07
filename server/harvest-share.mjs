@@ -52,7 +52,13 @@ export function harvestShareIntent(query) {
   const text = normalize(query);
   if (!text || isUnsupportedForestScope(text) || hasForestPeriodSignal(text)) return null;
   if (!/\braie\w*/u.test(text) || !SHARE_CUE.test(text) || /juurdekasv\w*/u.test(text)) return null;
-  const cutType = CUT_TYPES.find((item) => item.pattern.test(text));
+  // The cut type named first is the one asked about. A follow-up is placed in
+  // front of its root question ("aga harvendusraie? kui suur osa raiest on
+  // lageraie"), so list order would always answer the root's cut type again.
+  const cutType = CUT_TYPES
+    .map((item) => ({ item, index: text.search(item.pattern) }))
+    .filter(({ index }) => index >= 0)
+    .sort((left, right) => left.index - right.index)[0]?.item;
   if (!cutType) return null;
   const measure = VOLUME_CUE.test(text) ? FOREST_SERIES_MM03_MEASURES.volume : FOREST_SERIES_MM03_MEASURES.area;
   return { year: HARVEST_SHARE_LATEST_YEAR, cutType, measure };

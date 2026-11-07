@@ -1455,8 +1455,10 @@ function TerrapointEmbed() {
   );
 }
 
+// The title goes first: a data card's title is the only part that tells two
+// cards from the same table apart (see repeatsEarlierAnswer on the server).
 function answerTextOf(item) {
-  return [item?.answer?.intro, ...(item?.answer?.parts || []).map((part) => part?.text)].filter(Boolean).join(" ");
+  return [item?.answer?.title, item?.answer?.intro, ...(item?.answer?.parts || []).map((part) => part?.text)].filter(Boolean).join(" ");
 }
 
 export function App() {

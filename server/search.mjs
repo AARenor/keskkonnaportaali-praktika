@@ -5022,6 +5022,59 @@ function canonicalSecurityText(value) {
   return text.normalize("NFC");
 }
 
+// One-letter typos in the words most forest questions are built from:
+// "kui pallju on metsa eestis" must reach the same answer as "kui palju on
+// metsa eestis". The list is closed and holds only public question and forest
+// words. A token is corrected only when it is lowercase, at least five letters,
+// not itself on the list, and exactly one edit (insert, delete, substitute or
+// swap two neighbours) from exactly one listed word. Names and capitalised
+// words are never touched, so a correction cannot hide a person from the
+// privacy classifier. A token that starts with a listed word is an inflected
+// form, not a typo, and stays as written.
+const REVIEWED_QUERY_TYPO_WORDS = Object.freeze([
+  "palju", "paljud", "paljude", "paljusid", "eesti", "eestis", "eestist", "eestile",
+  "metsa", "metsas", "metsad", "metsade", "metsast", "metsaid", "metsale", "metsamaa", "metsamaad", "metsasus",
+  "pindala", "osakaal", "lageraie", "raiemaht", "raiumine", "juurdekasv", "tagavara",
+  "puuliik", "puuliigid", "metsateatis", "metsateatist", "metsaomanik", "metsaregister",
+  "kooreürask", "kooreüraski", "männikute", "kuusikute", "kaasikute", "levinum", "levinuim",
+]);
+const REVIEWED_QUERY_TYPO_WORD_SET = new Set(REVIEWED_QUERY_TYPO_WORDS);
+
+function withinOneEdit(left, right) {
+  if (left === right) return false;
+  const lengthGap = left.length - right.length;
+  if (Math.abs(lengthGap) > 1) return false;
+  if (lengthGap === 0) {
+    const differences = [];
+    for (let index = 0; index < left.length; index += 1) {
+      if (left[index] !== right[index]) differences.push(index);
+      if (differences.length > 2) return false;
+    }
+    if (differences.length === 1) return true;
+    const [first, second] = differences;
+    return differences.length === 2 && second === first + 1
+      && left[first] === right[second] && left[second] === right[first];
+  }
+  const [longer, shorter] = lengthGap > 0 ? [left, right] : [right, left];
+  for (let index = 0; index < longer.length; index += 1) {
+    if (longer.slice(0, index) + longer.slice(index + 1) === shorter) return true;
+  }
+  return false;
+}
+
+export function correctReviewedQueryTypos(query) {
+  if (typeof query !== "string" || !query) return query;
+  return query.replace(/\p{L}+/gu, (token) => {
+    if (token.length < 5 || token !== token.toLocaleLowerCase("et")) return token;
+    if (REVIEWED_QUERY_TYPO_WORD_SET.has(token)) return token;
+    // An inflected form ("metsaomanike", "pindalad") starts with a listed word
+    // and is not a typo.
+    if (REVIEWED_QUERY_TYPO_WORDS.some((word) => token.startsWith(word))) return token;
+    const candidates = REVIEWED_QUERY_TYPO_WORDS.filter((word) => withinOneEdit(token, word));
+    return candidates.length === 1 ? candidates[0] : token;
+  });
+}
+
 export function canonicalizePublicSearchQuery(value, {
   maximumLength = MAX_PUBLIC_SEARCH_QUERY_LENGTH,
 } = {}) {
@@ -5042,7 +5095,9 @@ export function canonicalizePublicSearchQuery(value, {
   if (rawValue.length > rawMaximum) {
     return { ok: false, query: "", reason: "input-too-long", maximumLength: boundedMaximum };
   }
-  const query = canonicalSecurityText(rawValue).replace(/\s+/gu, " ").trim();
+  const query = correctReviewedQueryTypos(
+    canonicalSecurityText(rawValue).replace(/\s+/gu, " ").trim(),
+  );
   if (!query) return { ok: false, query: "", reason: "empty", maximumLength: boundedMaximum };
   if (query.length > boundedMaximum) {
     return { ok: false, query: "", reason: "too-long", maximumLength: boundedMaximum };
@@ -5276,6 +5331,11 @@ function isReviewedPublicClauseComposition(value) {
     && clauses.every(isReviewedIndependentPublicClause);
 }
 
+// First-person opening of a forest owner question about their own land:
+// "kas ma tohin oma metsas", "kuidas me saame oma kinnistul". Group 1 keeps the
+// question word; the land word stays in the residual for reclassification.
+const OWN_FOREST_FIRST_PERSON_OPENING_PATTERN = /^((?:kas|kuidas|millal|mida|kui)\s+)?(?:ma|mina|me|meie)\s+(?:tohi(?:n|me)|v[õo]i(?:n|me)|pea(?:n|me)|saa(?:n|me)|vaja(?:n|me)|taha(?:n|me)|soovi(?:n|me)|kavatse(?:n|me)|plaani(?:n|me))\s+oma\s+(?=(?:mets|metsa\p{L}*|kinnistu\p{L}*|maa(?:l|lt|le|tüki\p{L}*|tuki\p{L}*)?)(?!\p{L}))/iu;
+
 export function containsPrivatePersonLookup(value, {
   allowReviewedPublicClauseComposition = true,
   allowReviewedCountyRequestPrefix = true,
@@ -5286,10 +5346,19 @@ export function containsPrivatePersonLookup(value, {
   // Classify the same text without that opening, so any name or contact field
   // in it still fails.
   // "Eelmine omanik" is a role in a buyer's own question, not an identity.
+  // "Kas ma tohin oma metsas ..." is a forest owner asking about their own
+  // land: the pronoun and modal verb otherwise read as a lowercase two-token
+  // name ("ma tohin") beside a private asset. Drop only that first-person
+  // opening and classify the rest again. The opening is dropped only when the
+  // text has no digit and no capital letter after the first character, so
+  // "kas ma tohin oma metsas Mari Tammele ..." stays private.
+  const ownForestOpeningAllowed = !/\d/u.test(canonicalText)
+    && !/\p{Lu}/u.test(canonicalText.slice(1));
   const familyForest = canonicalText
     .replace(/^(?:tahaks(?:in)?|soovi(?:n|ksin))\s+teada,?\s+et\s+(?=meie\s+(?:pere\s+)?mets)/iu, "")
     .replace(/^meie\s+pere(?=\s+mets)/iu, "meie")
-    .replace(/^(ostsin\s+metsa\b.*?)\beelmine\s+omanik\s+/iu, "$1");
+    .replace(/^(ostsin\s+metsa\b.*?)\beelmine\s+omanik\s+/iu, "$1")
+    .replace(ownForestOpeningAllowed ? OWN_FOREST_FIRST_PERSON_OPENING_PATTERN : /(?!)/u, "$1");
   // A forest term with "mis see tähendab", and the size of RMK's holding, name
   // no person. Both grammars are closed, so an added name misses them.
   if (/^\p{L}*(?:mets|raie)\p{L}*(?:\s+\p{L}+mine)?\s+(?:mis|mida)\s+see\s+t[aä]hendab[?.!]?$/iu.test(canonicalText)
@@ -8972,7 +9041,14 @@ export function answersAskedConcept(query, text) {
 // answer in the thread has not answered it.
 const REPEATED_ANSWER_SHARE = 0.8;
 
-export function repeatsEarlierAnswer(text, earlierAnswers = []) {
+export function repeatsEarlierAnswer(text, earlierAnswers = [], { title = "", question = "" } = {}) {
+  // A data card titles its own finding ("Harvendusraie moodustas 2024. aastal
+  // 21,7 % ..."). Two cards from the same table share their whole sentence, so
+  // only the title tells them apart: a finding title not seen in any earlier
+  // answer is new. A title that only echoes the question proves nothing.
+  const normalizedTitle = normalize(title);
+  if (normalizedTitle && normalizedTitle !== normalize(question)
+    && earlierAnswers.every((earlier) => !normalize(earlier).includes(normalizedTitle))) return false;
   const words = new Set(normalize(text).split(/\s+/u).filter((word) => word.length > 3));
   if (words.size < 5) return false;
   return earlierAnswers.some((earlier) => {

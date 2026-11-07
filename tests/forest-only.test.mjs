@@ -104,6 +104,27 @@ test("a family forest statement is not a private-person lookup", () => {
   ]) assert.equal(containsPrivatePersonLookup(query), true, query);
 });
 
+test("a forest owner asking about their own forest is not a private-person lookup", () => {
+  for (const query of [
+    "kas ma tohin oma metsas puid langetada ilma loata",
+    "Kas ma võin oma metsas puid langetada?",
+    "kas ma tohin oma kinnistul puid langetada",
+    "kas ma pean oma metsas raieks luba küsima",
+    "kas me tohime oma metsas raiuda",
+    "kuidas ma saan oma metsa raiuda",
+  ]) {
+    assert.equal(containsPrivatePersonLookup(query), false, query);
+    assert.equal(assessSearchQuery(query).kind, "answerable", query);
+  }
+  for (const query of [
+    "kas ma tohin oma metsas Mari Tammele puid müüa",
+    "kas ma tohin oma metsas Jaan Kase puid langetada",
+    "kas ma tohin oma metsas puid langetada, mu telefon on 5551234",
+    "kas ma tohin oma metsas puid langetada Kase talu 12345",
+    "Jaan Kask oma metsas",
+  ]) assert.equal(containsPrivatePersonLookup(query), true, query);
+});
+
 test("a continuation keeps the conversation topic", () => {
   const root = "kui palju männi raiutakse aastas";
   for (const followUp of ["aga kuusel?", "ja kõige vähem metsane?", "kas see kehtib ka erametsas?", "ja kui on kaitsevöönd jõe ääres"]) {
@@ -259,6 +280,26 @@ test("a follow-up card that restates an earlier answer is caught, a new one is n
   assert.equal(repeatsEarlierAnswer(earlier, [earlier]), true);
   assert.equal(repeatsEarlierAnswer("Harvendusraie korral riigilõivu ei maksta, sest tasu rakendub ainult uuendusraiele ja raadamisele.", [earlier]), false);
   assert.equal(repeatsEarlierAnswer(earlier, []), false);
+});
+
+test("a follow-up data card with a new finding title is not a repeat of the same table sentence", async () => {
+  const { contextualRetrievalQuery: followUpQuery } = await import("../server/retrieval.mjs");
+  const { harvestShareIntent } = await import("../server/harvest-share.mjs");
+  const root = "kui suur osa raiest on lageraie";
+  assert.equal(harvestShareIntent(followUpQuery(root, "aga harvendusraie?"))?.cutType.name, "Harvendusraie");
+  assert.equal(harvestShareIntent(root)?.cutType.name, "Lageraie");
+  const sentence = "Keskkonnaagentuuri SMI 2025 tulemuste järgi oli 2024. aastal koguraie pindala 117,4 tuhat ha, millest lageraie 34,0 tuhat ha ehk 29,0 %, harvendusraie 25,5 tuhat ha (21,7 %).";
+  const earlier = `Lageraie moodustas 2024. aastal 29,0 % koguraie pindalast ${sentence}`;
+  assert.equal(repeatsEarlierAnswer(sentence, [earlier], {
+    title: "Harvendusraie moodustas 2024. aastal 21,7 % koguraie pindalast",
+    question: "aga harvendusraie?",
+  }), false);
+  assert.equal(repeatsEarlierAnswer(sentence, [earlier], {
+    title: "Lageraie moodustas 2024. aastal 29,0 % koguraie pindalast",
+    question: "aga lageraie?",
+  }), true);
+  // A title that only echoes the question keeps the word-overlap check.
+  assert.equal(repeatsEarlierAnswer(sentence, [earlier], { title: "Aga harvendusraie", question: "aga harvendusraie" }), true);
 });
 
 test("a term asked as 'X mis see tähendab' must be named, and a news list is not an answer", () => {

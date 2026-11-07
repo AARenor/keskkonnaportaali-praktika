@@ -839,7 +839,7 @@ app.post("/api/search/follow-up", async (request, response) => {
         onBackgroundCleanup: cleanupLease.track,
       });
       const answerText = [result.answer?.intro, ...(result.answer?.parts || []).map((part) => part?.text)].filter(Boolean).join(" ");
-      if (repeatsEarlierAnswer(answerText, previousAnswers)) {
+      if (repeatsEarlierAnswer(answerText, previousAnswers, { title: result.answer?.title, question })) {
         return { ...composeNoAnswerResponse(question), searchResults: publicSearchListing(searchResults) };
       }
       return { ...result, searchResults: publicSearchListing(searchResults) };

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { analyzePublicSearchQuery, assessSearchQuery, forestEvidenceIntent, officialServiceCatalogueDocuments, queryTerms, textHasQueryRoot } from "../server/search.mjs";
+import { analyzePublicSearchQuery, assessSearchQuery, canonicalizePublicSearchQuery, containsPrivatePersonLookup, forestEvidenceIntent, officialServiceCatalogueDocuments, queryTerms, textHasQueryRoot } from "../server/search.mjs";
 import { rankSearchCandidates, selectAnswerEvidence } from "../server/retrieval.mjs";
 import { buildLlmRequest } from "../server/llm.mjs";
 import { forestrySourceClass } from "../server/forestry-source-policy.mjs";
@@ -18,7 +18,52 @@ test("bark-beetle forms preserve the subject instead of rejecting it or searchin
   }
   assert.equal(forestEvidenceIntent("üraskite seire")?.kind, "bark-beetle-monitoring");
   assert.equal(forestEvidenceIntent("üraski tõrje")?.kind, "bark-beetle-guidance");
+  for (const q of [
+    "kuidas kaitsta metsa kooreüraski eest",
+    "kuidas vähendada kooreüraski kahjustusi",
+    "mida teha kui metsas on ürask",
+    "kuidas ennetada üraski kahju",
+  ]) assert.equal(forestEvidenceIntent(q)?.kind, "bark-beetle-guidance", q);
   assert.equal(forestEvidenceIntent("Kuidas mõjutavad üraskid, põlengud ja kuivus puistuid muutuvas kliimas?")?.kind, "climate-impact");
+});
+
+test("an owner's permission-to-fell question reaches the forest notice guidance without the word metsateatis", () => {
+  for (const q of [
+    "kas ma tohin oma metsas puid langetada ilma loata",
+    "kas metsaomanik vajab raieks luba",
+    "kas ma võin oma metsast küttepuid võtta",
+    "kas ma pean oma metsas raieks luba küsima",
+  ]) assert.equal(forestEvidenceIntent(q)?.kind, "forest-notice-exception", q);
+  for (const q of ["kas kaitsealal tohib raiuda", "lageraie lubatud pindala erametsas", "kui palju raiuti 2024"]) {
+    assert.notEqual(forestEvidenceIntent(q)?.kind, "forest-notice-exception", q);
+  }
+});
+
+test("a one-letter typo in a reviewed forest word reaches the same question", () => {
+  const fixed = (q) => canonicalizePublicSearchQuery(q).query;
+  assert.equal(fixed("kui pallju on metsa eestis"), "kui palju on metsa eestis");
+  assert.equal(fixed("kui plaju metsa on"), "kui palju metsa on");
+  assert.equal(fixed("männikute pinndala"), "männikute pindala");
+  assert.equal(forestEvidenceIntent(fixed("kui pallju on metsa eestis"))?.kind, "forest-area");
+  // Inflected forms, short words, capitalised words and names stay as written.
+  for (const q of ["kui suur on metsaomanike arv", "metsaid on palju", "kui paju on eestis metsa", "Metas Kask metsas", "pindalad"]) {
+    assert.equal(fixed(q), q, q);
+  }
+  assert.equal(containsPrivatePersonLookup("kus elab mari tamm metsas"), true);
+});
+
+test("a species or stand-type question asks for the species shares, not the national forest area", () => {
+  for (const q of [
+    "männikute pindala",
+    "kaasikute pindala",
+    "kui suur osa metsast on kuusikud",
+    "milline puuliik on Eestis kõige levinum",
+    "milline puuliik on Eestis levinuim",
+    "männi osakaal",
+  ]) assert.equal(forestEvidenceIntent(q)?.kind, "forest-species-share", q);
+  assert.equal(forestEvidenceIntent("kas männikuid on rohkem kui kuusikuid")?.kind, "pine-versus-spruce");
+  assert.equal(forestEvidenceIntent("männiku raievanus")?.kind, "pine-cutting-age");
+  assert.notEqual(forestEvidenceIntent("kuuse raie osakaal")?.kind, "forest-species-share");
 });
 
 test("a link to another year's report cannot authorize a scoped beetle answer through lexical fallback", async () => {
