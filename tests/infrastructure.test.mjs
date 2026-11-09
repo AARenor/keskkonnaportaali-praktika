@@ -2305,7 +2305,7 @@ test("successful LLM work consumes one process-wide rolling allowance", () => {
   assert.equal(tokenBudget.reserve(1_000).reason, "token-budget-exhausted");
   assert.deepEqual(resolveLlmRollingBudget({}), {
     windowMs: 3_600_000,
-    requestBudget: 60,
+    requestBudget: Infinity,
     tokenBudget: Infinity,
   });
   assert.equal(estimatedLlmBudgetTokens({ orchestrated: false }), AGENT_MANAGER_ANSWER_TOKENS);
@@ -2400,7 +2400,7 @@ test("one client cannot exhaust another client's share of the global LLM allowan
   assert.equal(budget.snapshot("client-b").client.requests, 1);
   assert.deepEqual(resolveLlmClientBudget({}), {
     windowMs: 3_600_000,
-    requestBudget: 15,
+    requestBudget: Infinity,
     tokenBudget: Infinity,
     maximumClients: 2_000,
   });
@@ -2428,7 +2428,7 @@ test("a model budget of 0 or off switches that limit off instead of allowing one
     assert.equal(reservation.commit({ requests: 4, tokens: 50_000 }), true);
   }
   assert.equal(resolveLlmClientBudget({ requestBudget: "25" }).requestBudget, 25);
-  assert.equal(resolveLlmClientBudget({ requestBudget: "nonsense" }).requestBudget, 15);
+  assert.equal(resolveLlmClientBudget({ requestBudget: "nonsense" }).requestBudget, Infinity);
 });
 
 test("unknown dispatched work is charged at its full reservation and observed overruns remain visible", () => {
