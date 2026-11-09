@@ -483,3 +483,13 @@ test("a found law section reaches the model even when no passage can be shown on
     resetForestLawsForTests();
   }
 });
+
+test("a law's numbered subsections are separate sentences, so a quote of one is not checked against the next", async () => {
+  const { splitTextPassages } = await import("../server/search.mjs");
+  assert.deepEqual(
+    splitTextPassages("(1) Seemnepuudeks jäetakse hea tüvevormiga puud. (2) Seemnepuud, mis ei ole säilikpuud, võib koristada."),
+    ["(1) Seemnepuudeks jäetakse hea tüvevormiga puud.", "(2) Seemnepuud, mis ei ole säilikpuud, võib koristada."],
+  );
+  // A letter in brackets or a reference is not a subsection.
+  assert.deepEqual(splitTextPassages("Vaata lisa (vt allpool). (b) ei jagu."), ["Vaata lisa (vt allpool). (b) ei jagu."]);
+});

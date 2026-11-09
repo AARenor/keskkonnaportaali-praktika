@@ -1768,8 +1768,10 @@ export function normalize(value = "") {
 
 export function splitTextPassages(value = "") {
   // A semicolon in a parenthetical alias is not a new claim (SMI; ingl NFI).
+  // A law's numbered subsection "(2) …" starts a new sentence, so a "not" in
+  // one subsection is never compared against a quote of the one before it.
   return String(value || "")
-    .split(/(?:\n+|(?<=[.!?])\s+(?=[„“”"']*(?:\p{Lu}|\p{N}))|\s*(?:[…•]|;(?![^()]*\))|(?<!\([^()]*);)\s*)/u)
+    .split(/(?:\n+|(?<=[.!?])\s+(?=[„“”"']*(?:\p{Lu}|\p{N}|\(\d+\p{No}*\)))|\s*(?:[…•]|;(?![^()]*\))|(?<!\([^()]*);)\s*)/u)
     .map((passage) => passage.trim())
     .filter(Boolean);
 }
