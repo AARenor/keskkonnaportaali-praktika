@@ -2306,7 +2306,7 @@ test("successful LLM work consumes one process-wide rolling allowance", () => {
   assert.deepEqual(resolveLlmRollingBudget({}), {
     windowMs: 3_600_000,
     requestBudget: 60,
-    tokenBudget: 240_000,
+    tokenBudget: Infinity,
   });
   assert.equal(estimatedLlmBudgetTokens({ orchestrated: false }), AGENT_MANAGER_ANSWER_TOKENS);
   assert.deepEqual(estimatedLlmBudgetUsage({ orchestrated: false }), {
@@ -2401,9 +2401,12 @@ test("one client cannot exhaust another client's share of the global LLM allowan
   assert.deepEqual(resolveLlmClientBudget({}), {
     windowMs: 3_600_000,
     requestBudget: 15,
-    tokenBudget: 120_000,
+    tokenBudget: Infinity,
     maximumClients: 2_000,
   });
+  assert.equal(resolveLlmClientBudget({ tokenBudget: "" }).tokenBudget, Infinity);
+  assert.equal(resolveLlmClientBudget({ tokenBudget: "50000" }).tokenBudget, 50_000);
+  assert.equal(resolveLlmRollingBudget({ tokenBudget: Infinity }).tokenBudget, Infinity);
 
   clock += 60_001;
   assert.equal(budget.reserve("client-a", { requests: 1, tokens: 500 }).ok, true);
