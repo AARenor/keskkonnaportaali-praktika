@@ -1442,8 +1442,11 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
   // raieks luba": an owner's permission-to-fell question asks about the forest
   // notice even when it never says "metsateatis". Protected areas, clear-cut
   // size, sanitary cutting, old or aged forest, nesting season and named years
-  // keep their own routes.
+  // keep their own routes. A question about another document, a fee or
+  // payment ("kas raie jaoks on inventeerimisandmeid vaja", "kas riik maksab")
+  // is not a permission question.
   if (!hasNotice && !hasProtection && !hasClearcut
+    && !/\b(?:inventeeri\w*|andme\w*|kava\w*|majanduskava\w*|loiv\w*|lõiv\w*|tasu\w*|maks\w*|kompens\w*|toetus\w*|kindlust\w*|ekspertiis\w*)\b/u.test(text)
     && !/\b(?:19|20)\d{2}\b|\bsanitaar\w*|\bvana\w*|\bvanu\w*|\braievanu\w*|\bpoliseid\w*|\blinnu\w*|\bpesitsus\w*|\bkevad\w*|\bsuvel?\b|\baasta\w*/u.test(text)
     && /\b(?:mets\w*|kinnistu\w*|metsaomanik\w*)\b/u.test(text)
     && /\b(?:rai(?:e|u|d|t|s)\w*|langet\w*|kuttepu\w*|puid\s+(?:votta|maha))\b/u.test(text)

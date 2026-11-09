@@ -493,3 +493,25 @@ test("a law's numbered subsections are separate sentences, so a quote of one is 
   // A letter in brackets or a reference is not a subsection.
   assert.deepEqual(splitTextPassages("Vaata lisa (vt allpool). (b) ei jagu."), ["Vaata lisa (vt allpool). (b) ei jagu."]);
 });
+
+test("a multi-word term asked as 'mis on X' must be named whole in the answer", () => {
+  assert.equal(answersAskedConcept("mis on metsa tulevikutehing", "2025. aastal oli metsamaa pindala 2,36 miljonit hektarit."), false);
+  assert.equal(answersAskedConcept("mis on taius metsas", "Metsa täius näitab puistu rinnaspindala suhet normaalpuistu rinnaspindalasse."), true);
+  assert.equal(answersAskedConcept("püsimetsana majandamine mis see tahendab", "Püsimetsana majandamine on puude pidev asendumine."), true);
+});
+
+test("a law section naming the question's own subject reaches the model despite other wording", () => {
+  const section = (id, title, content) => ({ id, title, content, url: `https://www.riigiteataja.ee/akt/12771900#${id}`, _lawSection: true, score: 20, organization: "Riigi Teataja" });
+  const retention = section("para13", "Metsa majandamise eeskiri § 13. Nõuded säilikpuude kohta",
+    "(1) Kasvavaid säilikpuid tuleb lageraielangil säilitada tüvepuidu kogumahuga vähemalt viis tihumeetrit ühe hektari kohta.");
+  assert.equal(assessEvidence("kui palju sailikpuid peab lageraiel jatma", [retention]).answerable, true);
+  // Without the subject in the law text, nothing changes.
+  assert.equal(assessEvidence("kas harvesteriga tootamine oosel on keelatud myra parast", [retention]).answerable, false);
+});
+
+test("a source's own data year does not make a sentence that repeats the year win", async () => {
+  const { directEvidenceExtract } = await import("../server/pipeline.mjs");
+  const source = { id: "smi-x", title: "SMI", dataYear: "2025",
+    content: "Okaspuu enamusega metsade osakaal metsade kogupindalast on 48% (1,13 miljonit hektarit). Probleemiks on okaspuumetsade vähenemine, viimase kümne aastaga (2016–2025) on nende pindala vähenenud." };
+  assert.match(directEvidenceExtract("okaspuu enamusega metsade osakaal 2025", source), /^Okaspuu enamusega metsade osakaal .* 48%/u);
+});

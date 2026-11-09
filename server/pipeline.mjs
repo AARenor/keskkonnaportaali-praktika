@@ -86,7 +86,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v89-law-subsection-sentences";
+export const SEARCH_RESPONSE_REVISION = "answer-v90-law-subject-and-term-heads";
 const DEFAULT_SEARCH_DEADLINE_MS = 60_000;
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
@@ -338,11 +338,15 @@ export function directEvidenceExtract(query, document, plannedEvidence = null, {
     // lowercase clause to a different lead sentence and change its subject.
     .filter((value) => !requireSubject || /^[„“"'([]*[\p{Lu}\d]/u.test(value))
     .filter((value) => value.length >= 35 && value.length <= 520 && hasCompleteSentenceEnding(value));
+  // The source's own data year is stated for every sentence on it, so a
+  // sentence is not preferred just because it happens to repeat that year.
+  const dataYear = /^(?:19|20)\d{2}$/u.test(String(document?.dataYear || "")) ? String(document.dataYear) : "";
+  const scoringQuery = dataYear ? query.replace(new RegExp(`\\b${dataYear}\\b`, "gu"), " ").trim() || query : query;
   const rankedPassages = passages
     .map((passage, index) => ({
       passage: passage.replace(/^[„“”"']+|[„“”"']+$/gu, "").trim(),
-      score: passageQueryCoverage(query, passage) * 20
-        + passageDirectness(query, passage)
+      score: passageQueryCoverage(scoringQuery, passage) * 20
+        + passageDirectness(scoringQuery, passage)
         + (preferred.has(normalize(passage)) ? 80 : 0)
         - index * 0.001,
     }))
@@ -357,8 +361,8 @@ export function directEvidenceExtract(query, document, plannedEvidence = null, {
     // A sentence about what the page or map does not prove is navigation
     // meta, not the answer ("Piirkonna kaart ega üldjuhend ei tõenda …").
     .filter((passage) => !passageDisclaimsEvidence(passage))
-    .filter((passage) => passageQueryCoverage(query, passage) > 0
-      && passageDirectness(query, passage) >= 0));
+    .filter((passage) => passageQueryCoverage(scoringQuery, passage) > 0
+      && passageDirectness(scoringQuery, passage) >= 0));
   let extract = "";
   let retained = 0;
   for (const passage of selected) {

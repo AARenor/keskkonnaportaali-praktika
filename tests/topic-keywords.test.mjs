@@ -34,7 +34,12 @@ test("an owner's permission-to-fell question reaches the forest notice guidance 
     "kas ma võin oma metsast küttepuid võtta",
     "kas ma pean oma metsas raieks luba küsima",
   ]) assert.equal(forestEvidenceIntent(q)?.kind, "forest-notice-exception", q);
-  for (const q of ["kas kaitsealal tohib raiuda", "lageraie lubatud pindala erametsas", "kui palju raiuti 2024"]) {
+  for (const q of [
+    "kas kaitsealal tohib raiuda", "lageraie lubatud pindala erametsas", "kui palju raiuti 2024",
+    // A question about another document or a payment is not about permission.
+    "mul on 3 ha metsa, kas raie jaoks on inventeerimisandmeid vaja",
+    "metsas on palju kuivanud puid, kas peame need ara votma, ja kas riik midagi maksab kui raie teeme",
+  ]) {
     assert.notEqual(forestEvidenceIntent(q)?.kind, "forest-notice-exception", q);
   }
 });

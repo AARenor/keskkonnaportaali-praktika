@@ -8357,7 +8357,9 @@ export function assessEvidence(query, documents = []) {
         if (passageDisclaimsEvidence(passage)) return false;
         const passageMatches = passageMatchesTerms(passage, terms);
         const requiredMatches = passageMatches.filter((term) => passageTerms.includes(term));
-        return years.every((year) => passageText.includes(year))
+        // A reviewed source's own data year counts as stating that year: the
+        // SMI page gives 2025 shares without repeating "2025" in each sentence.
+        return years.every((year) => passageText.includes(year) || String(document.dataYear || "") === year)
           && mandatePassage(passage)
           && requiredDomainTerms.every((term) => passageMatches.includes(term))
           && requiredMatches.length >= requiredPassageMatches;
@@ -8426,18 +8428,32 @@ export function assessEvidence(query, documents = []) {
           && passageMatches.some((term) => !GENERIC_QUERY_CONTEXT_TERMS.has(term));
       });
     });
-  const answerable = strong || Boolean(broadDocument);
+  // A law section near the top that names the question's own subject (säilikpuu,
+  // juuremädanik) is read by the model even when the wording differs: law says
+  // "uuendada" where a reader writes "istutada", and its quantities are rules,
+  // not statistics. The model's own checks still decide whether it answers.
+  const lawSubject = [...terms]
+    .filter((term) => !ADMIN_CONTEXT_ROOTS.has(term) && !GENERIC_QUERY_CONTEXT_TERMS.has(term))
+    .sort((left, right) => right.length - left.length)
+    .find((term) => term.length >= 7) || null;
+  const lawDocument = strong || broadDocument || !lawSubject || years.length
+    ? null
+    : candidates.slice(0, 3).find((document) => document?._lawSection
+      && documentCanDirectlyAnswerQuery(query, document)
+      && evidencePassages(document).some((passage) => !passageDisclaimsEvidence(passage)
+        && textHasQueryRoot(passage, lawSubject)));
+  const answerable = strong || Boolean(broadDocument) || Boolean(lawDocument);
   return {
     strong,
     answerable,
-    broad: Boolean(broadDocument),
+    broad: Boolean(broadDocument || lawDocument),
     topScore,
     coverage,
     matchedTerms: [...matched],
     terms,
     yearsCovered,
-    directDocumentId: directDocument?.id || broadDocument?.id || null,
-    broadDocumentId: broadDocument?.id || null,
+    directDocumentId: directDocument?.id || broadDocument?.id || lawDocument?.id || null,
+    broadDocumentId: broadDocument?.id || lawDocument?.id || null,
   };
 }
 
@@ -9033,8 +9049,11 @@ export function answersAskedConcept(query, text) {
   // A news list or a map layer name never answers anything, on any route.
   if (/^hiljutised uudised\b|\bvaata koiki\b/u.test(normalizedText) || /\b[a-z]{2,}__[a-z_]+/u.test(String(text))) return false;
   // "Mis on X" asks for X itself, so the answer has to name it.
-  const defined = normalizedQuery.match(/^mis on (\p{L}{4,})\??$/u)?.[1]
-    || normalizedQuery.match(/^(\p{L}{4,}) (?:mis|mida) see tahendab\??$/u)?.[1];
+  // For a term of up to three words ("metsa tulevikutehing") the answer must
+  // name its longest word, the head of the term, by its stem.
+  const definedPhrase = normalizedQuery.match(/^mis on ((?:\p{L}+ ){0,2}\p{L}{4,})\??$/u)?.[1]
+    || normalizedQuery.match(/^((?:\p{L}+ ){0,2}\p{L}{4,}) (?:mis|mida) see tahendab\??$/u)?.[1];
+  const defined = definedPhrase?.split(" ").sort((left, right) => right.length - left.length)[0];
   if (defined && !normalizedText.includes(defined.slice(0, Math.max(4, defined.length - 2)))) return false;
   return ASKED_CONCEPTS.every(({ asks, answers }) => !asks.test(normalizedQuery) || answers.test(normalizedText));
 }
