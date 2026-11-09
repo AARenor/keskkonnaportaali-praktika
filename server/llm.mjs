@@ -392,6 +392,16 @@ function permissionPolarity(polarity) {
   return "";
 }
 
+// A rejection carries the rejected sentence (and the source sentence it was
+// compared with), shortened, so a wrongly rejected answer can be seen and fixed.
+function rejectionWithText(message, rejectedText = "", evidenceText = "") {
+  const error = new Error(message);
+  const short = (value) => String(value || "").replace(/\s+/gu, " ").trim().slice(0, 220);
+  if (short(rejectedText)) error.rejectedText = short(rejectedText);
+  if (short(evidenceText)) error.evidenceText = short(evidenceText);
+  return error;
+}
+
 function hasOrdinaryNegation(value) {
   const modalMarker = "(?:lubat\\w*|keelat\\w*|lubamatu\\w*|võimalik\\w*|võimatu\\w*|välistat\\w*)";
   const modalNegationGap = String.raw`(?:(?!\b(?:kuid|aga|ja|ning|ent|sest|kuna|kuigi|ehkki|juhul\s+kui|siis\s+kui|enne\s+kui|pärast\s+seda\s+kui|but|and|whereas|while|because|although|though|since|unless|if|when|after|before|yet)\b)[^.!?;,:|/\\~&+<>\p{Pd}\p{Cc}\p{Zl}\p{Zp}])`;
@@ -450,7 +460,7 @@ function assertPolarityParity(claimSentence, evidenceSentence, label) {
     || trendMismatch
     || (claim.higher && !evidence.higher)
     || (claim.lower && !evidence.lower)) {
-    throw new Error(`LLM ${label} reverses the polarity of cited evidence`);
+    throw rejectionWithText(`LLM ${label} reverses the polarity of cited evidence`, claimSentence, evidenceSentence);
   }
 }
 
@@ -713,7 +723,7 @@ function assertFactualNegationParity(claimSentences, evidenceSentences, label) {
     if (!candidates.length) {
       if (hasOrdinaryNegation(claim.clause)
         || Object.keys(sentenceQualities(claim.clause)).length) {
-        throw new Error(`LLM ${label} has an unbound factual negation`);
+        throw rejectionWithText(`LLM ${label} has an unbound factual negation`, claim.clause);
       }
       continue;
     }
@@ -1805,7 +1815,7 @@ function validateGroundedProposal(payload, draft, query, evidencePack) {
   if (proposedIntro !== String(draft.answer.intro || "").trim()
     && directDraftCitations.length
     && !directDraftCitations.some((citation) => introCitations.includes(citation))) {
-    throw new Error("LLM introduction bypasses the directly matched current source");
+    throw rejectionWithText("LLM introduction bypasses the directly matched current source", proposedIntro);
   }
   if (protectedIntro && proposedIntro !== String(draft.answer.intro || "").trim()) {
     // The final answer keeps the deterministic current measurement verbatim,
@@ -1970,7 +1980,11 @@ export function validateGroundedAnswer(payload, draft, query, evidencePack) {
     return validateGroundedProposal(payload, draft, query, evidencePack);
   } catch (error) {
     // The parenthesis can quote evidence words, so only the fixed text leaves.
-    const rejectionDetail = String(error?.message || "").replace(/\s*\(.*$/su, "").slice(0, 120);
+    const rejectionDetail = [
+      String(error?.message || "").replace(/\s*\(.*$/su, "").slice(0, 120),
+      ...(error?.rejectedText ? [`claim: ${error.rejectedText}`] : []),
+      ...(error?.evidenceText ? [`source: ${error.evidenceText}`] : []),
+    ].join(" | ");
     return { answer: null, acceptedClaims: [], rejectionReason: "local-rejected", rejectionDetail };
   }
 }
