@@ -86,7 +86,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v90-law-subject-and-term-heads";
+export const SEARCH_RESPONSE_REVISION = "answer-v91-topic-overview-and-privacy-nouns";
 const DEFAULT_SEARCH_DEADLINE_MS = 60_000;
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
@@ -571,6 +571,32 @@ function composeSourceClaimPairs(query, plannedEvidence, sources = []) {
 // same visible official result set. This keeps a useful deterministic answer
 // when Luna is unavailable without importing the legacy prewritten forestry
 // corpus or turning manually assigned tags into factual evidence.
+const NARROW_FALLBACK_KINDS = new Set(["forest-notice-exception", "bark-beetle-guidance"]);
+
+// A method or share topic is resolved by the asking word itself ("kuidas
+// mõõdetakse", "kui suur osa"), so that word need not repeat in the card.
+// Every other question word still has to: "mis puuliigil on kõige suurem
+// tagavara" is not answered by area shares.
+const TOPIC_ASK_ROOT_PATTERN = /^(?:moot|mõõt|arvut|hinda|hinnang|osa$|osakaal|protsent|measur|calculat|estimat|share|percent|proportion|area$|much$|many$)/u;
+
+function offTargetFallback(query, kind, fallback) {
+  if (NARROW_FALLBACK_KINDS.has(kind)) return false;
+  const text = [fallback.intro, ...(fallback.parts || []).map((part) => part.text)].join(" ");
+  if (extractAnswersQuery(query, text)) return false;
+  if (!/-(?:method|share)$/u.test(kind || "")) return true;
+  return queryTerms(query).some((term) => !textHasQueryRoot(text, term)
+    && !TOPIC_ASK_ROOT_PATTERN.test(term)
+    && extractAnswersQuery(term, text) === false);
+}
+
+function withoutOffTargetFallback(draft) {
+  if (!draft?.evidence?.offTargetFallback) return draft;
+  return {
+    ...draft,
+    answer: { ...draft.answer, eyebrow: NO_ANSWER_EYEBROW, intro: NO_ANSWER_INTRO, introCitations: [], parts: [] },
+  };
+}
+
 function composeOfficialForestryEvidenceFallback(query, plannedEvidence, sources = [], previousAnswer = {}) {
   if (!plannedEvidence?.strong
     || !plannedEvidence?.passagesByDocument
@@ -1363,6 +1389,15 @@ export async function createPortalDraft(query, {
   } else if (officialForestryFallback) {
     draft.answer = officialForestryFallback;
     draft.evidence.syntheticFallback = "official-forestry-evidence";
+    // The planned passages of a broad topic ("metsateatis", climate impact,
+    // stock overview) cover the topic, not necessarily what was asked about it
+    // (processing time, a "no" decision, an unpaid fee). The model still gets
+    // them, but shown as the answer without every content word of the
+    // question they would be a wrong answer, so the card the reader sees
+    // without the model says there is no answer. A narrow topic is resolved
+    // only by the question its passages answer ("ilma loata" → 20 tm without a
+    // notice), so its words need not repeat the question's.
+    draft.evidence.offTargetFallback = offTargetFallback(retrievalQuery, plannedEvidence?.kind, officialForestryFallback);
   } else if (directExtract && !plannedEvidence?.strong && !REVIEWED_RETRIEVAL_PATTERN.test(direct.retrieval || "")
     && !extractAnswersQuery(retrievalQuery, directExtract)) {
     // The model may still answer from these sources. Without it, say there is
@@ -1738,12 +1773,12 @@ async function searchWithinBudget(cleanQuery, {
   const llmBudget = remainingBudget(deadlineAt, 300);
   if (canGenerate && llmBudget >= 500 && typeof onDraft === "function" && !citesRawLawSection(draft)) {
     throwIfRequestAborted(signal);
-    onDraft(publicResponse(withForestContextChart(withLandUseShareChart(draft, retrievalQuery, searchResults?.items, { now: startedAt }), retrievalQuery, searchResults?.items, { now: startedAt }), { now: startedAt }));
+    onDraft(publicResponse(withForestContextChart(withLandUseShareChart(withoutOffTargetFallback(draft), retrievalQuery, searchResults?.items, { now: startedAt }), retrievalQuery, searchResults?.items, { now: startedAt }), { now: startedAt }));
   }
   // Keep the accepted deterministic result detached from both the provider
   // input and any streamed consumer. A ready model answer must rebind its
   // visible citation witnesses before it can replace this snapshot.
-  const deterministicDraft = structuredClone(draft);
+  const deterministicDraft = withoutOffTargetFallback(structuredClone(draft));
   // Keep opaque source admission on our snapshot, never on provider copies.
   // Cloning a descriptor cannot recreate its private constructor binding.
   deterministicDraft.sources = deterministicDraft.sources.map((source, index) => ({

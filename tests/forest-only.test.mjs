@@ -541,3 +541,27 @@ test("a source's own data year does not make a sentence that repeats the year wi
     content: "Okaspuu enamusega metsade osakaal metsade kogupindalast on 48% (1,13 miljonit hektarit). Probleemiks on okaspuumetsade vähenemine, viimase kümne aastaga (2016–2025) on nende pindala vähenenud." };
   assert.match(directEvidenceExtract("okaspuu enamusega metsade osakaal 2025", source), /^Okaspuu enamusega metsade osakaal .* 48%/u);
 });
+
+test("a broad topic overview is not shown as the answer to a narrower question about it", async () => {
+  resetForestLawsForTests();
+  const directory = officialServiceCatalogueDocuments();
+  const ask = async (query) => {
+    const items = rankPublicSearchCandidates(query, directory, { intentDocuments: directory }).slice(0, 12);
+    let modelCalls = 0;
+    const result = await searchEnvironmentLive(query, {
+      searchResults: { total: items.length, items },
+      useCache: false,
+      deadlineAt: Date.now() + 9_000,
+      generateAnswer: async () => { modelCalls += 1; return { answer: null, acceptedClaims: [], attempt: {} }; },
+    });
+    return { result, modelCalls };
+  };
+  // "Metsateatis" is the topic, the processing time is the question. The model
+  // still reads the sources, but the overview is not presented as the answer.
+  const narrow = await ask("kui kaua keskkonnaamet metsateatist menetleb");
+  assert.equal(narrow.modelCalls, 1);
+  assert.match(narrow.result.answer.intro, /Meil ei ole sellele küsimusele vastust/u);
+  // A narrow topic answers what resolved it: cutting without a notice.
+  const exception = await ask("kas metsaomanik vajab raieks luba");
+  assert.match(exception.result.answer.intro, /20 tihumeetrit/u);
+});
