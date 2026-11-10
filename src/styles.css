@@ -3695,3 +3695,465 @@ h3 {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Standalone forestry chat.
+   A nonmodal launcher and panel, mounted on the home and /otsi views. It reuses
+   the answer parts of the search page (.answer-intro, .answer-parts, .citation,
+   .source-legend, .answer-note, .answer-clarification, .answer-chart), so a chat
+   answer and a search answer are the same rendering, only narrower. */
+.chatbot__launcher {
+  position: fixed;
+  z-index: 90;
+  right: 20px;
+  bottom: max(20px, env(safe-area-inset-bottom, 0px));
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 50px;
+  padding: 0 18px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  background: var(--brand-700);
+  color: #fff;
+  box-shadow: 0 10px 26px rgba(0, 54, 98, 0.26);
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chatbot__launcher:hover {
+  background: var(--brand-800);
+}
+
+/* Out of the way while the page search field is focused: on a phone its
+   suggestion list reaches the bottom edge and must stay clickable. */
+.chatbot__launcher--aside {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.chatbot__panel {
+  position: fixed;
+  z-index: 90;
+  right: 20px;
+  bottom: max(20px, env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  width: min(432px, calc(100vw - 40px));
+  height: min(620px, calc(100vh - 120px));
+  height: min(620px, calc(100dvh - 120px));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.chatbot__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding: 12px 12px 11px 15px;
+  background: var(--brand-50);
+}
+
+.chatbot__head h2 {
+  margin: 0;
+  color: var(--brand-900);
+  font-size: 1rem;
+  line-height: 1.3;
+}
+
+.chatbot__head-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.chatbot__reset {
+  border: 1px solid #a9c3d0;
+  border-radius: 999px;
+  padding: 5px 11px;
+  background: #fff;
+  color: var(--brand-800);
+  font-size: 0.79rem;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chatbot__reset:hover {
+  border-color: var(--brand-700);
+  background: #eef7fa;
+}
+
+.chatbot__close {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  color: #405866;
+  cursor: pointer;
+}
+
+.chatbot__close:hover {
+  background: #e1edf3;
+}
+
+.chatbot__body {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px;
+}
+
+.chatbot__empty p {
+  margin: 0 0 8px;
+  color: #334c59;
+  font-size: 0.93rem;
+  line-height: 1.55;
+}
+
+.chatbot__empty .chatbot__empty-note {
+  margin-bottom: 0;
+  color: #556a74;
+  font-size: 0.84rem;
+}
+
+.chatbot__examples {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.chatbot__examples button,
+.chatbot__related button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid #cfe3ea;
+  border-radius: 9px;
+  padding: 9px 11px;
+  background: #f6fbfd;
+  color: #1c4a63;
+  font-size: 0.87rem;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chatbot__examples button:hover,
+.chatbot__related button:hover:not(:disabled) {
+  border-color: var(--brand-700);
+  background: #e9f5fa;
+}
+
+.chatbot__related button {
+  background: #fff;
+}
+
+.chatbot__related button svg {
+  flex: 0 0 auto;
+  color: var(--brand-700);
+}
+
+.chatbot__related button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.chatbot__turn {
+  display: grid;
+  gap: 10px;
+}
+
+.chatbot__turn + .chatbot__turn {
+  margin-top: 16px;
+  border-top: 1px solid #e4edf1;
+  padding-top: 16px;
+}
+
+.chatbot__question {
+  margin-left: min(14%, 56px);
+  border-radius: 9px;
+  padding: 9px 12px;
+  background: #eef5f7;
+}
+
+.chatbot__question > span {
+  display: block;
+  margin-bottom: 4px;
+  color: #526872;
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.chatbot__question p {
+  margin: 0;
+  color: #304854;
+  font-size: 0.93rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.chatbot__answer {
+  border-left: 3px solid #78af99;
+  border-radius: 9px;
+  padding: 12px 13px;
+  background: #f7faf9;
+}
+
+.chatbot__answer-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 7px;
+  color: var(--brand-700);
+  font-size: 0.74rem;
+  font-weight: 750;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.chatbot__answer-title {
+  margin: 0 0 8px;
+  color: #1f3847;
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.chatbot__part-title {
+  margin: 0 0 5px;
+  color: #294453;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.chatbot__answer .answer-intro {
+  margin-bottom: 14px;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.chatbot__answer .answer-parts section {
+  margin-top: 14px;
+}
+
+.chatbot__answer .answer-parts p {
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.chatbot__answer .answer-chart {
+  margin-bottom: 14px;
+}
+
+.chatbot__answer .answer-actions {
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.chatbot__answer .answer-actions a {
+  padding: 6px 10px;
+  font-size: 0.82rem;
+}
+
+.chatbot__answer .source-legend {
+  gap: 6px 14px;
+  margin: 12px 0 0;
+  font-size: 0.72rem;
+}
+
+.chatbot__answer .answer-note {
+  margin-top: 16px;
+  padding: 9px 11px;
+}
+
+.chatbot__answer .answer-note p {
+  font-size: 0.81rem;
+}
+
+.chatbot__answer .answer-clarification {
+  margin-top: 14px;
+  padding: 11px 12px;
+}
+
+.chatbot__related {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.chatbot__answer--skeleton {
+  display: grid;
+  gap: 9px;
+  min-height: 92px;
+}
+
+.chatbot__pending-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: #526872;
+  font-size: 0.8rem;
+}
+
+.chatbot__no-answer {
+  margin: 0;
+  color: #4c616d;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.chatbot__error {
+  margin-top: 14px;
+  border: 1px solid #e3b6b9;
+  border-left-width: 3px;
+  border-radius: 9px;
+  padding: 11px 12px;
+  background: #fdf5f5;
+}
+
+.chatbot__error strong {
+  display: block;
+  color: #8a2e35;
+  font-size: 0.87rem;
+}
+
+.chatbot__error p {
+  margin: 4px 0 9px;
+  color: #6d3a3d;
+  font-size: 0.87rem;
+  line-height: 1.5;
+}
+
+.chatbot__error button {
+  border: 1px solid #c98b8f;
+  border-radius: 999px;
+  padding: 5px 12px;
+  background: #fff;
+  color: #8a2e35;
+  font-size: 0.82rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.chatbot__notice {
+  margin: 12px 0 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #f6f8f0;
+  color: #4a5a3c;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.chatbot__form {
+  border-top: 1px solid var(--line);
+  padding: 10px 14px 12px;
+  background: #fff;
+}
+
+.chatbot__form > label {
+  display: block;
+  margin-bottom: 7px;
+  color: #294453;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.chatbot__input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px;
+  min-height: 42px;
+  overflow: hidden;
+  border: 1px solid #a9bbc5;
+  border-radius: 999px;
+  background: #fff;
+}
+
+.chatbot__input-row:focus-within {
+  border-color: #1d6382;
+  box-shadow: 0 0 0 3px rgba(29, 99, 130, 0.18);
+}
+
+.chatbot__input-row input {
+  min-width: 0;
+  border: 0;
+  padding: 0 15px;
+  color: #253f4d;
+  font: inherit;
+  outline: 0;
+}
+
+.chatbot__input-row button {
+  display: grid;
+  margin: 4px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--brand-700);
+  color: #fff;
+  cursor: pointer;
+}
+
+.chatbot__input-row button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.chatbot__hint {
+  margin: 7px 2px 0;
+  color: #556a74;
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 720px) {
+  .chatbot__launcher {
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    min-height: 46px;
+    padding: 0 15px;
+    font-size: 0.88rem;
+  }
+
+  .chatbot__panel {
+    left: 10px;
+    right: 10px;
+    bottom: max(10px, env(safe-area-inset-bottom, 0px));
+    width: auto;
+    height: min(74vh, 620px);
+    height: min(74dvh, 620px);
+  }
+
+  .chatbot__body {
+    padding: 12px;
+  }
+}
+
+/* Landscape phones: an icon-only launcher keeps the panel edge and the page
+   search clear. The accessible name stays on the button itself. */
+@media (max-height: 480px) {
+  .chatbot__launcher {
+    width: 48px;
+    min-height: 48px;
+    justify-content: center;
+    padding: 0;
+    border-radius: 50%;
+  }
+
+  .chatbot__launcher span {
+    display: none;
+  }
+}

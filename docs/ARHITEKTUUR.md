@@ -1,6 +1,6 @@
 # Keskkonnaportaali arhitektuuri- ja otsinguuuring
 
-Uuendatud: 21.10.2026
+Uuendatud: 10.11.2026
 
 **Kehtiv allikapoliitika:** Statistikaamet on avalikest tulemustest, vastustest ja diagrammidest välistatud. Allpool mainitud PXWeb-adapterite tehnilised piirid säilivad ajalooliste skeemilepingutena, mitte avaliku tõendi erandina. Toetatud metsadiagrammid kasutavad Keskkonnaagentuuri SMI töövihikut; puuduva primaarse rea asemel ei kuvata teise väljaandja graafikut. Vt [allikaregister](ALLIKAD.md).
 
@@ -63,6 +63,16 @@ Esimese täisjooksu tulemus 17.08.2026 oli 11 861 unikaalset kanoniseeritud URL-
 18.08.2026 vahekontrollis oli eraldatud PostgreSQL-i korpuses 12 492 kanoniseeritud dokumenti, millest 1795 olid hüdrateeritud sisuga; 11 624 kirjet olid ametliku allikatasemega. Need on kasvava indeksi hetkeseis, mitte muutumatu tootekonstant.
 
 Sama päeva täisjooks salvestas `mets` auditi-snapshot'i 20 lähtelihekülge × kuni 50 kaarti: portaali `upstream_total=953`, 953 kaardiesinemist ja 752 eri kanoniseeritud URL-i. Need arvud dokumenteerivad tollast lähteseisu ja duplikaate, kuid runtime ei kuva ega järjesta tulemusi enam selle vana snapshot'i järgi: esimene leht sünnib PostgreSQL-i ning ametliku live-otsingu ühendatud, deduplikeeritud ja relevantsusjärjestatud hulgast.
+
+## Vestlusliides otsingu ees
+
+Avaleht ja otsinguvaade `/otsi` pakuvad eraldi juurdepääsu vestlusele nupuga „Ava vestlus”. See on kliendipoolne sisenemistee, mis kasutab olemasolevat otsingulepingut ega lisa serverisse marsruuti, mudelit ega tõenditeed:
+
+- esimene küsimus läheb `POST /api/search/stream` voogu täpselt sama NDJSON-lepingu, samade vaikefiltrite ja sama nähtava tulemusehulga allikakõlblikkusega kui põhiotsing;
+- iga järgnev küsimus läheb `POST /api/search/follow-up` teele juurküsimuse, küsimuse ja piiratud varasemate küsimustega; server teeb uue tõendiotsingu ja uue viidatud vastuse, seega varasem vastus ei muutu tõendiks;
+- vastus, nummerdatud viited, valideeritud diagramm, keeldumine, täpsustusküsimus ja vastuseta olek tulevad samast vastuseobjektist, mida renderdab ka põhiotsing, nii et vestlusel ei ole oma allika-, viite- ega diagrammipoliitikat.
+
+Vestlus on mitteamodalne paneel, mis ei lukusta lehte ega seiska põhiotsingut. Vestlusseis on brauseri mälus: sulgemine ja uuesti avamine hoiab jooksva lehe sõnumid, lehe uuendamine ega `/otsi` lingi jagamine neid ei taasta ning server ei halda eraldi vestlusseanssi. „Uus vestlus” tühjendab sõnumid, pooleliolevad päringud ja varasema konteksti; eelmise vestluse tulemus ei tohi uue vestluse vaatele järgi jääda. Lõime piir on neli jätkuküsimust, mille järel pakutakse uue vestluse alustamist. Päringutõrge jääb paneelis nähtavaks ja küsimust saab uuesti proovida. Kui voog katkeb pärast kontrollitud vahevastust, jääb see alles koos teatega. Avaja ja paneeli juhtnupud on klaviatuuriga kasutatavad ja sildistatud, olekuteated on ekraanilugejale kättesaadavad, Escape sulgeb paneeli ja tagastab fookuse avajale ning mobiilivaates püsib paneel ekraani piires.
 
 ## PostgreSQL-i roll
 

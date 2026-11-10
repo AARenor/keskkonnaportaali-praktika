@@ -88,6 +88,22 @@ export const userGuide = {
       </>,
     },
     {
+      id: "vestlus",
+      title: "Vestlus eraldi aknas",
+      content: <>
+        <p>Avalehel ja otsinguvaates <code>/otsi</code> on nupp „Ava vestlus”. See avab vestlusakna, mis kasutab sama allikapõhist otsingut ega asenda tavalist otsingut: põhiotsing jääb lehele alles ja töötab vestlusest sõltumata.</p>
+        <ul>
+          <li><strong>Esimene küsimus</strong> läheb samasse otsingusse kui põhivorm. Vastus, nummerdatud viited, diagramm ja võimalik täpsustuspalve on samad, mida näed otsingutulemuse juures.</li>
+          <li><strong>Iga järgmine küsimus</strong> teeb uue tõendiotsingu. Varasemad küsimused aitavad teemat täpsustada, kuid varasem vastus ei muutu uue väite tõendiks.</li>
+          <li><strong>Kuni neli jätkuküsimust</strong> ühe vestluse kohta. Kui piir saab täis, pakub aken uue vestluse alustamist.</li>
+          <li><strong>„Uus vestlus”</strong> tühjendab sõnumid, pooleliolevad päringud ja varasema konteksti.</li>
+        </ul>
+        <p>Vestlusakna sulgemine ja uuesti avamine hoiab selle lehe sõnumid alles. Lehe uuendamisel kaovad need brauseri mälust ning lingi jagamine vestlust ei taasta. Sõnumeid ei salvestata selles brauseris püsivalt.</p>
+        <p>Kui vastust ei õnnestu koostada, jääb tõrge aknasse nähtavaks ja küsimust saab uuesti proovida. Vestlus ei asenda puuduvat vastust väljamõeldud tekstiga.</p>
+        <p>Klaviatuuriga saab akna avada ja sulgeda: Escape sulgeb akna ja viib fookuse tagasi nupule „Ava vestlus”. Mobiilivaates püsib aken ekraani piires.</p>
+      </>,
+    },
+    {
       id: "diagrammid",
       title: "Loe diagrammi koos viitega",
       content: <>
@@ -259,6 +275,23 @@ const result = await response.json();
         <p>Saada see keha <code>POST /api/search/follow-up</code> teele. Juurküsimus ja jätkuküsimus on kumbki kuni 180 normaliseeritud märki. Server lubab kuni neli <code>previous_questions</code> sisendit; kontekst kasutab juurt ja viimast kolme varasemat sobivat küsimust, kokku kuni 1 400 märki. Vastus sisaldab oma uut loendit, alati lehekülg 1 ja suurus 12.</p>
         <p>Praegune kasutajaliides piirab lõime nelja jätkuvooruni; server piirab saadetud konteksti, mitte kõigi tulevaste voorude koguarvu. Serveris vestlussessiooni ei säilitata. Metsanäitaja perioodipõhine jätk võib pärida algse näitaja, kuid muu sõnastus peab uuesti läbima ulatuse ja privaatsuse kontrolli.</p>
         <p>Olemasolev klient näitab jätkuvastuse viiteid, kuid ei asenda laia juurküsimuse loendit jätkuvastuse loendiga. Säilita see eristus või kuva uues kliendis jätku loend eraldi, et vastust ja tõendeid mitte segi ajada.</p>
+      </>,
+    },
+    {
+      id: "vestlusliides",
+      title: "Vestlusliides",
+      content: <>
+        <p>Avaleht ja <code>/otsi</code> pakuvad eraldi sisenemistee vestlusele nupuga „Ava vestlus”. See on kliendipoolne vaade olemasolevale otsingule: uut marsruuti, mudelit ega tõenditeed ei lisandu ja põhiotsing jääb muutumata.</p>
+        <ul>
+          <li><strong>Esimene voor:</strong> <code>POST /api/search/stream</code> samade vaikefiltritega nagu põhiotsing. Loe voogu <CodeLink path="src/search-stream.js">olemasoleva parseriga</CodeLink>; ära kasuta selle endpoint'i puhul <code>response.json()</code>.</li>
+          <li><strong>Järgmised voorud:</strong> <code>POST /api/search/follow-up</code> kehaga <code>root_query</code>, <code>question</code>, <code>previous_questions</code>, <code>previous_answers</code> ja <code>filters</code>. Server teeb uue tõendiotsingu ja uue viidatud vastuse; varasem vastus ei ole tõend.</li>
+          <li><strong>Vastuse sisu:</strong> vastus, <code>sources[]</code>, <code>chart</code>, <code>clarification</code> ja vastuseta olek tulevad samast vastuseobjektist. Kasuta samu renderdajaid ja viitelinke; ära anna vestlusele oma allika- ega diagrammipoliitikat.</li>
+          <li><strong>Lõime piir:</strong> kuni neli jätkuküsimust, seejärel paku uue vestluse alustamist. Server piirab saadetud konteksti, mitte voorude koguarvu, seega on nelja vooru piir kliendi otsus.</li>
+          <li><strong>Seis:</strong> hoia sõnumid, juurküsimus ja kontekst ainult komponendi mälus. „Uus vestlus” tühjendab sõnumid, pooleliolevad päringud ja varasema konteksti; hilinenud vastus ei tohi uude vestlusesse jõuda. Paneeli sulgemine ja uuesti avamine hoiab jooksva lehe sõnumid, lehe uuendamine neid ei taasta. Ära salvesta vestlust ega luba salvestamist kasutajale.</li>
+          <li><strong>Tõrked:</strong> jäta viga nähtavaks ja uuesti proovitavaks. Ära asenda tõrget väljamõeldud vastusega ega eelmise vooru tulemusega.</li>
+          <li><strong>Ligipääsetavus:</strong> avaja on nimega nupp, paneeli juhtnupud on sildistatud, olekuteade on ekraanilugejale kättesaadav, Escape sulgeb paneeli ja tagastab fookuse avajale, mobiilivaates püsib paneel ekraani piires.</li>
+        </ul>
+        <p>Vestlus ei muuda põhiotsingu vaadet, marsruute ega Terrapointi iframe'i. Lähtekoht: <CodeLink path="src/App.jsx" />.</p>
       </>,
     },
     {

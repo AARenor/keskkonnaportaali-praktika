@@ -36,20 +36,12 @@ import {
 import { fetchSearchStream, readSearchStream } from "./search-stream.js";
 import AnswerChart, { chartSourceDiffers } from "./AnswerChart.jsx";
 import { APP_BUILD_MISMATCH_EVENT, noteServerBuild } from "./app-build.js";
+import { DEFAULT_SEARCH_FILTERS, clientSearchFilters, readFollowUpResponse, searchRequestPayload } from "./search_request.js";
+import Chatbot from "./Chatbot.jsx";
 
 const SOURCE = "https://keskkonnaportaal.ee";
-const DEFAULT_SEARCH_FILTERS = { source: "all", category: "", year: null, sort: "relevance" };
 const navigationSearches = new globalThis.Map();
 let navigationSearchCounter = 0;
-
-function clientSearchFilters(value = {}) {
-  return {
-    source: ["all", "trusted", "official", "reviewed", "supplementary", "other"].includes(value.source) ? value.source : "all",
-    category: String(value.category || "").slice(0, 120),
-    year: Number.isInteger(Number(value.year)) && Number(value.year) >= 1990 ? Number(value.year) : null,
-    sort: value.sort === "newest" ? "newest" : "relevance",
-  };
-}
 
 function legacySearchFromLocation(search = window.location.search) {
   const params = new URLSearchParams(search);
@@ -62,11 +54,6 @@ function legacySearchFromLocation(search = window.location.search) {
       sort: params.get("sort") || "relevance",
     }),
   };
-}
-
-function searchRequestPayload(query, filters = DEFAULT_SEARCH_FILTERS, page = 1, pageSize = 12) {
-  const applied = clientSearchFilters(filters);
-  return { q: query, filters: applied, page, page_size: pageSize };
 }
 
 function rememberNavigationSearch(query, filters) {
@@ -907,6 +894,14 @@ function isRedundantAnswerNote(note) {
     === "Vastuses kasutatakse ainult kuvatud ametlikke allikaid. Õigusliku või asukohapõhise otsuse puhul kontrolli alati algallikat.";
 }
 
+// One note renderer for the search page and the chat panel.
+function AnswerNote({ note }) {
+  if (!note || isRedundantAnswerNote(note)) return null;
+  return (
+    <div className="answer-note"><ShieldCheck size={18} /><p>{note}</p></div>
+  );
+}
+
 function sourceTierLabel(value) {
   if (value === "reviewed") return "Kontrollitud";
   if (value === "official") return "Ametlik";
@@ -1177,8 +1172,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
         signal: controller.signal,
       });
       noteServerBuild(response);
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Jätkuküsimusele ei saanud vastata.");
+      const data = await readFollowUpResponse(response);
       if (followUpRequestRef.current.id !== id) return;
       setFollowUps((current) => [...current, { question: cleanQuestion, result: data }].slice(0, 4));
     } catch (followUpLoadError) {
@@ -1230,7 +1224,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
               </div>
               <SourceActions sources={result.sources} />
               <SourceLegend sources={result.sources} answer={result.answer} chart={result.chart} />
-              {result.answer.note && !isRedundantAnswerNote(result.answer.note) ? <div className="answer-note"><ShieldCheck size={18} /><p>{result.answer.note}</p></div> : null}
+              <AnswerNote note={result.answer.note} />
               {result.clarification ? (
                 <div className="answer-clarification">
                   <strong>Täpsusta soovi korral</strong>
@@ -1461,6 +1455,10 @@ function answerTextOf(item) {
   return [item?.answer?.title, item?.answer?.intro, ...(item?.answer?.parts || []).map((part) => part?.text)].filter(Boolean).join(" ");
 }
 
+// The chat panel renders its answers with the search page's own parts, passed
+// in so the two renderings cannot drift apart and App stays their single owner.
+const CHAT_ANSWER_PARTS = Object.freeze({ AnswerNote, Citation, SourceActions, SourceLegend });
+
 export function App() {
   const isEmbed = window.location.pathname.startsWith("/embed/terrapoint");
   const initialNavigation = navigationSearch();
@@ -1602,6 +1600,7 @@ export function App() {
         <Home busy={busy} onSearch={performSearch} searchInputRef={homeSearchInputRef} />
       )}
       <Footer compact={view === "search"} />
+      <Chatbot answerParts={CHAT_ANSWER_PARTS} answerTextOf={answerTextOf} />
     </>
   );
 }

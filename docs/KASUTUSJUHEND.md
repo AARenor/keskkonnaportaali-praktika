@@ -1,6 +1,6 @@
 # Keskkonnaportaali otsingu kasutusjuhend
 
-Uuendatud: 21.10.2026
+Uuendatud: 10.11.2026
 
 Täielik sirvitav juhend koos peatükilinkidega:
 [praktika.arle.top/docs/kasutajale](https://praktika.arle.top/docs/kasutajale).
@@ -54,6 +54,22 @@ Näiteks metsamaa tagavara sisaldab teistsugust üldkogumit kui puistute tagavar
 Diagramm kuvatakse ainult siis, kui server sai sama vastuse jaoks valideeritud ametliku arvurea. Diagrammi ei tuletata vabast tekstist. Vastuse all olev jätkuküsimus käivitab uue otsingu; varasem vastus ei muutu uue väite tõendiks.
 
 Jätkuküsimus, mis ise teema sõnu ei sisalda (näiteks „selgita hindamise etappe”, „millal on vajalik KIH” või „kuidas see on muutunud”), pärib algse küsimuse teema: otsing kombineerib mõlemad ja otsib tõendid uuesti. Kui jätkuküsimus toob kaasa teise valdkonna sõna (näiteks „aktsiaoptsioon” või „salasõna”), jääb teemavälise sisu kaitse alles ja päringu palutakse täpsustada.
+
+## Vestlus eraldi aknas
+
+Avalehel ja otsinguvaates `/otsi` on nupp **„Ava vestlus”**. See avab vestlusakna, mis kasutab sama allikapõhist otsingut ega muuda tavalist otsingut: põhiotsing jääb lehele alles ja töötab vestlusest sõltumata.
+
+1. Vajuta „Ava vestlus” ja kirjuta küsimus samamoodi nagu põhiotsingusse.
+2. Vastus tuleb samast otsingust, seega kehtivad samad nummerdatud viited, diagrammid, keeldumised ja täpsustuspalved.
+3. Iga järgmine küsimus teeb uue tõendiotsingu. Varasemad küsimused aitavad teemat täpsustada, kuid varasem vastus ei muutu uue väite tõendiks.
+
+Ühes vestluses saab küsida kuni neli jätkuküsimust. Kui piir saab täis, pakub aken uue vestluse alustamist; „Uus vestlus” tühjendab sõnumid ja varasema konteksti.
+
+Vestlusakna sulgemine ja uuesti avamine hoiab selle lehe sõnumid alles. Lehe uuendamisel kaovad need brauseri mälust ning lingi jagamine vestlust ei taasta. Sõnumeid ei salvestata selles brauseris püsivalt.
+
+Kui vastust ei õnnestu koostada, jääb tõrge aknas nähtavaks ja küsimust saab uuesti proovida. Otsing ei asenda puuduvat vastust väljamõeldud tekstiga.
+
+Klaviatuuriga saab akna avada ja sulgeda: Escape sulgeb akna ja viib fookuse tagasi nupule „Ava vestlus”. Mobiilivaates püsib aken ekraani piires.
 
 ## Kui täpset tõendit ei leitud
 
