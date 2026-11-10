@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { officialServiceCatalogueDocuments } from "../server/search.mjs";
+import { extractAnswersQuery, officialServiceCatalogueDocuments } from "../server/search.mjs";
 import { rankPublicSearchCandidates } from "../server/retrieval.mjs";
-import { createPortalDraft } from "../server/pipeline.mjs";
+import { createPortalDraft, searchEnvironmentLive } from "../server/pipeline.mjs";
 
 const NOW = Date.parse("2026-11-10T12:00:00Z");
 
@@ -51,4 +51,38 @@ test("forest notice exemptions do not answer an unasked fee question", async () 
   assert.match(text, /valgustusraie/iu);
   assert.match(text, /20\s+tihumeetrit[\s\S]*kinnisasja[\s\S]*aastas/iu);
   assert.doesNotMatch(text, /30\s+eurot/iu);
+});
+
+for (const query of [
+  "Millal tuleb metsateatis esitada?",
+  "Kas valgustusraie puhul on metsateatist vaja?",
+]) {
+  test(`a rejected model answer retains the relevant notice guidance: ${query}`, async () => {
+    const directory = officialServiceCatalogueDocuments();
+    const items = rankPublicSearchCandidates(query, directory, {
+      intentDocuments: directory,
+    }).slice(0, 12);
+    const result = await searchEnvironmentLive(query, {
+      searchResults: { total: items.length, items },
+      useCache: false,
+      deadlineAt: Date.now() + 15_000,
+      recordSearch: async () => {},
+      generateAnswer: async () => ({
+        answer: null,
+        acceptedClaims: [],
+        attempt: { status: "degraded", reason: "local-rejected" },
+      }),
+    });
+    assert.notEqual(result.answer.eyebrow, "Vastust ei leitud");
+    assert.match(answerText(result), /valgustusraie/iu);
+    assert.match(result.answer.note, /üldjuhise väljavõte/iu);
+    assert.ok(result.answer.introCitations.length > 0);
+  });
+}
+
+test("notice filing guidance does not answer questions about processing or expiry", () => {
+  const filingGuidance = "Metsateatis esitatakse kavandatavate raiete kohta, välja arvatud valgustusraie.";
+  assert.equal(extractAnswersQuery("Kui kaua metsateatist menetletakse?", filingGuidance), false);
+  assert.equal(extractAnswersQuery("Millal lõpeb metsateatise kehtivus?", filingGuidance), false);
+  assert.equal(extractAnswersQuery("Mitu metsateatist esitati?", filingGuidance), false);
 });

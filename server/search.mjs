@@ -9112,11 +9112,29 @@ export function isNonAnswerText(value) {
 
 // A raw extract is shown with no model to read it, so unlike the evidence gate
 // it must carry every content word of the question and not only most of them.
+// Two words of a question are not content words. "millal" asks for a time the
+// passage states in its own words ("enne raiet", "alates 1. juulist"), never
+// with the word "millal". "puhul" is a case postposition that only attaches the
+// subject that is already required: "valgustusraie puhul on metsateatist vaja"
+// is answered by the rule for valgustusraie. Requiring either rejects a passage
+// that does answer the question. A quantity word stays required, because the
+// count itself is the answer and a passage without it does not answer "mitu
+// metsateatist". Duration, processing, validity and fee words stay content
+// words too, so "kui kaua metsateatist menetletakse" and "millal lõpeb
+// metsateatise kehtivus" still reject a passage that only states the filing
+// duty. Actor and place words ("kes", "kus") stay required as well, so a
+// question about a person, a contact or a location keeps failing closed.
+const QUESTION_FRAME_TERMS = new Set(["millal", "puhul"]);
+
 export function extractAnswersQuery(query, extract) {
   if (isNonAnswerText(extract)) return false;
-  return queryTerms(query)
-    .filter((term) => !ADMIN_CONTEXT_ROOTS.has(term) && !GENERIC_QUERY_CONTEXT_TERMS.has(term))
-    .every((term) => textHasQueryRoot(extract, term));
+  const terms = queryTerms(query)
+    .filter((term) => !ADMIN_CONTEXT_ROOTS.has(term) && !GENERIC_QUERY_CONTEXT_TERMS.has(term));
+  const required = terms.filter((term) => !QUESTION_FRAME_TERMS.has(term));
+  // A question made only of frame words names no subject an extract could be
+  // checked against, so nothing proves that it answers.
+  if (terms.length && !required.length) return false;
+  return required.every((term) => textHasQueryRoot(extract, term));
 }
 
 // A question about what is allowed needs a passage that states a rule, not one
