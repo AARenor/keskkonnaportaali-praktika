@@ -74,9 +74,11 @@ import {
 import {
   assessSearchQuery,
   canonicalizePublicSearchQuery,
+  citedEvidenceAnswersQuestion,
   composeNoAnswerResponse,
   composeScopeResponse,
   repeatsEarlierAnswer,
+  withRepeatedAnswerNote,
   isAllEnvironmentSearchEnabled,
   isForestRelatedQuery,
 } from "./search.mjs";
@@ -875,7 +877,17 @@ app.post("/api/search/follow-up", async (request, response) => {
       });
       const answerText = [result.answer?.intro, ...(result.answer?.parts || []).map((part) => part?.text)].filter(Boolean).join(" ");
       if (repeatsEarlierAnswer(answerText, previousAnswers, { title: result.answer?.title, question })) {
-        return { ...composeNoAnswerResponse(question), searchResults: publicSearchListing(searchResults) };
+        // The thread already said this. Keep the no-answer only as long as the
+        // current answer's own cited source text cannot be shown to answer the
+        // current question; earlier answers are a comparison, never evidence.
+        if (!citedEvidenceAnswersQuestion(question, result.answer, result.sources)) {
+          return { ...composeNoAnswerResponse(question), searchResults: publicSearchListing(searchResults) };
+        }
+        return {
+          ...result,
+          answer: withRepeatedAnswerNote(result.answer),
+          searchResults: publicSearchListing(searchResults),
+        };
       }
       return { ...result, searchResults: publicSearchListing(searchResults) };
     })(), deadlineAt - Date.now(), () => ({

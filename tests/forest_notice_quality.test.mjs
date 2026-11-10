@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { extractAnswersQuery, officialServiceCatalogueDocuments } from "../server/search.mjs";
+import { citedEvidenceAnswersQuestion, extractAnswersQuery, officialServiceCatalogueDocuments, withRepeatedAnswerNote } from "../server/search.mjs";
 import { rankPublicSearchCandidates } from "../server/retrieval.mjs";
 import { createPortalDraft, searchEnvironmentLive } from "../server/pipeline.mjs";
 
@@ -85,4 +85,32 @@ test("notice filing guidance does not answer questions about processing or expir
   assert.equal(extractAnswersQuery("Kui kaua metsateatist menetletakse?", filingGuidance), false);
   assert.equal(extractAnswersQuery("Millal lõpeb metsateatise kehtivus?", filingGuidance), false);
   assert.equal(extractAnswersQuery("Mitu metsateatist esitati?", filingGuidance), false);
+});
+
+test("repeated follow-ups require relevant evidence from one currently cited source", () => {
+  const question = "Kas valgustusraie puhul on metsateatist vaja?";
+  const answer = { introCitations: [1], parts: [] };
+  const guidance = {
+    citation: 1,
+    evidenceExcerpt: "Metsateatis esitatakse kavandatavate raiete kohta, välja arvatud valgustusraie.",
+  };
+  assert.equal(citedEvidenceAnswersQuestion(question, answer, [guidance]), true);
+  assert.equal(citedEvidenceAnswersQuestion("Kui kaua metsateatist menetletakse?", answer, [guidance]), false);
+  assert.equal(citedEvidenceAnswersQuestion("Kas nii?", answer, [guidance]), false);
+  assert.equal(citedEvidenceAnswersQuestion(question, { introCitations: [], parts: [] }, [guidance]), false);
+  assert.equal(citedEvidenceAnswersQuestion(question, answer, [{ ...guidance, citation: 2 }]), false);
+  assert.equal(citedEvidenceAnswersQuestion(question, { introCitations: [1, 2], parts: [] }, [
+    { citation: 1, evidenceExcerpt: "Metsateatise saab esitada Metsaregistri kaudu." },
+    { citation: 2, evidenceExcerpt: "Valgustusraie tehakse noore metsa hooldamiseks." },
+  ]), false);
+});
+
+test("a repeated answer keeps its source caveat within the note limit", () => {
+  const caveat = "Kontrolli kehtivat seadust.";
+  const result = withRepeatedAnswerNote({ note: caveat });
+  assert.ok(result.note.startsWith(caveat));
+  assert.match(result.note, /kordab/iu);
+  assert.equal(withRepeatedAnswerNote(result).note, result.note);
+  const longCaveat = "Kontrolli kehtivat seadust. ".repeat(25);
+  assert.equal(withRepeatedAnswerNote({ note: longCaveat }).note, longCaveat);
 });

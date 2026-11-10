@@ -9191,6 +9191,58 @@ export function repeatsEarlierAnswer(text, earlierAnswers = [], { title = "", qu
   });
 }
 
+// A follow-up answer that repeats the thread is only shown when this answer
+// stands on its own citations: the cited source text of the current answer must
+// answer the current question. Earlier answers are never read here and never
+// become evidence, so a repeat cannot ride on its own repetition.
+export function citedEvidenceAnswersQuestion(question, answer, sources = []) {
+  const query = String(question || "").trim();
+  if (!query) return false;
+  // extractAnswersQuery accepts an empty required set, so an elliptical "Kas
+  // nii?" would otherwise pass with no subject an excerpt could be checked
+  // against. The question must keep one content word of its own.
+  const meaningful = queryTerms(query).filter((term) => !ADMIN_CONTEXT_ROOTS.has(term)
+    && !GENERIC_QUERY_CONTEXT_TERMS.has(term)
+    && !QUESTION_FRAME_TERMS.has(term));
+  if (!meaningful.length) return false;
+  if (!answer || typeof answer !== "object" || Array.isArray(answer)) return false;
+  const citationNumbers = (values) => (Array.isArray(values) ? values : [])
+    .filter((value) => typeof value === "number" && Number.isInteger(value) && value > 0);
+  const parts = Array.isArray(answer.parts) ? answer.parts : [];
+  const cited = new Set([
+    ...citationNumbers(answer.introCitations),
+    ...parts.flatMap((part) => (part && typeof part === "object" && !Array.isArray(part)
+      ? citationNumbers(part.citations)
+      : [])),
+  ]);
+  if (!cited.size) return false;
+  // One excerpt has to satisfy both gates by itself: words collected from two
+  // sources are not a witness for either of them.
+  return (Array.isArray(sources) ? sources : []).some((source) => {
+    if (!source || typeof source !== "object" || Array.isArray(source)) return false;
+    if (typeof source.citation !== "number" || !cited.has(source.citation)) return false;
+    const excerpt = typeof source.evidenceExcerpt === "string" ? source.evidenceExcerpt : "";
+    if (!excerpt.trim()) return false;
+    return extractAnswersQuery(query, excerpt) && answersAskedConcept(query, excerpt);
+  });
+}
+
+// The only sentence a repeated follow-up adds: the current answer stays exactly
+// as it was public, and its own note (a source caveat) is kept in front of it.
+export const REPEATED_ANSWER_NOTE = "See vastus kordab eelmises vastuses antud teavet.";
+
+export function withRepeatedAnswerNote(answer) {
+  if (!answer || typeof answer !== "object" || Array.isArray(answer)) return answer;
+  const raw = answer.note;
+  // An unrecognised note shape is left exactly as delivered: the repeat note
+  // never replaces text it cannot read.
+  if (!(raw === undefined || raw === null || typeof raw === "string" || Array.isArray(raw))) return answer;
+  const note = (Array.isArray(raw) ? raw.map((entry) => String(entry ?? "")).join(" ") : String(raw ?? "")).trim();
+  if (note.includes(REPEATED_ANSWER_NOTE)) return answer;
+  if (note && note.length + 1 + REPEATED_ANSWER_NOTE.length > 700) return answer;
+  return { ...answer, note: note ? `${note} ${REPEATED_ANSWER_NOTE}` : REPEATED_ANSWER_NOTE };
+}
+
 export function composeNoAnswerResponse(query) {
   return composeSearchResponse(query, [], { answerable: false, hasRelevantResults: false, total: 0, related: [] });
 }

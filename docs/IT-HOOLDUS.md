@@ -198,7 +198,7 @@ Eraldi ajalooline kontroll `npm run eval:holdout` kasutab muutmata külmutatud v
 
 10.11.2026 sai v1 kontroll esikohale 38 allikat 40 võimalusest ja lõpetas endiselt veakoodiga 1. H05 on teadlikult välistatud väljaandja; H11 ootab vana suunamiskaarti `forest-overview`, kuid praegune vastus seob mõõtmise ja meetodi eraldi tõendid. Kümne küsimusega pimealade komplekt sai 10 esikohta ning 147 küsimusega arenduskomplekt läbis kõik juhud. Arenduskomplekt ei ole sõltumatu pime test.
 
-11.11.2026 läbis pärast paralleelsete muudatuste ja metsateatise vastuse paranduse liitmist eraldi paigaldatud uuendatud sõltuvustega täissviit kõik 900 testi. Kohalik proov, mis vastas 21 sekundi pärast, kinnitas eraldi, et filtriaudit ja live holdout ei katkesta enam päringut 20 sekundi järel. Rakenduse build ja kolm Sites'i tarbijatesti läbisid.
+11.11.2026 läbis pärast paralleelsete muudatuste ning metsateatise ja vestluse jätkuküsimuse paranduste liitmist eraldi paigaldatud uuendatud sõltuvustega täissviit kõik 903 testi. Kohalik proov, mis vastas 21 sekundi pärast, kinnitas eraldi, et filtriaudit ja live holdout ei katkesta enam päringut 20 sekundi järel. Rakenduse build ja kolm Sites'i tarbijatesti läbisid.
 
 Pärast nõutud kontrollide läbimist ja tellija juurutusluba tee üks koondatud diff-review, kontrolli ainult kavandatud faile ja saladuste puudumist ning alles siis commit'i ja push'i `main` harusse. Valmisolek nõuab kahte sõltumatut tootmistõendit: Coolify kirje peab olema olekus `finished` täpselt `origin/main` commit'i SHA-l ning korduvad API- ja brauseriproovid peavad näitama uue versiooni käitumist. Kontrolli desktopi ja 390 px mobiilivaadet, allikalinke, kuupäevi, filtreid, eestikeelsuse piiri ning värske lehe `scrollY === 0` ja iframe'i mitteaktiivsust.
 

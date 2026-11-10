@@ -318,13 +318,13 @@ async function stopChild(child) {
   await settlesWithin(closed, 4_000);
 }
 
-function postJson(port, { body, contentType }) {
+function postJson(port, { body, contentType, path = "/api/search" }) {
   return new Promise((resolve, reject) => {
     const request = http.request({
       host: "127.0.0.1",
       port,
       method: "POST",
-      path: "/api/search",
+      path,
       headers: {
         "Content-Type": contentType,
         "Content-Length": Buffer.byteLength(body),
@@ -344,7 +344,7 @@ function postJson(port, { body, contentType }) {
   });
 }
 
-test("the running server never echoes a malformed request body to the reader or its logs", { timeout: 60_000 }, async (t) => {
+test("the isolated server protects request bodies and handles cited follow-ups", { timeout: 90_000 }, async (t) => {
   const workspace = await mkdtemp(path.join(os.tmpdir(), "privacy_boundary_"));
   const guardLogPath = path.join(workspace, "network_guard.log");
   const guardPath = path.join(workspace, "network_guard.mjs");
@@ -399,6 +399,45 @@ test("the running server never echoes a malformed request body to the reader or 
     child.stdout.on("data", (chunk) => { stdoutText += chunk; });
     child.stderr.on("data", (chunk) => { stderrText += chunk; });
     await waitForListening(child, () => `${stdoutText}${stderrText}`);
+    await t.test("a follow-up can reuse a directly relevant cited answer", async () => {
+      const send = async (path, body) => {
+        const response = await postJson(port, {
+          path,
+          body: JSON.stringify(body),
+          contentType: "application/json",
+        });
+        assert.equal(response.status, 200);
+        return JSON.parse(response.body);
+      };
+      const rootQuestion = "Millal tuleb metsateatis esitada?";
+      const question = "Kas valgustusraie puhul on metsateatist vaja?";
+      const root = await send("/api/search", { q: rootQuestion });
+      const priorAnswer = [
+        root.answer?.title,
+        root.answer?.intro,
+        ...(root.answer?.parts || []).map((part) => part.text),
+      ].filter(Boolean).join(" ");
+      assert.match(priorAnswer, /valgustusraie/iu);
+      const followUp = await send("/api/search/follow-up", {
+        root_query: rootQuestion,
+        question,
+        previous_questions: [],
+        previous_answers: [priorAnswer],
+      });
+      assert.notEqual(followUp.answer?.eyebrow, "Vastust ei leitud");
+      assert.match(followUp.answer?.intro || "", /valgustusraie/iu);
+      assert.ok(followUp.answer?.introCitations?.length > 0);
+      assert.ok(followUp.sources?.length > 0);
+      assert.match(followUp.answer?.note || "", /üldjuhise väljavõte/iu);
+      assert.match(followUp.answer?.note || "", /kordab/iu);
+      const unsupported = await send("/api/search/follow-up", {
+        root_query: rootQuestion,
+        question: "Kui kaua keskkonnaamet metsateatist menetleb?",
+        previous_questions: [],
+        previous_answers: [priorAnswer],
+      });
+      assert.equal(unsupported.answer?.eyebrow, "Vastust ei leitud");
+    });
     responses = {
       malformed: await postJson(port, { body: PRIVACY_MARKER, contentType: "application/json" }),
       oversize: await postJson(port, { body: `{"query":"${"a".repeat(40 * 1024)}"}`, contentType: "application/json" }),
