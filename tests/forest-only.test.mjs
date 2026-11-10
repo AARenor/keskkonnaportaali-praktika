@@ -104,6 +104,28 @@ test("a family forest statement is not a private-person lookup", () => {
   ]) assert.equal(containsPrivatePersonLookup(query), true, query);
 });
 
+test("forestry nouns, 'ühe' and 'eesti' before 'metsas' are not read as a name", () => {
+  for (const query of [
+    "mitu korda tohib harvendusraiet ühes metsas teha",
+    "mis puud kõige paremini põuda kannatavad eesti metsas",
+    "surnud puidu tagavara metsamaal 2025",
+  ]) assert.equal(containsPrivatePersonLookup(query), false, query);
+  // Tree species are also surnames, and pronoun + verb pairs are what holds a
+  // later name private, so every one of these stays private.
+  for (const query of [
+    "mari tamme metsas raie",
+    "kas tohib jaan kase metsas raiuda",
+    "mis puud kasvavad jaan kase metsas",
+    "Mari Tamm metsas",
+    "kas nad võivad oma metsas Mari Tammele puid müüa",
+    "nad raiusid oma metsas Mari Tammele puid",
+    "raiusin mu metsas Jaan Kase puid",
+    "harvendusraie Mari Tamme metsas",
+    "puidu müük Jaan Kase metsamaal",
+    "põua kahjud Mari Tamme metsas",
+  ]) assert.equal(containsPrivatePersonLookup(query), true, query);
+});
+
 test("a forest owner asking about their own forest is not a private-person lookup", () => {
   for (const query of [
     "kas ma tohin oma metsas puid langetada ilma loata",
@@ -492,4 +514,68 @@ test("a law's numbered subsections are separate sentences, so a quote of one is 
   );
   // A letter in brackets or a reference is not a subsection.
   assert.deepEqual(splitTextPassages("Vaata lisa (vt allpool). (b) ei jagu."), ["Vaata lisa (vt allpool). (b) ei jagu."]);
+});
+
+test("a multi-word term asked as 'mis on X' must be named whole in the answer", () => {
+  assert.equal(answersAskedConcept("mis on metsa tulevikutehing", "2025. aastal oli metsamaa pindala 2,36 miljonit hektarit."), false);
+  assert.equal(answersAskedConcept("mis on taius metsas", "Metsa täius näitab puistu rinnaspindala suhet normaalpuistu rinnaspindalasse."), true);
+  assert.equal(answersAskedConcept("püsimetsana majandamine mis see tahendab", "Püsimetsana majandamine on puude pidev asendumine."), true);
+});
+
+test("a law section naming the question's own subject reaches the model despite other wording", () => {
+  const section = (id, title, content) => ({ id, title, content, url: `https://www.riigiteataja.ee/akt/12771900#${id}`, _lawSection: true, score: 20, organization: "Riigi Teataja" });
+  const retention = section("para13", "Metsa majandamise eeskiri § 13. Nõuded säilikpuude kohta",
+    "(1) Kasvavaid säilikpuid tuleb lageraielangil säilitada tüvepuidu kogumahuga vähemalt viis tihumeetrit ühe hektari kohta.");
+  assert.equal(assessEvidence("kui palju sailikpuid peab lageraiel jatma", [retention]).answerable, true);
+  // Without the subject in the law text, nothing changes.
+  assert.equal(assessEvidence("kas harvesteriga tootamine oosel on keelatud myra parast", [retention]).answerable, false);
+  // A verb or the question type ("tohib" → lubatavus) is not a subject, even when the law uses it.
+  const nesting = section("para15", "Metsa majandamise eeskiri § 15. Raie piiramine",
+    "(1) Lindude pesitsusajal on raie lubatavus piiratud ja puid ei tohi lennutada ega varastada.");
+  assert.equal(assessEvidence("kas metsas tohib drooni lennutada", [nesting]).answerable, false);
+});
+
+test("a source's own data year does not make a sentence that repeats the year win", async () => {
+  const { directEvidenceExtract } = await import("../server/pipeline.mjs");
+  const source = { id: "smi-x", title: "SMI", dataYear: "2025",
+    content: "Okaspuu enamusega metsade osakaal metsade kogupindalast on 48% (1,13 miljonit hektarit). Probleemiks on okaspuumetsade vähenemine, viimase kümne aastaga (2016–2025) on nende pindala vähenenud." };
+  assert.match(directEvidenceExtract("okaspuu enamusega metsade osakaal 2025", source), /^Okaspuu enamusega metsade osakaal .* 48%/u);
+});
+
+test("a broad topic overview is not shown as the answer to a narrower question about it", async () => {
+  resetForestLawsForTests();
+  const directory = officialServiceCatalogueDocuments();
+  const ask = async (query) => {
+    const items = rankPublicSearchCandidates(query, directory, { intentDocuments: directory }).slice(0, 12);
+    let modelCalls = 0;
+    const result = await searchEnvironmentLive(query, {
+      searchResults: { total: items.length, items },
+      useCache: false,
+      deadlineAt: Date.now() + 9_000,
+      generateAnswer: async () => { modelCalls += 1; return { answer: null, acceptedClaims: [], attempt: {} }; },
+    });
+    return { result, modelCalls };
+  };
+  // "Metsateatis" is the topic, the processing time is the question. The model
+  // still reads the sources, but the overview is not presented as the answer.
+  const narrow = await ask("kui kaua keskkonnaamet metsateatist menetleb");
+  assert.equal(narrow.modelCalls, 1);
+  assert.match(narrow.result.answer.intro, /Meil ei ole sellele küsimusele vastust/u);
+  assert.doesNotMatch(narrow.result.answer.note || "", /üldjuhise väljavõte/u);
+  // A model answer that only repeats the off-target overview is rejected too.
+  const repeated = await (async () => {
+    const query = "mis puuliigil on eesti metsades kõige suurem tagavara";
+    const items = rankPublicSearchCandidates(query, directory, { intentDocuments: directory }).slice(0, 12);
+    return searchEnvironmentLive(query, {
+      searchResults: { total: items.length, items },
+      useCache: false,
+      deadlineAt: Date.now() + 9_000,
+      generateAnswer: async (_query, draft) => ({ answer: draft.answer, acceptedClaims: [], attempt: { status: "ready", reason: "none" } }),
+    });
+  })();
+  assert.match(repeated.answer.intro, /Meil ei ole sellele küsimusele vastust/u);
+  // A narrow topic answers what resolved it: cutting without a notice.
+  const exception = await ask("kas metsaomanik vajab raieks luba");
+  assert.match(exception.result.answer.intro, /20 tihumeetrit/u);
+  assert.match(exception.result.answer.note || "", /üldjuhise väljavõte/u);
 });

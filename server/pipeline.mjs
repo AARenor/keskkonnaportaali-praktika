@@ -86,7 +86,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v89-law-subsection-sentences";
+export const SEARCH_RESPONSE_REVISION = "answer-v93-notice-scope-and-refresh";
 const DEFAULT_SEARCH_DEADLINE_MS = 60_000;
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
@@ -338,11 +338,15 @@ export function directEvidenceExtract(query, document, plannedEvidence = null, {
     // lowercase clause to a different lead sentence and change its subject.
     .filter((value) => !requireSubject || /^[„“"'([]*[\p{Lu}\d]/u.test(value))
     .filter((value) => value.length >= 35 && value.length <= 520 && hasCompleteSentenceEnding(value));
+  // The source's own data year is stated for every sentence on it, so a
+  // sentence is not preferred just because it happens to repeat that year.
+  const dataYear = /^(?:19|20)\d{2}$/u.test(String(document?.dataYear || "")) ? String(document.dataYear) : "";
+  const scoringQuery = dataYear ? query.replace(new RegExp(`\\b${dataYear}\\b`, "gu"), " ").trim() || query : query;
   const rankedPassages = passages
     .map((passage, index) => ({
       passage: passage.replace(/^[„“”"']+|[„“”"']+$/gu, "").trim(),
-      score: passageQueryCoverage(query, passage) * 20
-        + passageDirectness(query, passage)
+      score: passageQueryCoverage(scoringQuery, passage) * 20
+        + passageDirectness(scoringQuery, passage)
         + (preferred.has(normalize(passage)) ? 80 : 0)
         - index * 0.001,
     }))
@@ -357,8 +361,8 @@ export function directEvidenceExtract(query, document, plannedEvidence = null, {
     // A sentence about what the page or map does not prove is navigation
     // meta, not the answer ("Piirkonna kaart ega üldjuhend ei tõenda …").
     .filter((passage) => !passageDisclaimsEvidence(passage))
-    .filter((passage) => passageQueryCoverage(query, passage) > 0
-      && passageDirectness(query, passage) >= 0));
+    .filter((passage) => passageQueryCoverage(scoringQuery, passage) > 0
+      && passageDirectness(scoringQuery, passage) >= 0));
   let extract = "";
   let retained = 0;
   for (const passage of selected) {
@@ -567,6 +571,41 @@ function composeSourceClaimPairs(query, plannedEvidence, sources = []) {
 // same visible official result set. This keeps a useful deterministic answer
 // when Luna is unavailable without importing the legacy prewritten forestry
 // corpus or turning manually assigned tags into factual evidence.
+const NARROW_FALLBACK_KINDS = new Set(["forest-notice-exception", "bark-beetle-guidance"]);
+
+// A method or share topic is resolved by the asking word itself ("kuidas
+// mõõdetakse", "kui suur osa"), so that word need not repeat in the card.
+// Every other question word still has to: "mis puuliigil on kõige suurem
+// tagavara" is not answered by area shares.
+const TOPIC_ASK_ROOT_PATTERN = /^(?:moot|mõõt|arvut|hinda|hinnang|osa$|osakaal|protsent|measur|calculat|estimat|share|percent|proportion|area$|much$|many$)/u;
+
+function offTargetFallback(query, kind, fallback) {
+  if (NARROW_FALLBACK_KINDS.has(kind)) return false;
+  const text = [fallback.intro, ...(fallback.parts || []).map((part) => part.text)].join(" ");
+  if (extractAnswersQuery(query, text)) return false;
+  if (!/-(?:method|share)$/u.test(kind || "")) return true;
+  return queryTerms(query).some((term) => !textHasQueryRoot(text, term)
+    && !TOPIC_ASK_ROOT_PATTERN.test(term)
+    && extractAnswersQuery(term, text) === false);
+}
+
+function withoutOffTargetFallback(draft) {
+  if (!draft?.evidence?.offTargetFallback) return draft;
+  // The blanked card shows no excerpt and no parts, so a note that scoped or
+  // qualified the withdrawn excerpt would describe text the reader cannot see.
+  return {
+    ...draft,
+    answer: {
+      ...draft.answer,
+      eyebrow: NO_ANSWER_EYEBROW,
+      intro: NO_ANSWER_INTRO,
+      introCitations: [],
+      parts: [],
+      note: "",
+    },
+  };
+}
+
 function composeOfficialForestryEvidenceFallback(query, plannedEvidence, sources = [], previousAnswer = {}) {
   if (!plannedEvidence?.strong
     || !plannedEvidence?.passagesByDocument
@@ -1387,6 +1426,15 @@ export async function createPortalDraft(query, {
   } else if (officialForestryFallback) {
     draft.answer = officialForestryFallback;
     draft.evidence.syntheticFallback = "official-forestry-evidence";
+    // The planned passages of a broad topic ("metsateatis", climate impact,
+    // stock overview) cover the topic, not necessarily what was asked about it
+    // (processing time, a "no" decision, an unpaid fee). The model still gets
+    // them, but shown as the answer without every content word of the
+    // question they would be a wrong answer, so the card the reader sees
+    // without the model says there is no answer. A narrow topic is resolved
+    // only by the question its passages answer ("ilma loata" → 20 tm without a
+    // notice), so its words need not repeat the question's.
+    draft.evidence.offTargetFallback = offTargetFallback(retrievalQuery, plannedEvidence?.kind, officialForestryFallback);
   } else if (directExtract && !plannedEvidence?.strong && !REVIEWED_RETRIEVAL_PATTERN.test(direct.retrieval || "")
     && !extractAnswersQuery(retrievalQuery, directExtract)) {
     // The model may still answer from these sources. Without it, say there is
@@ -1762,12 +1810,16 @@ async function searchWithinBudget(cleanQuery, {
   const llmBudget = remainingBudget(deadlineAt, 300);
   if (canGenerate && llmBudget >= 500 && typeof onDraft === "function" && !citesRawLawSection(draft)) {
     throwIfRequestAborted(signal);
-    onDraft(publicResponse(withForestContextChart(withLandUseShareChart(draft, retrievalQuery, searchResults?.items, { now: startedAt }), retrievalQuery, searchResults?.items, { now: startedAt }), { now: startedAt }));
+    onDraft(publicResponse(withForestContextChart(withLandUseShareChart(withoutOffTargetFallback(draft), retrievalQuery, searchResults?.items, { now: startedAt }), retrievalQuery, searchResults?.items, { now: startedAt }), { now: startedAt }));
   }
   // Keep the accepted deterministic result detached from both the provider
   // input and any streamed consumer. A ready model answer must rebind its
   // visible citation witnesses before it can replace this snapshot.
-  const deterministicDraft = structuredClone(draft);
+  // The off-target overview is still the model's starting card. A model
+  // answer that only repeats it is the same wrong answer, so it is rejected.
+  const offTargetLead = draft.evidence?.offTargetFallback
+    ? normalize(splitTextPassages(draft.answer?.intro || "")[0] || "") : "";
+  const deterministicDraft = withoutOffTargetFallback(structuredClone(draft));
   // Keep opaque source admission on our snapshot, never on provider copies.
   // Cloning a descriptor cannot recreate its private constructor binding.
   deterministicDraft.sources = deterministicDraft.sources.map((source, index) => ({
@@ -1812,13 +1864,19 @@ async function searchWithinBudget(cleanQuery, {
     // evidence pack. This second boundary proves that the same claim is also
     // supported by the bounded excerpt a reader can actually inspect.
     visibleRejected = !answerClaimsHaveVisibleWitnesses(modelDraft)
-      || !answersAskedConcept(retrievalQuery, answerCardText(modelDraft));
+      || !answersAskedConcept(retrievalQuery, answerCardText(modelDraft))
+      || (offTargetLead.length >= 40 && normalize(answerCardText(modelDraft)).includes(offTargetLead));
     draft = visibleRejected ? withoutRawLawSection(deterministicDraft) : modelDraft;
   } else {
     draft = withoutRawLawSection(deterministicDraft);
   }
-  const noticeCaveat = withNoticeScopeCaveat(draft.answer?.note, cleanQuery, draft.evidence?.answerIntent);
-  if (noticeCaveat !== draft.answer?.note) draft.answer = { ...draft.answer, note: noticeCaveat };
+  // The caveat scopes an excerpt the card shows. A no-answer card shows none,
+  // so it never gains the note, whether the blanking happened above or the
+  // model itself returned the no-answer card.
+  if (draft.answer?.eyebrow !== NO_ANSWER_EYEBROW) {
+    const noticeCaveat = withNoticeScopeCaveat(draft.answer?.note, cleanQuery, draft.evidence?.answerIntent);
+    if (noticeCaveat !== draft.answer?.note) draft.answer = { ...draft.answer, note: noticeCaveat };
+  }
   // Related navigation is reviewed local product copy, never provider output.
   draft.related = reviewedRelatedQuestions(draft.related, 6);
   draft.generatedAt = new Date().toISOString();

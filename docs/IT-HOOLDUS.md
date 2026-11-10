@@ -66,7 +66,7 @@ PDF-ide täissisu automaatne hüdratsioon ei ole selle HTML-korje osa. Kolme uue
 2. Seo dokument ainult nende `_forestryIntentKinds` väärtustega, mida pealkiri, kokkuvõte või sisu ise katab. Sildid üksi ei anna tõendusõigust.
 3. Lisa `published`, olemasolul `updated`, avalik HTTPS `url` ja kontrollitav `locator`. `_publishedAt` täpne kuupäev lisatakse ainult siis, kui allikas selle tõendab; pelgale väljaandeaastale ei mõelda avaldamispäeva juurde.
 4. Vii `CATALOGUE_REVIEWED_AT` ja versiooniprefiks edasi ainult pärast kataloogi tegelikku korduskontrolli.
-5. Muuda `SEARCH_RESPONSE_REVISION` järgmisele `answer-vNN-*` väärtusele, kui vastuse liikmesus, järjestus, allikaväli või sisu muutus; see väldib vana vastusecache'i kasutamist. Lukusta uus väärtus `tests/infrastructure.test.mjs` regressiooniga.
+5. Muuda `SEARCH_RESPONSE_REVISION` järgmisele `answer-vNN-*` väärtusele, kui vastuse liikmesus, järjestus, allikaväli või sisu muutus; see väldib vana vastusecache'i kasutamist. `tests/infrastructure.test.mjs` peab kontrollima, et eri versioonid annavad eri cache'i võtme.
 
 ## Codex gateway ja Coolify runtime
 
@@ -198,7 +198,7 @@ Eraldi ajalooline kontroll `npm run eval:holdout` kasutab muutmata külmutatud v
 
 10.11.2026 sai v1 kontroll esikohale 38 allikat 40 võimalusest ja lõpetas endiselt veakoodiga 1. H05 on teadlikult välistatud väljaandja; H11 ootab vana suunamiskaarti `forest-overview`, kuid praegune vastus seob mõõtmise ja meetodi eraldi tõendid. Kümne küsimusega pimealade komplekt sai 10 esikohta ning 147 küsimusega arenduskomplekt läbis kõik juhud. Arenduskomplekt ei ole sõltumatu pime test.
 
-11.11.2026 läbis eraldi paigaldatud uuendatud sõltuvustega lõplik täissviit kõik 893 testi. Kohalik proov, mis vastas 21 sekundi pärast, kinnitas eraldi, et filtriaudit ja live holdout ei katkesta enam päringut 20 sekundi järel. Rakenduse build ja neli Sites'i testi läbisid.
+11.11.2026 läbis pärast paralleelsete muudatuste liitmist eraldi paigaldatud uuendatud sõltuvustega täissviit kõik 897 testi. Kohalik proov, mis vastas 21 sekundi pärast, kinnitas eraldi, et filtriaudit ja live holdout ei katkesta enam päringut 20 sekundi järel. Rakenduse build ja kolm Sites'i tarbijatesti läbisid.
 
 Pärast nõutud kontrollide läbimist ja tellija juurutusluba tee üks koondatud diff-review, kontrolli ainult kavandatud faile ja saladuste puudumist ning alles siis commit'i ja push'i `main` harusse. Valmisolek nõuab kahte sõltumatut tootmistõendit: Coolify kirje peab olema olekus `finished` täpselt `origin/main` commit'i SHA-l ning korduvad API- ja brauseriproovid peavad näitama uue versiooni käitumist. Kontrolli desktopi ja 390 px mobiilivaadet, allikalinke, kuupäevi, filtreid, eestikeelsuse piiri ning värske lehe `scrollY === 0` ja iframe'i mitteaktiivsust.
 

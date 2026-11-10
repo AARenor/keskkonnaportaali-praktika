@@ -4647,7 +4647,14 @@ function isPlainEcologicalResidenceDescriptionQuestion(value) {
     ));
 }
 const PUBLIC_CONTACT_ROLE_PATTERN = /^(?:büroo\w*|buroo\w*|e|info\w*|juht\w*|keskkonnaosakond\w*|klienditeenindus\w*|nõunik\w*|nounik\w*|osakond\w*|post|press\w*|projektiosakond\w*|spetsialist\w*|teenindus\w*|ühine|uhine|üld\w*|uld\w*|yld\w*|vaatlus\w*|customer|data|office|regional|research|service|support)$/iu;
-const PERSON_CONTEXT_STOPWORD_PATTERN = /^(?:aga|alal|andm\w*|andmev[äa]rav\p{L}*|andmetel|anna|andke|asub|asuv\w*|avalik\w*|jaoks|kaudu|kas|kaits\w*|kasuta\w*|katastri\w*|kehti\w*|kes|kuidas|kinnist\w*|konkreetse|kohta|kuulu\w*|kui|kus|kust|küsimus\w*|kõrval|lahedal|lähedal|lasta|lei\w*|loa\w*|luba\w*|maaüksus\w*|maauksus\w*|maatükk\w*|maatukk\w*|metsaeraldis\w*|metsaregister\w*|millal|millin\w*|millis\w*|minu|mis|mida|midagi|miks|nõu\w*|näen|näha|näita|naita|oleva|oma|on|otsing\w*|palju|p[õo]him[õo]t\w*|poliitik\w*|puurkaev\w*|s[äa]ilita\w*|smi|sügavus\w*|tagasta|tagastage|talu\w*|testida|too|t[öo][öo]tle\w*|ütleb|vaadata|valda|vaja|ööbib|oobib|paikneb|peatub|piirkonn\w*|resideerib|registr\w*|viibib|järgi|ja|ning|või|voi|ääres|aasta|elab|elava|majas|a|about|affect\w*|are|area\w*|at|be|by|can|could|customer|data|did|do|does|for|from|get|give|handle[sd]?|handling|how|in|information|is|live[sd]?|living|may|me|must|near|number|occup(?:y|ies|ied|ying)|of|office|on|permit\w*|polic(?:y|ies)|process(?:es|ed|ing)?|protect(?:s|ed|ing)?|protected|public|regional|register\w*|requirement\w*|research|reside[sd]?|residing|return|s|service|should|show|state|stor(?:e|es|ed|ing)|stay(?:s|ed|ing)?|support|tell|that|the|this|to|use[sd]?|using|what|where|which|who|with|would)$/iu;
+// Words that cannot be part of a person's name: "ühe", "eesti", and
+// forestry nouns that are not also surnames (tree species such as tamm, kask
+// and mänd are, so they stay out). Without these, "harvendusraiet ühes metsas"
+// and "surnud puidu tagavara metsamaal" read as a name in front of a forest.
+// Pronouns and verbs (ma tohin, nad võivad, raiusin mu) stay out: a name
+// after "oma metsas" ("kas ma tohin oma metsas Mari Tammele ...") is held
+// private only because that pair itself reads as a name.
+const PERSON_CONTEXT_STOPWORD_PATTERN = /^(?:p[õo]ud\p{L}*|ühe\p{L}*|uhe\p{L}*|eesti|\p{L}*raie\p{L}*|puid\p{L}*|puit\p{L}*|tagavar\p{L}*|jahime\p{L}*|aga|alal|andm\w*|andmev[äa]rav\p{L}*|andmetel|anna|andke|asub|asuv\w*|avalik\w*|jaoks|kaudu|kas|kaits\w*|kasuta\w*|katastri\w*|kehti\w*|kes|kuidas|kinnist\w*|konkreetse|kohta|kuulu\w*|kui|kus|kust|küsimus\w*|kõrval|lahedal|lähedal|lasta|lei\w*|loa\w*|luba\w*|maaüksus\w*|maauksus\w*|maatükk\w*|maatukk\w*|metsaeraldis\w*|metsaregister\w*|millal|millin\w*|millis\w*|minu|mis|mida|midagi|miks|nõu\w*|näen|näha|näita|naita|oleva|oma|on|otsing\w*|palju|p[õo]him[õo]t\w*|poliitik\w*|puurkaev\w*|s[äa]ilita\w*|smi|sügavus\w*|tagasta|tagastage|talu\w*|testida|too|t[öo][öo]tle\w*|ütleb|vaadata|valda|vaja|ööbib|oobib|paikneb|peatub|piirkonn\w*|resideerib|registr\w*|viibib|järgi|ja|ning|või|voi|ääres|aasta|elab|elava|majas|a|about|affect\w*|are|area\w*|at|be|by|can|could|customer|data|did|do|does|for|from|get|give|handle[sd]?|handling|how|in|information|is|live[sd]?|living|may|me|must|near|number|occup(?:y|ies|ied|ying)|of|office|on|permit\w*|polic(?:y|ies)|process(?:es|ed|ing)?|protect(?:s|ed|ing)?|protected|public|regional|register\w*|requirement\w*|research|reside[sd]?|residing|return|s|service|should|show|state|stor(?:e|es|ed|ing)|stay(?:s|ed|ing)?|support|tell|that|the|this|to|use[sd]?|using|what|where|which|who|with|would)$/iu;
 const ESTONIAN_PRIVATE_OWNERSHIP_PATTERN = /\b(?:omanik\w*|omaja\w*|omand(?:is|uses)\w*|oma(?:b|vad|s|sid|nud|ma|takse|tud)|valdaj\w*|valduses\w*|valda(?:b|vad|s|sid|nud|ma)|kellele\s+kuulub)\b/iu;
 const ESTONIAN_FOREST_NOUN_PATTERN = /^(?:mets(?:a(?:s|st|le|lt|ga|d(?:e(?:s|st|le|lt|ga)?)?)?|i)?|metsaa)$/iu;
 const ESTONIAN_PRIVATE_FOREST_NOUN_PATTERN = /^(?:eramets(?:a(?:s|st|le|lt|ga|d(?:e(?:s|st|le|lt|ga)?)?)?|i)?|erametsaa)$/iu;
@@ -8405,7 +8412,9 @@ export function assessEvidence(query, documents = []) {
         if (passageDisclaimsEvidence(passage)) return false;
         const passageMatches = passageMatchesTerms(passage, terms);
         const requiredMatches = passageMatches.filter((term) => passageTerms.includes(term));
-        return years.every((year) => passageText.includes(year))
+        // A reviewed source's own data year counts as stating that year: the
+        // SMI page gives 2025 shares without repeating "2025" in each sentence.
+        return years.every((year) => passageText.includes(year) || String(document.dataYear || "") === year)
           && mandatePassage(passage)
           && requiredDomainTerms.every((term) => passageMatches.includes(term))
           && requiredMatches.length >= requiredPassageMatches;
@@ -8474,18 +8483,37 @@ export function assessEvidence(query, documents = []) {
           && passageMatches.some((term) => !GENERIC_QUERY_CONTEXT_TERMS.has(term));
       });
     });
-  const answerable = strong || Boolean(broadDocument);
+  // A law section near the top that names the question's own subject (säilikpuu,
+  // juuremädanik) is read by the model even when the wording differs: law says
+  // "uuendada" where a reader writes "istutada", and its quantities are rules,
+  // not statistics. The model's own checks still decide whether it answers.
+  // The subject is a noun: verb forms ("lennutada", "varastati") appear all
+  // over the law and say nothing about which section answers.
+  const lawSubject = [...terms]
+    .filter((term) => !ADMIN_CONTEXT_ROOTS.has(term) && !GENERIC_QUERY_CONTEXT_TERMS.has(term))
+    .filter((term) => !/(?:[aeiu]da|tati|takse|tud|nud)$/u.test(term))
+    // "tohib" and "taotlema" become these roots; they name the question type, not its subject.
+    .filter((term) => !["lubatavus", "piirang", "menetlus", "taotlemine"].includes(term))
+    .sort((left, right) => right.length - left.length)
+    .find((term) => term.length >= 7) || null;
+  const lawDocument = strong || broadDocument || !lawSubject || years.length
+    ? null
+    : candidates.slice(0, 3).find((document) => document?._lawSection
+      && documentCanDirectlyAnswerQuery(query, document)
+      && evidencePassages(document).some((passage) => !passageDisclaimsEvidence(passage)
+        && textHasQueryRoot(passage, lawSubject)));
+  const answerable = strong || Boolean(broadDocument) || Boolean(lawDocument);
   return {
     strong,
     answerable,
-    broad: Boolean(broadDocument),
+    broad: Boolean(broadDocument || lawDocument),
     topScore,
     coverage,
     matchedTerms: [...matched],
     terms,
     yearsCovered,
-    directDocumentId: directDocument?.id || broadDocument?.id || null,
-    broadDocumentId: broadDocument?.id || null,
+    directDocumentId: directDocument?.id || broadDocument?.id || lawDocument?.id || null,
+    broadDocumentId: broadDocument?.id || lawDocument?.id || null,
   };
 }
 
@@ -9116,8 +9144,11 @@ export function answersAskedConcept(query, text) {
   // A news list or a map layer name never answers anything, on any route.
   if (/^hiljutised uudised\b|\bvaata koiki\b/u.test(normalizedText) || /\b[a-z]{2,}__[a-z_]+/u.test(String(text))) return false;
   // "Mis on X" asks for X itself, so the answer has to name it.
-  const defined = normalizedQuery.match(/^mis on (\p{L}{4,})\??$/u)?.[1]
-    || normalizedQuery.match(/^(\p{L}{4,}) (?:mis|mida) see tahendab\??$/u)?.[1];
+  // For a term of up to three words ("metsa tulevikutehing") the answer must
+  // name its longest word, the head of the term, by its stem.
+  const definedPhrase = normalizedQuery.match(/^mis on ((?:\p{L}+ ){0,2}\p{L}{4,})\??$/u)?.[1]
+    || normalizedQuery.match(/^((?:\p{L}+ ){0,2}\p{L}{4,}) (?:mis|mida) see tahendab\??$/u)?.[1];
+  const defined = definedPhrase?.split(" ").sort((left, right) => right.length - left.length)[0];
   if (defined && !normalizedText.includes(defined.slice(0, Math.max(4, defined.length - 2)))) return false;
   return ASKED_CONCEPTS.every(({ asks, answers }) => !asks.test(normalizedQuery) || answers.test(normalizedText));
 }
