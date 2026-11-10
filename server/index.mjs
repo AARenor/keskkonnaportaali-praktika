@@ -303,6 +303,38 @@ app.use("/api/terrapoint", createFixedWindowRateLimiter({
 // and non-API paths must never pay the allocation/parsing cost at all.
 app.use("/api", express.json({ limit: "32kb", strict: true, inflate: false }));
 
+// A rejected body is answered here, before the framework default handler can
+// report it. That default logs and, outside production, returns the parser
+// error, and the error text embeds a fragment of the raw request body, the
+// absolute parser stack paths and the client supplied charset label. None of
+// that may reach a reader or the server log, so each known failure gets a fixed
+// status and fixed words.
+const API_BODY_ERROR_RESPONSES = new Map([
+  ["entity.parse.failed", [400, "Päringu keha ei ole korrektne JSON."]],
+  ["request.size.invalid", [400, "Päringu keha ei ole loetav."]],
+  ["entity.too.large", [413, "Päringu keha on liiga suur."]],
+  ["charset.unsupported", [415, "Päringu keha peab olema UTF-8 JSON."]],
+  ["encoding.unsupported", [415, "Päringu keha pakkimine ei ole toetatud."]],
+]);
+
+app.use("/api", (error, request, response, next) => {
+  // Only the known body-parser failures are handled. Any other error, and any
+  // response that already started, keeps the framework's own teardown: this
+  // boundary never rewrites an error it did not classify.
+  const known = error && typeof error.type === "string"
+    ? API_BODY_ERROR_RESPONSES.get(error.type)
+    : undefined;
+  if (!known) return next(error);
+  if (response.headersSent || response.writableEnded
+    || request.destroyed || request.socket?.destroyed) return next(error);
+  const [status, message] = known;
+  // The logged type is our own allowlist key, so the line can name the failure
+  // class without repeating any parser, body, header or stack text.
+  console.warn(JSON.stringify({ event: "api-body-error", status, type: error.type }));
+  response.setHeader("Cache-Control", "no-store");
+  return response.status(status).json({ error: message });
+});
+
 app.get("/api/health/container-readiness", (_request, response) => {
   if (containerReadiness !== "ready") {
     return response.status(503).json({
@@ -385,7 +417,9 @@ async function writeBlockedSearchStream(response, query, assessment, filters, pa
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
   response.setHeader("X-Accel-Buffering", "no");
-  const stream = createBoundedNdjsonWriter(response);
+  const stream = createBoundedNdjsonWriter(response, {
+    idleTimeoutMs: publicResponseConfiguration.idleTimeoutMs,
+  });
   response.flushHeaders?.();
   try {
     await stream.write("results", { searchResults: payload.searchResults });
@@ -586,6 +620,7 @@ app.post("/api/search/stream", async (request, response) => {
   response.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
   response.setHeader("X-Accel-Buffering", "no");
   const stream = createBoundedNdjsonWriter(response, {
+    idleTimeoutMs: publicResponseConfiguration.idleTimeoutMs,
     onFailure: (error) => {
       if (!controller.signal.aborted) controller.abort(error);
     },

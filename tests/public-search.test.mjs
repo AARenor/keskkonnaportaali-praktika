@@ -4226,12 +4226,20 @@ test("claim-specific freshness contracts require basis-specific source provenanc
   ]) {
     const source = catalogue.find((candidate) => candidate.id === id);
     assert.equal(source.evidencePolicy, "versioned", id);
-    const reviewDate = ["forest-law", "nature-conservation-law"].includes(id) ? "2026-10-01" : "2026-09-19";
-    assert.match(source._evidenceVersion, new RegExp(`^catalogue-review-${reviewDate}:[0-9a-f]{64}$`, "u"), id);
-    assert.equal(sourceEvidenceEligibility(source, { now: Date.parse("2026-10-01T12:00:00Z") }).eligible, true, id);
-    assert.equal(sourceEvidenceEligibility(source, {
-      now: Date.parse("2036-09-19T00:00:00Z"),
-    }).eligible, false, id);
+    // A reviewed extract carries its own review date, and a review cannot
+    // support an answer before the day it happened. Assert that provenance,
+    // the future-dating refusal and the review age limit. A shared historical
+    // constant would let one entry age silently and hide a future date.
+    const reviewedAtMs = Date.parse(source._evidenceStatusAt);
+    const maxAgeMs = Number(source.freshness?.maxAgeMs);
+    assert.ok(Number.isFinite(reviewedAtMs), id);
+    assert.ok(Number.isFinite(maxAgeMs) && maxAgeMs > 0, id);
+    assert.equal(source.freshness?.requiresSourceTimestamp, true, id);
+    assert.match(source._evidenceVersion, new RegExp(`^catalogue-review-${source._evidenceStatusAt.slice(0, 10)}:[0-9a-f]{64}$`, "u"), id);
+    const dayMs = 24 * 60 * 60 * 1_000;
+    assert.equal(sourceEvidenceEligibility(source, { now: reviewedAtMs - dayMs }).eligible, false, id);
+    assert.equal(sourceEvidenceEligibility(source, { now: reviewedAtMs + dayMs }).eligible, true, id);
+    assert.equal(sourceEvidenceEligibility(source, { now: reviewedAtMs + maxAgeMs + 1 }).eligible, false, id);
   }
   const reviewed = catalogue.find((source) => source.id === "waste-burning-guidance");
   assert.notEqual(

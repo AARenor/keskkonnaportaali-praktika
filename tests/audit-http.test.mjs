@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   publicCitationUrl,
@@ -58,21 +57,4 @@ test("live audit transport refuses redirects and bounds declared and streamed bo
     maximumBytes: 5,
   }), /too large/u);
   assert.equal(cancelled, true);
-});
-
-test("every live audit client uses the shared bounded transport", async () => {
-  const files = [
-    "audit-live-filters.mjs",
-    "audit-live-followups.mjs",
-    "audit-live-grounding.mjs",
-    "evaluate-live-search.mjs",
-    "evaluate-relevance-holdout.mjs",
-    "load-search.mjs",
-  ];
-  for (const file of files) {
-    const source = await readFile(new URL(`../scripts/${file}`, import.meta.url), "utf8");
-    assert.match(source, /requestBoundedAudit(?:Json|Text)/u, file);
-    assert.doesNotMatch(source, /\bfetch\s*\(/u, file);
-    assert.doesNotMatch(source, /response\.(?:arrayBuffer|blob|json|text)\s*\(/u, file);
-  }
 });

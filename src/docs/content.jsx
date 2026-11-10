@@ -25,7 +25,8 @@ export const userGuide = {
         <p>Tulemused võivad ilmuda enne vastuse valmimist. Otsingu ajal ei pea lehte uuesti laadima.</p>
         <p>„Tühjenda otsing” eemaldab sisestatud teksti, kuid ei kustuta juba kuvatud tulemusi. Uus küsimus käivitab uue otsingu.</p>
         <p>Otsing töötab praegu eesti keeles. Konto loomist ega sisselogimist selle otsingu kasutamiseks ei ole.</p>
-        <p>Allikakiht hõlmab Keskkonnaportaali ja heakskiidetud ametlike väljaandjate (Keskkonnaagentuur, Keskkonnaamet, Kliimaministeerium, RMK, Ilmateenistus, Terviseamet, KIK) avalikke sitemap-lehti. Lehetekst täidetakse järk-järgult ka täissünkroonimiste vahel, seega võib üksiku lehe sisu jõuda otsingusse mõne tunni jooksul pärast esmakordset avastamist.</p>
+        <p>Praegu koostab otsing vastuseid Eesti metsateemadel. Muude keskkonnateemade kohta saab otsida allikaid, kuid AI kokkuvõtet ei koostata.</p>
+        <p>Allikakiht hõlmab Keskkonnaportaali ja heakskiidetud ametlike väljaandjate avalikke lehti. Leheteksti täidetakse järk-järgult ka täissünkroonimiste vahel. Allika tõrke korral võib uue teksti jõudmine otsingusse võtta kauem.</p>
       </>,
     },
     {
@@ -194,7 +195,7 @@ export const developerGuide = {
               <tr><td><code>POST /api/suggestions</code></td><td><code>{'{q}'}</code> → <code>{'{suggestions: [{value, count}]}'}</code>, kuni kaksteist valikut. Piir 80 märki; alla kahe märgi korral tühi loend.</td></tr>
               <tr><td><code>GET /api/health</code></td><td>Protsessi tervis, <code>revision</code> ja aeg; ei tõesta kõigi sõltuvuste töökorda.</td></tr>
               <tr><td><code>GET /api/health/container-readiness</code></td><td>Konteineri vastuvõtuvalmidus; sulgemisel HTTP 503.</td></tr>
-              <tr><td><code>GET /api/corpus</code></td><td>Allikakihi koondstatistika, mitte dokumentide eksport.</td></tr>
+              <tr><td><code>GET /api/corpus</code></td><td>Allikakihi koondstatistika, mitte dokumentide eksport. <code>hydrated</code> loeb kättesaadavate kirjete salvestatud tekstid, <code>freshOfficialPages</code> viimase seitsme päeva edukalt loetud ametlikud lehed ja <code>lastSync.errorCount</code> viimase sünkroonimise vead. Värske lehe loendur ei tõesta, et iga leht sobib konkreetse vastuse tõendiks.</td></tr>
             </tbody>
           </table>
         </div>
@@ -315,9 +316,9 @@ const result = await response.json();
         </div>
         <p>Voo lugemisel käsitle ka katkist ühendust, osalist vastust ja lõppsündmuseta voogu. Näita juba kehtivalt saadud tulemusi ainult õige päringu juures ning ära kuuluta poolikut vastust valmis vastuseks.</p>
         <p>Oluline endpoint'ide erinevus: JSON-otsing ja jätkuküsimus võivad ajapiiri või allikatõrke korral anda HTTP 200 sisulise loobumisega. Voo vastuvõtu tõrge enne päiste saatmist on 503. Ainult tulemuste endpoint võib tagastada 429 vastuvõtupiiri, 503 ajapiiri või 502 allikatõrke korral, koos <code>retryable: true</code> ja <code>Retry-After: 2</code>.</p>
-        <p>Valesti vormistatud või liiga suure JSON-keha veavastus ei ole tingimata JSON: serveril pole parserivea jaoks kohandatud JSON-käsitlejat. Ka ühenduse ressursipiir võib katkestada võrguühenduse ilma veakehata. Ära eelda kõigi tõrgete puhul <code>{'{error}'}</code> struktuuri.</p>
+        <p>Valesti vormistatud, liiga suure või toetamata JSON-keha korral tagastab API piiratud veateate ega kirjuta päringu sisu parseri logisse. Ühenduse ressursipiir võib siiski katkestada võrguühenduse ilma veakehata.</p>
         <p>Vaikimisi piirangud on kliendiaadressi kohta ühes 60-sekundilises aknas: kogu <code>/api</code> 240 päringut, otsingute rühm 20, soovitused 30, allikastatistika 20 ja Terrapointi rühm 30. Otsingu endpoint'id jagavad sama piirangurühma. Need piirid on protsessipõhised, mitte mitme replika ühine kvoot.</p>
-        <p>Koormuspiirid ja otsingu ajapiirid on lisaks päringusageduse piirile. JSON-otsingu ajapiiri ülempiir on 22 sekundit; voo vaikimisi otsingueelarve on 25 sekundit. Puhverserveri ja kliendi ajapiirid peavad jätma edastuseks varu. Vaikimisi on korraga kuni kaheksa otsingut, kuni kaks ühe kliendi kohta ning piiratud ootejärjekord.</p>
+        <p>Koormuspiirid ja otsingu ajapiirid on lisaks päringusageduse piirile. JSON-otsingu ülempiir on 50 sekundit ning voo ja jätkuküsimuse ülempiir 60 sekundit; seadistus võib eelarvet vähendada. Voo jõudeaeg järgib avaliku vastuse seadistust. Puhverserveri ja kliendi ajapiirid peavad jätma edastuseks varu. Vaikimisi on korraga kuni kaheksa otsingut, kuni kaks ühe kliendi kohta ning piiratud ootejärjekord.</p>
         <p>Ära ava kulukat anonüümset API-d mitme replikaga ilma taristutaseme ühiste piiride ja eelarveta. Kontrollid: <CodeLink path="server/security.mjs" />, <CodeLink path="server/request-budget.mjs" />, <CodeLink path="server/response-budget.mjs" />.</p>
       </>,
     },
@@ -326,7 +327,10 @@ const result = await response.json();
       title: "Lokaalne käivitus ja juurutamine",
       content: <>
         <p>Korpuse sünkroonimine loeb 24-tunnise vahega portaali sitemap'i ja heakskiidetud ametlike väljaandjate sitemap'e (keskkonnaagentuur.ee, keskkonnaamet.ee, kliimaministeerium.ee, rmk.ee, www.ilmateenistus.ee, terviseamet.ee, kik.ee). Iga hosti <code>robots.txt</code> kontrollitakse enne lugemist; ühe allika tõrge ei katkesta teisi. Leheteksti täidab taustapartii, mida juhivad <code>CORPUS_CONTINUOUS_BACKFILL</code>, <code>CORPUS_BACKFILL_INTERVAL_MS</code> ja <code>CORPUS_BACKFILL_BATCH_SIZE</code>. Katvust saab kontrollida <CodeLink path="scripts/audit-corpus-coverage.mjs" /> skriptiga; see teeb ainult kirjutuskaitstud päringuid.</p>
+        <p>Taustakorje ja päringuaegne lehelugemine kontrollivad kumbki oma <code>User-Agent</code> tootetunnusele vastavaid <code>robots.txt</code> ja <code>noindex</code> juhiseid. Nimetatud rühmadest kehtib kõige täpsem; samaväärsed rühmad ühendatakse ja <code>*</code> on varuvariant.</p>
+        <p>Kui leht suunab teisele aadressile, kontrollitakse enne sihtlehe lugemist ka selle aadressi avaldaja reegleid. Korduvad <code>X-Robots-Tag</code> päised säilitavad iga lugeja kohta oma ulatuse.</p>
         <p>Madalamakvaliteediline saidikaardikirje ei tohi loetud lehe sisu ega tõendipäritolu üle kirjutada. Varasema vigase päritoluga kirje saab tõendiks tagasi alles pärast uut lubatud lehelugemist; üksnes andmebaasi metaandmete muutmisest ei piisa.</p>
+        <p>Edukas lehelugemine jõuab värskendusjärjekorda kuue päeva järel. Ebaõnnestunud värskendus saab pärast seitsmepäevast ooteaega tagasi järjekorda; tegelik lugemisaeg sõltub järjekorrast. Varasemat leheteksti ei kasutata faktitõendina enne uut edukat lugemist. Taustapartii vajab PostgreSQL 16 või uuemat versiooni.</p>
         <p>Otsing kasutab range sõnarühma <code>AND</code>-päringut täpsussignaalina ja laiemat põhimõistete <code>OR</code>-päringut avatud küsimuste leidmiseks; järjestus lisab katvuse ning pealkirja/kokkuvõtte vaste. Avatud kvalitatiivsele küsimusele võib vastata üks ametlik lõik, arvu- ja aastaküsimused jäävad range tõendivärava taha. Avalik vastus ei sisalda sisemist <code>evidenceCandidates</code> välja ega kogu korpuse teksti.</p>
         <p>Dockerfile'i lähtekoht on Node.js 24. Sõltuvused on lukustatud <code>package-lock.json</code> failis. Minimaalne arenduse kontroll ilma vastuse koostamise teenuse ja püsiva vahemäluta:</p>
         <Code>{`npm ci
@@ -336,6 +340,7 @@ PUBLIC_ORIGIN=http://127.0.0.1:4174 \\
 LLM_ENABLED=false SEARCH_CACHE_ENABLED=false npm start`}</Code>
         <p>See käivitus kasutab siiski ametlike allikate võrguühendusi; see ei ole võrguühenduseta tootmislahendus. Korpuse ja püsiva otsinguvahemälu jaoks lisa PostgreSQL vastavalt <CodeLink path="compose.yaml" /> failile. Võimalik vektoriotsing ei ole baaskäivituse eeltingimus.</p>
         <p><code>npm run build</code> valmistab <code>dist/client</code> ja Sitesi üleandmisfailid <code>dist/server/index.js</code> ning <code>dist/.openai/hosting.json</code>. Tavapärane tootmiskäivitus on siiski <code>server/index.mjs</code>; Sitesi worker ei asenda selle otsingu API-d.</p>
+        <p><code>npm run eval:live</code> mõõdab ka 15,5 sekundi jõudluseesmärki. Hindamiskliendi 70 sekundi ajapiir jätab pikima otsingutähtaja järel võrguvaru; see ei muuda serveri enda tähtaega.</p>
         <p>Andmebaasi skeemi algseadistus toimub <CodeLink path="server/database.mjs">andmekihis</CodeLink>. Enne ametlikku juurutamist lepi kokku kontrollitud skeemimuudatuste, varukoopiate ja taastamise kord. Sünkroonimise käsurealiides on <CodeLink path="server/sync-corpus.mjs" /> ja hooldusjuhend <CodeLink path="docs/IT-HOOLDUS.md" />.</p>
         <p>Kasuta eraldi andmebaasi: algseadistus loob ja muudab projekti tabeleid, indeksid ning laiendused <code>pg_trgm</code> ja <code>unaccent</code>. Ainult SELECT/INSERT õigustest ei piisa. Korpuse <code>practice_corpus_*</code> tabelid ja päringuvahemälu <code>practice_search_*</code> tabelid ei ole portaali olemasoleva sisuskeemi asendus.</p>
         <p>Tervisekontroll ega konteineri valmidus ei oota korpuse ega andmebaasi migratsiooni valmimist. Kontrolli pärast juurutamist eraldi allikakihi tegelikku tööd ja vähemalt üht päris otsingut.</p>
@@ -405,7 +410,7 @@ LLM_ENABLED=false SEARCH_CACHE_ENABLED=false npm start`}</Code>
           <li><strong>API leping:</strong> proovi päris portaali päritolust otsingut, soovitusi, filtrit, lehekülge ja jätkuküsimust. Kontrolli vale keha, liiga pikka küsimust ning keelatud päritolu.</li>
           <li><strong>Voog:</strong> tulemused saabuvad enne vastust, tühistamine töötab ning vana vastus ei ilmu uue küsimuse alla. Kontrolli ka katkist voogu ja ülekoormust.</li>
           <li><strong>Viited:</strong> nummerdatud HTTPS-viited avavad õiged algallikad; vastuse ja diagrammi tõendid on samas tulemuste loendis.</li>
-          <li><strong>Keele- ja ulatuspiir:</strong> eestikeelsed keskkonnaküsimused töötavad; inglise ja vene päringud ei saa vaikerežiimis põhjendamatut faktivastust.</li>
+          <li><strong>Keele- ja ulatuspiir:</strong> eestikeelne faktivastus on tootmises piiratud Eesti metsateemadega; muudel keskkonnateemadel kontrolli allikate loendit.</li>
           <li><strong>Mobiil ja ligipääsetavus:</strong> otsing on esimeses mobiilivaates, soovitused töötavad klaviatuuriga, fookus on nähtav ja Terrapointi iframe ei liiguta esmast lehevaadet.</li>
           <li><strong>Versioon:</strong> <code>/api/health</code> revision vastab juurutatud commit'ile; lehe, <code>/build.json</code> ja API build kattuvad. Testi ka enne juurutust avatud vana lehte.</li>
           <li><strong>Taristu ja andmetöötlus:</strong> saladused on ainult serveris, proxy päised kontrollitud, kvoodid ühised seal, kus vaja, varukoopia taastatav ja logid ei kogu vabateksti.</li>

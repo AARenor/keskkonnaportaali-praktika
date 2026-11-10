@@ -59,7 +59,12 @@ const OFFICIAL_DISCOVERY_RETENTION_HOURS = Math.max(
   24,
   Math.min(Number(process.env.OFFICIAL_DISCOVERY_RETENTION_HOURS) || 168, 720),
 );
-const APPROVED_PAGE_EVIDENCE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1_000;
+const APPROVED_PAGE_EVIDENCE_MAX_AGE_DAYS = 7;
+const APPROVED_PAGE_EVIDENCE_MAX_AGE_MS = APPROVED_PAGE_EVIDENCE_MAX_AGE_DAYS * 24 * 60 * 60 * 1_000;
+// A citable page is read again one day before its citation window closes, so a
+// successful body is renewed while it can still answer instead of lapsing first
+// and waiting for a slow refresh cycle.
+const APPROVED_PAGE_REFRESH_DAYS = APPROVED_PAGE_EVIDENCE_MAX_AGE_DAYS - 1;
 const REVIEWED_CATALOGUE_MAX_AGE_MS = 366 * 24 * 60 * 60 * 1_000;
 const REVIEWED_CATALOGUE_SOURCE_KEY = "reviewed-catalogue-source";
 const OFFICIAL_DISCOVERY_MAX_ROWS = Math.max(
@@ -549,8 +554,28 @@ export function parseRobotsTxt(value = "", product = CRAWLER_PRODUCT) {
     }
   }
   const normalizedProduct = String(product).toLocaleLowerCase("en");
-  const exact = groups.filter(({ agents }) => agents.some((agent) => agent !== "*" && normalizedProduct.includes(agent)));
-  const selected = exact.length ? exact : groups.filter(({ agents }) => agents.includes("*"));
+  // The published robots specification selects the group whose user-agent
+  // match is the most specific: a token that names this reader whole beats a
+  // shorter token that merely appears inside the name, and only groups matching
+  // at that same specificity are merged. The wildcard group is a fallback for
+  // when no group names this reader at all, never an addition to one that does.
+  const namedMatches = groups
+    .map((group) => ({
+      group,
+      specificity: group.agents.reduce((longest, agent) => (
+        agent && agent !== "*" && normalizedProduct.includes(agent)
+          ? Math.max(longest, agent.length)
+          : longest
+      ), 0),
+    }))
+    .filter(({ specificity }) => specificity > 0);
+  const maximumSpecificity = namedMatches
+    .reduce((maximum, { specificity }) => Math.max(maximum, specificity), 0);
+  const selected = maximumSpecificity > 0
+    ? namedMatches
+      .filter(({ specificity }) => specificity === maximumSpecificity)
+      .map(({ group }) => group)
+    : groups.filter(({ agents }) => agents.includes("*"));
   return selected.flatMap(({ rules }) => rules);
 }
 
@@ -935,20 +960,127 @@ export function extractReadablePage(html, url) {
   return { title: title || placeholderTitle(url), content, publishedAt, updatedAt, organization };
 }
 
-export function pageRobotsPolicy(html = "", headerValue = "") {
+// An X-Robots-Tag is addressed to a crawler, and the published semantics scope a
+// whole field value: "otherbot: noindex, nofollow" is otherbot's exclusion from
+// end to end, while a value with no crawler prefix applies to every reader and a
+// separate generic value keeps its own meaning. Reading the header as a bag of
+// words turns another crawler's exclusion into ours.
+const ROBOTS_HEADER_INSTANCE_LIMIT = 64;
+const ROBOTS_HEADER_TEXT_LIMIT = 8_192;
+const ROBOTS_SCOPE_PATTERN = /^([a-z0-9][a-z0-9._+-]{0,63})\s*:/u;
+// A directive name before a colon is not a crawler name, so that value is read
+// as generic directives. Treating an unreadable scope as someone else's would
+// let a page through on a value nobody could attribute.
+const ROBOTS_DIRECTIVE_NAMES = new Set([
+  "all",
+  "follow",
+  "index",
+  "indexifembedded",
+  "max-image-preview",
+  "max-snippet",
+  "max-video-preview",
+  "noarchive",
+  "nofollow",
+  "noimageindex",
+  "noindex",
+  "none",
+  "nosnippet",
+  "notranslate",
+  "unavailable_after",
+]);
+const GENERIC_ROBOTS_SCOPES = new Set(["robots"]);
+
+// The instances arrive as an array when the transport reported them separately,
+// and as one string when a caller or a joined Headers object supplied them. A
+// joined string cannot be split back into instances, so it is marked as such and
+// read conservatively.
+function robotsHeaderInstances(headerValue) {
+  if (headerValue === undefined || headerValue === null || headerValue === "") {
+    return { instances: [], joined: false };
+  }
+  if (Array.isArray(headerValue)) {
+    return { instances: headerValue.map((value) => String(value ?? "")), joined: false };
+  }
+  if (typeof headerValue === "string") return { instances: [headerValue], joined: true };
+  if (typeof headerValue?.get === "function") {
+    const value = headerValue.get("x-robots-tag");
+    return value === undefined || value === null
+      ? { instances: [], joined: false }
+      : { instances: [String(value)], joined: true };
+  }
+  if (typeof headerValue === "object") {
+    return robotsHeaderInstances(headerValue["x-robots-tag"] ?? headerValue["X-Robots-Tag"]);
+  }
+  return { instances: [String(headerValue)], joined: true };
+}
+
+function robotsScopeOf(value, productName) {
+  const text = cleanText(value).toLocaleLowerCase("en");
+  const scoped = text.match(ROBOTS_SCOPE_PATTERN);
+  if (!scoped) return { scope: "generic", directives: text };
+  const name = scoped[1];
+  const directives = text.slice(scoped[0].length);
+  if (GENERIC_ROBOTS_SCOPES.has(name) || ROBOTS_DIRECTIVE_NAMES.has(name)) {
+    // The prefix belongs to the directive grammar, not to a crawler, so the
+    // whole value keeps its meaning for every reader.
+    return { scope: "generic", directives: text };
+  }
+  if (productName && name === productName) return { scope: "product", directives };
+  return { scope: "other", directives: "" };
+}
+
+function robotsDirectiveTokens(text) {
+  return String(text || "").split(/[\s,;]+/u).filter(Boolean);
+}
+
+export function pageRobotsPolicy(html = "", headerValue = "", product = CRAWLER_PRODUCT) {
   const $ = load(String(html || ""));
-  const directives = [
-    headerValue,
-    ...$("meta[name]").map((_, element) => {
-      const name = cleanText($(element).attr("name")).toLocaleLowerCase("en");
-      return ["robots", CRAWLER_PRODUCT].includes(name) ? $(element).attr("content") : "";
-    }).get(),
-  ]
-    .flatMap((value) => cleanText(value).toLocaleLowerCase("en").split(/[\s,;]+/u))
-    .filter(Boolean);
+  // A page can direct a directive at one reader by naming that reader's product
+  // token in the meta tag, so the caller states which reader it is. The generic
+  // "robots" name always applies, and the corpus keeps its own token by default.
+  const productName = cleanText(product).toLocaleLowerCase("en");
+  const { instances, joined } = robotsHeaderInstances(headerValue);
+  const directives = [];
+  let overflowed = false;
+  let ambiguous = false;
+  let scanned = 0;
+  for (const [index, instance] of instances.entries()) {
+    if (index >= ROBOTS_HEADER_INSTANCE_LIMIT || scanned + instance.length > ROBOTS_HEADER_TEXT_LIMIT) {
+      // The header block outgrew what this reader will scan. Dropping the rest
+      // would let an exclusion that arrived later pass unread, so the page is
+      // treated as excluded instead of guessed at.
+      overflowed = true;
+      break;
+    }
+    scanned += instance.length;
+    const { scope, directives: valueDirectives } = robotsScopeOf(instance, productName);
+    if (scope !== "other") {
+      directives.push(...robotsDirectiveTokens(valueDirectives));
+      continue;
+    }
+    // The value is another crawler's. When the instances arrived separately that
+    // is the whole answer: the exclusion is not ours to obey, and a directive
+    // immediately after the scope belongs to that crawler. A joined string may
+    // have merged a later generic value into this one, so an exclusion in a
+    // later comma segment leaves the value ambiguous and the page excluded.
+    if (joined && robotsDirectiveTokens(String(instance).split(",").slice(1).join(" "))
+      .some((directive) => directive === "noindex" || directive === "none")) {
+      ambiguous = true;
+    }
+  }
+  directives.push(...$("meta[name]").map((_, element) => {
+    const name = cleanText($(element).attr("name")).toLocaleLowerCase("en");
+    return name === "robots" || (productName && name === productName)
+      ? robotsDirectiveTokens(cleanText($(element).attr("content")).toLocaleLowerCase("en"))
+      : [];
+  }).get().flat());
   return {
-    noindex: directives.includes("noindex") || directives.includes("none"),
+    noindex: overflowed || ambiguous
+      || directives.includes("noindex")
+      || directives.includes("none"),
     directives: [...new Set(directives)],
+    ...(overflowed ? { truncated: true } : {}),
+    ...(ambiguous ? { ambiguous: true } : {}),
   };
 }
 
@@ -1691,9 +1823,25 @@ export function officialDiscoveryIndexStats() {
   return officialDiscoveryIndexQueue.stats();
 }
 
-function boundedTransportHeader(headers, name) {
-  const value = typeof headers?.get === "function" ? headers.get(name) : headers?.[name];
-  return String(Array.isArray(value) ? value[0] : value || "").slice(0, 240);
+// A publisher may repeat a header instead of listing every directive in one
+// value, and each instance carries its own crawler scope, so the transport
+// hands every instance on in the shape it arrived in. Bounding happens once, in
+// the policy reader, which fails closed rather than dropping a directive that
+// arrived after a cut.
+function transportHeaderValues(headers, name) {
+  if (!headers) return [];
+  if (typeof headers.get === "function") {
+    const value = headers.get(name);
+    return value === undefined || value === null ? [] : [String(value)];
+  }
+  const value = headers[name] ?? headers[String(name).toLocaleLowerCase("en-US")];
+  if (Array.isArray(value)) return value.map((entry) => String(entry ?? ""));
+  return value === undefined || value === null ? [] : [String(value)];
+}
+
+function transportHeaderValue(headers, name) {
+  const values = transportHeaderValues(headers, name);
+  return values.length ? values[0] : "";
 }
 
 export async function fetchCorpusText(url, {
@@ -1704,6 +1852,11 @@ export async function fetchCorpusText(url, {
   requestText = requestApprovedPublicHttpsText,
   lookupImpl,
   requestImpl,
+  assertRedirectAllowed,
+  // The robots gate has to tell a policy file that does not exist from one it was
+  // not allowed to read, and only the status and the address that answered can
+  // do that. Everything else keeps the plain failure it already had.
+  reportFailureStatus = false,
 } = {}) {
   const requestedUrl = validateApprovedPublicHttpsUrl(url, CORPUS_HTTPS_ORIGINS).toString();
   const approvedOrigins = corpusOriginsForUrl(requestedUrl);
@@ -1730,9 +1883,17 @@ export async function fetchCorpusText(url, {
         maximumRedirects: 3,
         lookupImpl,
         requestImpl,
+        assertRedirectAllowed,
       });
       if (response.status < 200 || response.status >= 300) {
-        throw new Error(`Corpus source returned ${response.status}`);
+        const error = new Error(`Corpus source returned ${response.status}`);
+        // The message stays the same for every caller; the annotated fields are
+        // read only where a status is itself an answer.
+        if (reportFailureStatus) {
+          error.status = response.status;
+          error.finalUrl = String(response.url || requestedUrl);
+        }
+        throw error;
       }
       const finalUrl = validateApprovedPublicHttpsUrl(
         response.url || requestedUrl,
@@ -1742,14 +1903,21 @@ export async function fetchCorpusText(url, {
       if (Buffer.byteLength(body, "utf8") > byteLimit) {
         throw new Error("Corpus source response is too large");
       }
+      const robotsTags = transportHeaderValues(response.headers, "x-robots-tag");
       return {
         text: body,
-        contentType: boundedTransportHeader(response.headers, "content-type"),
-        robotsTag: boundedTransportHeader(response.headers, "x-robots-tag"),
+        contentType: transportHeaderValue(response.headers, "content-type").slice(0, 240),
+        // The first instance keeps the scalar shape older callers read; the
+        // policy reader takes every instance.
+        robotsTag: robotsTags.length ? robotsTags[0] : "",
+        robotsTags,
         finalUrl,
       };
     } catch (error) {
       lastError = error;
+      // A publisher's refusal is an answer, not a transient transport failure,
+      // so asking again would only knock on the same closed door.
+      if (error?.code === "CORPUS_ROBOTS_DISALLOWED") break;
       if (attempt < maximumRetries) await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
     } finally {
       clearTimeout(timer);
@@ -1758,19 +1926,73 @@ export async function fetchCorpusText(url, {
   throw lastError;
 }
 
-async function assertPortalRobotsAllowed(url) {
+function robotsDisallowedCorpusError() {
+  const error = new Error("Corpus source is disallowed by robots.txt");
+  error.code = "CORPUS_ROBOTS_DISALLOWED";
+  return error;
+}
+
+// Only an answer carried by the origin itself can say that this origin has no
+// policy file, so the address is settled before the status is read: another
+// origin's 404 or 410, a refusal, a rate limit or a server error all leave the
+// policy unestablished, and a page whose policy is unknown is not read.
+function reportsAbsentRobotsPolicy(error, origin) {
+  let answeredOrigin = "";
+  try {
+    answeredOrigin = new URL(String(error?.finalUrl || "")).origin;
+  } catch {
+    answeredOrigin = "";
+  }
+  if (!answeredOrigin || answeredOrigin !== origin) return false;
+  const status = Number(error?.status) || 0;
+  return status === 404 || status === 410;
+}
+
+async function assertPortalRobotsAllowed(url, {
+  signal,
+  requestText,
+  lookupImpl,
+  requestImpl,
+} = {}) {
+  throwIfCorpusAborted(signal);
   const target = new URL(url);
   const robotsUrl = `${target.origin}/robots.txt`;
   const cached = hostRobotsCache.get(target.origin);
   if (!cached || Date.now() - cached.fetchedAt >= ROBOTS_CACHE_MS) {
     const entry = { promise: null, fetchedAt: 0 };
+    // The policy file decides which pages may be requested, so its own read
+    // carries no redirect gate: gating it would recurse into the answer it is
+    // meant to establish. The shared entry carries no caller abort signal
+    // either, because one caller that disconnects must not fail the answer every
+    // other caller waits on; each waiter rechecks its own signal below.
     entry.promise = fetchCorpusText(robotsUrl, {
       accept: "text/plain",
       retries: 1,
       maximumBytes: MAX_ROBOTS_BYTES,
+      requestText,
+      lookupImpl,
+      requestImpl,
+      reportFailureStatus: true,
     }).then((response) => {
+      // The transport approves the www counterpart of an origin, so a publisher
+      // can answer through its other host name. Those rules belong to whoever
+      // answered, not to the origin asked about, so bind the answer to the
+      // queried origin before parsing or caching anything.
+      const finalOrigin = new URL(response.finalUrl).origin;
+      if (finalOrigin !== target.origin) {
+        throw new Error("Robots answer is not bound to the requested origin");
+      }
       entry.fetchedAt = Date.now();
       return parseRobotsTxt(response.text);
+    }, (error) => {
+      // A policy file that the origin itself reports as absent states that there
+      // is no rule to obey, so the pages behind it stay readable, exactly as a
+      // served empty policy leaves them. That verdict is cached like a served
+      // answer because it is equally true for the next page on this origin;
+      // every other answer still refuses the page and evicts the entry below.
+      if (!reportsAbsentRobotsPolicy(error, target.origin)) throw error;
+      entry.fetchedAt = Date.now();
+      return [];
     }).catch((error) => {
       hostRobotsCache.delete(target.origin);
       throw error;
@@ -1778,10 +2000,21 @@ async function assertPortalRobotsAllowed(url) {
     hostRobotsCache.set(target.origin, entry);
   }
   const rules = await hostRobotsCache.get(target.origin).promise;
+  throwIfCorpusAborted(signal);
   if (!robotsAllowsUrl(url, rules)) {
-    throw new Error("Corpus source is disallowed by robots.txt");
+    throw robotsDisallowedCorpusError();
   }
 }
+
+// Every robot-checked read hands the transport the same problem: it may follow an
+// approved same-resource redirect from the publisher's bare host to its www
+// counterpart, and the destination origin's own policy decides whether that
+// address may be read. The gate settles that policy before the destination is
+// requested. Robots reads never carry this gate themselves, so the check cannot
+// recurse into the answer it is meant to establish.
+const portalRobotsRedirectGate = (destination, context) => assertPortalRobotsAllowed(destination, {
+  signal: context?.signal,
+});
 
 function portalSearchUrl(query, page, pageSize = PORTAL_PAGE_SIZE) {
   const url = new URL(PORTAL_SEARCH);
@@ -1794,7 +2027,7 @@ function portalSearchUrl(query, page, pageSize = PORTAL_PAGE_SIZE) {
 async function fetchPortalSearchPage(query, page, pageSize = PORTAL_PAGE_SIZE) {
   const url = portalSearchUrl(query, page, pageSize);
   await assertPortalRobotsAllowed(url);
-  const response = await fetchCorpusText(url);
+  const response = await fetchCorpusText(url, { assertRedirectAllowed: portalRobotsRedirectGate });
   return parsePortalSearchPage(response.text, response.finalUrl);
 }
 
@@ -1871,7 +2104,10 @@ async function crawlOfficialSitemap({ url, sourceKey, delayMs = 120 } = {}) {
     if (!sitemapUrl || seenSitemaps.has(sitemapUrl)) continue;
     seenSitemaps.add(sitemapUrl);
     await assertPortalRobotsAllowed(sitemapUrl);
-    const response = await fetchCorpusText(sitemapUrl, { accept: "application/xml, text/xml" });
+    const response = await fetchCorpusText(sitemapUrl, {
+      accept: "application/xml, text/xml",
+      assertRedirectAllowed: portalRobotsRedirectGate,
+    });
     const parsed = parseOfficialSitemapDocument(response.text);
     pages += 1;
     if (parsed.indexUrls.length) {
@@ -1908,7 +2144,7 @@ async function crawlPortalSitemap({ delayMs = 120 } = {}) {
   for (let page = 1; page <= MAX_SITEMAP_PAGES; page += 1) {
     const url = `${PORTAL_SITEMAP}?page=${page}`;
     await assertPortalRobotsAllowed(url);
-    const response = await fetchCorpusText(url);
+    const response = await fetchCorpusText(url, { assertRedirectAllowed: portalRobotsRedirectGate });
     const parsedPage = parsePortalSitemapPage(response.text);
     const pageDocuments = parsedPage.documents;
     if (parsedPage.rejectedCount > 0) {
@@ -1991,7 +2227,12 @@ export async function persistHydratedCorpusDocument(
           content = $3,
           topics = ARRAY[]::TEXT[],
           content_hash = $4,
-          metadata = (metadata - 'robots_noindex') || $5::JSONB,
+          -- A successful read replaces the failure marker: from here the stored
+          -- body and its fetched_at are the record of the last attempt. Keeping
+          -- an old or unreadable marker would withhold citation rights from a
+          -- body that was just read, and would make the row look retryable on
+          -- every backlog pass.
+          metadata = (metadata - 'robots_noindex' - 'hydration_attempted_at') || $5::JSONB,
           metadata_quality = GREATEST(metadata_quality, 3),
           published_at = COALESCE($7::DATE, published_at),
           published_label = CASE WHEN $7::DATE IS NOT NULL THEN to_char($7::DATE, 'DD.MM.YYYY') ELSE published_label END,
@@ -2086,13 +2327,19 @@ async function hydrateUrls(client, urls, runId, { limit = 0, concurrency = 2, de
     const batch = candidates.slice(offset, offset + concurrency);
     const results = await Promise.allSettled(batch.map(async (url) => {
       await assertPortalRobotsAllowed(url);
-      const response = await fetchCorpusText(url, { retries: 1 });
+      // The transport may follow an approved same-resource redirect from the
+      // publisher's bare host to its www host; the gate settles the destination
+      // origin's own policy before that destination is requested.
+      const response = await fetchCorpusText(url, {
+        retries: 1,
+        assertRedirectAllowed: portalRobotsRedirectGate,
+      });
       if (!response.contentType.includes("text/html")) return false;
       // The transport may follow only approved HTTPS origins, but a same-origin
       // redirect can still name a different resource. Never promote that body
       // under the pre-redirect row's title, organization, category, or URL.
       if (!hydrationResourceMatches(url, response.finalUrl)) return false;
-      const robots = pageRobotsPolicy(response.text, response.robotsTag);
+      const robots = pageRobotsPolicy(response.text, response.robotsTags);
       if (robots.noindex) {
         await serializeDatabaseMutation(() => client.query(`
           UPDATE practice_corpus_documents
@@ -2344,7 +2591,8 @@ async function seedReviewedCatalogueDocuments(client, runId) {
 }
 
 function isRobotsDisallowedCorpusError(error) {
-  return error?.message === "Corpus source is disallowed by robots.txt";
+  return error?.code === "CORPUS_ROBOTS_DISALLOWED"
+    || error?.message === "Corpus source is disallowed by robots.txt";
 }
 
 export async function syncPortalCorpus({
@@ -3249,26 +3497,53 @@ async function readCorpusStats({ signal, deadlineAt } = {}) {
     const queryOptions = { signal, deadlineAt, ensureSearchSchema: false };
     const result = await databaseQuery(`
       SELECT
-        COUNT(*)::INTEGER AS documents,
-        COUNT(*) FILTER (WHERE content <> '')::INTEGER AS hydrated,
-        COUNT(*) FILTER (WHERE content = '')::INTEGER AS metadata_only,
-        COUNT(DISTINCT content_hash) FILTER (WHERE content <> '')::INTEGER AS distinct_content,
-        COUNT(*) FILTER (WHERE metadata->>'robots_noindex' = 'true')::INTEGER AS robots_excluded,
-        COUNT(*) FILTER (WHERE source_tier = 'reviewed')::INTEGER AS reviewed,
-        COUNT(*) FILTER (WHERE source_tier = 'official')::INTEGER AS official,
-        COUNT(*) FILTER (WHERE source_tier = 'supplementary')::INTEGER AS supplementary,
-        COUNT(*) FILTER (WHERE source_tier = 'other')::INTEGER AS other,
-        COUNT(*) FILTER (WHERE source_key = 'reviewed-catalogue-source')::INTEGER AS reviewed_catalogue,
-        MAX(last_seen_at) AS indexed_at
-      FROM practice_corpus_documents
-      WHERE is_available = TRUE
-        AND (
-          source_key <> 'official-live-search'
-          OR last_seen_at >= NOW() - make_interval(hours => ${OFFICIAL_DISCOVERY_RETENTION_HOURS})
-        )
+        COUNT(*) FILTER (WHERE document.visible)::INTEGER AS documents,
+        COUNT(*) FILTER (WHERE document.visible AND document.content <> '')::INTEGER AS hydrated,
+        COUNT(*) FILTER (WHERE document.visible AND document.content = '')::INTEGER AS metadata_only,
+        COUNT(DISTINCT document.content_hash) FILTER (WHERE document.visible AND document.content <> '')::INTEGER AS distinct_content,
+        -- The robots gate stores its verdict by clearing the body and marking the
+        -- row unavailable, so this count has to look outside the visible rows or
+        -- it can only ever report zero. Nothing from the row itself is exposed.
+        COUNT(*) FILTER (WHERE document.metadata->>'robots_noindex' = 'true')::INTEGER AS robots_excluded,
+        COUNT(*) FILTER (WHERE document.visible AND document.source_tier = 'reviewed')::INTEGER AS reviewed,
+        COUNT(*) FILTER (WHERE document.visible AND document.source_tier = 'official')::INTEGER AS official,
+        COUNT(*) FILTER (WHERE document.visible AND document.source_tier = 'supplementary')::INTEGER AS supplementary,
+        COUNT(*) FILTER (WHERE document.visible AND document.source_tier = 'other')::INTEGER AS other,
+        COUNT(*) FILTER (WHERE document.visible AND document.source_key = 'reviewed-catalogue-source')::INTEGER AS reviewed_catalogue,
+        -- A stored body is not fresh evidence. This counts only official page
+        -- hydrations read inside the citation window whose last attempt did not
+        -- fail: a missing marker is fine, a marker older than the stored body is
+        -- fine, and a marker that is equal, newer, unreadable or null is not.
+        COUNT(*) FILTER (
+          WHERE document.visible
+            AND document.source_key = 'official-page-hydration'
+            AND document.content <> ''
+            AND document.fetched_at >= NOW() - make_interval(days => ${APPROVED_PAGE_EVIDENCE_MAX_AGE_DAYS})
+            AND document.metadata->>'hydrated' = 'true'
+            AND (
+              NOT (document.metadata ? 'hydration_attempted_at')
+              OR CASE
+                WHEN pg_input_is_valid(document.metadata->>'hydration_attempted_at', 'timestamptz')
+                  THEN (document.metadata->>'hydration_attempted_at')::TIMESTAMPTZ < document.fetched_at
+                ELSE FALSE
+              END
+            )
+        )::INTEGER AS fresh_official_pages,
+        MAX(document.last_seen_at) FILTER (WHERE document.visible) AS indexed_at
+      FROM (
+        SELECT practice_corpus_documents.*,
+               (
+                 is_available = TRUE
+                 AND (
+                   source_key <> 'official-live-search'
+                   OR last_seen_at >= NOW() - make_interval(hours => ${OFFICIAL_DISCOVERY_RETENTION_HOURS})
+                 )
+               ) AS visible
+        FROM practice_corpus_documents
+      ) AS document
     `, [], queryOptions);
     const lastRun = await databaseQuery(`
-      SELECT status, finished_at, details
+      SELECT status, finished_at, error_count, details
       FROM practice_corpus_runs
       ORDER BY started_at DESC
       LIMIT 1
@@ -3282,6 +3557,10 @@ async function readCorpusStats({ signal, deadlineAt } = {}) {
       metadataOnly: Number(row.metadata_only),
       distinctContent: Number(row.distinct_content),
       robotsExcluded: Number(row.robots_excluded),
+      // Stored bodies, not citable sources: a body can be older than the
+      // citation window or belong to a failed refresh, so the two numbers are
+      // deliberately distinct.
+      freshOfficialPages: Number(row.fresh_official_pages || 0),
       reviewed: Number(row.reviewed),
       official: Number(row.official),
       supplementary: Number(row.supplementary),
@@ -3291,6 +3570,9 @@ async function readCorpusStats({ signal, deadlineAt } = {}) {
       lastSync: lastRun.rows[0] ? {
         status: lastRun.rows[0].status,
         finishedAt: lastRun.rows[0].finished_at,
+        // A ready run can still have failed most of its work. Expose the count
+        // only, never the stored error text or any URL from the run details.
+        errorCount: Number(lastRun.rows[0].error_count || 0),
         catalogTotal: Number(lastRun.rows[0].details?.catalogTotal || 0),
         catalogSkipped: lastRun.rows[0].details?.catalogSkipped || null,
         sitemapPages: Number(lastRun.rows[0].details?.sitemapPages || 0),
@@ -3335,7 +3617,19 @@ export function corpusBackfillHydrateLimit(value = process.env.CORPUS_BACKFILL_H
 // Hydrate missing bodies and repair provenance overwritten by older sitemap
 // merges. Damaged rows remain route-only until a new approved fetch succeeds;
 // retaining a body or its old hash never restores evidence rights by itself.
-export async function hydrateCorpusBacklog({ limit = 300, concurrency = 2, delayMs = 400 } = {}) {
+//
+// Selection keeps two clocks apart. A failed or skipped read, recorded as
+// metadata.hydration_attempted_at at or after the stored body time, becomes due
+// again once the seven day cooldown has passed, even though the row still holds
+// the body read before that attempt. A body that was replaced successfully is
+// due again one day before its seven day evidence window closes. Without the
+// retry clock a page whose first read succeeded and whose later refreshes all
+// failed could never be read again: the failed attempt moved fetched_at forward
+// while the body stayed stale. An unreadable attempt marker cannot prove either
+// clock, so it neither blocks a body-less row nor forces a re-read, and it must
+// not abort the whole pass. A successful read clears the marker, so only a page
+// still waiting for a read that works carries one.
+export async function hydrateCorpusBacklog({ limit = 300, concurrency = 2, delayMs = 1_000 } = {}) {
   await ensureCorpusSchema();
   const safeLimit = Math.max(0, Math.trunc(Number(limit) || 0));
   if (!databaseEnabled() || !safeLimit) return { status: "disabled", hydrated: 0, skipped: 0, errors: 0 };
@@ -3344,39 +3638,67 @@ export async function hydrateCorpusBacklog({ limit = 300, concurrency = 2, delay
     if (!lock.rows[0]?.locked) return { status: "busy", hydrated: 0, skipped: 0, errors: 0 };
     try {
       const backlog = await client.query(`
-        SELECT canonical_url
-        FROM practice_corpus_documents
-        WHERE is_available = TRUE
-          AND source_key IN ('portal-sitemap', 'portal-catalog', 'official-sitemap', 'official-live-search', 'official-page-hydration')
-          AND NOT (metadata ? 'robots_noindex')
+        SELECT document.canonical_url
+        FROM practice_corpus_documents AS document
+        CROSS JOIN LATERAL (
+          -- Attempt markers were written by several code generations and a
+          -- historical value can be absent, JSON null or not a timestamp at all.
+          -- Validate before casting so one unreadable row cannot abort the pass.
+          -- pg_input_is_valid needs PostgreSQL 16 or newer; the deployed image
+          -- is postgres:17.
+          SELECT CASE
+            WHEN pg_input_is_valid(document.metadata->>'hydration_attempted_at', 'timestamptz')
+              THEN (document.metadata->>'hydration_attempted_at')::TIMESTAMPTZ
+            ELSE NULL
+          END AS attempted_at
+        ) AS attempt
+        WHERE document.is_available = TRUE
+          AND document.source_key IN ('portal-sitemap', 'portal-catalog', 'official-sitemap', 'official-live-search', 'official-page-hydration')
+          AND NOT (document.metadata ? 'robots_noindex')
           AND (
-            content = ''
-            OR source_key IN ('official-sitemap', 'official-live-search')
-            OR (source_key = 'official-page-hydration'
-              AND metadata->>'source_kind' IS DISTINCT FROM 'official-page-hydration')
-            -- A page read once must be read again eventually: otherwise its
-            -- evidence window expires for good and the corpus can only cite
-            -- whatever was downloaded in its first week.
-            OR fetched_at < NOW() - INTERVAL '30 days'
+            document.content = ''
+            OR document.source_key IN ('official-sitemap', 'official-live-search')
+            OR (document.source_key = 'official-page-hydration'
+              AND document.metadata->>'source_kind' IS DISTINCT FROM 'official-page-hydration')
+            -- A citable page is renewed one day before its seven day evidence
+            -- window closes, so a body is replaced while it can still answer
+            -- instead of lapsing first and waiting for the next slow cycle.
+            OR document.fetched_at < NOW() - make_interval(days => ${APPROVED_PAGE_REFRESH_DAYS})
+            -- The last attempt is at least as new as the stored body, so the
+            -- body was never refreshed after it and the page is still waiting
+            -- for a read that works. Retry it after the cooldown instead of the
+            -- thirty day window. A body newer than its attempt was refreshed
+            -- successfully afterwards and falls back to that window, which keeps
+            -- a successful read from being fetched again on every pass.
+            OR (
+              attempt.attempted_at >= document.fetched_at
+              AND attempt.attempted_at < NOW() - INTERVAL '7 days'
+            )
           )
           AND (
-            NOT (metadata ? 'hydration_attempted_at')
-            OR (metadata->>'hydration_attempted_at')::TIMESTAMPTZ < NOW() - INTERVAL '7 days'
+            -- Cooldown. An unreadable marker has no proof of a recent attempt,
+            -- so it cannot hold back a body-less row.
+            attempt.attempted_at IS NULL
+            OR attempt.attempted_at < NOW() - INTERVAL '7 days'
           )
         ORDER BY
-          CASE WHEN source_key = 'official-page-hydration' THEN 0 ELSE 1 END,
-          CASE WHEN canonical_url ~ '/(uudised|teemad)/' THEN 0 ELSE 1 END,
+          CASE WHEN document.source_key = 'official-page-hydration' THEN 0 ELSE 1 END,
+          CASE WHEN document.canonical_url ~ '/(uudised|teemad)/' THEN 0 ELSE 1 END,
           CASE
-            WHEN canonical_url LIKE 'https://keskkonnaportaal.ee/%'
-              OR canonical_url LIKE 'https://www.keskkonnaportaal.ee/%' THEN 0
+            WHEN document.canonical_url LIKE 'https://keskkonnaportaal.ee/%'
+              OR document.canonical_url LIKE 'https://www.keskkonnaportaal.ee/%' THEN 0
             ELSE 1
           END,
           CASE
-            WHEN canonical_url ~ '/(?:juhend|juhised|kasiraamat|kkk|kysimused|teemad|keskkonnakasutus|jaatmed|vesi|valisohk|kliima|radoon|hallitus|metsloom|loomahaig)' THEN 0
+            WHEN document.canonical_url ~ '/(?:juhend|juhised|kasiraamat|kkk|kysimused|teemad|keskkonnakasutus|jaatmed|vesi|valisohk|kliima|radoon|hallitus|metsloom|loomahaig)' THEN 0
             ELSE 1
           END,
-          published_at DESC NULLS LAST,
-          id DESC
+          -- Inside one authority class the oldest stored body is read first, so
+          -- a page cannot starve behind fresher bodies in the same class while
+          -- its own evidence window closes.
+          document.fetched_at ASC,
+          document.published_at DESC NULLS LAST,
+          document.id DESC
         LIMIT $1
       `, [safeLimit]);
       const urls = backlog.rows.map((row) => row.canonical_url);
@@ -3392,8 +3714,8 @@ export async function hydrateCorpusBacklog({ limit = 300, concurrency = 2, delay
 // alive, keep taking bounded batches so every scrapeable page eventually gets
 // its body; the advisory lock makes concurrent replicas harmless.
 export function startContinuousCorpusBackfill({
-  intervalMs = Math.max(30_000, Math.min(Number(process.env.CORPUS_BACKFILL_INTERVAL_MS) || 120_000, 900_000)),
-  batchSize = Math.max(10, Math.min(Number(process.env.CORPUS_BACKFILL_BATCH_SIZE) || 400, 1_000)),
+  intervalMs = Math.max(30_000, Math.min(Number(process.env.CORPUS_BACKFILL_INTERVAL_MS) || 600_000, 900_000)),
+  batchSize = Math.max(10, Math.min(Number(process.env.CORPUS_BACKFILL_BATCH_SIZE) || 150, 1_000)),
 } = {}) {
   if (!databaseEnabled() || String(process.env.CORPUS_CONTINUOUS_BACKFILL ?? "true").toLocaleLowerCase("en") === "false") {
     return null;
@@ -3403,7 +3725,10 @@ export function startContinuousCorpusBackfill({
     if (running) return;
     running = true;
     try {
-      await hydrateCorpusBacklog({ limit: batchSize, concurrency: 2, delayMs: 400 });
+      // 150 pages per 10 minutes is a ceiling of 21,600 a day, which outruns the
+      // 5,316 a day a six day refresh of the official corpus needs while each
+      // pass stays a short burst of two-request batches one second apart.
+      await hydrateCorpusBacklog({ limit: batchSize, concurrency: 2, delayMs: 1_000 });
     } catch {
       // A transient database or upstream failure must not stop the loop.
     } finally {
@@ -3430,7 +3755,13 @@ export async function startCorpusSyncIfStale() {
     if (recent?.rowCount) {
       // Between full syncs, keep filling page bodies. A title-only row cannot
       // rank for words that appear only in the page text, nor serve as evidence.
-      const backfill = await hydrateCorpusBacklog({ limit: corpusBackfillHydrateLimit() });
+      // The same polite pacing as the continuous loop: two requests per batch,
+      // one second apart, up to 300 pages per start.
+      const backfill = await hydrateCorpusBacklog({
+        limit: corpusBackfillHydrateLimit(),
+        concurrency: 2,
+        delayMs: 1_000,
+      });
       // Reviewed catalogue additions (new laws, standards, terminology) must
       // become searchable immediately, not only after the next 24-hour crawl.
       const reviewedSeed = await withDatabaseClient((client) => seedReviewedCatalogueDocuments(client, null));

@@ -1,5 +1,5 @@
 import { publicSourceWitnessKey } from "../server/source-identity.mjs";
-import { requestBoundedAuditJson } from "./audit-http.mjs";
+import { requestBoundedAuditJson, SEARCH_AUDIT_TIMEOUT_MS } from "./audit-http.mjs";
 
 const options = Object.fromEntries(process.argv.slice(2).map((argument) => {
   const [key, ...rest] = argument.replace(/^--/u, "").split("=");
@@ -9,7 +9,7 @@ const baseUrl = new URL(String(options["base-url"] || "http://127.0.0.1:4317"));
 if (!["http:", "https:"].includes(baseUrl.protocol) || baseUrl.username || baseUrl.password) {
   throw new Error("--base-url must be an HTTP(S) origin without credentials");
 }
-const timeoutMs = Math.max(1_000, Math.min(Number(options["timeout-ms"]) || 20_000, 30_000));
+const timeoutMs = Math.max(1_000, Math.min(Number(options["timeout-ms"]) || SEARCH_AUDIT_TIMEOUT_MS, SEARCH_AUDIT_TIMEOUT_MS));
 const filters = { source: "official", category: "", year: null, sort: "relevance" };
 const rootQuery = "kliimamuutuse mõju sademetele Eestis";
 const questions = [

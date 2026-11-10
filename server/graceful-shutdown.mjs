@@ -4,9 +4,14 @@ function boundedMilliseconds(value, fallback, minimum, maximum) {
   return Math.max(minimum, Math.min(Math.trunc(parsed), maximum));
 }
 
+// A caller that owns a longer orchestrator stop budget may hand in a deadline
+// above the old 29 s ceiling, so a legal in-flight answer is not force-closed
+// early. The value stays finite, so a cleanup that never finishes still exits.
+const MAXIMUM_FORCE_EXIT_MS = 300_000;
+
 export function createGracefulShutdown(server, options = {}) {
   const drainDelayMs = boundedMilliseconds(options.drainDelayMs, 5_000, 0, 15_000);
-  const forceExitMs = boundedMilliseconds(options.forceExitMs, 28_000, drainDelayMs + 100, 29_000);
+  const forceExitMs = boundedMilliseconds(options.forceExitMs, 28_000, drainDelayMs + 100, MAXIMUM_FORCE_EXIT_MS);
   const idleSweepMs = boundedMilliseconds(options.idleSweepMs, 100, 5, 1_000);
   const exit = options.exit || ((code) => process.exit(code));
   const log = options.log || ((entry) => process.stdout.write(`${JSON.stringify(entry)}\n`));

@@ -44,6 +44,26 @@ function vportalDocument(overrides = {}) {
   };
 }
 
+// The live answer path settles a publisher's robots.txt before it reads any
+// page, resolving it through the same fake transport. These helpers answer that
+// policy read for the origin that was asked, so a test keeps counting and
+// asserting the page reads it actually cares about instead of incidental
+// request wiring.
+const ALLOW_ALL_ROBOTS = "User-agent: *\nAllow: /\n";
+
+function isRobotsRequest(value) {
+  return new URL(String(value)).pathname === "/robots.txt";
+}
+
+function allowRobotsResponse(value) {
+  return {
+    status: 200,
+    body: ALLOW_ALL_ROBOTS,
+    headers: { "content-type": "text/plain" },
+    url: String(value),
+  };
+}
+
 test("official discovery minimizes reviewed attribution before URL and cache construction", async () => {
   const requestedUrls = [];
   const requestText = async (url) => {
@@ -411,9 +431,10 @@ test("official discovery concurrency gate limits work and removes an aborted que
 test("official hydration globally bounds concurrency and coalesces duplicate URLs", async () => {
   let active = 0;
   let maximumActive = 0;
-  let calls = 0;
-  const requestText = async (_url, options = {}) => {
-    calls += 1;
+  let pageReads = 0;
+  const requestText = async (url, options = {}) => {
+    if (isRobotsRequest(url)) return allowRobotsResponse(url);
+    pageReads += 1;
     active += 1;
     maximumActive = Math.max(maximumActive, active);
     try {
@@ -449,7 +470,7 @@ test("official hydration globally bounds concurrency and coalesces duplicate URL
     assert.deepEqual(officialHydrationStats(), { active: 0, queued: 0, limit: 4, inflight: 0 });
 
     const duplicateUrl = `https://ec.europa.eu/environment/hydration-${nonce}-duplicate`;
-    const beforeDuplicate = calls;
+    const beforeDuplicate = pageReads;
     await Promise.all([
       hydrateOfficialDocuments([{ id: "duplicate-a", title: "A", url: duplicateUrl }], 1, {
         timeoutMs: 1_000,
@@ -460,7 +481,11 @@ test("official hydration globally bounds concurrency and coalesces duplicate URL
         requestText,
       }),
     ]);
-    assert.equal(calls - beforeDuplicate, 1);
+    assert.equal(
+      pageReads - beforeDuplicate,
+      1,
+      "two concurrent hydrations of one URL read the page once",
+    );
     assert.deepEqual(officialHydrationStats(), { active: 0, queued: 0, limit: 4, inflight: 0 });
 });
 
@@ -481,7 +506,7 @@ test("approved page fetch replaces index prose but cannot self-promote a federat
     _answerEvidenceEligible: false,
   };
   const [hydratedCard] = await hydrateOfficialDocuments([federated], 1, {
-    requestText: async () => ({
+    requestText: async (url) => (isRobotsRequest(url) ? allowRobotsResponse(url) : {
       status: 200,
       body: `<main><article><p>${pageSentinel} ${"kontrollitud lehesisu ".repeat(20)}</p></article></main>`,
     }),
@@ -503,7 +528,7 @@ test("approved page fetch replaces index prose but cannot self-promote a federat
     content: "",
   };
   const [stillRouteOnly] = await hydrateOfficialDocuments([knownRouteOnly], 1, {
-    requestText: async () => ({
+    requestText: async (url) => (isRobotsRequest(url) ? allowRobotsResponse(url) : {
       status: 200,
       body: `<main><p>${pageSentinel} ${"kontrollitud lehesisu ".repeat(20)}</p></main>`,
     }),
@@ -532,10 +557,11 @@ test("official hydration never attributes or caches a redirected resource under 
   assert.equal(hydrationResourceMatches(`${requestedUrl}/`, requestedUrl), true);
   assert.equal(hydrationResourceMatches(requestedUrl, otherUrl), false);
 
-  let calls = 0;
+  let pageReads = 0;
   const [rejected] = await hydrateOfficialDocuments([document], 1, {
-    requestText: async () => {
-      calls += 1;
+    requestText: async (url) => {
+      if (isRobotsRequest(url)) return allowRobotsResponse(url);
+      pageReads += 1;
       return {
         status: 200,
         url: otherUrl,
@@ -547,8 +573,9 @@ test("official hydration never attributes or caches a redirected resource under 
   assert.doesNotMatch(String(rejected.content || ""), new RegExp(wrongSentinel, "u"));
 
   const [hydrated] = await hydrateOfficialDocuments([document], 1, {
-    requestText: async () => {
-      calls += 1;
+    requestText: async (url) => {
+      if (isRobotsRequest(url)) return allowRobotsResponse(url);
+      pageReads += 1;
       return {
         status: 200,
         url: requestedUrl,
@@ -556,7 +583,11 @@ test("official hydration never attributes or caches a redirected resource under 
       };
     },
   });
-  assert.equal(calls, 2);
+  assert.equal(
+    pageReads,
+    2,
+    "each hydration read the page once, so a rejected body was never reused as the cached copy",
+  );
   assert.equal(hydrated._pageHydrated, true);
   assert.match(hydrated.content, new RegExp(rightSentinel, "u"));
   assert.doesNotMatch(hydrated.content, new RegExp(wrongSentinel, "u"));
@@ -575,7 +606,7 @@ test("an eligible exact-resource page replacement is rebound to a fresh content 
     _answerEvidenceEligible: true,
     freshness: { requiresSourceTimestamp: false },
   }], 1, {
-    requestText: async () => ({
+    requestText: async (requestedUrl) => (isRobotsRequest(requestedUrl) ? allowRobotsResponse(requestedUrl) : {
       status: 200,
       url,
       body: `<main><p>${"Verified exact official page body. ".repeat(12)}</p></main>`,
@@ -609,9 +640,10 @@ test("approved page cache hits retain the original fetch observation time", asyn
     _answerEvidenceEligible: true,
     freshness: { requiresSourceTimestamp: false },
   };
-  let calls = 0;
-  const requestText = async () => {
-    calls += 1;
+  let pageReads = 0;
+  const requestText = async (url) => {
+    if (isRobotsRequest(url)) return allowRobotsResponse(url);
+    pageReads += 1;
     return {
       status: 200,
       url,
@@ -622,7 +654,7 @@ test("approved page cache hits retain the original fetch observation time", asyn
     const [first] = await hydrateOfficialDocuments([document], 1, { requestText });
     now += 20 * 60 * 1_000;
     const [second] = await hydrateOfficialDocuments([document], 1, { requestText });
-    assert.equal(calls, 1);
+    assert.equal(pageReads, 1, "the second answer reused the cached page body");
     assert.equal(second._evidenceStatusAt, first._evidenceStatusAt);
     assert.equal(Date.parse(first._evidenceStatusAt), 1_800_000_000_000);
   } finally {
@@ -647,8 +679,9 @@ test("stale hydration fallback remains navigation-only and never becomes answer 
     _answerEvidenceEligible: false,
   };
   let available = true;
-  const requestText = async () => {
+  const requestText = async (url) => {
     if (!available) throw new Error("upstream unavailable");
+    if (isRobotsRequest(url)) return allowRobotsResponse(url);
     return { status: 200, body: `<main><p>${"Kontrollitud värske lehesisu. ".repeat(12)}</p></main>` };
   };
   try {
@@ -1116,11 +1149,12 @@ test("resource aliases never widen hydration redirect binding or cached payload 
       sourceTier: "official", retrieval: "catalogue-directory",
       evidencePolicy: "claim-specific", _answerEvidenceEligible: true,
     };
-    let calls = 0;
+    let pageReads = 0;
     const body = (text) => `<main><p>${text.repeat(15)}</p></main>`;
     const [cachedOriginal] = await hydrateOfficialDocuments([source], 1, {
       requestText: async (url) => {
-        calls += 1;
+        if (isRobotsRequest(url)) return allowRobotsResponse(url);
+        pageReads += 1;
         assert.equal(url, original);
         return { status: 200, url, body: body("Original target source body. ") };
       },
@@ -1128,7 +1162,8 @@ test("resource aliases never widen hydration redirect binding or cached payload 
     assert.match(cachedOriginal.content, /Original target source body/u);
     const [rejectedAlias] = await hydrateOfficialDocuments([{ ...source, url: alias }], 1, {
       requestText: async (url) => {
-        calls += 1;
+        if (isRobotsRequest(url)) return allowRobotsResponse(url);
+        pageReads += 1;
         assert.equal(url, alias);
         return { status: 200, url: original, body: body("Wrong alias source body. ") };
       },
@@ -1137,11 +1172,16 @@ test("resource aliases never widen hydration redirect binding or cached payload 
     assert.equal(rejectedAlias.content, undefined);
     const [acceptedAlias] = await hydrateOfficialDocuments([{ ...source, url: alias }], 1, {
       requestText: async (url) => {
-        calls += 1;
+        if (isRobotsRequest(url)) return allowRobotsResponse(url);
+        pageReads += 1;
         return { status: 200, url, body: body("Independently approved alias body. ") };
       },
     });
-    assert.equal(calls, 3);
+    assert.equal(
+      pageReads,
+      3,
+      "an alias never reuses the original's cached page body, so each hydration read the page",
+    );
     assert.match(acceptedAlias.content, /Independently approved alias body/u);
     assert.doesNotMatch(acceptedAlias.content, /Original target|Wrong alias/u);
     assert.equal(acceptedAlias.url, alias);

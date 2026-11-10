@@ -1,6 +1,11 @@
 const DEFAULT_MAXIMUM_BYTES = 2_000_000;
 const DEFAULT_DRAIN_TIMEOUT_MS = 2_000;
 const DEFAULT_IDLE_TIMEOUT_MS = 20_000;
+// The public response budget resolves its idle window between 5 s and 120 s, so
+// the stream honors that whole range instead of clamping a configured 60 s down
+// to 30 s and cutting a grounded answer mid-generation.
+const MINIMUM_IDLE_TIMEOUT_MS = 1_000;
+const MAXIMUM_IDLE_TIMEOUT_MS = 120_000;
 
 function boundedInteger(value, fallback, minimum, maximum) {
   const parsed = Math.trunc(Number(value));
@@ -79,7 +84,12 @@ export function createBoundedNdjsonWriter(response, {
 } = {}) {
   const byteLimit = boundedInteger(maximumBytes, DEFAULT_MAXIMUM_BYTES, 1_024, 4_000_000);
   const drainLimitMs = boundedInteger(drainTimeoutMs, DEFAULT_DRAIN_TIMEOUT_MS, 100, 5_000);
-  const idleLimitMs = boundedInteger(idleTimeoutMs, DEFAULT_IDLE_TIMEOUT_MS, 1_000, 30_000);
+  const idleLimitMs = boundedInteger(
+    idleTimeoutMs,
+    DEFAULT_IDLE_TIMEOUT_MS,
+    MINIMUM_IDLE_TIMEOUT_MS,
+    MAXIMUM_IDLE_TIMEOUT_MS,
+  );
   let bytesWritten = 0;
   let failure;
   let pending = Promise.resolve();

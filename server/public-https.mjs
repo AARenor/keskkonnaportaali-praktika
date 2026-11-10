@@ -111,6 +111,71 @@ export function createPublicOnlyLookup(lookupImpl = dnsLookup) {
   };
 }
 
+// A publisher can repeat a header instead of listing every directive in one
+// value, and Node joins repeated non-set-cookie headers into a single string on
+// `headers`. The instance boundary is what carries an X-Robots-Tag scope, so the
+// instances are taken from `headersDistinct` or `rawHeaders` when the response
+// reports them, while a caller-supplied string, array or Headers object is
+// passed through in the shape it arrived in. Nothing is truncated or collapsed
+// here: the header block is already bounded by Node's own header limit, and a
+// consumer that has to bound it further fails closed instead of dropping a
+// directive that arrived after the cut.
+function responseHeaderInstances(response, name) {
+  const target = String(name).toLocaleLowerCase("en-US");
+  const distinct = response?.headersDistinct;
+  if (distinct && typeof distinct === "object") {
+    const value = distinct[target];
+    if (Array.isArray(value)) return value.map((entry) => String(entry ?? ""));
+    if (value !== undefined && value !== null) return [String(value)];
+  }
+  const raw = Array.isArray(response?.rawHeaders) ? response.rawHeaders : null;
+  if (raw) {
+    const values = [];
+    for (let index = 0; index + 1 < raw.length; index += 2) {
+      if (String(raw[index] ?? "").trim().toLocaleLowerCase("en-US") !== target) continue;
+      values.push(String(raw[index + 1] ?? ""));
+    }
+    if (values.length) return values;
+  }
+  const headers = response?.headers;
+  const value = headers && typeof headers.get === "function" ? headers.get(target) : headers?.[target];
+  if (Array.isArray(value)) return value.map((entry) => String(entry ?? ""));
+  return value === undefined || value === null ? [] : [String(value)];
+}
+
+function firstHeaderInstance(headers, name) {
+  const value = headers && typeof headers.get === "function" ? headers.get(name) : headers?.[name];
+  return Array.isArray(value) ? String(value[0] ?? "") : String(value ?? "");
+}
+
+function abortReason(signal) {
+  return signal?.reason instanceof Error
+    ? signal.reason
+    : new DOMException("The operation was aborted", "AbortError");
+}
+
+async function awaitWhileConnected(promise, signal) {
+  const pending = Promise.resolve(promise);
+  if (!signal) return pending;
+  if (signal.aborted) {
+    // The hook may abort and reject in the same turn. Observe its rejection
+    // even though the caller receives the abort instead.
+    pending.catch(() => undefined);
+    throw abortReason(signal);
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(abortReason(signal));
+    signal.addEventListener("abort", onAbort, { once: true });
+    pending.then((value) => {
+      signal.removeEventListener("abort", onAbort);
+      resolve(value);
+    }, (error) => {
+      signal.removeEventListener("abort", onAbort);
+      reject(error);
+    });
+  });
+}
+
 function requestOnce(url, {
   headers,
   signal,
@@ -183,9 +248,12 @@ function requestOnce(url, {
         location: "",
         body: Buffer.concat(chunks, size).toString("utf8"),
         headers: Object.freeze({
-          "content-type": String(response.headers?.["content-type"] || "").slice(0, 240),
-          "content-profile": String(response.headers?.["content-profile"] || "").slice(0, 120),
-          "x-robots-tag": String(response.headers?.["x-robots-tag"] || "").slice(0, 240),
+          "content-type": firstHeaderInstance(response.headers, "content-type").slice(0, 240),
+          "content-profile": firstHeaderInstance(response.headers, "content-profile").slice(0, 120),
+          // Every instance is kept, in arrival order and unmodified, because a
+          // value that arrives after another one still carries its own crawler
+          // scope and its own directives.
+          "x-robots-tag": Object.freeze(responseHeaderInstances(response, "x-robots-tag")),
         }),
       }));
       response.once("aborted", () => fail(new Error("Outbound response was interrupted")));
@@ -214,6 +282,7 @@ export async function requestApprovedPublicHttpsText(value, {
   requestImpl = httpsRequest,
   ca,
   family,
+  assertRedirectAllowed,
 } = {}) {
   const byteLimit = Math.max(1, Math.min(Number(maximumBytes) || 4_000_000, 8_000_000));
   const configuredRedirectLimit = Number(maximumRedirects);
@@ -236,7 +305,28 @@ export async function requestApprovedPublicHttpsText(value, {
     if (!result.location || redirects === redirectLimit) {
       throw new Error("Outbound response redirected too many times or without a destination");
     }
-    current = validateApprovedPublicHttpsUrl(new URL(result.location, current), approvedOrigins);
+    const destination = validateApprovedPublicHttpsUrl(
+      new URL(result.location, current),
+      approvedOrigins,
+    );
+    // A followed redirect is a request to another address, so the caller may
+    // settle that address's publisher policy before this transport connects to
+    // it. The approved-origin check above already ran, so the hook never sees an
+    // address the allowlist does not hold, and the hook is bounded by the same
+    // caller signal as the request: an answer that arrives after the deadline is
+    // abandoned instead of holding the reader open.
+    if (typeof assertRedirectAllowed === "function") {
+      // A read that is already aborted never starts the policy lookup: its
+      // answer could only be discarded, and the caller is owed the abort now.
+      if (signal?.aborted) throw abortReason(signal);
+      await awaitWhileConnected(assertRedirectAllowed(destination, {
+        from: current.toString(),
+        status: result.status,
+        redirects: redirects + 1,
+        signal,
+      }), signal);
+    }
+    current = destination;
   }
   throw new Error("Outbound response redirected too many times");
 }

@@ -7,6 +7,7 @@ import {
   publicCitationUrl,
   rankOneSearchResultId,
   requestBoundedAuditJson,
+  SEARCH_AUDIT_TIMEOUT_MS,
 } from "./audit-http.mjs";
 
 const options = Object.fromEntries(process.argv.slice(2).map((argument) => {
@@ -80,7 +81,7 @@ async function search(query) {
       "User-Agent": "Keskkonnaportaali-praktika-grounding-audit/1.0",
     },
     body: JSON.stringify({ q: query }),
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(SEARCH_AUDIT_TIMEOUT_MS),
   }, { label: "Grounding audit response" });
   return { status: response.status, body };
 }

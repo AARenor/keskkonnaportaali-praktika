@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { publicSourceWitnessKey } from "../server/source-identity.mjs";
 import { hasCompleteSentenceEnding } from "../server/search.mjs";
-import { rankOneSearchResultId, requestBoundedAuditText } from "./audit-http.mjs";
+import { rankOneSearchResultId, requestBoundedAuditText, SEARCH_AUDIT_TIMEOUT_MS } from "./audit-http.mjs";
 
 const argumentsMap = Object.fromEntries(process.argv.slice(2).map((argument) => {
   const [key, ...rest] = argument.replace(/^--/u, "").split("=");
@@ -57,7 +57,7 @@ async function request(pathname, parameters = {}) {
       "User-Agent": "Keskkonnaportaali-praktika-live-eval/1.0",
     },
     body: JSON.stringify(requestBody),
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(SEARCH_AUDIT_TIMEOUT_MS),
   }, { label: "Live evaluation response" });
   let body;
   try {
@@ -86,7 +86,7 @@ function assertPublicContract(item, result) {
   check(Boolean(body && Array.isArray(body.sources) && Array.isArray(body.searchResults?.items)),
     "search response is not the expected JSON contract", { id: item.id });
   if (!body) return;
-  check(result.durationMs <= 15_500, "search exceeded the public application budget", {
+  check(result.durationMs <= 15_500, "search exceeded the evaluation latency target", {
     id: item.id,
     durationMs: result.durationMs,
   });

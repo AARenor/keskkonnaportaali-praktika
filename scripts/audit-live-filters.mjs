@@ -1,5 +1,5 @@
 import { publicSourceWitnessKey } from "../server/source-identity.mjs";
-import { requestBoundedAuditJson } from "./audit-http.mjs";
+import { requestBoundedAuditJson, SEARCH_AUDIT_TIMEOUT_MS } from "./audit-http.mjs";
 
 const options = Object.fromEntries(process.argv.slice(2).map((argument) => {
   const [key, ...rest] = argument.replace(/^--/u, "").split("=");
@@ -86,7 +86,7 @@ async function post(pathname, q, filters = {}, { page = 1, pageSize = 12 } = {})
       "User-Agent": "Keskkonnaportaali-praktika-filter-audit/1.0",
     },
     body: JSON.stringify({ q, filters, page, page_size: pageSize }),
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(SEARCH_AUDIT_TIMEOUT_MS),
   }, { label: "Filter audit response" });
   return { status: response.status, body, durationMs: Date.now() - startedAt };
 }

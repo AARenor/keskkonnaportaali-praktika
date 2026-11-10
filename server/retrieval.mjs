@@ -1488,6 +1488,23 @@ export function selectAnswerEvidence(query, documents = [], rankingOptions = {})
       if (supporting.length >= minimumSupportingDocuments) break;
       if (!supporting.includes(candidate)) supporting.push(candidate);
     }
+    // "Kust näen oma maatüki puistuandmeid?" asks where the stand inventory
+    // lives, so the register that holds it answers the question. The notice
+    // procedure names the register and its parcel data in one sentence and the
+    // register manual repeats the same vocabulary, so group coverage alone can
+    // let a procedure page become the direct witness. For this intent the
+    // reviewed register source leads instead: forestRegisterEvidence already
+    // proves the document is the register itself (identity, contents and parcel
+    // scope), not a page that only names it.
+    const registerWitness = intent.kind === "property-forest-data"
+      ? candidates.find((candidate) => candidate.matchedGroupIndexes.length
+        && hasForestRegisterRole(candidate.document))
+      : null;
+    if (registerWitness) {
+      const position = supporting.indexOf(registerWitness);
+      if (position === -1) supporting.unshift(registerWitness);
+      else if (position > 0) supporting.unshift(...supporting.splice(position, 1));
+    }
     const strong = !intent.requiresQueryBoundObservation
       && requiredGroupCount > 0
       && uncovered.size === 0
@@ -2272,8 +2289,21 @@ export function scoreSearchCandidate(query, document, sourceRank = 0, now = Date
         ? 3 : Math.max(1, forestryIntent?.evidenceGroups?.length || 1);
   const roleCoverage = intentEvidence.roles?.length
     || intentEvidence.matchedGroupIndexes?.length || (intentEvidence.satisfies ? 1 : 0);
+  // A property stand-data question ("kust näen oma maatüki puistuandmeid") is
+  // answered by the register that holds the data. A procedure page that names
+  // the register can cover the same evidence groups, so coverage cannot
+  // separate the two. Coverage is compared after this slot, which makes it the
+  // place to score the reviewed register role for this one intent. Outside the
+  // intent the value stays the plain satisfied/not-satisfied marker, and a
+  // document outside the intent's own service list keeps its 0 whether or not
+  // it happens to describe the register.
+  const propertyDataIntent = forestryIntent?.kind === "property-forest-data" && !balanceIntent;
+  const propertyDataSatisfaction = propertyDataIntent
+    && (forestryIntent?.serviceDocumentIds || []).includes(document.id)
+    ? (hasForestRegisterRole(document) ? 1 : intentEvidence.satisfies ? 0.5 : 0)
+    : Number(intentEvidence.satisfies === true);
   const prefix = [Number(scopeMatch),
-    Number(claimEligible && intentEvidence.satisfies === true),
+    claimEligible ? propertyDataSatisfaction : 0,
     claimEligible ? Math.min(1, finiteMetric(roleCoverage / roleCount)) : 0,
     Math.max(0, Math.min(1, finiteMetric(coherentCoverage))),
     Math.max(0, Math.min(1, finiteMetric(coreCoverage))),
@@ -2417,6 +2447,16 @@ function ensureForestryIntentCandidates(query, ranked = [], available = [], opti
   return { ranked: visible, plan };
 }
 
+// serviceIntentPriority hands a reviewed route a small tie-breaking value
+// (1..7) that orders comparable candidates. A value above that band is not a
+// tie-breaker: the reviewed card answers this exact question from its own
+// evidence, so nothing generic may be placed in front of it.
+const DECISIVE_SERVICE_PRIORITY = 8;
+
+function hasDecisiveServiceRanking(document) {
+  return Number(document?._ranking?.servicePriority) >= DECISIVE_SERVICE_PRIORITY;
+}
+
 function ensureDirectDirectoryCandidates(query, ranked = [], available = []) {
   if (forestEvidenceIntent(query) || isForestHarvestBalanceQuery(query)) return ranked;
   const preferredIds = directDirectoryDocumentIds(query);
@@ -2426,8 +2466,18 @@ function ensureDirectDirectoryCandidates(query, ranked = [], available = []) {
     .map((id) => byId.get(id))
     .filter(Boolean);
   if (!preferred.length) return ranked;
+  // A directory pin guarantees that a broad navigation card stays visible; it
+  // is not a relevance claim. It therefore never stands in front of a reviewed
+  // card that answers this very question. Otherwise a generic overview or an
+  // application route root buries the specific source the question asked for
+  // (a climate-impact indicator behind a weather archive, a monitoring dataset
+  // behind its application root).
+  const decisive = ranked.filter(hasDecisiveServiceRanking);
+  const ordinary = decisive.length
+    ? ranked.filter((document) => !hasDecisiveServiceRanking(document))
+    : ranked;
   const seen = new Set();
-  return [...preferred, ...ranked].filter((document) => {
+  return [...decisive, ...preferred, ...ordinary].filter((document) => {
     const key = sourceWitnessKey(document) || document.id;
     if (!key || seen.has(key)) return false;
     seen.add(key);

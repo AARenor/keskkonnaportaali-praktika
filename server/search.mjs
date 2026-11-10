@@ -1140,6 +1140,53 @@ const SEARCH_DOCUMENTS = [
 // required observation time or registry version.
 const SOURCE_EXPANSION_REVIEWED_AT = "2026-10-01T00:00:00.000Z";
 
+// The support pages themselves were verified in place on 2026-11-10; the
+// catalogue prose is a neutral description of what those pages are for, not a
+// copy of their current terms.
+const FOREST_OWNER_SUPPORT_REVIEWED_AT = "2026-11-10T00:00:00.000Z";
+
+// Estonian forest-owner support is grant navigation, never answer evidence:
+// grant terms change between application rounds, so these cards copy no
+// deadline, no amount, no eligibility rule, no contact detail and no
+// application record, and they name neither an external document nor a
+// recipient. Each card says only where the reviewed support page lives and what
+// it is for. The pages sit outside the official origin allowlist, and the
+// approval in citation-policy.mjs is the exact URL, not the domain.
+const FOREST_OWNER_SUPPORT_NAVIGATION_DOCUMENTS = [
+  {
+    id: "forest-owner-support-directory",
+    title: "Erametsaomaniku toetused",
+    organization: "SA Keskkonnainvesteeringute Keskus",
+    type: "Toetuste infoleht",
+    published: "jooksev",
+    url: "https://www.eramets.ee/toetused/",
+    tags: ["eramets", "metsaomanik", "toetus", "toetused", "taotlemine", "metsamajandamine", "metsandustoetus"],
+    summary: "SA Keskkonnainvesteeringute Keskus koondab sellel lehel erametsaomanikule mõeldud metsamajandamise toetused ja juhatab iga meetme juhendi juurde; kehtivad tingimused ja tähtajad kontrolli enne taotlemist juhendist.",
+    content: "Toetuste leht koondab erametsaomanikule mõeldud metsamajandamise toetused ja juhatab iga meetme juhendi juurde, kust näeb, millist toetust meetme eest antakse ja kuidas taotlemine käib. See kataloogikirje on ainult teejuht: meetme tingimused, tähtajad ja summad muutuvad taotlusvoorude kaupa ja tuleb enne taotlemist avada meetme enda juhendist.",
+    routeClasses: ["official_guidance"],
+    evidencePolicy: "route-only",
+    delivery: "catalog-only",
+    _answerEvidenceEligible: false,
+    _catalogueReviewedAt: FOREST_OWNER_SUPPORT_REVIEWED_AT,
+  },
+  {
+    id: "forest-owner-support-metsameede",
+    title: "Metsameetme toetus",
+    organization: "SA Keskkonnainvesteeringute Keskus",
+    type: "Toetuse juhend",
+    published: "jooksev",
+    url: "https://www.eramets.ee/toetused/metsameede/",
+    tags: ["eramets", "metsameede", "toetus", "toetusmeede", "taotlemine", "metsauuendus", "metsamajandamine"],
+    summary: "SA Keskkonnainvesteeringute Keskus metsameetme juhend selgitab, mille jaoks seda toetust antakse ja kuidas taotlemine käib; kehtivad tingimused ja tähtajad tuleb enne taotlemist juhendist üle kontrollida.",
+    content: "Metsameetme juhend kirjeldab, mille jaoks seda metsamajandamise toetust antakse, ja kuidas selle taotlemine käib. See kataloogikirje on ainult teejuht: meetme tingimused, tähtajad ja summad muutuvad taotlusvoorude kaupa ega ole siin korratud.",
+    routeClasses: ["official_guidance"],
+    evidencePolicy: "route-only",
+    delivery: "catalog-only",
+    _answerEvidenceEligible: false,
+    _catalogueReviewedAt: FOREST_OWNER_SUPPORT_REVIEWED_AT,
+  },
+];
+
 const ADDITIONAL_OFFICIAL_SERVICE_DOCUMENTS = [
   {
     id: "wood-balance-2023-report",
@@ -1747,6 +1794,7 @@ const ADDITIONAL_OFFICIAL_SERVICE_DOCUMENTS = [
   ...PORTAL_SECTION_SOURCES,
   ...PORTAL_REPORT_SOURCES,
   ...PORTAL_DATA_SOURCES,
+  ...FOREST_OWNER_SUPPORT_NAVIGATION_DOCUMENTS,
 ];
 
 const RELATED = {
@@ -8841,6 +8889,37 @@ export function directPortalReportSource(query) {
   return source ? { id: source.id, url: source.url } : null;
 }
 
+// Match the grant noun, not the unrelated verb "toetub". The verb form
+// "toetusid" also needs excluding. Application wording must name a forest
+// owner or measure, not merely a forest notice.
+const FOREST_SUPPORT_COMPOUND_SOURCE = "eramets|metsaomani|metsameede|metsameetme|metsauuend|metsaistut|metsamajand";
+const FOREST_SUPPORT_GRANT_STEM_PATTERN = /toetus(?!id)|rahastu/u;
+// Accept the application and the owner or measure in either order.
+const FOREST_SUPPORT_APPLICATION_PATTERN = new RegExp(
+  `(?:${FOREST_SUPPORT_COMPOUND_SOURCE})\\p{L}*[\\s\\S]{0,20}taotl|taotl[\\s\\S]{0,20}(?:${FOREST_SUPPORT_COMPOUND_SOURCE})`,
+  "u",
+);
+const FOREST_SUPPORT_CONTEXT_PATTERN = new RegExp(
+  `(?:${FOREST_SUPPORT_COMPOUND_SOURCE}|metsandus)|(?:^|\\s)mets(?:a|ad|as|ast|ade|i)?(?=\\s|$)`,
+  "u",
+);
+const FOREST_SUPPORT_SCHEME_PATTERN = new RegExp(
+  "metsameede|metsameetme|metsauuend|metsaistut|metsa\\s+(?:uuenda|istuta)",
+  "u",
+);
+
+// A named measure leads to its page; other support questions use the directory.
+function forestSupportNavigationDocumentIds(query) {
+  const text = normalize(query);
+  if (!text || !FOREST_SUPPORT_CONTEXT_PATTERN.test(text)) return [];
+  const requestsSupport = FOREST_SUPPORT_GRANT_STEM_PATTERN.test(text)
+    || FOREST_SUPPORT_APPLICATION_PATTERN.test(text);
+  if (!requestsSupport) return [];
+  return FOREST_SUPPORT_SCHEME_PATTERN.test(text)
+    ? ["forest-owner-support-metsameede", "forest-owner-support-directory"]
+    : ["forest-owner-support-directory"];
+}
+
 export function directDirectoryDocumentIds(query) {
   const text = normalize(query);
   const roots = queryTerms(query);
@@ -8876,6 +8955,10 @@ export function directDirectoryDocumentIds(query) {
   if (reportId) preferred.push(reportId);
   const reviewedDataSource = reviewedDataSourceSource(query);
   if (reviewedDataSource) preferred.push(reviewedDataSource.id);
+  // A support question asks where the official guidance is, not what a grant
+  // currently pays: the two reviewed support cards stay on the first visible
+  // page, with the scheme's own page leading when the question names it.
+  preferred.push(...forestSupportNavigationDocumentIds(query));
   // A broad ambiguous-domain question ("Kus on kõige puhtam õhk?") has no
   // claims-bearing catalogue card, but its domain's official service
   // summaries do exist. Keep those cards inside the first visible page so

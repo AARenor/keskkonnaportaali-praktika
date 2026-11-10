@@ -1,8 +1,10 @@
 import {
   readBoundedResponseText,
 } from "../server/upstream.mjs";
+import { DEFAULT_SEARCH_DEADLINE_MS } from "../server/request-budget.mjs";
 
 export const MAX_AUDIT_RESPONSE_BYTES = 1_000_000;
+export const SEARCH_AUDIT_TIMEOUT_MS = DEFAULT_SEARCH_DEADLINE_MS + 10_000;
 
 export function rankOneSearchResultId(body) {
   return body?.searchResults?.items?.[0]?.id || null;

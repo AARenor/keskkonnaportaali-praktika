@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { readAppBuild } from "../server/app-build.mjs";
 import { noteServerBuild, serverBuildDiffers } from "../src/app-build.js";
 
-test("the server reads the build id written next to the client bundle, or reports development", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "terrap-build-"));
+test("the server reads the build id written next to the client bundle, or reports development", async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), "terrap_build_"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
   assert.equal(readAppBuild(dir), "development");
   await writeFile(path.join(dir, "build.json"), JSON.stringify({ build: "abc123" }));
   assert.equal(readAppBuild(dir), "abc123");

@@ -51,6 +51,19 @@ export const OFFICIAL_CITATION_ORIGIN_VALUES = Object.freeze([
 ]);
 
 export const OFFICIAL_CITATION_ORIGINS = new Set(OFFICIAL_CITATION_ORIGIN_VALUES);
+
+// Reviewed navigation routes for Estonian forest-owner support. The publisher
+// (SA Keskkonnainvesteeringute Keskus) serves grant navigation on the same
+// origin as forums, application records and uploaded recipient lists, so the
+// approval is the exact page and never the origin. The comparison runs on the
+// raw string, which keeps every look-alike ineligible: no query string, no
+// userinfo, no subpath, no trailing segment and no http variant of these two
+// pages passes, and no crawler, hydration or fetch allowlist learns this host.
+export const REVIEWED_NAVIGATION_CITATION_URL_VALUES = Object.freeze([
+  "https://www.eramets.ee/toetused/",
+  "https://www.eramets.ee/toetused/metsameede/",
+]);
+const REVIEWED_NAVIGATION_CITATION_URLS = new Set(REVIEWED_NAVIGATION_CITATION_URL_VALUES);
 const UTF8_ENCODER = new TextEncoder();
 
 // Transport validation and historical adapter fixtures remain independent of
@@ -79,6 +92,9 @@ export function officialCitationUrlEligibility(value) {
   }
   if (url.protocol !== "https:") return { eligible: false, reason: "https-required" };
   if (url.username || url.password) return { eligible: false, reason: "credentials-forbidden" };
+  if (REVIEWED_NAVIGATION_CITATION_URLS.has(value)) {
+    return { eligible: true, reason: "reviewed-navigation-url", url };
+  }
   if (!OFFICIAL_CITATION_ORIGINS.has(url.origin)) {
     return { eligible: false, reason: "unapproved-citation-origin" };
   }

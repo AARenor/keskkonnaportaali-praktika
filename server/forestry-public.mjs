@@ -158,8 +158,16 @@ export const ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS = [
     url: "https://www.keskkonnaamet.ee/elusloodus-looduskaitse/metsandus/metsateatis-ja-metsaregister",
     tags: ["mets", "metsateatis", "metsaregister", "raie", "metsakahjustus", "kinnistu", "riigilõiv"],
     summary: "Metsateatis on dokument, mille metsaomanik esitab Keskkonnaametile kavandatava raie või olulise metsakahjustuse kohta; Keskkonnaamet kontrollib teatise nõuetekohasust ja kavandatud raie vastavust nõuetele.",
-    content: "Metsateatis käsitleb kavandatavat raiet või metsaregistrisse kandmata olulist metsakahjustust. Teatise esitamine, menetlemine või raiet lubav otsus ei tõenda, et raie on looduses juba tehtud. Metsateatise saab esitada Metsaregistri kaudu, kus omanik valib oma kinnistu ja täidab vormi. Konkreetse kinnistu inventeerimisandmete, eraldiste ja teatiste vaatamiseks tuleb kasutada riiklikku Metsaregistrit ehk Metsaportaali. Keskkonnaameti kehtiva juhise järgi võib metsaomanik metsateatist esitamata raiuda kuni 20 tihumeetrit puitu kinnisasja kohta aastas. Alates 1. juulist 2024 tuleb uuendusraie ja raadamise iga metsateatise läbivaatamise eest tasuda 30 eurot riigilõivu; muud raietüübid ei ole selle juhise järgi tasulised.",
-    locator: "Metsateatise definitsioon; millal ja kuidas teatis esitada; 20 tihumeetri erand ning uuendusraie ja raadamise 30-eurone riigilõiv.",
+    // The duty comes first and the provenance caveat last: a reader who asks
+    // when a notice is required must get that duty before the reminder that a
+    // notice does not prove felling. The first sentence is the same reviewed
+    // formulation held in the Metsaregistri andmestikud catalogue extract
+    // (search.mjs, id "metsaregister"). The page and the in-force Metsaseadus
+    // were read again on 2026-11-10, which is the review date this entry now
+    // carries; the statutory exceptions outside this guidance stay unclaimed.
+    content: "Metsateatis esitatakse kavandatavate raiete kohta, välja arvatud valgustusraie, ning metsaregistrisse kandmata oluliste metsakahjustuste kohta. Keskkonnaameti kehtiva juhise järgi võib metsaomanik metsateatist esitamata raiuda kuni 20 tihumeetrit puitu kinnisasja kohta aastas. Metsateatise saab esitada Metsaregistri kaudu, kus omanik valib oma kinnistu ja täidab vormi. Konkreetse kinnistu inventeerimisandmete, eraldiste ja teatiste vaatamiseks tuleb kasutada riiklikku Metsaregistrit ehk Metsaportaali. Alates 1. juulist 2024 tuleb uuendusraie ja raadamise iga metsateatise läbivaatamise eest tasuda 30 eurot riigilõivu; muud raietüübid ei ole selle juhise järgi tasulised. Teatise esitamine, menetlemine või raiet lubav otsus ei tõenda, et raie on looduses juba tehtud.",
+    locator: "Metsateatise esitamise kohustus ja valgustusraie erand; 20 tihumeetri erand kinnisasja kohta aastas; teatise esitamine Metsaregistri kaudu; uuendusraie ja raadamise 30-eurone riigilõiv.",
+    _catalogueReviewedAt: "2026-11-10T00:00:00.000Z",
     _forestryIntentKinds: ["forest-notice", "forest-notice-exception", "forest-notice-exception-fee", "property-forest-data"],
   },
   {
@@ -638,11 +646,16 @@ const INTENTS = {
       ["elustiku mitmekesisust"],
     ],
   },
+  // "Millal ei pea metsateatist esitama?" asks for the exceptions themselves,
+  // so it needs both the valgustusraie exception and the annual property
+  // allowance. The fee is a separate question and stays in
+  // "forest-notice-exception-fee": a reader who did not ask about money must
+  // not receive a riigilõiv amount.
   "forest-notice-exception": {
     serviceDocumentIds: ["forest-notice-guidance"],
-    discoveryQueries: ["metsateatis küttepuud 20 tihumeetrit kinnisasja kohta aastas"],
+    discoveryQueries: ["metsateatis küttepuud 20 tihumeetrit kinnisasja kohta aastas", "metsateatis erand valgustusraie"],
     evidenceGroups: [
-      ["metsateatist esitamata"],
+      ["valgustusraie"],
       ["20 tihumeetrit"],
       ["kinnisasja kohta aastas"],
     ],
@@ -778,6 +791,10 @@ const INTENTS = {
       ["boniteediklass"],
     ],
   },
+  // A fee question keeps the allowance that precedes the fee and nothing
+  // else: the exception route above owns the exception itself, so a pure
+  // "is a notice paid" question is answered with the fee, not with the
+  // valgustusraie exception it did not ask about.
   "forest-notice-exception-fee": {
     serviceDocumentIds: ["forest-notice-guidance"],
     discoveryQueries: ["metsateatis 20 tihumeetrit riigilõiv 30 eurot"],
@@ -1036,10 +1053,19 @@ const INTENTS = {
   "forest-notice": {
     serviceDocumentIds: ["forest-notice-guidance", "forest-register-workflow", "metsainfo-hetkeseis", "forest-law"],
     discoveryQueries: ["metsateatis Keskkonnaamet", "metsateatis kavandatav raie metsakahjustus"],
+    // The duty groups and the two ordinary exceptions come from the guidance
+    // itself: planned felling except valgustusraie, significant unregistered
+    // forest damage, and up to 20 tihumeetrit per property per year without a
+    // notice. The last group is the source's own provenance caveat that a
+    // notice is not proof of felling; it stays last in the source order so the
+    // answer states the duty before it, never as an opening warning.
     evidenceGroups: [
       ["metsateatis"],
-      ["kavandatav raie", "kavandatava raie"],
+      ["kavandatav raie", "kavandatava raie", "kavandatavate raiete"],
       ["metsakahjustus"],
+      ["valgustusraie"],
+      ["20 tihumeetrit"],
+      ["kinnisasja kohta aastas"],
       ["ei tõenda", "ei ole kõiki", "looduses juba tehtud"],
     ],
     minimumSupportingDocuments: 2,
@@ -1431,11 +1457,16 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
     && /\b(?:rai\w*|lagerai\w*|tohib\w*)\b/u.test(text)) {
     return resolved("pine-cutting-age");
   }
-  if (hasNotice
-    && /\b(?:riigiloiv\w*|tasu\w*|euro\w*|20\s+tihumeet\w*|ei\s+pea)\b/u.test(text)) {
+  // A fee question names money. "Millal ei pea metsateatist esitama?" names
+  // only the exception, so routing it to the fee route answered a question
+  // nobody asked and buried the duty. Only explicit money wording keeps the
+  // combined fee route; every other notice question without money goes to the
+  // exception evidence.
+  if (hasNotice && /\b(?:riigiloiv\w*|tasu\w*|euro\w*)\b/u.test(text)) {
     return resolved("forest-notice-exception-fee");
   }
-  if (hasNotice && /\b(?:küttepuu\w*|kuttepuu\w*|oma\s+mets\w*)\b/u.test(text)) {
+  if (hasNotice
+    && /\b(?:ei\s+pea|ei\s+ole\s+vaja|pole\s+vaja|ilma|erand\w*|piisab|vabast\w*|kuttepuu\w*|oma\s+mets\w*|tihumeet\w*)\b/u.test(text)) {
     return resolved("forest-notice-exception");
   }
   // "Kas ma tohin oma metsas puid langetada ilma loata", "kas metsaomanik vajab
@@ -1684,6 +1715,18 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
   // bound to that geography. They must never fall through to Estonia's
   // national SMI figures simply because the metric wording is familiar.
   if (hasForest && regionalScope && municipalityAreaMetric) return resolved("regional-forest-area");
+
+  // "Kuidas vaadata oma metsamaa takseerandmeid?" asks for the inventory data
+  // of the asker's own holding and names no cadastral unit, so the parcel test
+  // above cannot see it. Owner frame plus stand-inventory wording is the same
+  // property-data intent. It is deliberately the least specific route: every
+  // metric, method, comparison and named-geography branch above keeps first
+  // refusal, so "millise metoodikaga kogub SMI oma metsaandmeid" stays on its
+  // SMI method route. The owner frame keeps Estonia-wide area and statistics
+  // questions on their national route, and the inventory-data word keeps an
+  // own-holding quantity question on the route it has today.
+  const hasOwnerStandInventory = /\b(?:oma|minu|mu)\b[\s\S]{0,40}\b(?:takseer|inventeerimis|puistu|metsa)\w{0,8}andm\w*/u.test(text);
+  if (hasForest && hasOwnerStandInventory) return resolved("property-forest-data");
 
   if (hasForest && (/\b(?:metsaga\s+kaetud|kaetud\s+metsaga|puistute\s+pindala\w*|metsaga\s+metsamaa)\b/u.test(text)
     || /\b(?:mitu|kui\s+suur)\s+(?:protsenti|osa)\s+eesti\w*\b[\s\S]{0,30}\bmets\w*\b/u.test(text))) {

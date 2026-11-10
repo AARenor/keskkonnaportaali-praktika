@@ -873,6 +873,80 @@ test("crawler bounds robots rules and matches wildcards without dynamic regular 
   );
 });
 
+test("crawler obeys the most specific matching robots product group and merges only equal groups", () => {
+  const product = "keskkonnaportaali-praktika-corpus";
+  // The shorter name is a prefix of ours, not ours. The published robots
+  // specification selects the single group whose user-agent match is the most
+  // specific, so the long group decides and the short group must not be merged
+  // in to soften it.
+  const nested = parseRobotsTxt([
+    "User-agent: keskkonnaportaali-praktika",
+    "Allow: /private",
+    "",
+    `User-agent: ${product}`,
+    "Disallow: /private",
+    "Disallow: /admin",
+    "",
+  ].join("\n"), product);
+  assert.equal(
+    robotsAllowsUrl("https://keskkonnaportaal.ee/private", nested),
+    false,
+    "the group that matches the whole product name decides, so its disallow is not softened by a shorter product's allow",
+  );
+  assert.equal(robotsAllowsUrl("https://keskkonnaportaal.ee/admin", nested), false);
+  assert.equal(robotsAllowsUrl("https://keskkonnaportaal.ee/et/mets", nested), true);
+
+  // Repeated groups that match the product equally combine their rules.
+  const equal = parseRobotsTxt([
+    `User-agent: ${product}`,
+    "Disallow: /esimene",
+    "",
+    `User-agent: ${product}`,
+    "Disallow: /teine",
+    "",
+  ].join("\n"), product);
+  assert.equal(robotsAllowsUrl("https://keskkonnaportaal.ee/esimene", equal), false);
+  assert.equal(robotsAllowsUrl("https://keskkonnaportaal.ee/teine", equal), false);
+  assert.equal(robotsAllowsUrl("https://keskkonnaportaal.ee/kolmas", equal), true);
+
+  // The wildcard group is the fallback when no group names the product, and it
+  // stays a fallback only, never an addition to a group that does match.
+  const fallbackOnly = parseRobotsTxt("User-agent: *\nDisallow: /privaatne\n", product);
+  assert.equal(robotsAllowsUrl("https://keskkonnaportaal.ee/privaatne", fallbackOnly), false);
+  assert.equal(robotsAllowsUrl("https://keskkonnaportaal.ee/avalik", fallbackOnly), true);
+  const withProductGroup = parseRobotsTxt([
+    "User-agent: *",
+    "Disallow: /privaatne",
+    "",
+    `User-agent: ${product}`,
+    "Disallow: /esimene",
+    "",
+  ].join("\n"), product);
+  assert.equal(robotsAllowsUrl("https://keskkonnaportaal.ee/esimene", withProductGroup), false);
+  assert.equal(
+    robotsAllowsUrl("https://keskkonnaportaal.ee/privaatne", withProductGroup),
+    true,
+    "a wildcard group is a fallback, so its rule is not added to the group that names the product",
+  );
+
+  // An empty user-agent value names no crawler, so the rules written under it
+  // belong to nobody and cannot displace the wildcard group that does apply.
+  const emptyAgent = parseRobotsTxt([
+    "User-agent:",
+    "Allow: /private",
+    "",
+    "User-agent: *",
+    "Disallow: /private",
+    "",
+  ].join("\n"), product);
+  assert.equal(
+    robotsAllowsUrl("https://keskkonnaportaal.ee/private", emptyAgent),
+    false,
+    "an empty user-agent line is not a named match, so the wildcard disallow still applies",
+  );
+  assert.equal(robotsAllowsUrl("https://keskkonnaportaal.ee/avalik", emptyAgent), true);
+});
+
 test("crawler validates every redirect target before following it", () => {
   assert.equal(isApprovedCorpusRedirect(
     "https://keskkonnaportaal.ee/et/mets",

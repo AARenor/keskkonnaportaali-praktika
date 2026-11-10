@@ -12,6 +12,11 @@ import {
   validateApprovedPublicHttpsUrl,
 } from "./public-https.mjs";
 import { createFairSearchAdmission } from "./request-budget.mjs";
+// The live answer path reads the same approved pages as the background corpus,
+// so it enforces the same publisher policy with the same parser rather than a
+// second reading of robots.txt and noindex. server/corpus.mjs imports nothing
+// from this module, so the dependency stays acyclic.
+import { pageRobotsPolicy, parseRobotsTxt, robotsAllowsUrl } from "./corpus.mjs";
 import {
   assessSearchQuery,
   canonicalizePublicSearchQuery,
@@ -87,6 +92,16 @@ const VPORTAL_CA = [
 const MAX_CACHE_ENTRIES = 250;
 const MAX_CACHE_BYTES = 8_000_000;
 const MAX_UPSTREAM_BYTES = 2_000_000;
+const MAX_ROBOTS_TXT_BYTES = 64_000;
+const HYDRATION_ROBOTS_MAX_REDIRECTS = 2;
+const HYDRATION_ROBOTS_TTL_MS = 60 * 60_000;
+// The live answer path announces this product token to every publisher and
+// reads that publisher's policy under the same token, so a rule written for
+// this reader applies to this reader. The background corpus keeps its own
+// identity, and each header stays exactly what it was.
+const LIVE_CRAWLER_PRODUCT = "Keskkonnaportaali-praktika";
+const UPSTREAM_USER_AGENT = `${LIVE_CRAWLER_PRODUCT}/3.0 (+https://praktika.arle.top)`;
+const VPORTAL_USER_AGENT = `${LIVE_CRAWLER_PRODUCT}/4.0 (+https://praktika.arle.top)`;
 const APPROVED_PAGE_EVIDENCE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1_000;
 const MAX_CONCURRENT_OFFICIAL_DISCOVERIES = 2;
 const MAX_CONCURRENT_HYDRATIONS = 4;
@@ -198,6 +213,153 @@ const officialSuggestionAdmission = createFairSearchAdmission({
 });
 const hydrationInflight = new Map();
 const suggestionInflight = new Map();
+// One robots.txt entry per origin, reused while it is younger than an hour,
+// exactly like the corpus crawler. A failed read is never cached, so an
+// unreachable policy is retried instead of silently allowing or denying pages
+// for the whole run.
+const hydrationRobotsCache = new Map();
+
+function pagePolicyError(code, reason, message) {
+  const error = new Error(message);
+  error.code = code;
+  error.pagePolicy = reason;
+  return error;
+}
+
+// The publisher explicitly refused this page. Nothing read from it may be
+// cached, cited or counted as answer evidence.
+function excludedPageError(reason) {
+  return pagePolicyError("OFFICIAL_PAGE_EXCLUDED", reason, "Official page is excluded by the publisher");
+}
+
+function unavailablePolicyError(reason, message) {
+  return pagePolicyError("OFFICIAL_PAGE_POLICY_UNAVAILABLE", reason, message);
+}
+
+// A body that an earlier read took from the page itself stands on that policy
+// read, so it may no longer support a citation once the policy is unknown.
+// Text written by a reviewed producer is our own review of the publisher and
+// does not depend on the publisher's robots.txt.
+//
+// Only the two page read markers count. freshness.basis "retrieved-at" is not
+// one of them: curated catalogue entries and dataset adapters use that basis
+// too, and their summaries are our own writing, not a copy of the page.
+function documentHoldsFetchedPageText(document = {}) {
+  return document.retrieval === "approved-page-hydration"
+    || document.freshness?.class === "cached-official-page";
+}
+
+function routeOnlyCopy(document = {}) {
+  return {
+    ...document,
+    content: "",
+    _contentHash: undefined,
+    _evidenceVersion: undefined,
+    _evidenceStatusAt: undefined,
+    evidencePolicy: "route-only",
+    _answerEvidenceEligible: false,
+  };
+}
+
+async function readHydrationRobotsRules(origin, { timeoutMs, requestText } = {}) {
+  const request = requestText || requestApprovedPublicHttpsText;
+  const controller = new AbortController();
+  const boundedTimeoutMs = Math.max(250, Math.min(Number(timeoutMs) || 4_500, 4_500));
+  const timer = setTimeout(() => controller.abort(), boundedTimeoutMs);
+  try {
+    const response = await request(`${origin}/robots.txt`, {
+      approvedOrigins: OFFICIAL_ORIGINS,
+      headers: {
+        Accept: "text/plain",
+        "Accept-Encoding": "identity",
+        "User-Agent": UPSTREAM_USER_AGENT,
+      },
+      signal: controller.signal,
+      maximumBytes: MAX_ROBOTS_TXT_BYTES,
+      maximumRedirects: HYDRATION_ROBOTS_MAX_REDIRECTS,
+    });
+    // The answer must come from the origin that was asked. The transport
+    // already restricts redirect hops to approved HTTPS origins, so a
+    // redirected robots.txt can legitimately land on another allowlisted
+    // publisher, and that publisher's policy says nothing about this one. The
+    // comparison runs before the status is read, because a foreign 404 or 410
+    // must not be mistaken for this origin having no policy file. An answer
+    // with no reported final URL counts as unestablished, not as the origin
+    // that was asked.
+    let answeredOrigin = "";
+    try {
+      answeredOrigin = new URL(String(response?.url || "")).origin;
+    } catch {
+      answeredOrigin = "";
+    }
+    if (!answeredOrigin || answeredOrigin !== origin) {
+      throw unavailablePolicyError(
+        "robots-foreign-origin",
+        "Official robots.txt was answered by a different origin",
+      );
+    }
+    const status = Number(response?.status) || 0;
+    // Only 404 and 410 state that this origin has no policy file, so there is
+    // no rule to obey. Every other non 2xx answer, 400, 401, 403, 407, 429 and
+    // 451 included, is an answer about us rather than about the file: a
+    // refusal of automated access, a rate limit or a legal block leaves the
+    // policy unestablished, and then the page stays unread.
+    if (status === 404 || status === 410) return [];
+    if (status < 200 || status >= 300) {
+      throw unavailablePolicyError("robots-unavailable", `Official robots.txt returned ${status}`);
+    }
+    const body = String(response?.body || "");
+    if (Buffer.byteLength(body, "utf8") > MAX_ROBOTS_TXT_BYTES) {
+      throw unavailablePolicyError("robots-too-large", "Official robots.txt exceeds the byte limit");
+    }
+    // The live reader parses the file with its own product token, so a group
+    // written for this reader or for "*" applies to it, while a group written
+    // only for another crawler of this project does not.
+    return parseRobotsTxt(body, LIVE_CRAWLER_PRODUCT);
+  } catch (error) {
+    if (error?.code === "OFFICIAL_PAGE_POLICY_UNAVAILABLE") throw error;
+    // A timeout, a transport refusal or an unreadable file leaves the policy
+    // unestablished, so the page is not read at all.
+    throw unavailablePolicyError("robots-unavailable", "Official robots.txt could not be read");
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function hydrationRobotsRules(origin, options = {}) {
+  const cached = hydrationRobotsCache.get(origin);
+  // A settled entry is reused until it is an hour old. An unsettled entry is a
+  // read that is still in flight, and every caller joins it, so one origin
+  // costs one robots.txt request even when several pages hydrate at once. The
+  // read is bounded by its own timeout, so an unsettled entry cannot hold the
+  // origin for longer than that, and a failed read evicts the entry instead of
+  // caching a policy that was never established.
+  if (cached && (!cached.settled || Date.now() - cached.fetchedAt < HYDRATION_ROBOTS_TTL_MS)) {
+    return cached.promise;
+  }
+  const entry = { fetchedAt: 0, settled: false, promise: null };
+  // The shared read deliberately carries no caller signal. One client that
+  // disconnects must not fail the robots answer every other client waits on,
+  // and each waiter rechecks its own signal once the read resolves.
+  entry.promise = readHydrationRobotsRules(origin, options).then((rules) => {
+    entry.fetchedAt = Date.now();
+    entry.settled = true;
+    return rules;
+  }, (error) => {
+    entry.settled = true;
+    if (hydrationRobotsCache.get(origin) === entry) hydrationRobotsCache.delete(origin);
+    throw error;
+  });
+  hydrationRobotsCache.set(origin, entry);
+  return entry.promise;
+}
+
+async function assertHydrationRobotsAllowed(value, { timeoutMs, requestText, signal } = {}) {
+  const target = validatedOfficialUrl(value);
+  const rules = await hydrationRobotsRules(target.origin, { timeoutMs, requestText });
+  throwIfRequestAborted(signal);
+  if (!robotsAllowsUrl(target.toString(), rules)) throw excludedPageError("robots");
+}
 
 function waitForSharedRequest(entry, signal, disconnectedMessage) {
   throwIfRequestAborted(signal);
@@ -232,12 +394,26 @@ async function sharedHydration(url, { timeoutMs, signal, requestText } = {}) {
     const controller = new AbortController();
     entry = { controller, promise: null, settled: false, waiters: 0 };
     entry.promise = officialHydrationGate.run(async () => {
+      // Publisher policy is settled before the page is requested, so a
+      // robots.txt disallowed page is never fetched, cached or promoted.
+      await assertHydrationRobotsAllowed(canonicalUrl, {
+        timeoutMs: timeoutMs || 4_500,
+        requestText,
+        signal: controller.signal,
+      });
       const { body, finalUrl, fetchedAt, stale } = await fetchCached(canonicalUrl, {
         ttlMs: 30 * 60_000,
         timeoutMs: timeoutMs || 4_500,
         signal: controller.signal,
         requestText,
         requireSameResource: true,
+        rejectExcludedPage: true,
+        // The page was settled for the URL that was asked for. A followed
+        // redirect is a request to another address, so that address's own
+        // policy is settled here before the transport connects to it, and a
+        // destination the publisher disallows is never read, cached or
+        // promoted under the requested page's standing.
+        gateRedirectDestinations: true,
       });
       const content = articleText(body);
       await yieldToEventLoop();
@@ -410,6 +586,8 @@ async function fetchCached(url, {
   maximumBytes = MAX_UPSTREAM_BYTES,
   maximumRedirects = 3,
   requireSameResource = false,
+  rejectExcludedPage = false,
+  gateRedirectDestinations = false,
   projectBody,
 } = {}) {
   throwIfRequestAborted(externalSignal);
@@ -454,13 +632,29 @@ async function fetchCached(url, {
       headers: {
         Accept: accept || "text/html,application/xhtml+xml",
         "Accept-Encoding": "identity",
-        "User-Agent": "Keskkonnaportaali-praktika/3.0 (+https://praktika.arle.top)",
+        "User-Agent": UPSTREAM_USER_AGENT,
         ...requestHeaders,
       },
       signal,
       body: requestBody,
       maximumBytes: Math.max(1, Math.min(Number(maximumBytes) || MAX_UPSTREAM_BYTES, MAX_UPSTREAM_BYTES)),
       maximumRedirects: Math.max(0, Math.min(Number(maximumRedirects) || 0, 5)),
+      // A followed redirect leaves the address whose policy was already
+      // settled, so the transport asks for the destination's own answer before
+      // it connects there. The read reuses the origin cache, and its own
+      // robots.txt request carries no gate, so the check cannot recurse.
+      ...(gateRedirectDestinations
+        ? {
+          assertRedirectAllowed: (destination, context) => assertHydrationRobotsAllowed(
+            destination,
+            {
+              timeoutMs,
+              requestText,
+              signal: context?.signal || externalSignal,
+            },
+          ),
+        }
+        : {}),
     });
     if (upstream.status < 200 || upstream.status >= 300) throw new Error(`Upstream returned ${upstream.status}`);
     if (requiredTypes.length || requiredContentProfile) {
@@ -472,15 +666,39 @@ async function fetchCached(url, {
       }
     }
     const upstreamBody = String(upstream.body || "");
-    const body = typeof projectBody === "function" ? projectBody(upstreamBody) : upstreamBody;
     const finalUrl = validatedOfficialUrl(upstream.url || canonicalUrl).toString();
     if (requireSameResource && !hydrationResourceMatches(canonicalUrl, finalUrl)) {
       throw new Error("Official hydration redirected to a different resource");
     }
+    if (rejectExcludedPage) {
+      // The response is read before the cache so that an excluded body is
+      // never stored, not even for display, and never replaces what the caller
+      // already holds. The check runs only after the body is bound to the
+      // requested resource, so a redirect to some other excluded page can
+      // never withdraw the requested page's standing. The header directive
+      // applies to any media type; the HTML meta tag is read from markup only.
+      const upstreamType = String(upstream.headers?.["content-type"] || "").toLocaleLowerCase("en-US");
+      const markupBody = !upstreamType
+        || upstreamType.startsWith("text/html")
+        || upstreamType.startsWith("application/xhtml+xml");
+      const robots = pageRobotsPolicy(
+        markupBody ? upstreamBody : "",
+        upstream.headers?.["x-robots-tag"],
+        LIVE_CRAWLER_PRODUCT,
+      );
+      if (robots.noindex) {
+        responseCache.delete(cacheKey);
+        throw excludedPageError("noindex");
+      }
+    }
+    const body = typeof projectBody === "function" ? projectBody(upstreamBody) : upstreamBody;
     const fetchedAt = cacheResponse(cacheKey, body, finalUrl, upstream.headers);
     return { body, finalUrl, fetchedAt, cache: "miss", stale: false };
   } catch (error) {
     throwIfRequestAborted(externalSignal);
+    // An explicit publisher exclusion is an answer, not a transport failure:
+    // it must never be softened into an older cached copy.
+    if (error?.code === "OFFICIAL_PAGE_EXCLUDED") throw error;
     if (cached && cachedMatches && now - cached.savedAt < staleMs) {
       return {
         body: cached.body,
@@ -787,7 +1005,7 @@ export async function fetchVportalJson(url, origin, {
       headers: {
         Accept: "application/json",
         Origin: origin,
-        "User-Agent": "Keskkonnaportaali-praktika/4.0 (+https://praktika.arle.top)",
+        "User-Agent": VPORTAL_USER_AGENT,
       },
       signal,
       maximumBytes: MAX_UPSTREAM_BYTES,
@@ -1028,6 +1246,17 @@ export async function hydrateOfficialDocuments(documents, limit = 5, options = {
       };
     } catch (error) {
       throwIfRequestAborted(options.signal);
+      // This application elects not to treat a page that its publisher
+      // excluded as answer evidence, and a body that an earlier read took from
+      // a page whose policy cannot now be established is no better founded.
+      // Either way the entry keeps its place in the result list while nothing
+      // read from the page may still be cited. Reviewed catalogue text is our
+      // own writing, so a robots read that did not happen leaves it alone.
+      const excluded = error?.code === "OFFICIAL_PAGE_EXCLUDED";
+      const policyUnknown = error?.code === "OFFICIAL_PAGE_POLICY_UNAVAILABLE";
+      if (excluded || (policyUnknown && documentHoldsFetchedPageText(document))) {
+        return routeOnlyCopy(document);
+      }
       return document;
     }
   }));

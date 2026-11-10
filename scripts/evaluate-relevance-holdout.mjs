@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { rankSearchCandidates } from "../server/retrieval.mjs";
 import { sourceResourceKey } from "../server/source-identity.mjs";
 import { officialServiceCatalogueDocuments, officialSourceSelectionExclusions } from "../server/search.mjs";
-import { requestBoundedAuditJson } from "./audit-http.mjs";
+import { requestBoundedAuditJson, SEARCH_AUDIT_TIMEOUT_MS } from "./audit-http.mjs";
 
 const options = Object.fromEntries(process.argv.slice(2).map((argument) => {
   const [key, ...rest] = argument.replace(/^--/u, "").split("=");
@@ -93,7 +93,7 @@ if (baseUrl) {
           "User-Agent": "Keskkonnaportaali-praktika-holdout/1.0",
         },
         body: JSON.stringify({ q: item.query }),
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.timeout(SEARCH_AUDIT_TIMEOUT_MS),
       }, { label: "Holdout evaluation response" });
       response = result.response;
       body = result.body;

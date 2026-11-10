@@ -641,10 +641,38 @@ function composeOfficialForestryEvidenceFallback(query, plannedEvidence, sources
       text: bundle.text,
       citations: [bundle.citation],
     })),
-    note: plannedEvidence.kind === "clearcut-value-judgement"
-      ? "Need väljavõtted kirjeldavad metsamajandamise mõju ja selle tingimusi; need ei tõenda üldist väärtushinnangut iga lageraie kohta."
-      : String(previousAnswer.note || "").trim().slice(0, 700),
+    note: noticeAnswerNote(plannedEvidence.kind)
+      || (plannedEvidence.kind === "clearcut-value-judgement"
+        ? "Need väljavõtted kirjeldavad metsamajandamise mõju ja selle tingimusi; need ei tõenda üldist väärtushinnangut iga lageraie kohta."
+        : String(previousAnswer.note || "").trim().slice(0, 700)),
   };
+}
+
+// The notice guidance lists the two ordinary cases in everyday practice. It
+// is not the whole of the law, and this excerpt is not freshly verified law
+// text, so the card must not imply that its list is exhaustive or that it
+// states extra statutory exceptions such as the national defence case.
+const NOTICE_ANSWER_KINDS = new Set(["forest-notice", "forest-notice-exception", "forest-notice-exception-fee"]);
+
+function noticeAnswerNote(kind) {
+  if (!NOTICE_ANSWER_KINDS.has(kind)) return "";
+  return "See on Keskkonnaameti üldjuhise väljavõte, mitte seaduse terviktekst: seadusest võivad tuleneda ka muud erandid ja lisanõuded, mida see väljavõte ei loetle.";
+}
+
+// A model answer replaces the deterministic answer object, so the same scope
+// caveat has to be re-applied on the accepted card. The answer's own plan kind
+// is not carried on every composer, so the query's notice intent decides when
+// it is missing. It is a statement about the extract's coverage, not a claim
+// about the law, and it never replaces a note the answer already carries.
+function withNoticeScopeCaveat(note, query, kind) {
+  const effectiveKind = NOTICE_ANSWER_KINDS.has(kind)
+    ? kind
+    : /metsateat|raieteat/iu.test(String(query || "")) ? forestEvidenceIntent(query)?.kind : "";
+  const caveat = noticeAnswerNote(effectiveKind);
+  if (!caveat) return note;
+  const current = String(note || "").trim();
+  if (current.includes("üldjuhise väljavõte")) return current;
+  return [current, caveat].filter(Boolean).join(" ").slice(0, 700);
 }
 
 // Bare generic forest overview (nt "mets"): mitme ametliku allika süntees
@@ -1789,6 +1817,8 @@ async function searchWithinBudget(cleanQuery, {
   } else {
     draft = withoutRawLawSection(deterministicDraft);
   }
+  const noticeCaveat = withNoticeScopeCaveat(draft.answer?.note, cleanQuery, draft.evidence?.answerIntent);
+  if (noticeCaveat !== draft.answer?.note) draft.answer = { ...draft.answer, note: noticeCaveat };
   // Related navigation is reviewed local product copy, never provider output.
   draft.related = reviewedRelatedQuestions(draft.related, 6);
   draft.generatedAt = new Date().toISOString();
@@ -1837,14 +1867,16 @@ async function searchWithinBudget(cleanQuery, {
     evidenceKind, cacheEligible, publishedBindings,
   });
   // Status words only, never question or provider text: why the model did or
-  // did not contribute is otherwise visible only inside the database.
+  // did not contribute is otherwise visible only inside the database. A local
+  // rejection records the rejected sentence and the source sentence it was
+  // compared with, and that text stays in the private attempt record, so the
+  // public card carries the codes alone.
   const response = outcome.attempt
     ? {
       ...outcome.response,
       answerAttempt: {
         status: outcome.attempt.status,
         reason: outcome.attempt.reason,
-        ...(llmResult.attempt?.detail ? { detail: llmResult.attempt.detail } : {}),
       },
     }
     : outcome.response;

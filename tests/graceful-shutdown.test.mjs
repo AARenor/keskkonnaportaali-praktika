@@ -70,3 +70,89 @@ test("graceful shutdown force-closes a server that exceeds the stop budget", asy
   ]);
   assert.equal(handler.state(), "forced");
 });
+
+// A container handover budget can be longer than half a minute while a grounded
+// forest answer streams. Both tests below move a simulated clock, because a real
+// 45 to 90 second stop budget cannot be waited out inside a test run.
+test("graceful shutdown keeps an in-flight response alive across a stop budget longer than 29 s", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  const exitCodes = [];
+  const events = [];
+  let closeCalls = 0;
+  let forceCalls = 0;
+  let onClosed = null;
+  const server = {
+    close(callback) { closeCalls += 1; onClosed = callback; },
+    closeAllConnections() { forceCalls += 1; },
+    closeIdleConnections() {},
+  };
+  const handler = createGracefulShutdown(server, {
+    drainDelayMs: 1_000,
+    forceExitMs: 45_000,
+    exit: (code) => exitCodes.push(code),
+    log: (event) => events.push(event),
+  });
+
+  handler.shutdown("SIGTERM");
+  t.mock.timers.tick(1_000);
+  assert.equal(closeCalls, 1, "draining starts on the configured drain delay");
+  assert.equal(forceCalls, 0);
+  assert.deepEqual(exitCodes, []);
+
+  t.mock.timers.tick(28_000);
+  assert.deepEqual(exitCodes, [], "no force exit at the old 29 s ceiling");
+  assert.equal(forceCalls, 0, "no connection is force-closed before the configured deadline");
+  assert.equal(handler.state(), "draining");
+
+  t.mock.timers.tick(6_000);
+  assert.deepEqual(exitCodes, [], "the in-flight response is still streaming inside the stop budget");
+  assert.equal(forceCalls, 0);
+  assert.equal(handler.state(), "draining");
+
+  onClosed(null);
+  assert.deepEqual(exitCodes, [0], "cleanup finishes normally and exits cleanly");
+  assert.equal(handler.state(), "finished");
+  assert.equal(forceCalls, 0);
+  assert.deepEqual(events.map((event) => event.event), [
+    "graceful-shutdown-started",
+    "graceful-shutdown-finished",
+  ]);
+});
+
+test("graceful shutdown still force-exits a stuck cleanup at the configured later deadline", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  const exitCodes = [];
+  const events = [];
+  let forceCalls = 0;
+  let onClosed = null;
+  const server = {
+    close(callback) { onClosed = callback; },
+    closeAllConnections() { forceCalls += 1; },
+    closeIdleConnections() {},
+  };
+  const handler = createGracefulShutdown(server, {
+    drainDelayMs: 1_000,
+    forceExitMs: 45_000,
+    exit: (code) => exitCodes.push(code),
+    log: (event) => events.push(event),
+  });
+
+  handler.shutdown("SIGTERM");
+  t.mock.timers.tick(1_000);
+  t.mock.timers.tick(43_000);
+  assert.deepEqual(exitCodes, [], "a stuck cleanup is not cut short inside its budget");
+  assert.equal(forceCalls, 0);
+  assert.equal(handler.state(), "draining");
+
+  t.mock.timers.tick(1_000);
+  assert.deepEqual(exitCodes, [1], "a cleanup that never finishes still forces an exit at its deadline");
+  assert.equal(forceCalls, 1);
+  assert.equal(handler.state(), "forced");
+  assert.deepEqual(events.map((event) => event.event), [
+    "graceful-shutdown-started",
+    "graceful-shutdown-forced",
+  ]);
+
+  onClosed(new Error("kinni jäänud"));
+  assert.deepEqual(exitCodes, [1], "a late cleanup callback cannot exit twice");
+});
