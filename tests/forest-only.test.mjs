@@ -104,6 +104,28 @@ test("a family forest statement is not a private-person lookup", () => {
   ]) assert.equal(containsPrivatePersonLookup(query), true, query);
 });
 
+test("forestry nouns, 'ühe' and 'eesti' before 'metsas' are not read as a name", () => {
+  for (const query of [
+    "mitu korda tohib harvendusraiet ühes metsas teha",
+    "mis puud kõige paremini põuda kannatavad eesti metsas",
+    "surnud puidu tagavara metsamaal 2025",
+  ]) assert.equal(containsPrivatePersonLookup(query), false, query);
+  // Tree species are also surnames, and pronoun + verb pairs are what holds a
+  // later name private, so every one of these stays private.
+  for (const query of [
+    "mari tamme metsas raie",
+    "kas tohib jaan kase metsas raiuda",
+    "mis puud kasvavad jaan kase metsas",
+    "Mari Tamm metsas",
+    "kas nad võivad oma metsas Mari Tammele puid müüa",
+    "nad raiusid oma metsas Mari Tammele puid",
+    "raiusin mu metsas Jaan Kase puid",
+    "harvendusraie Mari Tamme metsas",
+    "puidu müük Jaan Kase metsamaal",
+    "põua kahjud Mari Tamme metsas",
+  ]) assert.equal(containsPrivatePersonLookup(query), true, query);
+});
+
 test("a forest owner asking about their own forest is not a private-person lookup", () => {
   for (const query of [
     "kas ma tohin oma metsas puid langetada ilma loata",
