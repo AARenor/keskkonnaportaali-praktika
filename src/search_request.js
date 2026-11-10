@@ -28,7 +28,10 @@ export async function readFollowUpResponse(response) {
       : "Jätkuküsimusele ei saanud vastata.");
   }
   if (!response.ok) throw new Error(data?.error || "Jätkuküsimusele ei saanud vastata.");
-  if (!data?.answer || typeof data.answer !== "object" || Array.isArray(data.answer)) {
+  const answer = data?.answer;
+  const hasIntro = typeof answer?.intro === "string" && answer.intro.trim();
+  const hasPart = Array.isArray(answer?.parts) && answer.parts.some((part) => typeof part?.text === "string" && part.text.trim());
+  if (!answer || typeof answer !== "object" || Array.isArray(answer) || (!hasIntro && !hasPart)) {
     throw new Error("Jätkuküsimuse vastus oli vigane. Proovi uuesti.");
   }
   return data;
