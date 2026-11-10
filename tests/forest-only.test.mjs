@@ -507,6 +507,10 @@ test("a law section naming the question's own subject reaches the model despite 
   assert.equal(assessEvidence("kui palju sailikpuid peab lageraiel jatma", [retention]).answerable, true);
   // Without the subject in the law text, nothing changes.
   assert.equal(assessEvidence("kas harvesteriga tootamine oosel on keelatud myra parast", [retention]).answerable, false);
+  // A verb or the question type ("tohib" → lubatavus) is not a subject, even when the law uses it.
+  const nesting = section("para15", "Metsa majandamise eeskiri § 15. Raie piiramine",
+    "(1) Lindude pesitsusajal on raie lubatavus piiratud ja puid ei tohi lennutada ega varastada.");
+  assert.equal(assessEvidence("kas metsas tohib drooni lennutada", [nesting]).answerable, false);
 });
 
 test("a source's own data year does not make a sentence that repeats the year win", async () => {

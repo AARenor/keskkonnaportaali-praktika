@@ -8432,8 +8432,13 @@ export function assessEvidence(query, documents = []) {
   // juuremädanik) is read by the model even when the wording differs: law says
   // "uuendada" where a reader writes "istutada", and its quantities are rules,
   // not statistics. The model's own checks still decide whether it answers.
+  // The subject is a noun: verb forms ("lennutada", "varastati") appear all
+  // over the law and say nothing about which section answers.
   const lawSubject = [...terms]
     .filter((term) => !ADMIN_CONTEXT_ROOTS.has(term) && !GENERIC_QUERY_CONTEXT_TERMS.has(term))
+    .filter((term) => !/(?:[aeiu]da|tati|takse|tud|nud)$/u.test(term))
+    // "tohib" and "taotlema" become these roots; they name the question type, not its subject.
+    .filter((term) => !["lubatavus", "piirang", "menetlus", "taotlemine"].includes(term))
     .sort((left, right) => right.length - left.length)
     .find((term) => term.length >= 7) || null;
   const lawDocument = strong || broadDocument || !lawSubject || years.length
