@@ -86,7 +86,7 @@ import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs"
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v91-topic-overview-and-privacy-nouns";
+export const SEARCH_RESPONSE_REVISION = "answer-v92-reject-repeated-overview";
 const DEFAULT_SEARCH_DEADLINE_MS = 60_000;
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
@@ -1778,6 +1778,10 @@ async function searchWithinBudget(cleanQuery, {
   // Keep the accepted deterministic result detached from both the provider
   // input and any streamed consumer. A ready model answer must rebind its
   // visible citation witnesses before it can replace this snapshot.
+  // The off-target overview is still the model's starting card. A model
+  // answer that only repeats it is the same wrong answer, so it is rejected.
+  const offTargetLead = draft.evidence?.offTargetFallback
+    ? normalize(splitTextPassages(draft.answer?.intro || "")[0] || "") : "";
   const deterministicDraft = withoutOffTargetFallback(structuredClone(draft));
   // Keep opaque source admission on our snapshot, never on provider copies.
   // Cloning a descriptor cannot recreate its private constructor binding.
@@ -1823,7 +1827,8 @@ async function searchWithinBudget(cleanQuery, {
     // evidence pack. This second boundary proves that the same claim is also
     // supported by the bounded excerpt a reader can actually inspect.
     visibleRejected = !answerClaimsHaveVisibleWitnesses(modelDraft)
-      || !answersAskedConcept(retrievalQuery, answerCardText(modelDraft));
+      || !answersAskedConcept(retrievalQuery, answerCardText(modelDraft))
+      || (offTargetLead.length >= 40 && normalize(answerCardText(modelDraft)).includes(offTargetLead));
     draft = visibleRejected ? withoutRawLawSection(deterministicDraft) : modelDraft;
   } else {
     draft = withoutRawLawSection(deterministicDraft);

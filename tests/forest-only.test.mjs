@@ -561,6 +561,18 @@ test("a broad topic overview is not shown as the answer to a narrower question a
   const narrow = await ask("kui kaua keskkonnaamet metsateatist menetleb");
   assert.equal(narrow.modelCalls, 1);
   assert.match(narrow.result.answer.intro, /Meil ei ole sellele küsimusele vastust/u);
+  // A model answer that only repeats the off-target overview is rejected too.
+  const repeated = await (async () => {
+    const query = "mis puuliigil on eesti metsades kõige suurem tagavara";
+    const items = rankPublicSearchCandidates(query, directory, { intentDocuments: directory }).slice(0, 12);
+    return searchEnvironmentLive(query, {
+      searchResults: { total: items.length, items },
+      useCache: false,
+      deadlineAt: Date.now() + 9_000,
+      generateAnswer: async (_query, draft) => ({ answer: draft.answer, acceptedClaims: [], attempt: { status: "ready", reason: "none" } }),
+    });
+  })();
+  assert.match(repeated.answer.intro, /Meil ei ole sellele küsimusele vastust/u);
   // A narrow topic answers what resolved it: cutting without a notice.
   const exception = await ask("kas metsaomanik vajab raieks luba");
   assert.match(exception.result.answer.intro, /20 tihumeetrit/u);
