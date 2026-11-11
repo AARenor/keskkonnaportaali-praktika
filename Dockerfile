@@ -16,6 +16,13 @@ ENV APP_REVISION=${SOURCE_COMMIT}
 LABEL org.opencontainers.image.revision=${SOURCE_COMMIT}
 WORKDIR /app
 
+# PDF text extraction runs inside this image, not in the builder: the server
+# executes `pdfinfo` and `pdftotext` from poppler-utils while converting an
+# approved public PDF in the background. Both binaries have to exist in the
+# runtime layer, the read only root filesystem still allows the subprocess, and
+# `/tmp` is the tmpfs the converter's private working directory lives on.
+RUN apk add --no-cache poppler-utils
+
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
   && npm cache clean --force \

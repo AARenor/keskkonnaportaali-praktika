@@ -238,8 +238,8 @@ test("public response configuration keeps finite connection and response limits"
     maximumGeneral: 192,
     maximumPerClient: 16,
     maximumGeneralPerClient: 12,
-    idleTimeoutMs: 60_000,
-    absoluteTimeoutMs: 150_000,
+    idleTimeoutMs: 100_000,
+    absoluteTimeoutMs: 300_000,
   });
   const bounded = resolvePublicResponseBudget({
     MAX_HTTP_CONNECTIONS: "999999",
@@ -251,6 +251,6 @@ test("public response configuration keeps finite connection and response limits"
   assert.equal(bounded.maximumConnections, 2_048);
   assert.equal(bounded.maximumActive, 2_040);
   assert.equal(bounded.maximumGeneral, 2_039);
-  assert.equal(bounded.idleTimeoutMs, 120_000);
-  assert.equal(bounded.absoluteTimeoutMs, 240_000);
+  assert.equal(bounded.idleTimeoutMs, 300_000);
+  assert.equal(bounded.absoluteTimeoutMs, 600_000);
 });

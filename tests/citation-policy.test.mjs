@@ -13,6 +13,7 @@ import { publicResponse } from "../server/pipeline.mjs";
 import { evidenceDocumentsFromListing } from "../server/retrieval.mjs";
 import { sourceCanSupportPublicCitation } from "../server/source-registry.mjs";
 import { sourceResourceKey, sourceWitnessKey, sameSourceResource } from "../server/source-identity.mjs";
+import { observeSourcePolicy, sourcePolicyBinding, sourcePolicyWitness } from "../server/source_policy.mjs";
 import { officialServiceCatalogueDocuments } from "../server/search.mjs";
 import { smiStructuredDocument } from "../server/smi-tables.mjs";
 import { buildEvidencePack } from "../server/evidence-pack.mjs";
@@ -184,14 +185,39 @@ test("privacy-safe cache round trips retain citation policy privately and revali
     "Allikaviiteid ei saanud kontrollida",
   );
 
+  // A fetched body needs the observation that released its text, so this record
+  // carries a real witness instead of a copied summary without one. The cache
+  // may retain the quoted text on that witness alone; the delivery route still
+  // denies answer evidence, and that denial has to survive the round trip.
+  const federatedUrl = "https://keskkonnaportaal.ee/et/uudised/ametlik-teade";
+  const federatedObservedAt = "2026-08-23T11:55:00.000Z";
+  const federatedWitness = sourcePolicyWitness(observeSourcePolicy({
+    requestedUrl: federatedUrl,
+    finalUrl: federatedUrl,
+    observedAt: federatedObservedAt,
+    contentKind: "fetched-html",
+    bodyHash: "a".repeat(64),
+    robotsObservation: { status: "allowed", checkedAt: federatedObservedAt },
+    html: "<html><body><main><p>Kontrollitud ametlik lähteandmestik.</p></main></body></html>",
+  }));
+  assert.ok(federatedWitness, "the fixture observation must validate as a witness");
   const federated = source({
+    id: "federated-discovery",
+    url: federatedUrl,
     evidencePolicy: "claim-specific",
     retrieval: "official-federated-search",
     delivery: "federated-discovery",
+    _sourcePolicy: federatedWitness,
+    _sourcePolicyBinding: sourcePolicyBinding(federatedWitness),
   });
   const restoredFederated = restoreCachedResponse(
     sanitizeCachedResponse(citedDraft([federated]), query),
     query,
+  );
+  assert.equal(
+    restoredFederated.sources[0].summary,
+    "Kontrollitud ametlik lähteandmestik.",
+    "the witness, not the cache, is what released the copied text",
   );
   assert.equal(sourceCanSupportPublicCitation(restoredFederated.sources[0], { now }).eligible, false);
 });

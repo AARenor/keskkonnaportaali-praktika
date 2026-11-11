@@ -2255,6 +2255,11 @@ h3 {
   color: #253f4d;
   font: inherit;
   outline: 0;
+  /* The floating chat launcher owns the bottom-right corner. A field scrolled
+     into view asks for room beneath itself, so focusing it never lands the row
+     and its send button under the launcher; the launcher's own script lifts it
+     clear when the row reaches that corner by scrolling instead. */
+  scroll-margin-bottom: 88px;
 }
 
 .followup-form button {
@@ -3719,6 +3724,10 @@ h3 {
   font-size: 0.92rem;
   font-weight: 600;
   cursor: pointer;
+  /* Raised by the script while a page question field reaches this corner, so
+     the field and its send button stay tappable at any width and the launcher
+     itself stays reachable instead of stepping aside. */
+  transform: translateY(calc(-1 * var(--chatbot-launcher-lift, 0px)));
 }
 
 .chatbot__launcher:hover {
@@ -4006,6 +4015,36 @@ h3 {
   margin: 0;
   color: #526872;
   font-size: 0.8rem;
+}
+
+/* Ordinary results that must survive a slow or failed answer: a compact link
+   list in the chat panel, and the same list inside a follow-up turn. */
+.chatbot__results {
+  border-left: 3px solid #c3d9cf;
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: #fbfdfc;
+}
+
+.chatbot__sources,
+.followup-sources {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.chatbot__sources a,
+.followup-sources a {
+  color: var(--brand-700);
+  overflow-wrap: anywhere;
+}
+
+.chatbot__sources a:hover,
+.followup-sources a:hover {
+  color: var(--brand-600);
 }
 
 .chatbot__no-answer {

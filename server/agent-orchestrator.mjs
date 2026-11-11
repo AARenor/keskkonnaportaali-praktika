@@ -21,6 +21,37 @@ import { requestApprovedPublicHttpsJsonPost } from "./public-https.mjs";
 const MAX_AGENT_REQUEST_BYTES = 256_000;
 const MAX_AGENT_RESPONSE_BYTES = 1_000_000;
 const AGENT_PROTOCOL_TOKEN_MARGIN = 512;
+
+// One bounded clock for a grounded provider answer. The value lives here
+// because llm.mjs imports this module, and llm.mjs re-exports it so the answer
+// clock is still read from one place. A smaller ceiling anywhere below this
+// value (this module used to clamp every provider request to 15 s) is what cut
+// a finished answer down to the shorter deterministic draft.
+export const PROVIDER_ANSWER_TIMEOUT_DEFAULT_MS = 180_000;
+export const PROVIDER_ANSWER_TIMEOUT_CEILING_MS = 180_000;
+// The orchestrator's own net fires after the caller's deadline, never before
+// it, so an abort is still classified as a timeout and not a provider error.
+export const AGENT_RUN_SAFETY_MARGIN_MS = 1_000;
+
+export function resolveAgentTimeoutMs(value = process.env.LLM_TIMEOUT_MS) {
+  return Math.max(500, Math.min(Number(value) || PROVIDER_ANSWER_TIMEOUT_DEFAULT_MS, PROVIDER_ANSWER_TIMEOUT_CEILING_MS));
+}
+
+function abortOutcome(signal) {
+  return new Promise((_resolve, reject) => {
+    const fail = () => {
+      const error = new Error("The grounded answer run was aborted");
+      error.name = "AbortError";
+      reject(error);
+    };
+    if (signal.aborted) {
+      fail();
+      return;
+    }
+    signal.addEventListener("abort", fail, { once: true });
+  });
+}
+
 const requiredReviewByManager = new WeakMap();
 
 const citationList = z.array(z.number().int().min(1).max(10)).max(10);
@@ -300,7 +331,7 @@ export function createGroundedOpenAiClient({
   return new OpenAI({
     apiKey,
     baseURL: approvedBaseUrl,
-    timeout: Math.max(500, Math.min(Number(timeoutMs) || 10_000, 15_000)),
+    timeout: resolveAgentTimeoutMs(timeoutMs),
     maxRetries: 0,
     fetch: createBoundedOpenAiFetch({
       baseUrl: approvedBaseUrl,
@@ -467,21 +498,26 @@ export async function runGroundedSearchOrchestration({
     reviewInput: userInput,
   });
   const controller = new AbortController();
-  const timer = setTimeout(
-    () => controller.abort(),
-    Math.max(500, Math.min(Number(timeoutMs) || 10_000, 15_000)),
-  );
+  const runTimeoutMs = resolveAgentTimeoutMs(timeoutMs);
+  const timer = setTimeout(() => controller.abort(), runTimeoutMs + AGENT_RUN_SAFETY_MARGIN_MS);
   const runSignal = signal && typeof AbortSignal.any === "function"
     ? AbortSignal.any([signal, controller.signal])
     : controller.signal;
+  // The Agents SDK keeps its provider work alive when a transport ignores the
+  // abort, so a disconnected reader used to wait forever: measured, the run was
+  // still pending 15 s after its own abort timer fired. Race the run against the
+  // abort itself and always handle the run promise, so the caller gets a
+  // settled, classifiable failure and no unhandled rejection.
+  const running = runAgentWithUsage({
+    runner,
+    manager,
+    userInput,
+    signal: runSignal,
+    onUsage,
+  });
+  running.catch(() => undefined);
   try {
-    return await runAgentWithUsage({
-      runner,
-      manager,
-      userInput,
-      signal: runSignal,
-      onUsage,
-    });
+    return await Promise.race([running, abortOutcome(runSignal)]);
   } finally {
     clearTimeout(timer);
     await provider.close().catch(() => undefined);

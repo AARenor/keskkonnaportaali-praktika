@@ -74,22 +74,72 @@ test("the SMI 2025 balance extract carries the workbook values and rejects tampe
   assert.equal(validatedSmiHarvestBalanceProjection({ ...document, id: "other" }), null);
 });
 
-test("harvest versus increment answers from the SMI 2025 edition, not from Eurostat removals", () => {
+test("harvest versus increment answers from the SMI 2025 edition without a gross subtraction or a year verdict", () => {
   const documents = synthesisDocuments();
-  const direct = composeForestHarvestBalanceAnswer("kas Eestis raiutakse rohkem kui juurde kasvab", documents, "kas Eestis raiutakse rohkem kui juurde kasvab");
+  const query = "kas Eestis raiutakse rohkem kui juurde kasvab";
+  const direct = composeForestHarvestBalanceAnswer(query, documents, query);
   assert.equal(direct.answer.eyebrow, "Keskkonnaagentuur, SMI 2025");
-  assert.match(direct.answer.title, /kasvab mets juurde rohkem kui raiutakse/u);
-  assert.match(direct.answer.intro, /^Ei\. SMI 2025 andmetel/u);
+  assert.match(direct.answer.title, /sõltub mõõdikust ja perioodist/u);
+  assert.doesNotMatch(direct.answer.intro, /^(?:Jah|Ei)\./u, "no single verdict is given");
   assert.match(direct.answer.intro, /15 458 tuhat m³/u);
-  assert.match(direct.answer.intro, /12 500 tuhat m³/u);
-  assert.match(direct.answer.intro, /2 958 tuhat m³/u);
+  assert.match(direct.answer.intro, /11 897 tuhat m³/u);
+  assert.doesNotMatch(
+    direct.answer.intro,
+    /2 958|12 500/u,
+    "gross annual increment minus total felling is not a comparison and is not printed",
+  );
+  assert.match(
+    direct.answer.intro,
+    /kogujuurdekasvust arvatakse netojuurdekasvu saamiseks maha looduslik suremus/u,
+    "gross growth is the base from which mortality is subtracted",
+  );
   assert.deepEqual(direct.answer.introCitations, [1]);
   assert.equal(direct.answer.parts.length, 2);
   assert.deepEqual(direct.answer.parts.map((part) => part.citations), [[2], [3, 1]]);
+  assert.match(direct.answer.parts[0].text, /kümnendi keskmisena[\s\S]*20 aasta/u);
   assert.doesNotMatch(direct.answer.intro, /Eurostat/u);
 
   const reverse = composeForestHarvestBalanceAnswer("kas juurde kasvab rohkem kui raiutakse", documents, "kas juurde kasvab rohkem kui raiutakse");
-  assert.match(reverse.answer.intro, /^Jah\./u);
+  assert.equal(reverse.answer.title, direct.answer.title, "the wording of the question does not flip a verdict");
+  assert.doesNotMatch(reverse.answer.intro, /^(?:Jah|Ei)\./u);
+});
+
+test("the 2025 expert estimate is stated only when its own source is visible", () => {
+  const workbook = smiHarvestBalanceDocument();
+  const methodology = synthesisDocuments()[1];
+  const withNews = [
+    workbook,
+    methodology,
+    {
+      id: "forest-stock-stable",
+      title: "SMI: Metsatagavara on stabiilne",
+      organization: "Keskkonnaagentuur",
+      url: "https://keskkonnaagentuur.ee/uudised/smi-metsatagavara-stabiilne",
+      summary: "",
+      content: "2025. aastal oli majandatava metsa netojuurdekasvuks 4,9 m³/ha aastas. Raiemahu eksperthinnangu alusel oli 2025. aasta raiemaht 11 miljonit m³.",
+      topics: ["mets"],
+      tags: ["mets"],
+      sourceTier: "official",
+      retrieval: "official-structured-forestry-source",
+      evidencePolicy: "claim-specific",
+      _publishedAt: "2026-08-18",
+      _answerEvidenceEligible: true,
+    },
+  ];
+  const query = "kas 2025. aastal raiuti rohkem kui mets kasvas";
+  const visible = composeForestHarvestBalanceAnswer(query, withNews, query);
+  assert.match(visible.answer.intro, /eksperthinnang/u);
+  assert.match(visible.answer.intro, /11,0 miljonit m³/u);
+  const newsCitation = withNews.findIndex((source) => source.id === "forest-stock-stable") + 1;
+  assert.ok(
+    visible.answer.introCitations.includes(newsCitation),
+    "the estimate is cited to the review that published it",
+  );
+
+  const withoutNews = composeForestHarvestBalanceAnswer(query, [workbook, methodology], query);
+  assert.doesNotMatch(withoutNews.answer.intro, /eksperthinnang|11,0 miljonit/u, "the workbook publishes no 2025 estimate");
+  assert.match(withoutNews.answer.intro, /2025\. aasta mõõdetud raiemahtu ei ole avaldatud/u);
+  assert.deepEqual(withoutNews.answer.introCitations, [1]);
 });
 
 test("without the SMI workbook extract the same question keeps its Eurostat fallback", () => {

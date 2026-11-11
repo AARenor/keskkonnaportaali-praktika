@@ -29,14 +29,16 @@ import {
 import { safeExternalHref } from "./url-safety.js";
 import { citationColor, latestSourceUpdates, sourceDateMeta, sourceOrganizationLabel } from "./source-label.js";
 import {
-  REVIEWED_FORESTRY_SEARCH_SUGGESTIONS,
+  REVIEWED_SEARCH_SUGGESTIONS,
   shouldFetchRemoteSuggestions,
   suggestionsForValue,
 } from "./search-suggestions.js";
-import { fetchSearchStream, readSearchStream } from "./search-stream.js";
+import { contextualSuggestions } from "./suggestion_context.js";
+import { searchWaitingMessage } from "./search-stream.js";
 import AnswerChart, { chartSourceDiffers } from "./AnswerChart.jsx";
 import { APP_BUILD_MISMATCH_EVENT, noteServerBuild } from "./app-build.js";
-import { DEFAULT_SEARCH_FILTERS, clientSearchFilters, readFollowUpResponse, searchRequestPayload } from "./search_request.js";
+import { DEFAULT_SEARCH_FILTERS, clientSearchFilters, followUpAnswerPayload, followUpRequestPayload, searchRequestPayload } from "./search_request.js";
+import { readSearchJob } from "./search_jobs.js";
 import Chatbot from "./Chatbot.jsx";
 
 const SOURCE = "https://keskkonnaportaal.ee";
@@ -308,7 +310,20 @@ function ExternalAnchor({ children, className, href, ...props }) {
   );
 }
 
-function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoFocus = false, inputRef: providedInputRef }) {
+// Two spellings of the same question compare equal, so the results page still
+// recognises its own question after the reader retypes it with another case or
+// a missing diacritic.
+function comparableQuestion(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLocaleLowerCase("et")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoFocus = false, inputRef: providedInputRef, contextQuery = "" }) {
   const listboxId = useId();
   const internalInputRef = useRef(null);
   const inputRef = providedInputRef || internalInputRef;
@@ -360,9 +375,25 @@ function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoF
     };
   }, [value]);
 
+  // On a results page the field carries the question the reader is looking at,
+  // so an idle or cleared field offers the reviewed questions that relate to
+  // that question instead of the same top-of-list on every page. Typing
+  // something else keeps the reviewed filter this field has always used.
+  const trimmedValue = value.trim();
+  const contextualField = Boolean(contextQuery)
+    && (!trimmedValue || comparableQuestion(trimmedValue) === comparableQuestion(contextQuery));
   const suggestions = useMemo(() => {
-    return suggestionsForValue(value, remoteSuggestions, REVIEWED_FORESTRY_SEARCH_SUGGESTIONS, 12);
-  }, [remoteSuggestions, value]);
+    if (contextualField) {
+      return contextualSuggestions({
+        candidates: REVIEWED_SEARCH_SUGGESTIONS,
+        query: trimmedValue,
+        rootQuery: contextQuery,
+        limit: 12,
+        allowDefault: false,
+      }).map((suggestion) => ({ value: suggestion, count: null }));
+    }
+    return suggestionsForValue(value, remoteSuggestions, REVIEWED_SEARCH_SUGGESTIONS, 12);
+  }, [contextQuery, contextualField, remoteSuggestions, trimmedValue, value]);
 
   useEffect(() => setActiveIndex(-1), [value, suggestions.length]);
 
@@ -521,7 +552,7 @@ function Header({ compact = false, onRevealSearch }) {
           <div className="quick-tools">
             <span><CalendarDays size={15} /> {formatDate()}</span>
             <span><CloudSun size={17} /> Ilm täna</span>
-            <a href={`${SOURCE}/et/ligip%C3%A4%C3%A4setavus`}><CircleHelp size={15} /> Ligipääsetavus</a>
+            <a href={`${SOURCE}/et/ligip%C3%A4%C3%A4setavus`}><CircleHelp size={15} /> Algse portaali ligipääsetavus</a>
             <button type="button"><Link2 size={15} /> Lingid <ChevronDown size={13} /></button>
             <button type="button">ET <ChevronDown size={13} /></button>
           </div>
@@ -608,10 +639,10 @@ function Header({ compact = false, onRevealSearch }) {
           ))}
         </nav>
         <div className="mobile-drawer__secondary">
-          <a href={`${SOURCE}/et/ligip%C3%A4%C3%A4setavus`}>Ligipääsetavus</a>
-          <a href={`${SOURCE}/et/sitemap`}>Sisukaart</a>
-          <a href={`${SOURCE}/et/portaalist`}>Portaalist</a>
-          <a href={`${SOURCE}/et/abi`}>Abi</a>
+          <a href={`${SOURCE}/et/ligip%C3%A4%C3%A4setavus`}>Algse portaali ligipääsetavus</a>
+          <a href={`${SOURCE}/et/sitemap`}>Algse portaali sisukaart</a>
+          <a href={`${SOURCE}/et/portaalist`}>Algse portaali tutvustus</a>
+          <a href={`${SOURCE}/et/abi`}>Algse portaali abi</a>
         </div>
         <div className="mobile-drawer__footer">
           <span>Keel</span><strong>ET</strong>
@@ -909,7 +940,7 @@ function sourceTierLabel(value) {
   return "Veebiallikas";
 }
 
-function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRef, interactive = true, onSearch = null, aiUnavailable = false, answerCited = false }) {
+function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRef, interactive = true, onSearch = null, aiUnavailable = false, answerCited = false, unavailable = false, query = "" }) {
   if (!listing && !busy) return null;
   const total = Number(listing?.total || 0);
   const distinctTotal = Number(listing?.distinctTotal || total);
@@ -922,6 +953,19 @@ function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRe
   const categories = Array.isArray(listing?.facets?.categories) ? listing.facets.categories : [];
   const years = Array.isArray(listing?.facets?.years) ? listing.facets.years : [];
   const hasActiveFilters = filters.source !== "all" || filters.category || filters.year || filters.sort !== "relevance";
+  // A dead end still has somewhere to go, but only where the reader's own
+  // question leads: the reviewed questions that relate to it, and nothing at all
+  // when none of them does.
+  const emptyStateSuggestions = typeof onSearch === "function" && !busy && !error && !unavailable
+    && total === 0 && !hasActiveFilters
+    ? contextualSuggestions({
+      candidates: REVIEWED_SEARCH_SUGGESTIONS,
+      query,
+      rootQuery: query,
+      limit: 3,
+      allowDefault: false,
+    })
+    : [];
   const changeFilter = (key, value) => onFilters({
     ...filters,
     [key]: key === "year" ? (value ? Number(value) : null) : value,
@@ -932,17 +976,19 @@ function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRe
         <div>
           <span className="broad-results__eyebrow">Lai portaaliotsing</span>
           <h2 id="broad-results-title" ref={headingRef} tabIndex={-1}>Otsingutulemused</h2>
-          <p>{aiUnavailable
+          <p>{unavailable
+            ? "Tulemuste loendit ei saanud laadida. Vastusekaart jääb alles, kuid allikate loend vajab uut päringut."
+            : aiUnavailable
             ? total
               ? answerCited
-                ? "AI-sõnastust ei saanud koostada. Ülal olev vastusekaart esitab allika enda viidatud väljavõtte."
-                : "AI-sõnastust ei saanud koostada. Leitud tulemused on esitatud allpool."
+                ? "AI-sõnastust ei saanud koostada. Vastusekaart esitab allika enda viidatud väljavõtte."
+                : "AI-sõnastust ei saanud koostada. Leitud tulemused on loetletud siin."
               : "AI-vastust ei saanud koostada. Laiast indeksist tulemusi ei leitud."
             : distinctTotal < total
               ? `Leidsin ${total.toLocaleString("et-EE")} vastet ja ühendasin need ${distinctTotal.toLocaleString("et-EE")} eri leheks. Ülal olev koondvastus kasutab sama filtreeritud tulemuste hulka.`
               : "Ülal olev koondvastus põhineb sama päringu filtreeritud ja järjestatud tulemustel."}</p>
         </div>
-        <strong>{total.toLocaleString("et-EE")}</strong>
+        {unavailable ? null : <strong>{total.toLocaleString("et-EE")}</strong>}
       </div>
       <div className="search-filters" aria-label="Otsingutulemuste filtrid" role="group">
         <label>
@@ -996,13 +1042,16 @@ function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRe
           ))}
         </div>
       ) : null}
-      {!busy && !error && total === 0 ? <><p className="broad-results__empty">{hasActiveFilters
+      {!busy && !error && unavailable ? (
+        <p className="broad-results__empty">Tulemuste loend jäi laadimata. Proovi otsingut uuesti, et allikad uuesti järjestada.</p>
+      ) : null}
+      {!busy && !error && !unavailable && total === 0 ? <><p className="broad-results__empty">{hasActiveFilters
         ? `Laiast indeksist nende filtritega vasteid ei leitud (${[
           filters.source !== "all" ? `allikas: ${filters.source}` : null,
           filters.category ? `tüüp: ${filters.category}` : null,
           filters.year ? `aasta: ${filters.year}` : null,
         ].filter(Boolean).join(", ") || "filtrid"}). Proovi filtreid muuta või lähtestada.`
-        : "Laiast indeksist vasteid ei leitud."}</p>{!hasActiveFilters && typeof onSearch === "function" ? <p className="broad-results__suggest">Proovi näiteks: {["Kuhu viia vanad patareid?", "Mis on roheline energia?", "Kas tohib looduses telkida?"].map((example) => <button disabled={!interactive || busy} key={example} onClick={() => onSearch(example)} type="button">{example}</button>)}</p> : null}</> : null}
+        : "Laiast indeksist vasteid ei leitud."}</p>{emptyStateSuggestions.length ? <p className="broad-results__suggest">Proovi näiteks: {emptyStateSuggestions.map((example) => <button disabled={!interactive || busy} key={example} onClick={() => onSearch(example)} type="button">{example}</button>)}</p> : null}</> : null}
       {pageCount > 1 ? (
         <nav className="results-pagination" aria-label="Otsingutulemuste lehed">
           <button disabled={!interactive || busy || current <= 1} onClick={() => onPage(current - 1)} type="button"><ArrowLeft size={15} /> Eelmine</button>
@@ -1021,10 +1070,10 @@ function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRe
   );
 }
 
-function SearchLoadingSkeleton({ resultsReady = false }) {
+function SearchLoadingSkeleton({ resultsReady = false, elapsedMs = 0 }) {
   return (
     <section aria-hidden="true" className="search-skeleton">
-      <div className="search-skeleton__status"><LoaderCircle className="spin" size={18} /><span>{resultsReady ? "Tulemused on valmis, koostan koondvastust …" : "Otsin asjakohaseid ametlikke allikaid …"}</span></div>
+      <div className="search-skeleton__status"><LoaderCircle className="spin" size={18} /><span>{searchWaitingMessage({ elapsedMs, listingReady: resultsReady })}</span></div>
       <div aria-hidden="true" className="search-skeleton__answer">
         <span className="skeleton-line skeleton-line--label" />
         <span className="skeleton-line skeleton-line--title" />
@@ -1036,7 +1085,7 @@ function SearchLoadingSkeleton({ resultsReady = false }) {
   );
 }
 
-function SearchResults({ result, query, busy, error, onSearch, onHome, previewListing }) {
+function SearchResults({ result, query, busy, error, onSearch, onHome, previewListing, listingUnavailable = false }) {
   const hasResult = Boolean(result?.answer);
   const [listing, setListing] = useState(result?.searchResults || previewListing || null);
   const [listingBusy, setListingBusy] = useState(false);
@@ -1046,6 +1095,9 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
   const [followUpBusy, setFollowUpBusy] = useState(false);
   const [pendingFollowUpQuestion, setPendingFollowUpQuestion] = useState("");
   const [followUpError, setFollowUpError] = useState("");
+  const [pendingFollowUpListing, setPendingFollowUpListing] = useState(null);
+  const [waitingMs, setWaitingMs] = useState(0);
+  const [followUpWaitingMs, setFollowUpWaitingMs] = useState(0);
   const headingRef = useRef(null);
   const listingHeadingRef = useRef(null);
   const followUpInputRef = useRef(null);
@@ -1070,6 +1122,26 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
     return () => followUpRequestRef.current.controller?.abort();
   }, [result?.generatedAt, result?.query]);
   useEffect(() => {
+    if (!busy) {
+      setWaitingMs(0);
+      return undefined;
+    }
+    const startedAt = Date.now();
+    setWaitingMs(0);
+    const timer = window.setInterval(() => setWaitingMs(Date.now() - startedAt), 5_000);
+    return () => window.clearInterval(timer);
+  }, [busy]);
+  useEffect(() => {
+    if (!followUpBusy) {
+      setFollowUpWaitingMs(0);
+      return undefined;
+    }
+    const startedAt = Date.now();
+    setFollowUpWaitingMs(0);
+    const timer = window.setInterval(() => setFollowUpWaitingMs(Date.now() - startedAt), 5_000);
+    return () => window.clearInterval(timer);
+  }, [followUpBusy]);
+  useEffect(() => {
     if (!busy && hasResult) {
       document.title = "Otsingutulemused | Keskkonnaportaali praktika";
       headingRef.current?.focus({ preventScroll: true });
@@ -1084,12 +1156,25 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
     latestHeading?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   }, [followUpBusy, followUps.length]);
   const appliedFilters = clientSearchFilters(listing?.appliedFilters || result?.searchResults?.appliedFilters);
+  // "Küsi veel" belongs to the question the reader is on: the latest follow-up
+  // decides the ranking, the answer's own question and the follow-ups already
+  // asked are excluded, and a question that fits neither topic is dropped
+  // instead of padding the row.
+  const relatedQuestions = contextualSuggestions({
+    candidates: Array.isArray(result?.related) ? result.related : [],
+    query: followUps.length ? followUps[followUps.length - 1].question : result?.query || query || "",
+    rootQuery: result?.query || query || "",
+    priorQuestions: followUps.map((turn) => turn.question),
+    filters: appliedFilters,
+    limit: 12,
+    allowDefault: false,
+  });
   const aiUnavailable = Boolean(result?.answer?.aiUnavailable);
+  const listingLeads = aiUnavailable && Number((listing || result?.searchResults || previewListing)?.items?.length || 0) > 0;
   const visibleListing = listing || result?.searchResults || previewListing;
-  // The answer card always leads. A missing model answer is a status of that
-  // card, never a reason to push the ranked list above it: the card still
-  // carries either the cited source extract or an explicit statement that no
-  // grounded answer was produced.
+  // A fallback card is a status, not the answer. When the model wording is
+  // missing the ranked list leads, because that list is the product the reader
+  // came for and it already survived the failure.
   const loadListingPage = async (page) => {
     listingRequestRef.current.controller?.abort();
     const id = listingRequestRef.current.id + 1;
@@ -1133,13 +1218,17 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
       busy={listingBusy}
       error={listingError}
       headingRef={listingHeadingRef}
-      interactive={!busy}
+      // Filters and pagination belong to the listing's own request, not to the
+      // model answer: they stay usable while a slow answer is still running.
+      interactive={!listingBusy}
       listing={visibleListing}
       onFilters={applyFilters}
       onPage={loadListingPage}
       onSearch={onSearch}
       aiUnavailable={aiUnavailable}
       answerCited={Boolean(result?.answer?.introCitations?.length)}
+      unavailable={listingUnavailable}
+      query={query}
     />
   );
   const askFollowUp = async (questionValue) => {
@@ -1151,6 +1240,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
     followUpRequestRef.current = { id, controller };
     setFollowUpBusy(true);
     setPendingFollowUpQuestion(cleanQuestion);
+    setPendingFollowUpListing(null);
     setFollowUpError("");
     setFollowUpValue("");
     // Related questions live below the answer: scroll up at once so the
@@ -1158,53 +1248,83 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
     window.requestAnimationFrame(() => {
       headingRef.current?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
     });
+    let latestListing = null;
+    let latestResult = null;
     try {
-      const response = await fetch("/api/search/follow-up", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          root_query: result.query || query,
+      // The follow-up runs as an asynchronous job too: its own listing arrives
+      // before the answer, so a slow model never hides the sources it already
+      // found and a search longer than one connection outlives it. The previous
+      // answers travel as comparison context only.
+      await readSearchJob({
+        kind: "follow-up",
+        payload: followUpRequestPayload({
+          rootQuery: result.query || query,
           question: cleanQuestion,
-          previous_questions: followUps.map((turn) => turn.question),
-          previous_answers: [result, ...followUps.map((turn) => turn.result)].map(answerTextOf).filter(Boolean),
+          previousQuestions: followUps.map((turn) => turn.question),
+          previousAnswers: [result, ...followUps.map((turn) => turn.result)].map(answerTextOf).filter(Boolean),
           filters: appliedFilters,
         }),
         signal: controller.signal,
+        onResponse: (response) => noteServerBuild(response),
+        onEvent: (event) => {
+          if (followUpRequestRef.current.id !== id) return;
+          if (event.type === "results") {
+            latestListing = event.searchResults || null;
+            setPendingFollowUpListing(latestListing);
+            return;
+          }
+          latestResult = event.result;
+        },
       });
-      noteServerBuild(response);
-      const data = await readFollowUpResponse(response);
       if (followUpRequestRef.current.id !== id) return;
-      setFollowUps((current) => [...current, { question: cleanQuestion, result: data }].slice(0, 4));
+      if (!latestResult) throw new Error("Jätkuküsimusele ei saanud vastata.");
+      const answer = followUpAnswerPayload(latestResult);
+      setFollowUps((current) => [...current, {
+        question: cleanQuestion,
+        result: answer,
+        listing: latestListing,
+      }].slice(0, 4));
     } catch (followUpLoadError) {
       if (followUpLoadError.name === "AbortError" || followUpRequestRef.current.id !== id) return;
       setFollowUpValue(cleanQuestion);
-      setFollowUpError(followUpLoadError.message || "Jätkuküsimusele ei saanud vastata.");
+      const found = Number(latestListing?.items?.length || 0);
+      setFollowUpError(followUpLoadError.name === "Error" && latestResult
+        ? followUpLoadError.message
+        : found
+          ? `Koondvastust ei saanud koostada. Jätkuküsimusele leiti ${found} allikat, need on allpool loetletud.`
+          : followUpLoadError.message || "Jätkuküsimusele ei saanud vastata.");
+      if (latestListing?.items?.length) {
+        setFollowUps((current) => [...current, { question: cleanQuestion, result: null, listing: latestListing }].slice(0, 4));
+        setPendingFollowUpQuestion("");
+      }
       window.requestAnimationFrame(() => followUpInputRef.current?.focus());
     } finally {
       if (followUpRequestRef.current.id === id) {
         followUpRequestRef.current = { id, controller: null };
         setFollowUpBusy(false);
         setPendingFollowUpQuestion("");
+        setPendingFollowUpListing(null);
       }
     }
   };
   return (
     <main className="search-page" id="main-content">
       <div aria-atomic="true" aria-live="polite" className="sr-only">
-        {busy ? (previewListing ? "Otsingutulemused on valmis. Koostan koondvastust." : "Otsin asjakohaseid ametlikke allikaid.") : ""}
+        {busy ? searchWaitingMessage({ elapsedMs: waitingMs, listingReady: Boolean(previewListing) }) : ""}
       </div>
       <div className="search-page__header">
         <div className="shell search-results-shell">
           <button className="back-link" onClick={onHome} type="button"><ArrowLeft size={17} /> Avalehele</button>
-          <SearchForm busy={busy} initialValue={query} onSearch={onSearch} variant="results" />
+          <SearchForm busy={busy} contextQuery={query} initialValue={query} onSearch={onSearch} variant="results" />
           <UpdateNotice />
         </div>
       </div>
       <div className="shell search-results-shell search-page__content">
-        {busy && !hasResult ? <SearchLoadingSkeleton resultsReady={Boolean(previewListing)} /> : null}
+        {busy && !hasResult ? <SearchLoadingSkeleton elapsedMs={waitingMs} resultsReady={Boolean(previewListing)} /> : null}
         {error ? <div className="search-error" role="alert"><CircleHelp size={22} /><div><strong>Otsingut ei saanud lõpetada</strong><p>{error}</p><button className="error-retry" disabled={busy} onClick={() => onSearch(query, { filters: appliedFilters })} type="button">Proovi uuesti</button></div></div> : null}
         {hasResult ? (
           <>
+            {listingLeads ? broadResults : null}
             <article className="answer-card">
               {busy ? <div className="answer-progress"><LoaderCircle className="spin" size={16} /> Kontrollin veel AI-sõnastust …</div> : null}
               <div className="answer-label"><Sparkles size={17} /><span>{result.answer.eyebrow || "AI koondvastus"}</span></div>
@@ -1234,6 +1354,24 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
               <div className="answer-followup">
                 {followUps.length || pendingFollowUpQuestion ? <div className="followup-thread">
                   {followUps.map((turn, turnIndex) => {
+                    if (!turn.result) {
+                      // The answer failed, but the follow-up's own listing did
+                      // not: keep the readable links and say what is missing.
+                      return (
+                        <section className="followup-turn" key={`${turn.question}-${turnIndex}`}>
+                          <div className="followup-question"><span>Teie</span><p>{turn.question}</p></div>
+                          <div className="followup-answer">
+                            <span>Leitud allikad</span>
+                            <ul className="followup-sources">
+                              {(turn.listing?.items || []).slice(0, 5).map((item) => (
+                                <li key={item.id || item.url}><ExternalAnchor href={item.url}>{item.title || item.url}</ExternalAnchor></li>
+                              ))}
+                            </ul>
+                            <p className="followup-status" role="status">Koondvastust ei saanud koostada. Proovi sama küsimust uuesti.</p>
+                          </div>
+                        </section>
+                      );
+                    }
                     return (
                       <section className="followup-turn" key={`${turn.question}-${turnIndex}`}>
                         <div className="followup-question"><span>Teie</span><p>{turn.question}</p></div>
@@ -1254,12 +1392,23 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
                   {pendingFollowUpQuestion ? (
                     <section aria-busy="true" className="followup-turn followup-turn--pending">
                       <div className="followup-question"><span>Teie</span><p>{pendingFollowUpQuestion}</p></div>
-                      <div aria-hidden="true" className="followup-answer followup-answer--skeleton">
-                        <span>Koondvastus</span>
-                        <i className="skeleton-line skeleton-line--medium" />
-                        <i className="skeleton-line skeleton-line--wide" />
-                        <i className="skeleton-line skeleton-line--short" />
-                      </div>
+                      {pendingFollowUpListing?.items?.length ? (
+                        <div className="followup-answer">
+                          <span>Leitud allikad</span>
+                          <ul className="followup-sources">
+                            {pendingFollowUpListing.items.slice(0, 5).map((item) => (
+                              <li key={item.id || item.url}><ExternalAnchor href={item.url}>{item.title || item.url}</ExternalAnchor></li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : (
+                        <div aria-hidden="true" className="followup-answer followup-answer--skeleton">
+                          <span>Koondvastus</span>
+                          <i className="skeleton-line skeleton-line--medium" />
+                          <i className="skeleton-line skeleton-line--wide" />
+                          <i className="skeleton-line skeleton-line--short" />
+                        </div>
+                      )}
                     </section>
                   ) : null}
                 </div> : null}
@@ -1282,18 +1431,26 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
                     </button>
                   </div>
                   {followUpError ? <p className="followup-error" role="alert">{followUpError}</p> : null}
-                  {followUpBusy ? <p className="followup-status" role="status">Otsin jätkuküsimusele uued allikad …</p> : null}
+                  {followUpBusy ? (
+                    <p className="followup-status" role="status">
+                      {searchWaitingMessage({
+                        elapsedMs: followUpWaitingMs,
+                        listingReady: Boolean(pendingFollowUpListing?.items?.length),
+                        followUp: true,
+                      })}
+                    </p>
+                  ) : null}
                 </form>
               </div>
             </article>
 
-            {broadResults}
+            {listingLeads ? null : broadResults}
 
-            {result.related?.length ? (
+            {relatedQuestions.length ? (
               <section className="related-section">
                 <h2>Küsi veel</h2>
                 <p>Vali küsimus—otsin sellele uued allikad ja seon vastuse praeguse teemaga.</p>
-                <div>{result.related.map((item) => <button disabled={busy || followUpBusy || followUps.length >= 4} key={item} onClick={() => askFollowUp(item)} type="button">{item}<ArrowRight size={16} /></button>)}</div>
+                <div>{relatedQuestions.map((item) => <button disabled={busy || followUpBusy || followUps.length >= 4} key={item} onClick={() => askFollowUp(item)} type="button">{item}<ArrowRight size={16} /></button>)}</div>
               </section>
             ) : null}
           </>
@@ -1303,15 +1460,44 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
             busy={false}
             error=""
             headingRef={listingHeadingRef}
-            interactive={!busy}
+            interactive={!listingBusy}
             listing={listing || previewListing}
             onFilters={applyFilters}
             onPage={loadListingPage}
             onSearch={onSearch}
+            unavailable={listingUnavailable}
+            query={query}
           />
         ) : null}
       </div>
     </main>
+  );
+}
+
+// This site is a practice project. It may not present another organisation's
+// accessibility statement or contact channel as its own, and it must not claim
+// an official conformance assessment that nobody performed.
+function AccessibilityDisclosure() {
+  return (
+    <details className="footer-privacy" id="ligipaasetavus">
+      <summary>Ligipääsetavus ja tagasiside</summary>
+      <p>
+        See leht on praktikaprojekt, mitte Keskkonnaportaal ega mõne riigiasutuse ametlik teenus.
+        Leht on ehitatud ligipääsetavuse põhimõtteid järgides: klaviatuuriga navigeerimine, nähtav
+        fookus, sisu loogiline järjekord, ekraanilugeja teated otsingu olekust ja liikumise
+        vähendamise eelistus. Lehte ei ole ametlikult auditeeritud ega vastavushinnatud, seega ei
+        väida see leht vastavust ühelegi ligipääsetavuse standardile.
+      </p>
+      <p>
+        Puudusest või takistusest teata praktikaprojekti avalikus
+        {" "}<ExternalAnchor href="https://github.com/AARenor/keskkonnaportaali-praktika/issues">GitHubi vearaportis</ExternalAnchor>.
+        Sinna kirjutamiseks on vaja GitHubi sisselogimist ja kõik raportid on avalikud, seega ära
+        lisa isikuandmeid ega konfidentsiaalset teavet. See kanal ei ole riigiasutuse ametlik
+        ligipääsetavuse teade ega ametlik kontakt algse portaali haldajaga. Algse keskkonnaportaali
+        enda ligipääsetavusinfo asub
+        {" "}<ExternalAnchor href={`${SOURCE}/et/ligip%C3%A4%C3%A4setavus`}>algse portaali lehel</ExternalAnchor>.
+      </p>
+    </details>
   );
 }
 
@@ -1337,7 +1523,7 @@ function Footer({ compact = false }) {
     return (
       <footer className="site-footer site-footer--compact">
         <div className="shell"><span>Keskkonnaportaali praktikaprojekt</span><a href="/docs">Juhendid</a><span>Kontrolli olulist infot algallikast</span></div>
-        <div className="shell"><PrivacyDisclosure /></div>
+        <div className="shell"><PrivacyDisclosure /><AccessibilityDisclosure /></div>
       </footer>
     );
   }
@@ -1345,11 +1531,11 @@ function Footer({ compact = false }) {
     <footer className="site-footer">
       <div className="shell footer-main">
         <div><img src="/assets/logo-desktop.svg" alt="Keskkonnaportaal" /><p>Praktikaprojekt, mis demonstreerib täiustatud allikapõhist otsingut ja Terrapointi integratsiooni.</p></div>
-        <div><h2>Portaal</h2><a href={`${SOURCE}/et/portaalist`}>Portaalist</a><a href={`${SOURCE}/et/kontakt`}>Kontakt</a><a href={`${SOURCE}/et/abi`}>Abi</a><a href="/docs">Juhendid</a></div>
+        <div><h2>Algne keskkonnaportaal</h2><a href={`${SOURCE}/et/portaalist`}>Portaalist</a><a href={`${SOURCE}/et/kontakt`}>Kontakt (algne portaal)</a><a href={`${SOURCE}/et/abi`}>Abi</a><a href="/docs">Juhendid</a></div>
         <div><h2>Andmed</h2><a href="https://register.keskkonnaportaal.ee/register">Andmed ja kaart</a><a href={`${SOURCE}/et/avaandmed`}>Avaandmed</a><a href="https://terrapoint.ee/">Terrapoint</a></div>
         <div><h2>Jälgi</h2><div className="socials"><a aria-label="Facebook" href="https://www.facebook.com/Keskkonnaagentuur"><Facebook /></a><a aria-label="Instagram" href="https://www.instagram.com/keskkonnaagentuur/"><Instagram /></a><a aria-label="YouTube" href="https://www.youtube.com/channel/UCyAMWZVg2a7GNIX2m__pvhA"><Youtube /></a></div></div>
       </div>
-      <div className="shell"><PrivacyDisclosure /></div>
+      <div className="shell"><PrivacyDisclosure /><AccessibilityDisclosure /></div>
       <div className="footer-bottom"><div className="shell"><span>© 2026 Keskkonnaportaali praktikaprojekt</span><span>Ei ole Keskkonnaportaali ametlik tootmiskeskkond</span></div></div>
     </footer>
   );
@@ -1457,7 +1643,7 @@ function answerTextOf(item) {
 
 // The chat panel renders its answers with the search page's own parts, passed
 // in so the two renderings cannot drift apart and App stays their single owner.
-const CHAT_ANSWER_PARTS = Object.freeze({ AnswerNote, Citation, SourceActions, SourceLegend });
+const CHAT_ANSWER_PARTS = Object.freeze({ AnswerNote, Citation, SourceActions, SourceLegend, ExternalAnchor });
 
 export function App() {
   const isEmbed = window.location.pathname.startsWith("/embed/terrapoint");
@@ -1466,6 +1652,7 @@ export function App() {
   const [query, setQuery] = useState(initialNavigation.query);
   const [result, setResult] = useState(null);
   const [previewListing, setPreviewListing] = useState(null);
+  const [listingUnavailable, setListingUnavailable] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const searchRequestRef = useRef({ id: 0, controller: null });
@@ -1486,6 +1673,7 @@ export function App() {
     setView("search");
     setResult(null);
     setPreviewListing(null);
+    setListingUnavailable(false);
     setBusy(true);
     setError("");
     if (pushState) {
@@ -1495,25 +1683,29 @@ export function App() {
     let latestListing = null;
     let latestSafeResult = null;
     try {
-      const response = await fetchSearchStream("/api/search/stream", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestPayload),
+      // The search runs as an asynchronous job: the listing, then the answer,
+      // arrive through short polls, so one slow model call no longer ends the
+      // search and a retried page rejoins the job instead of starting another.
+      await readSearchJob({
+        kind: "search",
+        payload: requestPayload,
         signal: controller.signal,
-      });
-      noteServerBuild(response);
-      await readSearchStream(response, (event) => {
-        if (searchRequestRef.current.id !== requestId) return;
-        if (event.type === "results") {
-          latestListing = event.searchResults;
-          setPreviewListing(event.searchResults);
-          return;
-        }
-        const nextResult = event.result;
-        latestSafeResult = nextResult;
-        latestListing = nextResult.searchResults || latestListing;
-        setPreviewListing(latestListing || null);
-        setResult(nextResult);
+        onResponse: (response) => noteServerBuild(response),
+        onEvent: (event) => {
+          if (searchRequestRef.current.id !== requestId) return;
+          if (event.type === "results") {
+            latestListing = event.searchResults;
+            setPreviewListing(event.searchResults);
+            // A failed listing is reported as such, never as "no results".
+            setListingUnavailable(event.listingUnavailable === true);
+            return;
+          }
+          const nextResult = event.result;
+          latestSafeResult = nextResult;
+          latestListing = nextResult.searchResults || latestListing;
+          setPreviewListing(latestListing || null);
+          setResult(nextResult);
+        },
       });
     } catch (searchError) {
       if (searchError.name === "AbortError" || searchRequestRef.current.id !== requestId) return;
@@ -1575,6 +1767,7 @@ export function App() {
     setQuery("");
     setResult(null);
     setPreviewListing(null);
+    setListingUnavailable(false);
     setError("");
     setBusy(false);
     document.title = "Keskkonnaportaali praktika";
@@ -1595,12 +1788,23 @@ export function App() {
     <>
       <Header compact={view === "search"} onRevealSearch={revealHomeSearch} />
       {view === "search" ? (
-        <SearchResults busy={busy} error={error} onHome={goHome} onSearch={performSearch} previewListing={previewListing} query={query} result={result} />
+        <SearchResults busy={busy} error={error} listingUnavailable={listingUnavailable} onHome={goHome} onSearch={performSearch} previewListing={previewListing} query={query} result={result} />
       ) : (
         <Home busy={busy} onSearch={performSearch} searchInputRef={homeSearchInputRef} />
       )}
       <Footer compact={view === "search"} />
-      <Chatbot answerParts={CHAT_ANSWER_PARTS} answerTextOf={answerTextOf} />
+      <Chatbot
+        answerParts={CHAT_ANSWER_PARTS}
+        answerTextOf={answerTextOf}
+        pageContext={view === "search"
+          ? {
+            query,
+            // The year filter means something to a suggestion only when it is
+            // one the reader is actually looking at.
+            filters: clientSearchFilters(result?.searchResults?.appliedFilters || previewListing?.appliedFilters),
+          }
+          : null}
+      />
     </>
   );
 }

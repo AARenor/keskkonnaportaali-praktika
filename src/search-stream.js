@@ -1,6 +1,31 @@
 const MAX_STREAM_BUFFER = 2_000_000;
 const EVENT_TYPES = new Set(["results", "draft", "answer"]);
 const RETRYABLE_STATUSES = new Set([502, 503, 504]);
+// After this long a wait stops looking like an ordinary search and the panel
+// says so, so nobody restarts a search that is still working. The server keeps
+// the connection alive with blank NDJSON lines that this parser ignores.
+export const SEARCH_SLOW_HINT_MS = 20_000;
+
+export function searchWaitingMessage({ elapsedMs = 0, listingReady = false, followUp = false } = {}) {
+  const slow = Number(elapsedMs) >= SEARCH_SLOW_HINT_MS;
+  if (followUp) {
+    return listingReady
+      ? slow
+        ? "Jätkuküsimuse allikad on leitud. Koondvastus võtab tavalisest kauem aega, ootan endiselt …"
+        : "Jätkuküsimuse allikad on leitud, koostan vastust …"
+      : slow
+        ? "Jätkuküsimus võtab tavalisest kauem aega, ootan endiselt allikaid …"
+        : "Otsin jätkuküsimusele uusi allikaid …";
+  }
+  if (listingReady) {
+    return slow
+      ? "Tulemused on valmis. Koondvastus võtab tavalisest kauem aega, ootan endiselt …"
+      : "Tulemused on valmis, koostan koondvastust …";
+  }
+  return slow
+    ? "Otsing võtab tavalisest kauem aega, ootan endiselt ametlikke allikaid …"
+    : "Otsin asjakohaseid ametlikke allikaid …";
+}
 
 export async function fetchSearchStream(input, init = {}, {
   retries = 1,

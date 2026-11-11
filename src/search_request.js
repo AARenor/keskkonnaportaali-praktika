@@ -17,6 +17,42 @@ export function searchRequestPayload(query, filters = DEFAULT_SEARCH_FILTERS, pa
   return { q: query, filters: applied, page, page_size: pageSize };
 }
 
+// The browser reads follow-ups from the streamed route, so the ordinary
+// listing for the new question arrives before the answer. The one-shot JSON
+// route stays for other consumers and keeps the same body contract.
+export const FOLLOW_UP_STREAM_PATH = "/api/search/follow-up/stream";
+
+export function followUpRequestPayload({
+  rootQuery,
+  question,
+  previousQuestions = [],
+  previousAnswers = [],
+  filters = DEFAULT_SEARCH_FILTERS,
+} = {}) {
+  return {
+    root_query: String(rootQuery || ""),
+    question: String(question || ""),
+    previous_questions: (Array.isArray(previousQuestions) ? previousQuestions : []).slice(0, 4),
+    // Comparison context for the repeated-answer check, never evidence.
+    previous_answers: (Array.isArray(previousAnswers) ? previousAnswers : [])
+      .filter((value) => typeof value === "string" && value.trim())
+      .slice(0, 5),
+    filters: clientSearchFilters(filters),
+  };
+}
+
+// One validator for both transports: an answer event and a JSON body must
+// carry the same answer card, so a broken follow-up is reported the same way.
+export function followUpAnswerPayload(data) {
+  const answer = data?.answer;
+  const hasIntro = typeof answer?.intro === "string" && answer.intro.trim();
+  const hasPart = Array.isArray(answer?.parts) && answer.parts.some((part) => typeof part?.text === "string" && part.text.trim());
+  if (!answer || typeof answer !== "object" || Array.isArray(answer) || (!hasIntro && !hasPart)) {
+    throw new Error("Jätkuküsimuse vastus oli vigane. Proovi uuesti.");
+  }
+  return data;
+}
+
 export async function readFollowUpResponse(response) {
   let data;
   try {
@@ -28,11 +64,5 @@ export async function readFollowUpResponse(response) {
       : "Jätkuküsimusele ei saanud vastata.");
   }
   if (!response.ok) throw new Error(data?.error || "Jätkuküsimusele ei saanud vastata.");
-  const answer = data?.answer;
-  const hasIntro = typeof answer?.intro === "string" && answer.intro.trim();
-  const hasPart = Array.isArray(answer?.parts) && answer.parts.some((part) => typeof part?.text === "string" && part.text.trim());
-  if (!answer || typeof answer !== "object" || Array.isArray(answer) || (!hasIntro && !hasPart)) {
-    throw new Error("Jätkuküsimuse vastus oli vigane. Proovi uuesti.");
-  }
-  return data;
+  return followUpAnswerPayload(data);
 }

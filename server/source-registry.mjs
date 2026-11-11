@@ -1,5 +1,11 @@
 import { officialCitationUrlEligibility } from "./citation-policy.mjs";
 import { sourceResourceKey } from "./source-identity.mjs";
+import {
+  extractSourceText,
+  projectSourceText,
+  sourcePolicyBinding,
+  sourcePolicyWitness,
+} from "./source_policy.mjs";
 
 export const OFFICIAL_ROUTE_CLASSES = Object.freeze([
   "official_data_or_api",
@@ -386,4 +392,236 @@ export function sourceSupportsRouteClass(document, routeClass) {
   return Array.isArray(document?.routeClasses)
     ? document.routeClasses.includes(routeClass)
     : officialSourceProfile(document).routeClasses.includes(routeClass);
+}
+
+// Copied text that this application may hand to a model for one source. The
+// public listing, the model evidence pack and the retained answer cache share
+// this bound so one publisher result cannot spend it three times.
+export const SOURCE_EVIDENCE_COPY_CHARS = 4_000;
+// The largest body this layer keeps while it selects relevant passages. Corpus
+// stores at most this much per page, so selection can reach the end of the body
+// and the delivery budgets below still decide what leaves the layer.
+export const SOURCE_EVIDENCE_BODY_CHARS = 15_000;
+
+const FETCHED_CONTENT_KINDS = new Set(["fetched-html", "fetched-pdf"]);
+// Producers whose copied text is a body read from a publisher page. A record
+// from one of these without a policy observation is a legacy body: it stays
+// navigable, but nothing may be quoted from it.
+const FETCHED_PRODUCERS = new Set([
+  "approved-page-hydration",
+  "approved-pdf-hydration",
+  "official-federated-search",
+  "live-discovery",
+]);
+const COPY_FIELD_ORDER = Object.freeze({
+  snippet: Object.freeze(["summary", "excerpt", "evidenceExcerpt", "content"]),
+  evidence: Object.freeze(["summary", "excerpt", "content", "answer", "evidenceExcerpt"]),
+  cache: Object.freeze(["summary", "evidenceExcerpt"]),
+});
+// Below this many spare characters a copied field would be a sentence fragment.
+const MIN_COPY_FRAGMENT = 24;
+
+function boundedCopyText(value, limit) {
+  if (!Number.isInteger(limit) || limit <= 0) return "";
+  // The publisher limit is a limit on the characters a reader sees, so the text
+  // is normalized before it is measured: one ligature and one combining
+  // sequence are single code points that expand when they are normalized, and a
+  // count taken before that normalization is not the count that is published.
+  const normalized = String(value ?? "").normalize("NFKC");
+  if (normalized.length <= limit) return normalized;
+  const cut = (text) => {
+    const sliced = text.slice(0, limit);
+    // Never end on half a surrogate pair: that is not a character.
+    return /[\uD800-\uDBFF]$/u.test(sliced) ? sliced.slice(0, -1) : sliced;
+  };
+  const bounded = cut(normalized).trim();
+  const renormalized = bounded.normalize("NFKC");
+  return (renormalized.length <= limit ? renormalized : cut(renormalized).trim());
+}
+
+/**
+ * The policy witness a delivered record actually carries. The record's own
+ * `_sourcePolicy` is rehashed with `sourcePolicyBinding`, so a witness edited
+ * after observation cannot agree with the binding that was published with it,
+ * and the observed body hash must be the body this record holds.
+ */
+export function sourceCopyWitness(document = {}) {
+  const candidate = document?._sourcePolicy ?? document?.metadata?.source_policy ?? null;
+  const declared = typeof document?._sourcePolicyBinding === "string"
+    && document._sourcePolicyBinding !== ""
+    ? document._sourcePolicyBinding
+    : null;
+  const witness = sourcePolicyWitness(candidate);
+  if (!witness) {
+    return {
+      policy: null,
+      binding: null,
+      reason: candidate ? "source-policy-invalid" : "source-policy-missing",
+    };
+  }
+  const binding = sourcePolicyBinding(witness);
+  if (!binding) return { policy: null, binding: null, reason: "source-policy-invalid" };
+  if (declared !== null && declared !== binding) {
+    return { policy: null, binding: null, reason: "source-policy-mismatch" };
+  }
+  // A publisher body is bound to the bytes the policy was observed on. Only a
+  // producer that publishes the extracted-body digest can be checked here; a
+  // record whose digest names another derivation is refused rather than
+  // trusted, and a record that publishes no body digest is left to the resource
+  // and binding checks above.
+  const bodyHash = typeof document?._contentHash === "string" ? document._contentHash : "";
+  const artifactHash = typeof witness.artifactHash === "string" && witness.artifactHash !== ""
+    ? witness.artifactHash
+    : null;
+  if (bodyHash && artifactHash && bodyHash !== artifactHash) {
+    return { policy: null, binding: null, reason: "source-policy-body-mismatch" };
+  }
+  return { policy: witness, binding, reason: null };
+}
+
+function declaredSourceWitness(document = {}) {
+  return sourcePolicyWitness(document?._sourcePolicy ?? document?.metadata?.source_policy ?? null);
+}
+
+// Whether this record's copied text is a publisher page body rather than text
+// this application wrote, reviewed or read from a validated typed adapter. A
+// record only counts as a stored publisher body when it claims one: a federated
+// discovery card is a publisher blurb, and a retained body publishes the digest
+// of the bytes that were kept. `strict` is for a retained copy, where a body
+// from a publisher is not replayed at all unless the observation that released
+// it travelled with it.
+export function sourceCopyDerivedFromPublisher(document = {}, { strict = false } = {}) {
+  const witness = declaredSourceWitness(document);
+  if (witness) return FETCHED_CONTENT_KINDS.has(witness.contentKind);
+  const retrieval = clean(document.retrieval);
+  if (retrieval === "official-federated-search" || retrieval === "live-discovery") return true;
+  if (!FETCHED_PRODUCERS.has(retrieval)) return false;
+  if (strict) return true;
+  return typeof document._contentHash === "string" && document._contentHash !== "";
+}
+
+/**
+ * The publisher decision for one copied-text purpose. A witness that does not
+ * verify, a different resource, an expired observation, and a withheld use flag
+ * all answer `permitted: false`; the link metadata is never part of this call.
+ * A record that was never a publisher copy keeps the provenance it already has.
+ */
+export function sourceCopyPermission(document = {}, {
+  purpose = "snippet",
+  now = Date.now(),
+  limit,
+  strict = false,
+} = {}) {
+  if (!Object.hasOwn(COPY_FIELD_ORDER, purpose)) {
+    throw new TypeError(`Unknown copied text purpose: ${String(purpose)}`);
+  }
+  const { policy, binding, reason } = sourceCopyWitness(document);
+  if (!policy) {
+    return reason === "source-policy-missing" && !sourceCopyDerivedFromPublisher(document, { strict })
+      ? { permitted: true, scope: "unfetched", reason: null, limit: null, binding: null, policy: null }
+      : { permitted: false, scope: "policy", reason, limit: 0, binding: null, policy: null };
+  }
+  const projection = projectSourceText(
+    { url: document.url, _sourcePolicy: policy },
+    { purpose, now, limit },
+  );
+  return {
+    permitted: projection.permitted,
+    scope: "policy",
+    reason: projection.reason,
+    limit: projection.textLimit,
+    binding,
+    policy,
+  };
+}
+
+/**
+ * The copied fields this application may publish for one purpose, capped as a
+ * total. A publisher `max-snippet` is one budget for the whole result, so the
+ * fields share it instead of each spending it separately, and no field here can
+ * carry text beyond that limit.
+ *
+ * `selector(text, characters)` is how a caller ranks passages when the
+ * permitted field is longer than its budget. The delivery gate still owns the
+ * budget: whatever the selector returns is measured and cut again here, so a
+ * selector can change which characters are copied, never how many.
+ */
+export function projectSourceCopy(document = {}, {
+  purpose = "snippet",
+  now = Date.now(),
+  limit,
+  strict = false,
+  selector = null,
+} = {}) {
+  const permission = sourceCopyPermission(document, { purpose, now, limit, strict });
+  const fields = {};
+  let chars = 0;
+  if (permission.permitted) {
+    const order = COPY_FIELD_ORDER[purpose];
+    if (permission.scope === "unfetched") {
+      // No publisher observation exists for this record, so this gate adds no
+      // new permission and removes none: the reviewed text travels unchanged.
+      for (const field of order) {
+        const text = String(document?.[field] ?? "").trim();
+        if (!text) continue;
+        fields[field] = text;
+        chars += text.length;
+      }
+    } else {
+      const rank = purpose === "evidence" && typeof selector === "function" ? selector : null;
+      let remaining = Number.isInteger(permission.limit) ? permission.limit : 0;
+      if (Number.isInteger(limit) && limit > 0) remaining = Math.min(remaining, limit);
+      for (const field of order) {
+        if (remaining <= 0) break;
+        const fieldBudget = Math.min(remaining, permission.limit);
+        if (fieldBudget <= 0) continue;
+        // A few spare characters are a fragment of a sentence, not a passage.
+        if (chars > 0 && fieldBudget < MIN_COPY_FRAGMENT) continue;
+        const text = extractSourceText(document?.[field]);
+        if (!text) continue;
+        // A field the publisher limited has to name the characters it keeps,
+        // because a prefix is rarely the passage that answers the question.
+        const bounded = rank && text.normalize("NFKC").length > fieldBudget
+          ? boundedCopyText(rank(text, fieldBudget), fieldBudget)
+          : boundedCopyText(text, fieldBudget);
+        if (!bounded) continue;
+        fields[field] = bounded;
+        remaining -= bounded.length;
+        chars += bounded.length;
+      }
+    }
+  }
+  return Object.freeze({
+    ...permission,
+    fields: Object.freeze(fields),
+    chars,
+  });
+}
+
+/**
+ * The copied fields a saved answer may keep for one source. A cache entry is a
+ * retained copy, so retention has to be permitted as well as publication, and
+ * the two fields it keeps come out of the one snippet budget above.
+ */
+export function projectSourceCacheCopy(document = {}, { now = Date.now(), limit = SOURCE_EVIDENCE_COPY_CHARS } = {}) {
+  // A saved answer is a retained copy, so the strict rule applies: text from a
+  // publisher page is not replayed unless the observation that released it is
+  // still on the record.
+  const copy = projectSourceCopy(document, { purpose: "snippet", now, limit, strict: true });
+  if (!copy.permitted) return copy;
+  const reasons = ["cache", "evidence"]
+    .map((purpose) => sourceCopyPermission(document, { purpose, now, limit, strict: true }))
+    .find((permission) => !permission.permitted);
+  if (reasons) {
+    return Object.freeze({ ...copy, permitted: false, reason: reasons.reason, fields: Object.freeze({}), chars: 0 });
+  }
+  const fields = {};
+  let chars = 0;
+  for (const field of COPY_FIELD_ORDER.cache) {
+    const text = copy.fields[field];
+    if (!text) continue;
+    fields[field] = text;
+    chars += text.length;
+  }
+  return Object.freeze({ ...copy, fields: Object.freeze(fields), chars });
 }

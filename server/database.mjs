@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 import pg from "pg";
 import { boundedChart, validPublicChart } from "./answer-chart.mjs";
+import { projectSourceCacheCopy } from "./source-registry.mjs";
 import { canonicalizePublicSearchQuery, containsPrivatePersonLookup } from "./search.mjs";
 import { deterministicCacheValue } from "./delivered-outcome.mjs";
 
@@ -10,6 +11,9 @@ const searchHashSecret = String(process.env.SEARCH_HASH_SECRET || "");
 export const SEARCH_HASH_VERSION = "hmac-sha256-v3";
 export const SEARCH_CACHE_RESPONSE_SCHEMA = "privacy-safe-v7";
 export const SEARCH_CACHE_MAX_RESPONSE_BYTES = 128 * 1_024;
+// Copied text retained for one source: the same budget the listing and the
+// evidence pack use, shared by the two fields the cache keeps.
+const SEARCH_CACHE_COPY_CHARS = 4_000;
 function boundedPersistenceInteger(value, fallback, minimum, maximum) {
   return Math.max(minimum, Math.min(Math.trunc(Number(value) || fallback), maximum));
 }
@@ -326,12 +330,13 @@ export function isPersistentResponseCacheProvider(value) {
   return String(value || "") === "deterministic-current-evidence";
 }
 
-export function sanitizeCachedResponse(response, query) {
-  return sanitizeResponseCache(response, query, false);
+export function sanitizeCachedResponse(response, query, options = {}) {
+  return sanitizeResponseCache(response, query, false, options);
 }
 
-function sanitizeResponseCache(response, query, controlled) {
+function sanitizeResponseCache(response, query, controlled, options = {}) {
   if (!response || typeof response !== "object" || Array.isArray(response)) return null;
+  const now = options?.now ?? Date.now();
   const queryValue = query ?? response.query;
   const queryWasProvided = queryValue !== undefined && queryValue !== null;
   const canonicalInput = queryWasProvided ? canonicalizePublicSearchQuery(queryValue) : null;
@@ -355,60 +360,88 @@ function sanitizeResponseCache(response, query, controlled) {
     : "fixed";
   if (titleMode === "fixed" && !rawTitle) return null;
 
-  const safeSources = (Array.isArray(response.sources) ? response.sources : []).slice(0, 10).map((source) => ({
-      id: boundedText(source?.id, 180),
-      citation: typeof source?.citation === "number"
-        && Number.isInteger(source.citation)
-        && source.citation > 0
-        && source.citation <= 20
-        ? source.citation
-        : 0,
-      title: boundedText(source?.title, 500),
-      organization: boundedText(source?.organization, 240),
-      type: boundedText(source?.type, 160),
-      published: boundedText(source?.published, 80),
-      updated: boundedText(source?.updated, 80),
-      dataYear: boundedText(source?.dataYear, 80),
-      dataAsOf: boundedText(source?.dataAsOf, 80),
-      url: boundedText(source?.url, 2_000),
-      summary: boundedText(source?.summary, 2_000),
-      evidenceExcerpt: boundedText(source?.evidenceExcerpt, 4_000),
-      locator: boundedText(source?.locator, 1_000),
-      ...(source?.actionUrl ? { actionUrl: boundedText(source.actionUrl, 2_000) } : {}),
-      ...(source?.actionLabel ? { actionLabel: boundedText(source.actionLabel, 180) } : {}),
-      tags: (Array.isArray(source?.tags) ? source.tags : []).map((tag) => boundedText(tag, 120)).filter(Boolean).slice(0, 5),
-      sourceTier: boundedText(source?.sourceTier, 40),
-      // A cache hit must cross the same current evidence-policy boundary as a
-      // fresh response. Retain only the bounded provenance fields that the
-      // validator needs; publicResponse's allowlist never exposes them.
-      evidencePolicy: ["claim-specific", "route-only", "timestamped", "versioned"]
-        .includes(source?.evidencePolicy) ? source.evidencePolicy : "invalid",
-      ...([true, false].includes(source?._answerEvidenceEligible)
-        ? { _answerEvidenceEligible: source._answerEvidenceEligible }
-        : {}),
-      retrieval: boundedText(source?.retrieval, 120),
-      delivery: boundedText(source?.delivery, 120),
-      ...(source?.freshness && typeof source.freshness === "object" && !Array.isArray(source.freshness)
-        ? {
-            freshness: {
-              class: boundedText(source.freshness.class, 80),
-              basis: boundedText(source.freshness.basis, 80),
-              maxAgeMs: source.freshness.maxAgeMs === null ? null : Number.isFinite(Number(source.freshness.maxAgeMs))
-                && Number(source.freshness.maxAgeMs) > 0
-                && Number(source.freshness.maxAgeMs) <= 10 * 366 * 24 * 60 * 60 * 1_000
-                ? Number(source.freshness.maxAgeMs)
-                : 0,
-              requiresSourceTimestamp: source.freshness.requiresSourceTimestamp === true,
-            },
-          }
-        : {}),
-      _evidenceObservedAt: boundedText(source?._evidenceObservedAt, 40),
-      _evidenceValidFrom: boundedText(source?._evidenceValidFrom, 40),
-      _evidenceValidUntil: boundedText(source?._evidenceValidUntil, 40),
-      _evidenceVersion: boundedText(source?._evidenceVersion, 120),
-      _evidenceStatusAt: boundedText(source?._evidenceStatusAt, 40),
-      _publishedAt: boundedText(source?._publishedAt, 40),
-    })).filter((source) => source.id && source.title && source.url && source.citation > 0);
+  // A saved answer replays copied text, so every cached source is projected for
+  // retention and publication here instead of storing fields verbatim. A source
+  // whose copy is withheld, or whose witness does not verify, keeps only its
+  // link metadata; if the answer cited it, the whole response is not cached.
+  const citedCitations = new Set();
+  for (const value of [
+    ...(Array.isArray(rawAnswer.introCitations) ? rawAnswer.introCitations : []),
+    ...(Array.isArray(rawAnswer.parts) ? rawAnswer.parts.flatMap((part) => (
+      Array.isArray(part?.citations) ? part.citations : []
+    )) : []),
+    ...(Number.isInteger(response.chart?.citation) ? [response.chart.citation] : []),
+  ]) {
+    if (typeof value === "number" && Number.isInteger(value) && value > 0) citedCitations.add(value);
+  }
+  const boundedSources = (Array.isArray(response.sources) ? response.sources : []).slice(0, 10).map((source) => {
+    const copy = projectSourceCacheCopy(source, { now, limit: SEARCH_CACHE_COPY_CHARS });
+    const copied = copy.permitted ? copy.fields : {};
+    return {
+      withheld: !copy.permitted,
+      safe: {
+        id: boundedText(source?.id, 180),
+        citation: typeof source?.citation === "number"
+          && Number.isInteger(source.citation)
+          && source.citation > 0
+          && source.citation <= 20
+          ? source.citation
+          : 0,
+        title: boundedText(source?.title, 500),
+        organization: boundedText(source?.organization, 240),
+        type: boundedText(source?.type, 160),
+        published: boundedText(source?.published, 80),
+        updated: boundedText(source?.updated, 80),
+        dataYear: boundedText(source?.dataYear, 80),
+        dataAsOf: boundedText(source?.dataAsOf, 80),
+        url: boundedText(source?.url, 2_000),
+        summary: boundedText(copied.summary, 2_000),
+        evidenceExcerpt: boundedText(copied.evidenceExcerpt, 4_000),
+        locator: boundedText(source?.locator, 1_000),
+        ...(source?.actionUrl ? { actionUrl: boundedText(source.actionUrl, 2_000) } : {}),
+        ...(source?.actionLabel ? { actionLabel: boundedText(source.actionLabel, 180) } : {}),
+        tags: (Array.isArray(source?.tags) ? source.tags : []).map((tag) => boundedText(tag, 120)).filter(Boolean).slice(0, 5),
+        sourceTier: boundedText(source?.sourceTier, 40),
+        // A cache hit must cross the same current evidence-policy boundary as a
+        // fresh response. Retain only the bounded provenance fields that the
+        // validator needs; publicResponse's allowlist never exposes them.
+        evidencePolicy: ["claim-specific", "route-only", "timestamped", "versioned"]
+          .includes(source?.evidencePolicy) ? source.evidencePolicy : "invalid",
+        ...([true, false].includes(source?._answerEvidenceEligible)
+          ? { _answerEvidenceEligible: source._answerEvidenceEligible }
+          : {}),
+        retrieval: boundedText(source?.retrieval, 120),
+        delivery: boundedText(source?.delivery, 120),
+        // The decision that released the copy above travels with the row, so a
+        // later read decides again from the witness instead of the row.
+        ...(copy.policy ? { _sourcePolicy: copy.policy, _sourcePolicyBinding: copy.binding } : {}),
+        ...(source?.freshness && typeof source.freshness === "object" && !Array.isArray(source.freshness)
+          ? {
+              freshness: {
+                class: boundedText(source.freshness.class, 80),
+                basis: boundedText(source.freshness.basis, 80),
+                maxAgeMs: source.freshness.maxAgeMs === null ? null : Number.isFinite(Number(source.freshness.maxAgeMs))
+                  && Number(source.freshness.maxAgeMs) > 0
+                  && Number(source.freshness.maxAgeMs) <= 10 * 366 * 24 * 60 * 60 * 1_000
+                  ? Number(source.freshness.maxAgeMs)
+                  : 0,
+                requiresSourceTimestamp: source.freshness.requiresSourceTimestamp === true,
+              },
+            }
+          : {}),
+        _evidenceObservedAt: boundedText(source?._evidenceObservedAt, 40),
+        _evidenceValidFrom: boundedText(source?._evidenceValidFrom, 40),
+        _evidenceValidUntil: boundedText(source?._evidenceValidUntil, 40),
+        _evidenceVersion: boundedText(source?._evidenceVersion, 120),
+        _evidenceStatusAt: boundedText(source?._evidenceStatusAt, 40),
+        _publishedAt: boundedText(source?._publishedAt, 40),
+      },
+    };
+  }).filter((entry) => entry.safe.id && entry.safe.title && entry.safe.url && entry.safe.citation > 0);
+  // The answer prose was written from the source text, so a cited source whose
+  // copy may not be retained makes the whole saved answer unquotable.
+  if (boundedSources.some((entry) => entry.withheld && citedCitations.has(entry.safe.citation))) return null;
+  const safeSources = boundedSources.map((entry) => entry.safe);
 
   const safe = {
     cacheSchema: SEARCH_CACHE_RESPONSE_SCHEMA,
@@ -462,8 +495,10 @@ function sanitizeResponseCache(response, query, controlled) {
   return safe;
 }
 
-export function restoreCachedResponse(response, query) {
-  const cached = sanitizeCachedResponse(response);
+export function restoreCachedResponse(response, query, options = {}) {
+  // The stored row is projected again here, on the current clock: a copy that
+  // was permitted when it was written is rechecked before it is replayed.
+  const cached = sanitizeCachedResponse(response, undefined, options);
   if (!cached) return null;
   const canonicalInput = canonicalizePublicSearchQuery(query);
   if (!canonicalInput.ok) return null;

@@ -1,9 +1,22 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { chartDescription, chartDomain, formatChartValue, seriesPrecision, shareArcs, splitRuns, xTickStep } from "./answer-chart-layout.js";
+import {
+  MIN_MEASURED_WIDTH,
+  axisDecimals,
+  barShape,
+  baselineNote,
+  chartDescription,
+  chartDomain,
+  chartMargins,
+  chartUnitGroups,
+  formatChartValue,
+  seriesPrecision,
+  shareArcs,
+  splitRuns,
+  xTickStep,
+} from "./answer-chart-layout.js";
 import { sourceOrganizationLabel } from "./source-label.js";
 
 const HEIGHT = 260;
-const MARGIN = { top: 16, right: 20, bottom: 36, left: 56 };
 const SERIES_COLORS = ["var(--brand-700)", "var(--green)", "var(--purple)"];
 const TOOLTIP_WIDTH = 176;
 export const SOURCE_MISMATCH_NOTE = "Tekst ja graafik kasutavad eri allikaid ning eri tõlgenduste tõttu võivad numbrid erineda.";
@@ -19,15 +32,19 @@ function SourceMismatchNote() {
   );
 }
 
-function ChartCaption({ chart, citation, sourceDiffers }) {
+function ChartCaption({ chart, citation, sourceDiffers, notes = "" }) {
   return (
     <p className="answer-chart__caption">
-      {chart.caption ? `${chart.caption} ` : ""}{citation}
+      {chart.caption ? `${chart.caption} ` : ""}{citation}{notes ? ` ${notes}` : ""}
       {sourceDiffers ? <SourceMismatchNote /> : null}
     </p>
   );
 }
 
+// A phone frame measures well under the old 240 px floor, and the floor kept the
+// 640 px fallback in place, so the whole SVG was scaled down to a fraction and
+// every 12 px label shrank with it. Any measurable width is used as it is; the
+// layout maths takes the narrower margins instead.
 function useContainerWidth(fallback = 640) {
   const ref = useRef(null);
   const [width, setWidth] = useState(fallback);
@@ -36,7 +53,7 @@ function useContainerWidth(fallback = 640) {
     if (!element || typeof ResizeObserver === "undefined") return undefined;
     const observer = new ResizeObserver((entries) => {
       const next = Math.round(entries[0]?.contentRect?.width || 0);
-      if (next >= 240) setWidth(next);
+      if (next >= MIN_MEASURED_WIDTH) setWidth(next);
     });
     observer.observe(element);
     return () => observer.disconnect();
@@ -49,50 +66,182 @@ function valueWithError(point, unit, digits) {
   return point.error === undefined ? base : `${base} (±${formatChartValue(point.error, 1)}%)`;
 }
 
-function SeriesChart({ chart, citation = null, sourceDiffers = false }) {
-  const [frameRef, width] = useContainerWidth();
-  const [activeYear, setActiveYear] = useState(null);
-  const titleId = useId();
+// Rounded corners at the free end of a bar, whichever way it grows.
+function barPath(x, width, { y, height, down }) {
+  const radius = 4;
+  if (width < 8 || height < 8) return null;
+  const straight = width - 2 * radius;
+  return down
+    ? `M${x},${y} V${y + height - radius} a${radius},${radius} 0 0 0 ${radius},${radius} h${straight} a${radius},${radius} 0 0 0 ${radius},${-radius} V${y} Z`
+    : `M${x},${y + height} V${y + radius} a${radius},${radius} 0 0 1 ${radius},${-radius} h${straight} a${radius},${radius} 0 0 1 ${radius},${radius} V${y + height} Z`;
+}
+
+// One plot for one unit. Series published in different units cannot share a
+// value axis without hiding one of them or inventing a factor between them, so
+// each unit gets its own panel and its own labelled axis.
+function SeriesPanel({ chart, series, unit, colorOf, width, shared, activeYear, onActiveYear, multiUnit }) {
   const descId = useId();
+  const { margins, years, xFor, visibleTickIndexes } = shared;
   const digits = useMemo(
-    () => Math.max(...chart.series.map((series) => seriesPrecision(series.points))),
-    [chart],
+    () => series.reduce((maximum, item) => Math.max(maximum, seriesPrecision(item.points)), 0),
+    [series],
   );
-  const layout = useMemo(() => {
-    const series = chart.series;
-    const years = [...new Set(series.flatMap((item) => item.points.map((point) => point.x)))].sort((a, b) => a - b);
+  const geometry = useMemo(() => {
     const values = series.flatMap((item) => item.points.map((point) => point.y));
     const domain = chartDomain(values, { kind: chart.kind });
-    const plotWidth = Math.max(80, width - MARGIN.left - MARGIN.right);
-    const plotHeight = HEIGHT - MARGIN.top - MARGIN.bottom;
-    const minYear = years[0];
-    const maxYear = years.at(-1);
-    const span = Math.max(1, maxYear - minYear);
+    const plotHeight = HEIGHT - margins.top - margins.bottom;
+    const yFor = (value) => margins.top + plotHeight - ((value - domain.lo) / (domain.hi - domain.lo)) * plotHeight;
+    const zeroY = yFor(Math.min(Math.max(0, domain.lo), domain.hi));
+    const plotWidth = Math.max(60, width - margins.left - margins.right);
     const band = plotWidth / years.length;
-    const xFor = (year) => (chart.kind === "bar"
-      ? MARGIN.left + band * (years.indexOf(year) + 0.5)
-      : MARGIN.left + 12 + ((year - minYear) / span) * (plotWidth - 24));
-    const yFor = (value) => MARGIN.top + plotHeight - ((value - domain.lo) / (domain.hi - domain.lo)) * plotHeight;
     const barWidth = Math.max(4, Math.min(24, (band * 0.7 - 2 * (series.length - 1)) / series.length));
-    const tickStep = xTickStep(years.length, plotWidth);
-    return { years, domain, plotWidth, plotHeight, xFor, yFor, band, barWidth, tickStep, baseline: yFor(domain.lo) };
-  }, [chart, width]);
+    return { domain, yFor, zeroY, plotHeight, barWidth };
+  }, [chart.kind, series, width, margins, years.length]);
 
-  const { years, domain, xFor, yFor, band, barWidth, tickStep, baseline } = layout;
-  const nearestYear = (clientX, element) => {
-    const rect = element.getBoundingClientRect();
-    const x = (clientX - rect.left) * (width / rect.width);
-    return years.reduce((best, year) => (Math.abs(xFor(year) - x) < Math.abs(xFor(best) - x) ? year : best), years[0]);
-  };
+  const note = baselineNote(geometry.domain, unit, digits);
+  const description = `${chartDescription({ ...chart, unit, series }, digits)}${note ? ` ${note}` : ""}`;
+  const tickDigits = axisDecimals(geometry.domain.step);
   const activePoints = activeYear === null
     ? []
-    : chart.series.map((series, index) => ({ series, index, point: series.points.find((point) => point.x === activeYear) }));
+    : series.map((item) => ({ item, point: item.points.find((point) => point.x === activeYear) }));
   const tooltipX = activeYear === null ? 0 : xFor(activeYear);
   const tooltipLeftRaw = tooltipX + 12 + TOOLTIP_WIDTH > width ? tooltipX - 12 - TOOLTIP_WIDTH : tooltipX + 12;
   const tooltipLeft = Math.max(0, Math.min(width - TOOLTIP_WIDTH, tooltipLeftRaw));
-  const tooltipHeight = 22 + 18 * chart.series.length;
+  const tooltipHeight = 22 + 18 * series.length;
   const endLabelYs = [];
-  const visibleTickIndexes = useMemo(() => {
+
+  return (
+    <svg
+      aria-describedby={descId}
+      aria-label={multiUnit ? `${chart.title}, ühik ${unit}` : chart.title}
+      height={HEIGHT}
+      onPointerLeave={() => onActiveYear(null)}
+      onPointerMove={(event) => onActiveYear(shared.nearestYear(event.clientX, event.currentTarget))}
+      role="group"
+      viewBox={`0 0 ${width} ${HEIGHT}`}
+      width={width}
+    >
+      <desc id={descId}>{description}</desc>
+      {unit ? (
+        <text className="answer-chart__tick" fontWeight="600" x={margins.left} y={Math.max(11, margins.top - 5)}>Ühik: {unit}</text>
+      ) : null}
+      {geometry.domain.ticks.map((tick) => (
+        <g key={tick}>
+          <line className="answer-chart__grid" x1={margins.left} x2={width - margins.right} y1={geometry.yFor(tick)} y2={geometry.yFor(tick)} />
+          <text className="answer-chart__tick" textAnchor="end" x={margins.left - 8} y={geometry.yFor(tick) + 4}>{formatChartValue(tick, tickDigits)}</text>
+        </g>
+      ))}
+      {years.map((year, index) => (visibleTickIndexes.has(index) ? (
+        <text className="answer-chart__tick" key={year} textAnchor="middle" x={xFor(year)} y={HEIGHT - margins.bottom + 18}>{year}</text>
+      ) : null))}
+      {activeYear !== null && chart.kind === "line" ? (
+        <line className="answer-chart__crosshair" x1={tooltipX} x2={tooltipX} y1={margins.top} y2={margins.top + geometry.plotHeight} />
+      ) : null}
+      {chart.kind === "bar" ? series.map((item, seriesIndex) => {
+        const offset = -((series.length - 1) * (geometry.barWidth + 2)) / 2 + seriesIndex * (geometry.barWidth + 2);
+        return item.points.map((point) => {
+          const x = xFor(point.x) + offset - geometry.barWidth / 2;
+          const shape = barShape(point.y, { yFor: geometry.yFor, zeroY: geometry.zeroY });
+          const rounded = barPath(x, geometry.barWidth, shape);
+          const dimmed = activeYear !== null && activeYear !== point.x ? 0.55 : 1;
+          const hitWidth = series.length > 1 ? geometry.barWidth + 2 : Math.max(geometry.barWidth, 24);
+          return (
+            <g key={`${item.id}-${point.x}`}>
+              {rounded ? (
+                <path d={rounded} fill={colorOf(item)} opacity={dimmed} />
+              ) : (
+                <rect fill={colorOf(item)} height={shape.height} opacity={dimmed} width={geometry.barWidth} x={x} y={shape.y} />
+              )}
+              <rect
+                aria-label={`${item.label}, ${point.x}: ${valueWithError(point, unit, digits)}`}
+                className="answer-chart__hit"
+                height={geometry.plotHeight}
+                onBlur={() => onActiveYear(null)}
+                onFocus={() => onActiveYear(point.x)}
+                tabIndex={0}
+                width={hitWidth}
+                x={series.length > 1 ? x - 1 : x - Math.max(0, (24 - geometry.barWidth) / 2)}
+                y={margins.top}
+              />
+            </g>
+          );
+        });
+      }) : series.map((item) => {
+        const last = item.points.at(-1);
+        let labelY = Math.max(margins.top, geometry.yFor(last.y) - 10);
+        if (endLabelYs.some((used) => Math.abs(used - labelY) < 14)) labelY = null;
+        else endLabelYs.push(labelY);
+        return (
+          <g key={item.id}>
+            {splitRuns(item.points).map((run) => (
+              <path
+                d={run.map((point, index) => `${index === 0 ? "M" : "L"}${xFor(point.x)},${geometry.yFor(point.y)}`).join(" ")}
+                fill="none"
+                key={run[0].x}
+                stroke={colorOf(item)}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+              />
+            ))}
+            {item.points.map((point) => (
+              <g key={point.x}>
+                <circle cx={xFor(point.x)} cy={geometry.yFor(point.y)} fill={colorOf(item)} r={activeYear === point.x ? 5 : 4} stroke="#fff" strokeWidth={2} />
+                <circle
+                  aria-label={`${item.label}, ${point.x}: ${valueWithError(point, unit, digits)}`}
+                  className="answer-chart__hit"
+                  cx={xFor(point.x)}
+                  cy={geometry.yFor(point.y)}
+                  onBlur={() => onActiveYear(null)}
+                  onFocus={() => onActiveYear(point.x)}
+                  r={12}
+                  tabIndex={0}
+                />
+              </g>
+            ))}
+            {labelY !== null ? (
+              <text className="answer-chart__value" textAnchor="end" x={xFor(last.x) - 9} y={labelY}>{formatChartValue(last.y, digits)}</text>
+            ) : null}
+          </g>
+        );
+      })}
+      {activeYear !== null ? (
+        <g className="answer-chart__tooltip" transform={`translate(${tooltipLeft}, ${margins.top})`}>
+          <rect height={tooltipHeight} rx={4} width={TOOLTIP_WIDTH} />
+          <text className="answer-chart__tick" x={10} y={16}>{activeYear}</text>
+          {activePoints.map(({ item, point }, row) => (
+            <g key={item.id} transform={`translate(10, ${30 + row * 18})`}>
+              <line stroke={colorOf(item)} strokeWidth={2} x1={0} x2={12} y1={0} y2={0} />
+              <text className="answer-chart__value" x={18} y={4}>{point ? valueWithError(point, unit, digits) : "avaldamata"}</text>
+            </g>
+          ))}
+        </g>
+      ) : null}
+    </svg>
+  );
+}
+
+function SeriesChart({ chart, citation = null, sourceDiffers = false }) {
+  const [frameRef, width] = useContainerWidth();
+  const [activeYear, setActiveYear] = useState(null);
+  const groups = useMemo(() => chartUnitGroups(chart), [chart]);
+  const colorOf = useMemo(() => {
+    const colors = new Map();
+    chart.series.forEach((item, index) => colors.set(item, SERIES_COLORS[index % SERIES_COLORS.length]));
+    return (item) => colors.get(item) || SERIES_COLORS[0];
+  }, [chart]);
+  const shared = useMemo(() => {
+    const years = [...new Set(chart.series.flatMap((item) => item.points.map((point) => point.x)))].sort((a, b) => a - b);
+    const margins = chartMargins(width);
+    const plotWidth = Math.max(60, width - margins.left - margins.right);
+    const minYear = years[0];
+    const span = Math.max(1, years.at(-1) - minYear);
+    const band = plotWidth / years.length;
+    const inset = Math.min(12, plotWidth * 0.1);
+    const xFor = (year) => (chart.kind === "bar"
+      ? margins.left + band * (years.indexOf(year) + 0.5)
+      : margins.left + inset + ((year - minYear) / span) * (plotWidth - 2 * inset));
+    const tickStep = xTickStep(years.length, plotWidth);
     const shown = [];
     for (let index = 0; index < years.length; index += 1) {
       if (index % tickStep === 0) shown.push(index);
@@ -102,153 +251,73 @@ function SeriesChart({ chart, citation = null, sourceDiffers = false }) {
       if (lastIndex - shown.at(-1) < tickStep) shown.pop();
       shown.push(lastIndex);
     }
-    return new Set(shown);
-  }, [years, tickStep]);
+    const nearestYear = (clientX, element) => {
+      const rect = element.getBoundingClientRect();
+      const x = (clientX - rect.left) * (width / rect.width);
+      return years.reduce((best, year) => (Math.abs(xFor(year) - x) < Math.abs(xFor(best) - x) ? year : best), years[0]);
+    };
+    return { years, margins, plotWidth, band, xFor, tickStep, visibleTickIndexes: new Set(shown), nearestYear };
+  }, [chart, width]);
+  // Every truncated axis says so in the caption, next to the plot it belongs to.
+  const notes = useMemo(() => groups.map(({ unit, series }) => {
+    const digits = series.reduce((maximum, item) => Math.max(maximum, seriesPrecision(item.points)), 0);
+    const values = series.flatMap((item) => item.points.map((point) => point.y));
+    return baselineNote(chartDomain(values, { kind: chart.kind }), unit, digits);
+  }).filter(Boolean).join(" "), [groups, chart.kind]);
+  const tableDigits = useMemo(
+    () => new Map(chart.series.map((item) => [item, seriesPrecision(item.points)])),
+    [chart],
+  );
 
   return (
     <figure className="answer-chart">
-      <figcaption className="answer-chart__title" id={titleId}>{chart.title}</figcaption>
+      <figcaption className="answer-chart__title">{chart.title}</figcaption>
       {chart.series.length > 1 ? (
         <ul className="answer-chart__legend">
-          {chart.series.map((series, index) => (
-            <li key={series.id}>
-              <span aria-hidden="true" className={`answer-chart__key${chart.kind === "bar" ? " answer-chart__key--bar" : ""}`} style={{ background: SERIES_COLORS[index] }} />
-              {series.label}
+          {chart.series.map((item) => (
+            <li key={item.id}>
+              <span aria-hidden="true" className={`answer-chart__key${chart.kind === "bar" ? " answer-chart__key--bar" : ""}`} style={{ background: colorOf(item) }} />
+              {item.label}
             </li>
           ))}
         </ul>
       ) : null}
       <div className="answer-chart__frame" ref={frameRef}>
-        <svg
-          aria-describedby={descId}
-          aria-label={chart.title}
-          height={HEIGHT}
-          onPointerLeave={() => setActiveYear(null)}
-          onPointerMove={(event) => setActiveYear(nearestYear(event.clientX, event.currentTarget))}
-          role="group"
-          viewBox={`0 0 ${width} ${HEIGHT}`}
-          width={width}
-        >
-          <desc id={descId}>{chartDescription(chart, digits)}</desc>
-          {domain.ticks.map((tick) => (
-            <g key={tick}>
-              <line className="answer-chart__grid" x1={MARGIN.left} x2={width - MARGIN.right} y1={yFor(tick)} y2={yFor(tick)} />
-              <text className="answer-chart__tick" textAnchor="end" x={MARGIN.left - 8} y={yFor(tick) + 4}>{formatChartValue(tick, tick % 1 === 0 ? 0 : 1)}</text>
-            </g>
-          ))}
-          {years.map((year, index) => (visibleTickIndexes.has(index) ? (
-            <text className="answer-chart__tick" key={year} textAnchor="middle" x={xFor(year)} y={HEIGHT - MARGIN.bottom + 18}>{year}</text>
-          ) : null))}
-          {activeYear !== null && chart.kind === "line" ? (
-            <line className="answer-chart__crosshair" x1={tooltipX} x2={tooltipX} y1={MARGIN.top} y2={baseline} />
-          ) : null}
-          {chart.series.map((series, seriesIndex) => {
-            const color = SERIES_COLORS[seriesIndex];
-            if (chart.kind === "bar") {
-              const offset = -((chart.series.length - 1) * (barWidth + 2)) / 2 + seriesIndex * (barWidth + 2);
-              return series.points.map((point) => {
-                const x = xFor(point.x) + offset - barWidth / 2;
-                const top = yFor(point.y);
-                const height = Math.max(0, baseline - top);
-                const dimmed = activeYear !== null && activeYear !== point.x ? 0.55 : 1;
-                return (
-                  <g key={`${series.id}-${point.x}`}>
-                    {barWidth >= 8 && height >= 4 ? (
-                      <path
-                        d={`M${x},${baseline} V${top + 4} a4,4 0 0 1 4,-4 h${barWidth - 8} a4,4 0 0 1 4,4 V${baseline} Z`}
-                        fill={color}
-                        opacity={dimmed}
-                      />
-                    ) : (
-                      <rect fill={color} height={height} opacity={dimmed} width={barWidth} x={x} y={top} />
-                    )}
-                    <rect
-                      aria-label={`${series.label}, ${point.x}: ${valueWithError(point, chart.unit, digits)}`}
-                      className="answer-chart__hit"
-                      height={baseline - MARGIN.top}
-                      onBlur={() => setActiveYear(null)}
-                      onFocus={() => setActiveYear(point.x)}
-                      tabIndex={0}
-                      width={chart.series.length > 1 ? barWidth + 2 : Math.max(barWidth, 24)}
-                      x={chart.series.length > 1 ? x - 1 : x - Math.max(0, (24 - barWidth) / 2)}
-                      y={MARGIN.top}
-                    />
-                  </g>
-                );
-              });
-            }
-            const last = series.points.at(-1);
-            let labelY = Math.max(MARGIN.top, yFor(last.y) - 10);
-            if (endLabelYs.some((used) => Math.abs(used - labelY) < 14)) labelY = null;
-            else endLabelYs.push(labelY);
-            return (
-              <g key={series.id}>
-                {splitRuns(series.points).map((run) => (
-                  <path
-                    d={run.map((point, index) => `${index === 0 ? "M" : "L"}${xFor(point.x)},${yFor(point.y)}`).join(" ")}
-                    fill="none"
-                    key={run[0].x}
-                    stroke={color}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                  />
-                ))}
-                {series.points.map((point) => (
-                  <g key={point.x}>
-                    <circle cx={xFor(point.x)} cy={yFor(point.y)} fill={color} r={activeYear === point.x ? 5 : 4} stroke="#fff" strokeWidth={2} />
-                    <circle
-                      aria-label={`${series.label}, ${point.x}: ${valueWithError(point, chart.unit, digits)}`}
-                      className="answer-chart__hit"
-                      cx={xFor(point.x)}
-                      cy={yFor(point.y)}
-                      onBlur={() => setActiveYear(null)}
-                      onFocus={() => setActiveYear(point.x)}
-                      r={12}
-                      tabIndex={0}
-                    />
-                  </g>
-                ))}
-                {labelY !== null ? (
-                  <text className="answer-chart__value" textAnchor="end" x={xFor(last.x) - 9} y={labelY}>{formatChartValue(last.y, digits)}</text>
-                ) : null}
-              </g>
-            );
-          })}
-          {activeYear !== null ? (
-            <g className="answer-chart__tooltip" transform={`translate(${tooltipLeft}, ${MARGIN.top})`}>
-              <rect height={tooltipHeight} rx={4} width={TOOLTIP_WIDTH} />
-              <text className="answer-chart__tick" x={10} y={16}>{activeYear}</text>
-              {activePoints.map(({ series, index, point }, row) => (
-                <g key={series.id} transform={`translate(10, ${30 + row * 18})`}>
-                  <line stroke={SERIES_COLORS[index]} strokeWidth={2} x1={0} x2={12} y1={0} y2={0} />
-                  <text className="answer-chart__value" x={18} y={4}>{point ? valueWithError(point, chart.unit, digits) : "avaldamata"}</text>
-                </g>
-              ))}
-            </g>
-          ) : null}
-        </svg>
+        {groups.map((group) => (
+          <SeriesPanel
+            activeYear={activeYear}
+            chart={chart}
+            colorOf={colorOf}
+            key={group.unit}
+            multiUnit={groups.length > 1}
+            onActiveYear={setActiveYear}
+            series={group.series}
+            shared={shared}
+            unit={group.unit}
+            width={width}
+          />
+        ))}
       </div>
       <div className="sr-only">
         <table>
           <caption>{chart.title}</caption>
           <thead>
-            <tr><th scope="col">{chart.xLabel || "Aasta"}</th>{chart.series.map((series) => <th key={series.id} scope="col">{series.label} ({chart.unit})</th>)}</tr>
+            <tr><th scope="col">{chart.xLabel || "Aasta"}</th>{chart.series.map((item) => <th key={item.id} scope="col">{item.label} ({item.unit || chart.unit})</th>)}</tr>
           </thead>
           <tbody>
-            {years.map((year) => (
+            {shared.years.map((year) => (
               <tr key={year}>
                 <th scope="row">{year}</th>
-                {chart.series.map((series) => {
-                  const point = series.points.find((item) => item.x === year);
-                  return <td key={series.id}>{point ? valueWithError(point, chart.unit, digits) : "–"}</td>;
+                {chart.series.map((item) => {
+                  const point = item.points.find((candidate) => candidate.x === year);
+                  return <td key={item.id}>{point ? valueWithError(point, item.unit || chart.unit, tableDigits.get(item)) : "–"}</td>;
                 })}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <ChartCaption chart={chart} citation={citation} sourceDiffers={sourceDiffers} />
+      <ChartCaption chart={chart} citation={citation} notes={notes} sourceDiffers={sourceDiffers} />
     </figure>
   );
 }
@@ -290,7 +359,6 @@ function shareLabelLines(label) {
 }
 
 function ShareChart({ chart, citation = null, sourceDiffers = false }) {
-  const titleId = useId();
   const descId = useId();
   const points = chart.series[0].points;
   const arcs = useMemo(() => shareArcs(points), [points]);
@@ -303,7 +371,7 @@ function ShareChart({ chart, citation = null, sourceDiffers = false }) {
   const description = `Sektordiagramm. ${arcs.map((arc) => `${arc.label} ${formatChartValue(arc.percent, 1)} %`).join("; ")}.`;
   return (
     <figure className="answer-chart answer-chart--share">
-      <figcaption className="answer-chart__title" id={titleId}>{chart.title}</figcaption>
+      <figcaption className="answer-chart__title">{chart.title}</figcaption>
       <div className="answer-chart__share">
         <div className="answer-chart__donut">
           <svg

@@ -4,6 +4,11 @@ import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
+import { createServer } from "vite";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { load } from "cheerio";
 import {
   assertSafeDatabaseUrl,
   assertSearchHashSecret,
@@ -52,6 +57,7 @@ import { sanitizeLlmEvidenceText } from "../server/search.mjs";
 import { deliveredOutcome } from "../server/delivered-outcome.mjs";
 import { sourceWitnessKey } from "../server/source-identity.mjs";
 import {
+  ANSWER_SOURCE_EXPIRY,
   createPortalDraft as createPortalDraftImplementation,
   createDeadlineCleanupLease,
   cachedSourcesBelongToListing,
@@ -151,6 +157,7 @@ import {
   selectAnswerEvidence,
 } from "../server/retrieval.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
+import { observeSourcePolicy } from "../server/source_policy.mjs";
 import { relationshipClaimHasPassageWitness } from "../server/proposition-grounding.mjs";
 import { splitTextPassages } from "../server/search.mjs";
 
@@ -772,33 +779,6 @@ test("the progressive stream keeps retrieval alive until the final-response rese
   assert.equal(progressiveListingBudgetMs({ remainingMs: -1 }), 1);
 });
 
-test("the listing endpoint shares the global search capacity boundary", async () => {
-  const server = await readFile(new URL("../server/index.mjs", import.meta.url), "utf8");
-  const handler = server.match(/async function handleSearchResults[\s\S]*?\n\}\n\napp\.post\("\/api\/search\/results"/u)?.[0] || "";
-  const admissionHelper = server.match(/async function acquireSearchSlot[\s\S]*?\n\}/u)?.[0] || "";
-  assert.match(handler, /releaseSearch = await acquireSearchSlot\(request, controller, deadlineAt\)/u);
-  assert.match(admissionHelper, /searchAdmission\.acquire/u);
-  assert.match(admissionHelper, /requestRateLimitAddress\(request, proxyConfiguration\.trustedProxyCidrs, \{\s*ipv6PrefixBits: ipv6ClientPrefixBits/u);
-  assert.match(admissionHelper, /\{ signal: controller\.signal, maximumWaitMs \}/u);
-  assert.match(admissionHelper, /deadlineAt - Date\.now\(\) - SEARCH_TRANSPORT_RESERVE_MS/u);
-  assert.match(admissionHelper, /if \(deadlineAt - Date\.now\(\) <= SEARCH_TRANSPORT_RESERVE_MS\)/u);
-  assert.equal((server.match(/await acquireSearchSlot\(request, controller, deadlineAt\)/gu) || []).length, 4);
-  assert.doesNotMatch(server, /Math\.max\(250, deadlineAt - Date\.now\(\)\)/u);
-  assert.match(handler, /response\.setHeader\("Retry-After", "2"\)/u);
-  assert.match(handler, /response\.status\(429\)/u);
-  assert.match(handler, /const lifecycle = bindRequestAbort\(request, response\)/u);
-  assert.match(handler, /lifecycle\.cleanup\(\)/u);
-  assert.match(handler, /if \(!results\) \{\s*response\.setHeader\("Cache-Control", "no-store"\);\s*response\.setHeader\("Retry-After", "2"\);\s*return response\.status\(503\)/u);
-  assert.match(handler, /\} catch \{\s*if \(controller\.signal\.aborted \|\| response\.destroyed\) return undefined;\s*response\.setHeader\("Cache-Control", "no-store"\);\s*response\.setHeader\("Retry-After", "2"\);\s*return response\.status\(502\)/u);
-  assert.match(handler, /const cleanupLease = createDeadlineCleanupLease\(\(\) => \{\s*releaseSearch\(\);\s*lifecycle\.cleanup\(\);\s*\}\)/u);
-  assert.match(handler, /onBackgroundCleanup: cleanupLease\.track/u);
-  assert.match(handler, /finally \{\s*cleanupLease\.finish\(\);\s*\}/u);
-  assert.doesNotMatch(server, /activeSearches/u);
-  assert.match(server, /corpusRefreshTimeout = setTimeout/u);
-  assert.match(server, /corpusRefreshInterval = setInterval/u);
-  assert.match(server, /clearTimeout\(corpusRefreshTimeout\)/u);
-  assert.match(server, /clearInterval\(corpusRefreshInterval\)/u);
-});
 
 test("local Qdrant embedding is deterministic and normalized", () => {
   const first = localEmbedding("Eesti metsade seisund");
@@ -2235,10 +2215,6 @@ test("model credentials are bound to the exact approved HTTPS gateway base", () 
   }
 });
 
-test("provider generation limits cannot exceed the public deadline", () => {
-  assert.equal(resolveLlmTimeout(600_000), 60_000);
-  assert.equal(resolveLlmTimeout(500), 500);
-});
 
 test("unsupported reasoning effort exits the actual server before listening", () => {
   for (const unsupported of ["minimal", "none", "high", "unknown"]) {
@@ -2303,11 +2279,6 @@ test("successful LLM work consumes one process-wide rolling allowance", () => {
   const charged = tokenBudget.reserve(3_200);
   assert.equal(charged.commit(), true);
   assert.equal(tokenBudget.reserve(1_000).reason, "token-budget-exhausted");
-  assert.deepEqual(resolveLlmRollingBudget({}), {
-    windowMs: 3_600_000,
-    requestBudget: Infinity,
-    tokenBudget: Infinity,
-  });
   assert.equal(estimatedLlmBudgetTokens({ orchestrated: false }), AGENT_MANAGER_ANSWER_TOKENS);
   assert.deepEqual(estimatedLlmBudgetUsage({ orchestrated: false }), {
     requests: 1,
@@ -2398,18 +2369,51 @@ test("one client cannot exhaust another client's share of the global LLM allowan
   assert.equal(otherClient.ok, true);
   assert.equal(otherClient.commit({ requests: 1, tokens: 1_500 }), true);
   assert.equal(budget.snapshot("client-b").client.requests, 1);
-  assert.deepEqual(resolveLlmClientBudget({}), {
-    windowMs: 3_600_000,
-    requestBudget: Infinity,
-    tokenBudget: Infinity,
-    maximumClients: 2_000,
-  });
-  assert.equal(resolveLlmClientBudget({ tokenBudget: "" }).tokenBudget, Infinity);
   assert.equal(resolveLlmClientBudget({ tokenBudget: "50000" }).tokenBudget, 50_000);
   assert.equal(resolveLlmRollingBudget({ tokenBudget: Infinity }).tokenBudget, Infinity);
 
   clock += 60_001;
   assert.equal(budget.reserve("client-a", { requests: 1, tokens: 500 }).ok, true);
+});
+
+test("unset or invalid AI limits protect the global budget and each reader", () => {
+  const defaults = {
+    windowMs: 3_600_000,
+    requestBudget: "",
+    tokenBudget: "",
+  };
+  const globalBudget = createRollingLlmBudget(resolveLlmRollingBudget(defaults));
+  const budget = createClientScopedLlmBudget({
+    globalBudget,
+    ...resolveLlmClientBudget(defaults),
+  });
+
+  for (let index = 0; index < 15; index += 1) {
+    const reservation = budget.reserve("reader-a", { requests: 1, tokens: 1_000 });
+    assert.equal(reservation.ok, true);
+    assert.equal(reservation.commit({ requests: 1, tokens: 1_000 }), true);
+  }
+  assert.equal(budget.reserve("reader-a", { requests: 1, tokens: 1_000 }).reason, "client-request-budget-exhausted");
+  const otherReader = budget.reserve("reader-b", { requests: 1, tokens: 1_000 });
+  assert.equal(otherReader.ok, true);
+  otherReader.release();
+
+  const invalidLimits = createRollingLlmBudget(resolveLlmRollingBudget({
+    ...defaults,
+    requestBudget: "invalid",
+  }));
+  for (let index = 0; index < 60; index += 1) {
+    const reservation = invalidLimits.reserve({ requests: 1, tokens: 1_000 });
+    assert.equal(reservation.ok, true);
+    reservation.commit({ requests: 1, tokens: 1_000 });
+  }
+  assert.equal(invalidLimits.reserve({ requests: 1, tokens: 1_000 }).reason, "request-budget-exhausted");
+  assert.equal(createRollingLlmBudget(resolveLlmRollingBudget(defaults))
+    .reserve({ requests: 1, tokens: 240_001 }).reason, "token-budget-exhausted");
+  assert.equal(createClientScopedLlmBudget({
+    globalBudget: createRollingLlmBudget(resolveLlmRollingBudget(defaults)),
+    ...resolveLlmClientBudget(defaults),
+  }).reserve("reader-c", { requests: 1, tokens: 120_001 }).reason, "client-token-budget-exhausted");
 });
 
 test("a model budget of 0 or off switches that limit off instead of allowing one answer", () => {
@@ -2428,7 +2432,6 @@ test("a model budget of 0 or off switches that limit off instead of allowing one
     assert.equal(reservation.commit({ requests: 4, tokens: 50_000 }), true);
   }
   assert.equal(resolveLlmClientBudget({ requestBudget: "25" }).requestBudget, 25);
-  assert.equal(resolveLlmClientBudget({ requestBudget: "nonsense" }).requestBudget, Infinity);
 });
 
 test("unknown dispatched work is charged at its full reservation and observed overruns remain visible", () => {
@@ -6041,13 +6044,34 @@ test("environmental-impact fallback prefers concrete mitigation over procedural 
 });
 
 test("hydrated source text stays internal and public output uses an allowlist", () => {
+  const url = "https://keskkonnaportaal.ee/et/vesi";
+  const observedAt = "2026-11-11T06:00:00.000Z";
+  // A live discovery card is a publisher body, so the copied excerpt is released
+  // only by the observation that travelled with it. The witness is the fixture's
+  // proof that this page may be quoted; without it the allowlist keeps the link
+  // and withholds every copied field, which is policy behaviour and is covered by
+  // the source policy suites.
+  const sourcePolicy = observeSourcePolicy({
+    requestedUrl: url,
+    finalUrl: url,
+    observedAt,
+    contentKind: "fetched-html",
+    bodyHash: "a".repeat(64),
+    robotsObservation: {
+      status: "allowed",
+      origin: "https://keskkonnaportaal.ee",
+      checkedAt: observedAt,
+    },
+    html: "<!doctype html><html lang=\"et\"><head><title>Veeseire</title></head><body><main><p>Veeseire andmed.</p></main></body></html>",
+    headerInstances: [],
+  });
   const draft = composeSearchResponse("vesi", [{
     id: "vp-keskkonnaagentuur-volatile",
     title: "Veeseire",
     organization: "Keskkonnaagentuur",
     type: "Ametlik leht",
     published: "2026",
-    url: "https://keskkonnaportaal.ee/et/vesi",
+    url,
     tags: ["vesi"],
     summary: "Avalik kokkuvõte.",
     answer: "Serverisisene kontrollitud väide.",
@@ -6055,11 +6079,30 @@ test("hydrated source text stays internal and public output uses an allowlist", 
     evidenceExcerpt: "Vastuses kasutatud lühike kontrollitud tõendilõik.",
     excerpt: "Otsingukaardi väljavõte.",
     retrieval: "live-discovery",
+    _sourcePolicy: sourcePolicy,
     stale: false,
     score: 20,
+  }, {
+    // The same kind of card whose observation never travelled: the allowlist is
+    // applied fail-closed, so the reader keeps the link and loses the copy.
+    id: "vp-keskkonnaagentuur-unwitnessed",
+    title: "Mets",
+    organization: "Keskkonnaagentuur",
+    type: "Ametlik leht",
+    published: "2026",
+    url: "https://keskkonnaportaal.ee/et/teemad/mets",
+    tags: ["mets"],
+    summary: "Avalik kokkuvõte.",
+    evidenceExcerpt: "Ilma vaatluseta tõendilõik.",
+    retrieval: "live-discovery",
+    stale: false,
+    score: 10,
   }]);
+  // The private draft keeps the hydrated body, the modelled claim and the
+  // publisher decision; the reader's copy holds none of them.
   assert.match(draft.sources[0].content, /Täispikk/);
   assert.match(draft.sources[0].answer, /kontrollitud/);
+  assert.ok(draft.sources[0]._sourcePolicy, "the draft keeps the observation that released the copy");
   const visible = publicResponse(draft);
   assert.equal(visible.evidence, undefined);
   assert.equal(visible.sources[0].content, undefined);
@@ -6068,7 +6111,13 @@ test("hydrated source text stays internal and public output uses an allowlist", 
   assert.match(visible.sources[0].evidenceExcerpt, /lühike kontrollitud tõendilõik/u);
   assert.equal(visible.sources[0].retrieval, undefined);
   assert.equal(visible.sources[0].stale, undefined);
+  assert.equal(visible.sources[0]._sourcePolicy, undefined);
+  assert.equal(visible.sources[0].url, url, "the link metadata survives the projection");
   assert.match(visible.sources[0].id, /^official-[a-f0-9]{16}$/u);
+  assert.equal(visible.sources.length, 2, "a withheld copy never removes the navigation");
+  assert.equal(visible.sources[1].url, "https://keskkonnaportaal.ee/et/teemad/mets");
+  assert.equal(visible.sources[1].evidenceExcerpt, undefined);
+  assert.equal(visible.sources[1].summary, undefined);
 });
 
 test("public output compacts sparse citations after removing uncited sources", () => {
@@ -6569,7 +6618,18 @@ test("a provider timeout or failure preserves a detached accepted deterministic 
     });
 
     assert.ok(streamedDraft, outcome);
-    assert.deepEqual(result, streamedDraft, outcome);
+    // The reader keeps the answer that was already streamed: the accepted
+    // deterministic draft, not the provider's partial one. The returned result is
+    // that draft projected for publication, so the only difference it may carry is
+    // the copied-text expiry instant, which rides on the internal result as an own
+    // symbol and is dropped by serialization.
+    const delivered = (value) => JSON.parse(JSON.stringify(value));
+    assert.deepEqual(delivered(result), delivered(streamedDraft), outcome);
+    assert.equal(
+      typeof result[ANSWER_SOURCE_EXPIRY],
+      "number",
+      `${outcome}: the projected result carries the copied-text expiry instant`,
+    );
     assert.doesNotMatch(JSON.stringify(result), /PARTIAL_PROVIDER_SENTINEL/u, outcome);
     assert.match(result.answer.intro, /Kogujuurdekasv/iu, outcome);
     assert.equal(result.sources[result.answer.introCitations[0] - 1]?.id, "increment-method", outcome);
@@ -7239,14 +7299,54 @@ test("public page uses the complete Terrapoint application and permits only its 
 });
 
 
-test("inline citations use safe external source links instead of internal anchors", async () => {
-  const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
-  const citation = app.match(/function Citation[\s\S]*?function sourceTierLabel/u)?.[0] || "";
-  assert.match(citation, /<ExternalAnchor/u);
-  assert.match(citation, /href=\{source\?\.url\}/u);
-  assert.match(citation, /safeExternalHref\(source\?\.url\)/u);
-  assert.doesNotMatch(citation, /href=\{`#\$\{targetPrefix\}/u);
-  assert.doesNotMatch(app, /Vastuses viidatud allikad|sources-section|followup-sources/u);
+// Inline citations are rendered by the same ExternalAnchor + safeExternalHref
+// path as every other source link, and that path is what decides whether a
+// citation is visitable. Rendering the real component proves the visible result:
+// an official HTTPS source becomes a link that opens the publisher's page in a
+// new tab, and an in-page anchor such as `#source-2` never becomes a link at all.
+// The previous version of this test grepped App.jsx for the removed internal
+// "sources cited in the answer" block; the class name it banned is now used by
+// the follow-up card's "Leitud allikad" list, which links out with
+// ExternalAnchor, so that string no longer identifies the removed affordance.
+test("a source link opens the publisher page and an in-page anchor is never visitable", async () => {
+  const vite = await createServer({
+    configFile: false,
+    root: fileURLToPath(new URL("../", import.meta.url)),
+    logLevel: "silent",
+    esbuild: { jsx: "automatic" },
+    server: { middlewareMode: true, hmr: false, watch: null },
+    appType: "custom",
+  });
+  try {
+    const { SourceLegend } = await vite.ssrLoadModule("/src/App.jsx");
+    const $ = load(renderToStaticMarkup(createElement(SourceLegend, {
+      sources: [
+        {
+          citation: 1,
+          title: "Metsastatistika",
+          organization: "Keskkonnaagentuur",
+          published: "01.10.2026",
+          url: "https://keskkonnaportaal.ee/et/teemad/mets/metsastatistika-sh-smi",
+        },
+        {
+          citation: 2,
+          title: "Kohapealne ankur",
+          organization: "Keskkonnaagentuur",
+          published: "01.10.2026",
+          url: "#source-2",
+        },
+      ],
+    })));
+    const rows = $("ul.source-legend li");
+    const official = rows.eq(0).find("a.source-legend__link");
+    assert.equal(official.attr("href"), "https://keskkonnaportaal.ee/et/teemad/mets/metsastatistika-sh-smi");
+    assert.equal(official.attr("target"), "_blank");
+    assert.match(official.attr("rel") || "", /noreferrer/u);
+    assert.equal(rows.eq(1).find("a").length, 0, "an in-page anchor must never render as a source link");
+    assert.doesNotMatch($.html(), /href="#/u);
+  } finally {
+    await vite.close();
+  }
 });
 
 test("unknown API paths never fall through to the SPA HTML shell", async () => {

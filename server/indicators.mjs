@@ -66,8 +66,12 @@ import {
 } from "./forest-series.mjs";
 import { forestEvidenceIntent } from "./search.mjs";
 import {
+  SMI_2025_EDITION,
+  SMI_2025_EXPERT_CUT,
   SMI_2025_FIVE_YEAR_CUT,
   SMI_2025_INCREMENT,
+  SMI_2025_MEASURED_CUT,
+  SMI_2025_NET_INCREMENT,
   SMI_2025_TABLES_URL,
   SMI_2025_YEAR,
   smiSeriesLatestPoint,
@@ -1760,9 +1764,19 @@ export function smiHarvestBalanceProjection() {
     incrementCubicMetresPerHectareYear: increment.cubicMetresPerHectareYear,
     cutYear: cut.year,
     cutThousandM3: cut.value,
+    cutRelativeErrorPercent: SMI_2025_MEASURED_CUT.year === cut.year
+      ? SMI_2025_MEASURED_CUT.relativeErrorPercent
+      : null,
+    cutWorksheet: SMI_2025_MEASURED_CUT.year === cut.year ? String(SMI_2025_MEASURED_CUT.worksheet) : null,
+    deadWoodNote: SMI_2025_MEASURED_CUT.year === cut.year ? SMI_2025_MEASURED_CUT.deadWoodNote : null,
     fiveYearCutThousandM3: fiveYear.thousandM3,
     fiveYearCutRelativeErrorPercent: fiveYear.relativeErrorPercent,
     fiveYearCutAreaThousandHa: fiveYear.areaThousandHa,
+    cut2025ExpertThousandM3: SMI_2025_EXPERT_CUT.thousandM3,
+    cut2025IsExpertEstimate: SMI_2025_EXPERT_CUT.isExpertEstimate,
+    cut2025ExpertRelativeErrorPercent: SMI_2025_EXPERT_CUT.relativeErrorPercent,
+    netIncrementManagedCubicMetresPerHectareYear: SMI_2025_NET_INCREMENT.cubicMetresPerHectareYear,
+    netIncrementNationalThousandM3: SMI_2025_NET_INCREMENT.nationalTotalThousandM3,
     differenceThousandM3: increment.thousandM3PerYear - cut.value,
     removalsHigher: cut.value > increment.thousandM3PerYear,
   };
@@ -1772,12 +1786,15 @@ export function smiHarvestBalanceDocument() {
   const projection = smiHarvestBalanceProjection();
   if (!projection) return null;
   const origin = `Keskkonnaagentuuri SMI ${SMI_2025_YEAR} tulemuste töölehe`;
-  const relation = projection.removalsHigher ? "suurem" : "väiksem";
   const content = [
     `${origin} ${projection.worksheetIncrement} järgi oli metsamaa tagavara juurdekasv kõigil omanikel ${etNumberWithDigits(projection.incrementThousandM3PerYear, 0)} tuhat m³ aastas ehk ${etNumberWithDigits(projection.incrementCubicMetresPerHectareYear, 2)} m³ hektari kohta aastas; hinnangu suhteline viga oli ±${etNumberWithDigits(projection.incrementRelativeErrorPercent, 1)}%.`,
     `Töölehe ${projection.worksheetCut} järgi oli koguraie raiemaht ${projection.cutYear}. aastal ${etNumberWithDigits(projection.cutThousandM3, 0)} tuhat m³.`,
+    ...(projection.cutWorksheet && Number.isFinite(projection.cutRelativeErrorPercent)
+      ? [`Töölehe ${projection.cutWorksheet} järgi oli ${projection.cutYear}. aasta raiemahu suhteline viga ±${etNumberWithDigits(projection.cutRelativeErrorPercent, 1)}%${projection.deadWoodNote ? `; SMI ${SMI_2025_YEAR} ettekanne märgib, et ${projection.deadWoodNote}` : ""}.`]
+      : []),
     `Töölehe ${projection.worksheetFiveYear} järgi oli viie aasta keskmine raiemaht metsamaal ${etNumberWithDigits(projection.fiveYearCutThousandM3, 0)} tuhat m³ ja raiepindala ${etNumberWithDigits(projection.fiveYearCutAreaThousandHa, 2)} tuhat hektarit; raiemahu suhteline viga oli ±${etNumberWithDigits(projection.fiveYearCutRelativeErrorPercent, 1)}%.`,
-    `${projection.cutYear}. aasta raiemaht oli aastasest juurdekasvust ${etNumberWithDigits(Math.abs(projection.differenceThousandM3), 0)} tuhat m³ ${relation}.`,
+    "Kogujuurdekasvust arvatakse netojuurdekasvu saamiseks maha looduslik suremus, seega võrreldakse netojuurdekasvu elusate puude raiega, mitte kogujuurdekasvu kogu raiemahuga.",
+    `Töövihiku raiemahu aegrida lõpeb ${projection.cutYear}. aastaga ega sisalda ${projection.cutYear + 1}. aasta raiemahtu.`,
     `Töölehe ${projection.worksheetIncrement} joonealuse märkuse järgi on juurdekasv arvutatud mudeli alusel.`,
   ].join(" ");
   const projectionHash = createHash("sha256")
@@ -1790,7 +1807,7 @@ export function smiHarvestBalanceDocument() {
     type: "Metsastatistika andmetabel",
     published: "",
     url: SMI_2025_TABLES_URL,
-    locator: `SMI ${SMI_2025_YEAR} tulemuste töövihik, töölehed ${projection.worksheetIncrement}, ${projection.worksheetCut} ja ${projection.worksheetFiveYear}: juurdekasv, raiemaht ja viie aasta keskmine raiemaht.`,
+    locator: `SMI ${SMI_2025_YEAR} tulemuste töövihik, töölehed ${projection.worksheetIncrement}, ${projection.worksheetCut}, ${projection.worksheetFiveYear} ja ${projection.cutWorksheet || "22"}: juurdekasv, raiemaht ja viie aasta keskmine raiemaht.`,
     summary: `SMI ${SMI_2025_YEAR} andmetel oli metsamaa tagavara juurdekasv ${etNumberWithDigits(projection.incrementThousandM3PerYear, 0)} tuhat m³ aastas ja ${projection.cutYear}. aasta koguraie raiemaht ${etNumberWithDigits(projection.cutThousandM3, 0)} tuhat m³.`,
     content,
     topics: ["mets", "juurdekasv", "netojuurdekasv", "raiemaht", "SMI", String(projection.cutYear)],
@@ -1806,6 +1823,8 @@ export function smiHarvestBalanceDocument() {
     },
     _publishedAt: null,
     dataYear: String(SMI_2025_YEAR),
+    dataAsOf: "18.08.2026",
+    _smiEdition: SMI_2025_EDITION,
     _answerEvidenceEligible: true,
     _contentHash: projectionHash,
     _smiHarvestBalanceHash: projectionHash,
@@ -1947,7 +1966,7 @@ function forestObservationStatusSentence(observations = []) {
 // Eurostat removal accounting stays the fallback for the same question; it is
 // a different measurement of a different definition, which is why the answer
 // only leads with it when the SMI workbook extract is unavailable.
-function composeSmiHarvestBalanceAnswer(query, sources = [], controlQuery = query, comparisonIntent = "neutral") {
+function composeSmiHarvestBalanceAnswer(query, sources = [], controlQuery = query) {
   const index = (sources || []).findIndex((source) => source?.id === SMI_HARVEST_BALANCE_DOCUMENT_ID);
   if (index < 0) return null;
   const document = sources[index];
@@ -1960,26 +1979,39 @@ function composeSmiHarvestBalanceAnswer(query, sources = [], controlQuery = quer
   const smiCitation = index + 1;
   const methodCitation = citationFor("forest-balance-kaur-methodology");
   const handbookCitation = citationFor("forest-balance-eurostat-handbook");
+  // The 2025 felling expert estimate and the per hectare net increment are
+  // published by the 18.08.2026 Keskkonnaagentuur review, not by the workbook.
+  // Without that visible source the answer may not carry either value.
+  const expertCitation = citationFor("forest-stock-stable");
   const cutYear = Number(projection.cutYear);
   const explicitYear = requestedYear(String(controlQuery || query));
-  const difference = Math.abs(Number(projection.differenceThousandM3));
-  // Only numbers that the cited workbook extract states verbatim may appear in
-  // the answer: a derived share would have no visible witness.
-  const relationSentence = `${cutYear}. aasta koguraie raiemaht oli ${etNumberWithDigits(projection.cutThousandM3, 0)} tuhat m³, seega aastasest juurdekasvust ${etNumberWithDigits(difference, 0)} tuhat m³ ${projection.removalsHigher ? "suurem" : "väiksem"}.`;
-  const lead = comparisonIntent === "removals-greater"
-    ? projection.removalsHigher ? "Jah." : "Ei."
-    : comparisonIntent === "removals-lower"
-      ? projection.removalsHigher ? "Ei." : "Jah."
-      : "";
-  const yearCaveat = explicitYear && explicitYear !== cutYear
-    ? ` Küsisid ${explicitYear}. aastat, kuid SMI ${SMI_2025_YEAR} töövihik avaldab juurdekasvu ühe aastahinnanguna ja raiemahu aastate kaupa kuni ${cutYear}. aastani.`
-    : "";
+  // A question naming a year after the measured one is not a single-year
+  // comparison: the workbook publishes one annual increment estimate and a
+  // felling series that ends with the measured year. A year inside the series
+  // stays a note that this extract compares the latest measured year.
+  const referencedYear = Number.isInteger(explicitYear) && explicitYear !== cutYear ? explicitYear : null;
+  const askedYear = referencedYear && referencedYear > cutYear ? referencedYear : null;
+  const expertCutYear = Number(SMI_2025_EXPERT_CUT.year);
+  const expertThousand = Number(projection.cut2025ExpertThousandM3);
+  const expertEstimateWitnessed = Boolean(expertCitation)
+    && askedYear === expertCutYear
+    && Number.isFinite(expertThousand);
   const parts = [];
   if (methodCitation) {
     parts.push({
       title: "Mida juurdekasv ja netojuurdekasv tähendavad",
       text: "Netojuurdekasv saadakse, kui juurdekasvust arvatakse maha looduslik suremus. Viimase kümnendi keskmisena on elusate puude raiemaht olnud kõrgem kui majandatavate metsade netojuurdekasv, kuid 20 aasta pikkuses vaates alla netojuurdekasvu.",
       citations: [methodCitation],
+    });
+  }
+  if (askedYear) {
+    const availabilityText = expertEstimateWitnessed
+      ? `SMI ${SMI_2025_YEAR} töövihiku raiemahu aegrida lõpeb ${cutYear}. aastaga ja ${askedYear}. aasta raiemaht on eksperthinnang ${etNumberWithDigits(expertThousand / 1_000, 1)} miljonit m³, mitte mõõdetud tulemus. ${askedYear}. aasta mõõdetud raiemahtu ei ole avaldatud, seega ei saa ${askedYear}. aasta raiet ja kasvu ühe aasta lõikes kõrvutada.`
+      : `SMI ${SMI_2025_YEAR} töövihik avaldab raiemahu aastate kaupa kuni ${cutYear}. aastani, seega ${askedYear}. aasta raiemaht ei ole selles väljaandes avaldatud.`;
+    parts.push({
+      title: `${askedYear}. aasta kohta avaldatud andmed`,
+      text: `${availabilityText} Riiklikku netojuurdekasvu kogumahtu SMI ${SMI_2025_YEAR} töövihik ei avalda.`,
+      citations: [smiCitation, ...(expertCitation ? [expertCitation] : [])],
     });
   }
   if (handbookCitation) {
@@ -1989,16 +2021,49 @@ function composeSmiHarvestBalanceAnswer(query, sources = [], controlQuery = quer
       citations: [handbookCitation, smiCitation],
     });
   }
+  const baseIntro = `SMI ${SMI_2025_YEAR} andmetel oli metsamaa tagavara juurdekasv kõigil omanikel ${etNumberWithDigits(projection.incrementThousandM3PerYear, 0)} tuhat m³ aastas ehk ${etNumberWithDigits(projection.incrementCubicMetresPerHectareYear, 2)} m³ hektari kohta aastas (suhteline viga ±${etNumberWithDigits(projection.incrementRelativeErrorPercent, 1)}%).`;
+  const grossNetSentence = "See on kogujuurdekasv, mitte netojuurdekasv: kogujuurdekasvust arvatakse netojuurdekasvu saamiseks maha looduslik suremus, seega võrreldakse netojuurdekasvu elusate puude raiega.";
+  const measuredSentence = Number.isFinite(projection.cutRelativeErrorPercent)
+    ? `${cutYear}. aasta mõõdetud koguraie raiemaht oli ${etNumberWithDigits(projection.cutThousandM3, 0)} tuhat m³ (suhteline viga ±${etNumberWithDigits(projection.cutRelativeErrorPercent, 1)}%).`
+    : "";
+  const expertSentence = expertEstimateWitnessed
+    ? `${expertCutYear}. aasta raiemaht on eksperthinnang ${etNumberWithDigits(expertThousand / 1_000, 1)} miljonit m³, mitte mõõdetud tulemus.`
+    : "";
+  const netSentence = expertCitation && Number.isFinite(projection.netIncrementManagedCubicMetresPerHectareYear)
+    ? `Majandatava metsa netojuurdekasv oli ${expertCutYear}. aastal ${etNumberWithDigits(projection.netIncrementManagedCubicMetresPerHectareYear, 1)} m³ hektari kohta aastas, kuid riiklikku netojuurdekasvu kogumahtu ei ole avaldatud.`
+    : "";
+  // No derived subtraction and no year verdict: the workbook publishes a gross
+  // annual increment estimate and a total felling volume, which are not the two
+  // sides of the sustainability comparison.
+  const introForAskedYear = [
+    baseIntro,
+    grossNetSentence,
+    measuredSentence,
+    expertSentence,
+    `${askedYear}. aasta mõõdetud raiemahtu ei ole avaldatud.`,
+    netSentence,
+  ].filter(Boolean).join(" ").replace(/\s+/gu, " ").trim();
+  const pastYearCaveat = referencedYear && !askedYear
+    ? ` Küsisid ${referencedYear}. aastat, kuid see väljavõte võrdleb ${cutYear}. aastat; töövihik avaldab raiemahu aastate kaupa kuni ${cutYear}. aastani.`
+    : "";
   return {
     answer: {
       eyebrow: `Keskkonnaagentuur, SMI ${SMI_2025_YEAR}`,
-      title: projection.removalsHigher
-        ? `SMI ${SMI_2025_YEAR} andmetel raiutakse rohkem kui juurde kasvab`
-        : `SMI ${SMI_2025_YEAR} andmetel kasvab mets juurde rohkem kui raiutakse`,
-      intro: `${lead ? `${lead} ` : ""}SMI ${SMI_2025_YEAR} andmetel oli metsamaa tagavara juurdekasv kõigil omanikel ${etNumberWithDigits(projection.incrementThousandM3PerYear, 0)} tuhat m³ aastas ehk ${etNumberWithDigits(projection.incrementCubicMetresPerHectareYear, 2)} m³ hektari kohta aastas (suhteline viga ±${etNumberWithDigits(projection.incrementRelativeErrorPercent, 1)}%). ${relationSentence} Viie aasta keskmine raiemaht metsamaal oli ${etNumberWithDigits(projection.fiveYearCutThousandM3, 0)} tuhat m³.${yearCaveat}`,
-      introCitations: [smiCitation],
+      title: askedYear
+        ? expertEstimateWitnessed
+          ? `SMI ${SMI_2025_YEAR}: ${askedYear}. aasta raiemaht on eksperthinnang, mitte mõõdetud tulemus`
+          : `SMI ${SMI_2025_YEAR}: ${askedYear}. aasta raiemaht ei ole selles väljaandes avaldatud`
+        : "Raiemahu ja juurdekasvu suhe sõltub mõõdikust ja perioodist",
+      intro: askedYear
+        ? introForAskedYear
+        : `${baseIntro} Viie aasta keskmine raiemaht metsamaal oli ${etNumberWithDigits(projection.fiveYearCutThousandM3, 0)} tuhat m³. ${grossNetSentence}${pastYearCaveat}`,
+      introCitations: askedYear
+        ? [smiCitation, ...(expertCitation ? [expertCitation] : [])]
+        : [smiCitation],
       parts,
-      note: `Võrdlus pärineb ühest allikast, ühest väljaandest ja ühest metoodikast: juurdekasv on aastahinnang kõigil omanikel, raiemaht on ${cutYear}. aasta koguraie. Kogujuurdekasv ei ole netojuurdekasv ja ühe aasta või ühe näitaja põhjal ei saa teha lõplikku järeldust metsamajanduse kestlikkuse kohta.`,
+      note: askedYear
+        ? `Kogujuurdekasv, raiemaht ja nende vead pärinevad SMI ${SMI_2025_YEAR} töövihikust${expertCitation ? ", 2025. aasta eksperthinnang ja netojuurdekasv Keskkonnaagentuuri 18.08.2026 ülevaatest" : ""}. Kogujuurdekasv ei ole netojuurdekasv ja ühe aasta või ühe näitaja põhjal ei saa teha lõplikku järeldust metsamajanduse kestlikkuse kohta.`
+        : `Võrdlus pärineb ühest allikast ja ühest väljaandest: juurdekasv on aastahinnang kõigil omanikel, raiemaht on ${cutYear}. aasta koguraie. Kogujuurdekasv ei ole netojuurdekasv ja ühe aasta või ühe näitaja põhjal ei saa teha lõplikku järeldust metsamajanduse kestlikkuse kohta.`,
     },
     related: [
       "Mis vahe on kogu- ja netojuurdekasvul?",
@@ -2011,7 +2076,7 @@ function composeSmiHarvestBalanceAnswer(query, sources = [], controlQuery = quer
 export function composeForestHarvestBalanceAnswer(query, sources = [], controlQuery = query) {
   const comparisonIntent = forestHarvestComparisonIntent(query);
   if (!comparisonIntent) return null;
-  const smiBalance = composeSmiHarvestBalanceAnswer(query, sources, controlQuery, comparisonIntent);
+  const smiBalance = composeSmiHarvestBalanceAnswer(query, sources, controlQuery);
   if (smiBalance) return smiBalance;
   const citationFor = (id) => {
     const index = sources.findIndex((source) => source.id === id);
@@ -2192,290 +2257,364 @@ export function composeForestHarvestBalanceAnswer(query, sources = [], controlQu
   };
 }
 
+// One question can name two independent official sources, for example the last
+// published hydrology reading of a gauge and a current weather observation.
+// Each admitted source is one segment below. The segments never depend on each
+// other's result, so they are read under a small fixed concurrency instead of
+// one after another, and the flattened result keeps the catalogue order, so a
+// ranking caller sees the same list under any answering order. One admitted
+// source still costs exactly one request, and a segment answered from reviewed
+// local data never touches the network.
+const STRUCTURED_SOURCE_CONCURRENCY = 3;
+
 export async function loadStructuredIndicatorDocuments(query, options = {}) {
   const timeoutMs = Math.max(250, Math.min(Number(options.timeoutMs) || 2_000, 6_000));
-  const documents = [];
+  // Segments are collected in catalogue order and each one returns the
+  // documents of a single admitted source.
+  const segments = [];
+  const addLocal = (documents) => {
+    segments.push(() => documents);
+  };
+  const addFetched = (load) => {
+    segments.push(load);
+  };
   if (isClimateDailyMeanQuery(query, { now: options.now })) {
-    try {
-      const fetchPostgrestDataset = options.fetchPostgrestDataset || fetchOfficialPostgrestDataset;
-      const url = climateDailyQueryUrl(query, { now: options.now });
-      const result = await fetchPostgrestDataset(url, {
-        timeoutMs,
-        signal: options.signal,
-        ttlMs: 12 * 60 * 60_000,
-        staleMs: 0,
-        maximumBytes: 64_000,
-        maximumRedirects: 0,
-      });
-      documents.push(...climateDailyMeanFromJson(query, result.body, {
-        fetchedAt: result.fetchedAt,
-        stale: result.stale,
-        now: options.now,
-      }));
-    } catch (error) {
-      if (options.signal?.aborted || error?.name === "AbortError") throw error;
-      // The climate-data catalogue remains visible without a numeric claim.
-    }
+    addFetched(async () => {
+      try {
+        const fetchPostgrestDataset = options.fetchPostgrestDataset || fetchOfficialPostgrestDataset;
+        const url = climateDailyQueryUrl(query, { now: options.now });
+        const result = await fetchPostgrestDataset(url, {
+          timeoutMs,
+          signal: options.signal,
+          ttlMs: 12 * 60 * 60_000,
+          staleMs: 0,
+          maximumBytes: 64_000,
+          maximumRedirects: 0,
+        });
+        return climateDailyMeanFromJson(query, result.body, {
+          fetchedAt: result.fetchedAt,
+          stale: result.stale,
+          now: options.now,
+        });
+      } catch (error) {
+        if (options.signal?.aborted || error?.name === "AbortError") throw error;
+        // The climate-data catalogue remains visible without a numeric claim.
+        return [];
+      }
+    });
   }
   if (isHarvestShareQuery(query)) {
     const primary = smiHarvestShareDocument(query);
-    if (primary) documents.push(primary);
+    if (primary) addLocal([primary]);
   }
   const forestSeriesQuery = (isForestSeriesQuery(query) || isForestContextSeriesQuery(query))
     && !isForestHarvestBalanceQuery(query) && !isHarvestShareQuery(query);
   // Keskkonnaagentuur's own SMI workbook comes first; Statistikaamet's
   // republication is fetched only for series the workbook does not publish.
   const smiSeries = forestSeriesQuery ? smiForestSeriesDocument(query) : null;
-  if (smiSeries) documents.push(smiSeries);
+  if (smiSeries) addLocal([smiSeries]);
   if (forestSeriesQuery && !smiSeries) {
-    try {
-      const fetchPxwebDataset = options.fetchPxwebDataset || fetchOfficialPxwebDataset;
-      const intent = resolveForestSeriesIntent(query);
-      const result = await fetchPxwebDataset(
-        intent.table === "KK51" ? FOREST_SERIES_KK51_API_URL : FOREST_SERIES_MM03_API_URL,
-        forestSeriesRequest(intent),
-        { timeoutMs, signal: options.signal, maximumBytes: 64_000 },
-      );
-      documents.push(...forestSeriesFromJson(query, result.body, {
-        fetchedAt: result.fetchedAt,
-        stale: result.stale,
-        now: options.now,
-      }));
-    } catch (error) {
-      if (options.signal?.aborted || error?.name === "AbortError") throw error;
-      // The reviewed SMI catalogue pages remain visible without a series.
-    }
+    addFetched(async () => {
+      try {
+        const fetchPxwebDataset = options.fetchPxwebDataset || fetchOfficialPxwebDataset;
+        const intent = resolveForestSeriesIntent(query);
+        const result = await fetchPxwebDataset(
+          intent.table === "KK51" ? FOREST_SERIES_KK51_API_URL : FOREST_SERIES_MM03_API_URL,
+          forestSeriesRequest(intent),
+          { timeoutMs, signal: options.signal, maximumBytes: 64_000 },
+        );
+        return forestSeriesFromJson(query, result.body, {
+          fetchedAt: result.fetchedAt,
+          stale: result.stale,
+          now: options.now,
+        });
+      } catch (error) {
+        if (options.signal?.aborted || error?.name === "AbortError") throw error;
+        // The reviewed SMI catalogue pages remain visible without a series.
+        return [];
+      }
+    });
   }
   if (isLandUseShareQuery(query) && smiLandCategoriesValid()) {
-    documents.push(smiLandCategoryDocument());
+    addLocal([smiLandCategoryDocument()]);
   } else if (isLandUseShareQuery(query)) {
-    try {
-      const fetchPxwebDataset = options.fetchPxwebDataset || fetchOfficialPxwebDataset;
-      const result = await fetchPxwebDataset(LAND_USE_KK07_API_URL, landUseShareRequest(), {
-        timeoutMs,
-        signal: options.signal,
-        maximumBytes: 32_000,
-      });
-      documents.push(...landUseShareFromJson(query, result.body, {
-        fetchedAt: result.fetchedAt,
-        stale: result.stale,
-        now: options.now,
-      }));
-    } catch (error) {
-      if (options.signal?.aborted || error?.name === "AbortError") throw error;
-      // The share answer keeps its text without the land-use split.
-    }
+    addFetched(async () => {
+      try {
+        const fetchPxwebDataset = options.fetchPxwebDataset || fetchOfficialPxwebDataset;
+        const result = await fetchPxwebDataset(LAND_USE_KK07_API_URL, landUseShareRequest(), {
+          timeoutMs,
+          signal: options.signal,
+          maximumBytes: 32_000,
+        });
+        return landUseShareFromJson(query, result.body, {
+          fetchedAt: result.fetchedAt,
+          stale: result.stale,
+          now: options.now,
+        });
+      } catch (error) {
+        if (options.signal?.aborted || error?.name === "AbortError") throw error;
+        // The share answer keeps its text without the land-use split.
+        return [];
+      }
+    });
   }
   if (isStatisticsWaterAbstractionQuery(query)) {
-    try {
-      const fetchPxwebDataset = options.fetchPxwebDataset || fetchOfficialPxwebDataset;
-      const result = await fetchPxwebDataset(
-        STATISTICS_WATER_ABSTRACTION_API_URL,
-        statisticsWaterAbstractionRequest(),
-        { timeoutMs, signal: options.signal },
-      );
-      documents.push(...statisticsWaterAbstractionFromJson(query, result.body, {
-        fetchedAt: result.fetchedAt,
-        stale: result.stale,
-        now: options.now,
-      }));
-    } catch (error) {
-      if (options.signal?.aborted || error?.name === "AbortError") throw error;
-      // The reviewed PXWeb directory route remains visible without a number.
-    }
+    addFetched(async () => {
+      try {
+        const fetchPxwebDataset = options.fetchPxwebDataset || fetchOfficialPxwebDataset;
+        const result = await fetchPxwebDataset(
+          STATISTICS_WATER_ABSTRACTION_API_URL,
+          statisticsWaterAbstractionRequest(),
+          { timeoutMs, signal: options.signal },
+        );
+        return statisticsWaterAbstractionFromJson(query, result.body, {
+          fetchedAt: result.fetchedAt,
+          stale: result.stale,
+          now: options.now,
+        });
+      } catch (error) {
+        if (options.signal?.aborted || error?.name === "AbortError") throw error;
+        // The reviewed PXWeb directory route remains visible without a number.
+        return [];
+      }
+    });
   }
   if (isStatisticsHazardousWasteQuery(query)) {
-    try {
-      const fetchPxwebDataset = options.fetchPxwebDataset || fetchOfficialPxwebDataset;
-      const result = await fetchPxwebDataset(
-        STATISTICS_HAZARDOUS_WASTE_API_URL,
-        statisticsHazardousWasteRequest(),
-        { timeoutMs, signal: options.signal },
-      );
-      documents.push(...statisticsHazardousWasteFromJson(query, result.body, {
-        fetchedAt: result.fetchedAt,
-        stale: result.stale,
-        now: options.now,
-      }));
-    } catch (error) {
-      if (options.signal?.aborted || error?.name === "AbortError") throw error;
-      // The reviewed PXWeb directory route remains visible without a number.
-    }
+    addFetched(async () => {
+      try {
+        const fetchPxwebDataset = options.fetchPxwebDataset || fetchOfficialPxwebDataset;
+        const result = await fetchPxwebDataset(
+          STATISTICS_HAZARDOUS_WASTE_API_URL,
+          statisticsHazardousWasteRequest(),
+          { timeoutMs, signal: options.signal },
+        );
+        return statisticsHazardousWasteFromJson(query, result.body, {
+          fetchedAt: result.fetchedAt,
+          stale: result.stale,
+          now: options.now,
+        });
+      } catch (error) {
+        if (options.signal?.aborted || error?.name === "AbortError") throw error;
+        // The reviewed PXWeb directory route remains visible without a number.
+        return [];
+      }
+    });
   }
   if (isStatisticsWastewaterBht7Query(query)) {
-    try {
-      const fetchPxwebDataset = options.fetchPxwebDataset || fetchOfficialPxwebDataset;
-      const result = await fetchPxwebDataset(
-        STATISTICS_WASTEWATER_BHT7_API_URL,
-        statisticsWastewaterBht7Request(),
-        { timeoutMs, signal: options.signal },
-      );
-      documents.push(...statisticsWastewaterBht7FromJson(query, result.body, {
-        fetchedAt: result.fetchedAt,
-        stale: result.stale,
-        now: options.now,
-      }));
-    } catch (error) {
-      if (options.signal?.aborted || error?.name === "AbortError") throw error;
-      // The reviewed PXWeb directory route remains visible without a number.
-    }
+    addFetched(async () => {
+      try {
+        const fetchPxwebDataset = options.fetchPxwebDataset || fetchOfficialPxwebDataset;
+        const result = await fetchPxwebDataset(
+          STATISTICS_WASTEWATER_BHT7_API_URL,
+          statisticsWastewaterBht7Request(),
+          { timeoutMs, signal: options.signal },
+        );
+        return statisticsWastewaterBht7FromJson(query, result.body, {
+          fetchedAt: result.fetchedAt,
+          stale: result.stale,
+          now: options.now,
+        });
+      } catch (error) {
+        if (options.signal?.aborted || error?.name === "AbortError") throw error;
+        // The reviewed PXWeb directory route remains visible without a number.
+        return [];
+      }
+    });
   }
   if (isStatisticsTotalWasteRecoveryQuery(query)) {
-    try {
-      const fetchPxwebDataset = options.fetchPxwebDataset || fetchOfficialPxwebDataset;
-      const year = Number(String(query).match(/\b(?:19|20)\d{2}\b/u)?.[0]);
-      const request = statisticsTotalWasteRecoveryRequest(year);
-      const result = await fetchPxwebDataset(
-        STATISTICS_TOTAL_WASTE_RECOVERY_API_URL,
-        request,
-        { timeoutMs, signal: options.signal },
-      );
-      documents.push(...statisticsTotalWasteRecoveryFromJson(query, result.body, {
-        fetchedAt: result.fetchedAt,
-        stale: result.stale,
-        now: options.now,
-      }));
-    } catch (error) {
-      if (options.signal?.aborted || error?.name === "AbortError") throw error;
-      // The reviewed PXWeb directory route remains visible without a number.
-    }
+    addFetched(async () => {
+      try {
+        const fetchPxwebDataset = options.fetchPxwebDataset || fetchOfficialPxwebDataset;
+        const year = Number(String(query).match(/\b(?:19|20)\d{2}\b/u)?.[0]);
+        const request = statisticsTotalWasteRecoveryRequest(year);
+        const result = await fetchPxwebDataset(
+          STATISTICS_TOTAL_WASTE_RECOVERY_API_URL,
+          request,
+          { timeoutMs, signal: options.signal },
+        );
+        return statisticsTotalWasteRecoveryFromJson(query, result.body, {
+          fetchedAt: result.fetchedAt,
+          stale: result.stale,
+          now: options.now,
+        });
+      } catch (error) {
+        if (options.signal?.aborted || error?.name === "AbortError") throw error;
+        // The reviewed PXWeb directory route remains visible without a number.
+        return [];
+      }
+    });
   }
   if (isEelisEmajogiPublicWatercourseQuery(query)) {
-    try {
-      const fetchGeoJsonDataset = options.fetchGeoJsonDataset || fetchOfficialGeoJsonDataset;
-      const result = await fetchGeoJsonDataset(EELIS_EMAJOGI_PUBLIC_WATERCOURSE_WFS_URL, {
-        timeoutMs,
-        signal: options.signal,
-      });
-      documents.push(...eelisEmajogiPublicWatercourseFromGeoJson(query, result.body, {
-        fetchedAt: result.fetchedAt,
-        stale: result.stale,
-        now: options.now,
-      }));
-    } catch (error) {
-      if (options.signal?.aborted || error?.name === "AbortError") throw error;
-      // The maintained GeoServer route remains visible without a classification claim.
-    }
+    addFetched(async () => {
+      try {
+        const fetchGeoJsonDataset = options.fetchGeoJsonDataset || fetchOfficialGeoJsonDataset;
+        const result = await fetchGeoJsonDataset(EELIS_EMAJOGI_PUBLIC_WATERCOURSE_WFS_URL, {
+          timeoutMs,
+          signal: options.signal,
+        });
+        return eelisEmajogiPublicWatercourseFromGeoJson(query, result.body, {
+          fetchedAt: result.fetchedAt,
+          stale: result.stale,
+          now: options.now,
+        });
+      } catch (error) {
+        if (options.signal?.aborted || error?.name === "AbortError") throw error;
+        // The maintained GeoServer route remains visible without a classification claim.
+        return [];
+      }
+    });
   }
   if (isEelisNaturaSiteQuery(query)) {
-    try {
-      const fetchPostgrestDataset = options.fetchPostgrestDataset || fetchOfficialPostgrestDataset;
-      const url = eelisNaturaSiteQueryUrl(query);
-      const result = await fetchPostgrestDataset(url, {
-        timeoutMs,
-        signal: options.signal,
-        ttlMs: 30 * 60_000,
-        staleMs: 0,
-        maximumBytes: 32_000,
-        maximumRedirects: 0,
-      });
-      documents.push(...eelisNaturaSiteFromJson(query, result.body, {
-        fetchedAt: result.fetchedAt,
-        stale: result.stale,
-        now: options.now,
-      }));
-    } catch (error) {
-      if (options.signal?.aborted || error?.name === "AbortError") throw error;
-      // The EELIS catalogue remains visible without a register-fact claim.
-    }
+    addFetched(async () => {
+      try {
+        const fetchPostgrestDataset = options.fetchPostgrestDataset || fetchOfficialPostgrestDataset;
+        const url = eelisNaturaSiteQueryUrl(query);
+        const result = await fetchPostgrestDataset(url, {
+          timeoutMs,
+          signal: options.signal,
+          ttlMs: 30 * 60_000,
+          staleMs: 0,
+          maximumBytes: 32_000,
+          maximumRedirects: 0,
+        });
+        return eelisNaturaSiteFromJson(query, result.body, {
+          fetchedAt: result.fetchedAt,
+          stale: result.stale,
+          now: options.now,
+        });
+      } catch (error) {
+        if (options.signal?.aborted || error?.name === "AbortError") throw error;
+        // The EELIS catalogue remains visible without a register-fact claim.
+        return [];
+      }
+    });
   }
   if (isLatestPublishedHydrologyQuery(query)) {
-    try {
-      const fetchPostgrestDataset = options.fetchPostgrestDataset || fetchOfficialPostgrestDataset;
-      const url = latestPublishedHydrologyQueryUrl(query, { now: options.now });
-      const result = await fetchPostgrestDataset(url, {
-        timeoutMs,
-        signal: options.signal,
-      });
-      documents.push(...latestPublishedHydrologyFromJson(query, result.body, {
-        stale: result.stale,
-        now: options.now,
-      }));
-    } catch (error) {
-      if (options.signal?.aborted || error?.name === "AbortError") throw error;
-      // The route-only hydrology views remain available without a numeric claim.
-    }
+    addFetched(async () => {
+      try {
+        const fetchPostgrestDataset = options.fetchPostgrestDataset || fetchOfficialPostgrestDataset;
+        const url = latestPublishedHydrologyQueryUrl(query, { now: options.now });
+        const result = await fetchPostgrestDataset(url, {
+          timeoutMs,
+          signal: options.signal,
+        });
+        return latestPublishedHydrologyFromJson(query, result.body, {
+          stale: result.stale,
+          now: options.now,
+        });
+      } catch (error) {
+        if (options.signal?.aborted || error?.name === "AbortError") throw error;
+        // The route-only hydrology views remain available without a numeric claim.
+        return [];
+      }
+    });
   }
   if (isCurrentWeatherObservationQuery(query)) {
-    try {
-      const fetchXmlDataset = options.fetchXmlDataset || fetchOfficialXmlDataset;
-      const result = await fetchXmlDataset(CURRENT_WEATHER_OBSERVATIONS_XML_URL, {
-        timeoutMs,
-        signal: options.signal,
-      });
-      documents.push(...currentWeatherObservationFromXml(query, result.body, {
-        stale: result.stale,
-        now: options.now,
-      }));
-    } catch (error) {
-      if (options.signal?.aborted || error?.name === "AbortError") throw error;
-      // The route-only Ilmateenistus directory card remains available.
-    }
+    addFetched(async () => {
+      try {
+        const fetchXmlDataset = options.fetchXmlDataset || fetchOfficialXmlDataset;
+        const result = await fetchXmlDataset(CURRENT_WEATHER_OBSERVATIONS_XML_URL, {
+          timeoutMs,
+          signal: options.signal,
+        });
+        return currentWeatherObservationFromXml(query, result.body, {
+          stale: result.stale,
+          now: options.now,
+        });
+      } catch (error) {
+        if (options.signal?.aborted || error?.name === "AbortError") throw error;
+        // The route-only Ilmateenistus directory card remains available.
+        return [];
+      }
+    });
   }
   if (isNationalWeatherForecastQuery(query, { now: options.now })) {
-    try {
-      const fetchXmlDataset = options.fetchXmlDataset || fetchOfficialXmlDataset;
-      const result = await fetchXmlDataset(WEATHER_FORECAST_XML_URL, {
-        timeoutMs,
-        signal: options.signal,
-      });
-      documents.push(...nationalWeatherForecastFromXml(query, result.body, {
-        stale: result.stale,
-        fetchedAt: result.fetchedAt,
-        now: options.now,
-      }));
-    } catch (error) {
-      if (options.signal?.aborted || error?.name === "AbortError") throw error;
-      // The Ilm+ forecast route remains available without a numeric claim.
-    }
+    addFetched(async () => {
+      try {
+        const fetchXmlDataset = options.fetchXmlDataset || fetchOfficialXmlDataset;
+        const result = await fetchXmlDataset(WEATHER_FORECAST_XML_URL, {
+          timeoutMs,
+          signal: options.signal,
+        });
+        return nationalWeatherForecastFromXml(query, result.body, {
+          stale: result.stale,
+          fetchedAt: result.fetchedAt,
+          now: options.now,
+        });
+      } catch (error) {
+        if (options.signal?.aborted || error?.name === "AbortError") throw error;
+        // The Ilm+ forecast route remains available without a numeric claim.
+        return [];
+      }
+    });
   }
   if (isMunicipalWasteRecyclingRateQuery(query)) {
-    try {
-      const result = await fetchOfficialDataset(MUNICIPAL_WASTE_RECYCLING_CSV_URL, {
-        timeoutMs,
-        signal: options.signal,
-      });
-      documents.push(...municipalWasteIndicatorFromCsv(query, result.body, { stale: result.stale }));
-    } catch (error) {
-      if (options.signal?.aborted || error?.name === "AbortError") throw error;
-      // The rest of the ranked official search remains available.
-    }
+    addFetched(async () => {
+      try {
+        const result = await fetchOfficialDataset(MUNICIPAL_WASTE_RECYCLING_CSV_URL, {
+          timeoutMs,
+          signal: options.signal,
+        });
+        return municipalWasteIndicatorFromCsv(query, result.body, { stale: result.stale });
+      } catch (error) {
+        if (options.signal?.aborted || error?.name === "AbortError") throw error;
+        // The rest of the ranked official search remains available.
+        return [];
+      }
+    });
   }
   if (isForestIncrementQuestion(query)) {
-    documents.push(smiIncrementDocument());
+    addLocal([smiIncrementDocument()]);
   }
   if (isForestHarvestBalanceQuery(query)) {
-    const smiDocument = smiHarvestBalanceDocument();
-    if (smiDocument) documents.push(smiDocument);
     const reviewedDocuments = () => forestHarvestBalanceDocumentsFromJson(
       query,
       reviewedForestBalanceSnapshot(),
       { reviewedSnapshot: true },
     );
-    try {
-      const fetchJsonDataset = options.fetchJsonDataset || fetchOfficialJsonDataset;
-      const result = await fetchJsonDataset(FOREST_BALANCE_EUROSTAT_API_URL, {
-        timeoutMs,
-        signal: options.signal,
-      });
-      const fetchedDocuments = forestHarvestBalanceDocumentsFromJson(
-        query,
-        JSON.parse(result.body),
-        { stale: result.stale, fetchedAt: result.fetchedAt, now: options.now },
-      );
-      const hasFreshComparison = fetchedDocuments.some((document) => {
-        if (document.id !== "forest-balance-eurostat"
-          || document._answerEvidenceEligible !== true) return false;
-        const observedYears = new Set(
-          (document._forestBalance?.observations || []).map((observation) => observation.year),
+    const smiDocument = smiHarvestBalanceDocument();
+    addFetched(async () => {
+      const documents = smiDocument ? [smiDocument] : [];
+      try {
+        const fetchJsonDataset = options.fetchJsonDataset || fetchOfficialJsonDataset;
+        const result = await fetchJsonDataset(FOREST_BALANCE_EUROSTAT_API_URL, {
+          timeoutMs,
+          signal: options.signal,
+        });
+        const fetchedDocuments = forestHarvestBalanceDocumentsFromJson(
+          query,
+          JSON.parse(result.body),
+          { stale: result.stale, fetchedAt: result.fetchedAt, now: options.now },
         );
-        return REVIEWED_FOREST_BALANCE_YEARS.every((year) => observedYears.has(year));
-      });
-      documents.push(...(hasFreshComparison ? fetchedDocuments : reviewedDocuments()));
-    } catch (error) {
-      if (options.signal?.aborted) throw error;
-      documents.push(...reviewedDocuments());
-    }
+        const hasFreshComparison = fetchedDocuments.some((document) => {
+          if (document.id !== "forest-balance-eurostat"
+            || document._answerEvidenceEligible !== true) return false;
+          const observedYears = new Set(
+            (document._forestBalance?.observations || []).map((observation) => observation.year),
+          );
+          return REVIEWED_FOREST_BALANCE_YEARS.every((year) => observedYears.has(year));
+        });
+        documents.push(...(hasFreshComparison ? fetchedDocuments : reviewedDocuments()));
+      } catch (error) {
+        if (options.signal?.aborted) throw error;
+        documents.push(...reviewedDocuments());
+      }
+      return documents;
+    });
   }
-  return documents;
+  // Independent sources run under the fixed concurrency, and the segments land
+  // in their collected index so the returned order is the admission order.
+  const results = new Array(segments.length);
+  let cursor = 0;
+  const drain = async () => {
+    while (cursor < segments.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await segments[index]();
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(STRUCTURED_SOURCE_CONCURRENCY, segments.length) }, drain),
+  );
+  return results.flat();
 }

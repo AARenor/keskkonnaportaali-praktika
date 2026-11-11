@@ -1,6 +1,6 @@
 # Keskkonnaportaali otsingu kasutusjuhend
 
-Uuendatud: 10.11.2026
+Uuendatud: 11.11.2026
 
 Täielik sirvitav juhend koos peatükilinkidega:
 [praktika.arle.top/docs/kasutajale](https://praktika.arle.top/docs/kasutajale).
@@ -19,7 +19,7 @@ ega pärast uuesti laadimist; küsimused püsivad ainult avatud lehe mälus.
 
 ## Kuidas vastust lugeda
 
-1. Koondvastus tuleb enne tulemuste loendit.
+1. Koondvastus tuleb enne tulemuste loendit. Pikk vastus ei sõltu ühest lahtisest ühendusest: leht küsib serverilt töö seisu lühikeste päringutega, seega tulemused võivad ilmuda enne vastust. Lehe sulgemine, uuendamine või uue otsingu alustamine katkestab poolelioleva töö ja vastust tuleb uuesti küsida.
 2. Vastuses olev numberlink avab väidet kandva ametliku HTTPS-allika uuel vahelehel.
 3. Tulemuse metaandmetes tähendab **Allikas:** sisu väljaandjat. Keskkonnaagentuuri koostatud materjal kuvatakse nimega „Keskkonnaagentuur”, mitte lühendiga.
 4. **Andmed:** näitab eraldi andmeaastat ja vajadusel andmete täpset seisu. **Uuendatud:** näitab allikalehel avaldatud viimast muutmiskuupäeva; kui seda pole, kuvatakse **Avaldatud:**. Reaalaja seireallikate puhul küljes olev kellaaeg on vaatlusaeg, mitte lehe avaldamisaeg: seda näidatakse kui **Andmete seis: pp.kk.aaaa tt:mm UTC**. Näiteks puidubilansi juures kuvatakse „Andmed: 2023 (seisuga 18.03.2026) · Uuendatud: 01.10.2026”, et lehe muutmise aega ei peetaks ekslikult andmeaastaks.
@@ -28,6 +28,8 @@ ega pärast uuesti laadimist; küsimused püsivad ainult avatud lehe mälus.
 7. Avatud kvalitatiivsele küsimusele (näiteks „miks…”, „kuidas…”, „mida teeb…”) võib vastuse anda üks asjakohane ametlik lõik, kui see katab küsimuse põhisubjekti ning allikas mainib ka nimetatud kohta või osalejat. Arvu, aastat, konkreetset kohta või tegevust küsiv vastus nõuab endiselt täpset tõendit. Kui mudel ei ole kättesaadav, kuvatakse sama tõendi viidatud väljavõte, mitte üldteadmine.
 
 „Ülevaade” üksi ei ole teemaväline päring: otsing palub valida keskkonnateema. „Metsa ülevaade” või „Põhjavesi andmed Eestis” annavad täpsema lähtekoha.
+
+AI koondvastus on praegu piiratud Eesti metsateemadega. Muudel keskkonnateemadel näed allikate loendit, pealkirju ja viiteid, kuid mitte AI kokkuvõtet; see on toote otsus, mitte tõrge. Vastuses kasutatud allikaväljavõtted on lühikesed tsitaadid, mis viivad algallika juurde. Kui avaldaja on lühiväljavõtte keelanud või piiranud, näed linki, pealkirja ja kuupäeva, kuid mitte pikka tekstilõiku. Avaldaja luba robotitele ei ole litsents ega anna õigust sisu taaskasutada.
 
 ## Filtrid
 
@@ -49,9 +51,17 @@ SMI, metsaaastaraamat, puidubilanss, Keskkonnaportaal ja teised ametlikud allika
 
 Näiteks metsamaa tagavara sisaldab teistsugust üldkogumit kui puistute tagavara; puidubilansi kogumaht sisaldab lisaks kohalikule puidule ka importi. Mõistete selgitused ja aastaraamatu terminoloogia on [allikaregistris](ALLIKAD.md#metsanduse-mõisted-ja-seosed). Statistikaamet ei ole praegu vastuste allikavalikus; puuduva esmase tõendi asemel ei kuvata kontrollimata asendusarvu.
 
+## Raiemaht ja juurdekasv ei ole üks arv
+
+Juurdekasv on puistule aastas lisanduv tüvepuidu kogus. Netojuurdekasv saadakse, kui sellest arvatakse maha looduslik suremus. Raiemahuga tuleb võrrelda sama ulatuse ja sama perioodi elusate puude raiet, sest raiemahu hulk sisaldab ka surnud puid.
+
+Keskkonnaagentuuri ülevaate järgi oli viimase kümnendi keskmisena elusate puude raiemaht majandatavates metsades netojuurdekasvust kõrgem, 20 aasta vaates aga sellest madalam. Ühe aasta ega ühe näitaja põhjal ei saa metsamajanduse kestlikkuse kohta lõplikku järeldust teha: [netojuurdekasvu ja raie tasakaal](https://keskkonnaagentuur.ee/node/2720).
+
+SMI 2025 töövihik ei avalda kogu riigi netojuurdekasvu kogumahtu. Töövihik annab kogujuurdekasvu kogu riigile ja raiemahu aastate kaupa kuni viimase mõõdetud aastani. 2025. aasta raiemaht on Keskkonnaagentuuri [18.08.2026 ülevaate](https://keskkonnaagentuur.ee/uudised/smi-metsatagavara-stabiilne) eksperthinnang, mitte mõõdetud tulemus. Kui vastus neid arve kõrvutab, nimetab ta iga arvu juures väljaande ja aasta ega lahuta eri avaldajate ridu üksteisest.
+
 ## Diagrammid ja jätkuküsimused
 
-Diagramm kuvatakse ainult siis, kui server sai sama vastuse jaoks valideeritud ametliku arvurea. Diagrammi ei tuletata vabast tekstist. Vastuse all olev jätkuküsimus käivitab uue otsingu; varasem vastus ei muutu uue väite tõendiks.
+Diagramm kuvatakse ainult siis, kui server sai sama vastuse jaoks valideeritud ametliku arvurea. Diagrammi ei tuletata vabast tekstist. Diagramm järgib avaldatud arve: ühik trükitakse joonisele, tulp algab nulljoonest, ja kui joondiagrammi telg algab andmetest kõrgemal, ütleb allkiri seda sõnadega („Vertikaaltelg algab väärtusest …, mitte nullist”). Avaldatud kümnendkohad säilivad, seega 6,55 ei muutu 6,6-ks. Puuduv aasta ei tähenda nulli. Vastuse all olev jätkuküsimus käivitab uue otsingu; varasem vastus ei muutu uue väite tõendiks.
 
 Jätkuküsimus, mis ise teema sõnu ei sisalda (näiteks „selgita hindamise etappe”, „millal on vajalik KIH” või „kuidas see on muutunud”), pärib algse küsimuse teema: otsing kombineerib mõlemad ja otsib tõendid uuesti. Kui jätkuküsimus toob kaasa teise valdkonna sõna (näiteks „aktsiaoptsioon” või „salasõna”), jääb teemavälise sisu kaitse alles ja päringu palutakse täpsustada.
 
@@ -64,6 +74,8 @@ Avalehel ja otsinguvaates `/otsi` on nupp **„Ava vestlus”**. See avab vestlu
 3. Iga järgmine küsimus teeb uue tõendiotsingu. Varasemad küsimused aitavad teemat täpsustada, kuid varasem vastus ei muutu uue väite tõendiks.
 
 Ühes vestluses saab küsida kuni neli jätkuküsimust. Kui piir saab täis, pakub aken uue vestluse alustamist; „Uus vestlus” tühjendab sõnumid ja varasema konteksti.
+
+Vestlusaken pakub ainult eelnevalt üle vaadatud metsaküsimusi, mis seostuvad praeguse küsimuse ja selle vestlusega; juba küsitud küsimust uuesti ei pakuta ja sobimatu küsimuse asemel ei pakuta midagi. Valik tehakse brauseris ega tee uut võrgupäringut, ei kutsu mudelit ega salvesta profiili ega ajalugu.
 
 Vestlusakna sulgemine ja uuesti avamine hoiab selle lehe sõnumid alles. Lehe uuendamisel kaovad need brauseri mälust ning lingi jagamine vestlust ei taasta. Sõnumeid ei salvestata selles brauseris püsivalt.
 

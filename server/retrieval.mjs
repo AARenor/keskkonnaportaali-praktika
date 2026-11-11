@@ -50,6 +50,8 @@ import {
   textHasQueryRoot,
 } from "./search.mjs";
 import {
+  projectSourceCopy,
+  SOURCE_EVIDENCE_BODY_CHARS,
   sourceCanSupportPublicCitation,
   sourceEvidenceEligibility,
   sourceSupportsRouteClass,
@@ -324,7 +326,7 @@ function mergeDuplicate(current, candidate) {
       : evidencePolicies.includes("versioned")
         ? "versioned"
         : evidencePolicies[0];
-  return {
+  const merged = {
     ...fallback,
     ...preferred,
     // Evidence text and its timestamp/version provenance must come from the
@@ -386,6 +388,18 @@ function mergeDuplicate(current, candidate) {
     sourceTier: richerEvidence.sourceTier,
     _relevance: Math.max(Number(preferred._relevance) || 0, Number(fallback._relevance) || 0),
   };
+  // The source use policy is part of the retained body, like its timestamp. The
+  // spreads above may have carried an alias's witness across, so the witness is
+  // taken from the record the copy came from, and an inherited one is removed
+  // when that record has none.
+  if (richerEvidence._sourcePolicy === undefined) {
+    delete merged._sourcePolicy;
+    delete merged._sourcePolicyBinding;
+  } else {
+    merged._sourcePolicy = richerEvidence._sourcePolicy;
+    merged._sourcePolicyBinding = richerEvidence._sourcePolicyBinding;
+  }
+  return merged;
 }
 
 export function resultPublishedAt(document) {
@@ -2935,7 +2949,8 @@ export async function prepareRankedSearchResults(query, {
   return listing;
 }
 
-export function publicSearchListing(listing = {}) {
+export function publicSearchListing(listing = {}, options = {}) {
+  const now = options?.now ?? Date.now();
   return {
     total: Number(listing.total || 0),
     page: Number(listing.page || 1),
@@ -2949,25 +2964,56 @@ export function publicSearchListing(listing = {}) {
       categories: Array.isArray(listing.facets?.categories) ? listing.facets.categories.slice(0, 18) : [],
       years: Array.isArray(listing.facets?.years) ? listing.facets.years.slice(0, 12) : [],
     },
-    items: (listing.items || []).map((item) => ({
-      ...Object.fromEntries(PUBLIC_ITEM_FIELDS
+    items: (listing.items || []).map((item) => {
+      // The listing publishes one copied field, and only the publisher decision
+      // on this exact record releases it. Title, URL, publisher and dates are
+      // link metadata and survive a withheld body unchanged.
+      const copy = projectSourceCopy(item, { purpose: "snippet", now, limit: 500 });
+      const fields = Object.fromEntries(PUBLIC_ITEM_FIELDS
         .filter((field) => item[field] !== undefined)
-        .map((field) => [field, item[field]])),
-      id: stablePublicResultId(item),
-    })),
+        .map((field) => [field, item[field]]));
+      return {
+        ...fields,
+        id: stablePublicResultId(item),
+        ...(item.summary === undefined
+          ? {}
+          : { summary: copy.permitted ? String(copy.fields.summary ?? "") : "" }),
+      };
+    }),
   };
 }
 
 export function evidenceDocumentsFromListing(listing = {}, options = {}) {
+  const now = options?.now ?? Date.now();
   return (listing.items || [])
     .filter((item) => ["official", "reviewed"].includes(item.sourceTier)
       && !LEGACY_ANSWER_FIXTURE_IDS.has(item.id)
       && item.retrieval !== "official-federated-search"
       && sourceCanSupportPublicCitation(item, options).eligible)
     .map((item) => ({
-      ...item,
-      tags: item.topics || item.tags || [],
-    }));
+      item,
+      // Candidates carry the body the publisher permitted, never more: the
+      // publisher limit is applied here too, so no later consumer can inherit
+      // an over-limit field. Ranking inside that permission happens where the
+      // delivery budget is known, not here.
+      copy: projectSourceCopy(item, { purpose: "evidence", now, limit: SOURCE_EVIDENCE_BODY_CHARS }),
+    }))
+    // A source whose copy is withheld cannot become evidence: the pack would
+    // otherwise carry a citation with nothing behind it. Link metadata still
+    // reaches the reader through the listing.
+    .filter((entry) => entry.copy.permitted)
+    .map(({ item, copy }) => {
+      const projected = { ...item, tags: item.topics || item.tags || [] };
+      // A field the publisher decision does not release leaves the record; a
+      // field it does release carries the bounded copy, and the fields together
+      // stay inside the one budget.
+      for (const field of ["summary", "excerpt", "content", "answer", "evidenceExcerpt"]) {
+        const value = copy.fields[field];
+        if (value === undefined) delete projected[field];
+        else projected[field] = value;
+      }
+      return projected;
+    });
 }
 
 export function contextualRetrievalQuery(rootQuery, question, previousQuestions = []) {

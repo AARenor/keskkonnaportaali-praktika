@@ -15,7 +15,14 @@ import {
   stopOfficialDiscoveryIndexing,
 } from "./corpus.mjs";
 import { createGracefulShutdown } from "./graceful-shutdown.mjs";
-import { createBoundedNdjsonWriter } from "./http-stream.mjs";
+import {
+  DEFAULT_HEARTBEAT_INTERVAL_MS,
+  createBoundedNdjsonWriter,
+  createPaddedJsonWriter,
+  streamListingThenAnswer,
+} from "./http-stream.mjs";
+import { createSearchJobRun } from "./search_job_runner.mjs";
+import { createSearchJobStore } from "./search_jobs.mjs";
 import { getKeskkonnaportaalSuggestions } from "./integrations.mjs";
 import {
   createDeadlineCleanupLease,
@@ -45,11 +52,14 @@ import {
   resolveProxyConfiguration,
 } from "./security.mjs";
 import {
+  answerDeadline,
+  configuredAnswerBudgetMs,
   createFairSearchAdmission,
   configuredSearchConcurrency,
   JSON_SEARCH_DEADLINE_CEILING_MS,
   progressiveListingBudgetMs,
   searchDeadline,
+  validateSearchTransportBudget,
 } from "./request-budget.mjs";
 import {
   createPublicResponseBudget,
@@ -94,6 +104,17 @@ const publicOrigin = proxyConfiguration.publicOrigin;
 const browserOriginSet = new Set(proxyConfiguration.browserOrigins);
 const ipv6ClientPrefixBits = resolveIpv6ClientPrefixBits();
 const publicResponseConfiguration = resolvePublicResponseBudget(process.env);
+// A search that cannot fit inside the public transport is refused at startup
+// instead of being silently shortened per request: the listing window, the
+// independent answer window and serialization must all fit the absolute
+// ceiling, and the silent one-shot search must fit the idle ceiling.
+const searchTransport = validateSearchTransportBudget({
+  absoluteTimeoutMs: publicResponseConfiguration.absoluteTimeoutMs,
+  idleTimeoutMs: publicResponseConfiguration.idleTimeoutMs,
+});
+if (!searchTransport.ok) {
+  throw new Error(`Search transport configuration is unsupported: ${searchTransport.reason}`);
+}
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const clientRoot = path.join(root, "dist", "client");
 const appBuild = readAppBuild(clientRoot);
@@ -111,6 +132,8 @@ const SEARCH_TRANSPORT_RESERVE_MS = 250;
 const TERRAPOINT_OUTBOUND_ORIGINS = new Set(["https://terrapoint.ee"]);
 const MAX_ACTIVE_SEARCHES = configuredSearchConcurrency();
 const searchAdmission = createFairSearchAdmission({ maximumActive: MAX_ACTIVE_SEARCHES });
+// The process-local registry behind the asynchronous search job routes.
+const searchJobStore = createSearchJobStore();
 const corpusStatsAdmission = createFairSearchAdmission({
   maximumActive: 2,
   maximumActivePerClient: 1,
@@ -215,8 +238,23 @@ const EXPENSIVE_JSON_ROUTES = new Set([
   "/api/search/stream",
   "/api/search/results",
   "/api/search/follow-up",
+  // The browser's streamed follow-up spends the same retrieval, admission and
+  // model budget as the other search routes, so it is guarded identically.
+  "/api/search/follow-up/stream",
+  // The asynchronous job routes spend the same retrieval, admission and model
+  // budget through their runner, so they are guarded identically.
+  "/api/search/jobs",
+  "/api/search/jobs/poll",
+  "/api/search/jobs/cancel",
   "/api/suggestions",
 ]);
+
+// Polling and cancellation are cheap control calls that must keep working while
+// the search budget is spent on generation. They bypass only the search
+// limiter; the global API limiter and their own bounded control limiter apply.
+// Inside the `/api/search` mount Express hands this middleware the path after
+// that prefix, so the two control routes are matched by their own suffix.
+const JOB_CONTROL_SUFFIXES = new Set(["/jobs/poll", "/jobs/cancel"]);
 
 function isTerrapointBrowserGetRoute(routePath) {
   return routePath === "/api/terrapoint/address"
@@ -269,14 +307,31 @@ app.use("/api", createFixedWindowRateLimiter({
   trustedProxyCidrs: proxyConfiguration.trustedProxyCidrs,
   ipv6PrefixBits: ipv6ClientPrefixBits,
 }));
-app.use("/api/search", createFixedWindowRateLimiter({
+const searchRateLimiter = createFixedWindowRateLimiter({
   maxRequests: 20,
   scope: "search",
   store: requestWindows,
   maxKeys: MAX_RATE_LIMIT_KEYS,
   trustedProxyCidrs: proxyConfiguration.trustedProxyCidrs,
   ipv6PrefixBits: ipv6ClientPrefixBits,
-}));
+});
+// Job polling and cancellation are bounded by their own control budget below,
+// so they never consume a generation slot that a reader needs for a search.
+const jobControlRateLimiter = createFixedWindowRateLimiter({
+  maxRequests: 120,
+  scope: "search-jobs",
+  store: requestWindows,
+  maxKeys: MAX_RATE_LIMIT_KEYS,
+  trustedProxyCidrs: proxyConfiguration.trustedProxyCidrs,
+  ipv6PrefixBits: ipv6ClientPrefixBits,
+});
+app.use("/api/search/jobs/poll", jobControlRateLimiter);
+app.use("/api/search/jobs/cancel", jobControlRateLimiter);
+app.use("/api/search", (request, response, next) => (
+  JOB_CONTROL_SUFFIXES.has(canonicalApiRoutePath(request.path))
+    ? next()
+    : searchRateLimiter(request, response, next)
+));
 app.use("/api/suggestions", createFixedWindowRateLimiter({
   maxRequests: 30,
   scope: "suggestions",
@@ -484,6 +539,7 @@ async function handleSearch(request, response) {
   // Declared outside the inner try so the outer catch can reuse a listing that
   // retrieval already resolved before the answer budget ran out.
   let resolvedListing = null;
+  let body = null;
   const cleanupLease = createDeadlineCleanupLease(() => {
     releaseSearch();
     lifecycle.cleanup();
@@ -501,12 +557,18 @@ async function handleSearch(request, response) {
         searchResults: emptySearchListing(filters, page, pageSize),
       });
     }
-    // The legacy all-at-once JSON route must leave enough transport margin for
-    // clients and reverse proxies. The browser uses the progressive stream,
-    // which keeps the full configured answer budget and emits results first.
+    // One-shot JSON consumers keep the same body contract, but the response is
+    // padded while the answer is generated: a silent body is bounded by the
+    // socket idle timer and by every proxy, which is how a slow answer used to
+    // disappear. Padding is ignored by JSON parsers and ends with one document.
+    // Status and cache headers are final before the first padding byte.
+    response.status(200);
+    response.setHeader("Cache-Control", "no-store");
+    body = createPaddedJsonWriter(response, { signal: controller.signal });
     // A timeout must not discard a listing that retrieval already resolved: the
     // fallback answer is built from those very results, so the same ranking
     // backs both the answer card and the visible list.
+    const listingWindowMs = progressiveListingBudgetMs({ remainingMs: deadlineAt - Date.now() });
     const payload = await settleWithinDeadline((async () => {
       const searchResults = await prepareRankedSearchResults(query, {
         page,
@@ -519,7 +581,8 @@ async function handleSearch(request, response) {
       resolvedListing = searchResults;
       const result = await searchEnvironmentLive(query, {
         startedAt,
-        deadlineAt,
+        // The answer keeps its own clock, so the listing cannot spend it.
+        deadlineAt: answerDeadline(Date.now()),
         searchResults,
         filters,
         signal: controller.signal,
@@ -527,7 +590,7 @@ async function handleSearch(request, response) {
         onBackgroundCleanup: cleanupLease.track,
       });
       return { ...result, searchResults: publicSearchListing(searchResults) };
-    })(), deadlineAt - Date.now(), () => ({
+    })(), listingWindowMs + configuredAnswerBudgetMs(), () => ({
       ...searchTimeoutFallback(query, {
         assessmentQuery: query,
         ...(resolvedListing ? { searchResults: resolvedListing } : {}),
@@ -536,10 +599,8 @@ async function handleSearch(request, response) {
         ? publicSearchListing(resolvedListing)
         : emptySearchListing(filters, page, pageSize),
     }), controller, { onBackgroundCleanup: cleanupLease.track });
-    // The response echoes the query for rendering. Keep it out of the browser's
-    // persistent HTTP cache; the server-side hash-keyed cache remains available.
-    response.setHeader("Cache-Control", "no-store");
-    return response.json(payload);
+    body.send(payload);
+    return undefined;
   } catch (error) {
     if (controller.signal.aborted || response.destroyed) return undefined;
     console.warn(JSON.stringify({
@@ -547,8 +608,7 @@ async function handleSearch(request, response) {
       errorName: String(error?.name || "Error").slice(0, 80),
       errorCode: String(error?.code || "unknown").slice(0, 80),
     }));
-    response.setHeader("Cache-Control", "no-store");
-    return response.status(200).json({
+    const fallbackPayload = {
       ...searchTimeoutFallback(query, {
         assessmentQuery: query,
         reason: "source-error",
@@ -557,8 +617,17 @@ async function handleSearch(request, response) {
       searchResults: resolvedListing
         ? publicSearchListing(resolvedListing)
         : emptySearchListing(filters, page, pageSize),
-    });
+    };
+    if (body) {
+      body.send(fallbackPayload);
+      return undefined;
+    }
+    response.setHeader("Cache-Control", "no-store");
+    return response.status(200).json(fallbackPayload);
   } finally {
+    // A padded body can outlive the branch that created it; stop its timer
+    // before the lease releases the request.
+    body?.stop?.();
     cleanupLease.finish();
   }
 }
@@ -592,12 +661,22 @@ app.post("/api/search/stream", async (request, response) => {
   }
 
   const startedAt = Date.now();
+  // `deadlineAt` is the listing clock in this route. The answer gets its own
+  // later deadline once the listing has been published.
   const deadlineAt = searchDeadline(startedAt);
   const lifecycle = bindRequestAbort(request, response);
   const { controller } = lifecycle;
   let releaseSearch = () => undefined;
+  let admissionReleased = false;
+  const releaseAdmission = () => {
+    if (admissionReleased) return;
+    admissionReleased = true;
+    const release = releaseSearch;
+    releaseSearch = () => undefined;
+    release();
+  };
   const cleanupLease = createDeadlineCleanupLease(() => {
-    releaseSearch();
+    releaseAdmission();
     lifecycle.cleanup();
   });
   try {
@@ -629,72 +708,54 @@ app.post("/api/search/stream", async (request, response) => {
   });
   response.flushHeaders?.();
 
-  let publicListing = emptySearchListing(filters, page, pageSize);
-  let resultsWritten = false;
+  // The listing window is the retrieval clock. Once it has been published the
+  // answer runs on its own later clock, so a slow model cannot withdraw the
+  // links and a slow listing cannot spend the model's budget.
+  const listingWindowMs = progressiveListingBudgetMs({
+    remainingMs: deadlineAt - Date.now(),
+  });
+  const answerStartBy = Date.now() + listingWindowMs;
+  let outcome = "aborted";
   try {
-    // Retrieval owns bounded upstream timeouts. Its half of the request budget
-    // outlives the longest 5.5 s fetch; the other half remains for hydration,
-    // grounded synthesis, citation rebinding and transport.
-    const listingBudgetMs = progressiveListingBudgetMs({
-      remainingMs: deadlineAt - Date.now(),
-    });
-    const searchResults = await settleWithinDeadline(prepareRankedSearchResults(query, {
-      page,
-      pageSize,
-      filters,
-      deadlineAt,
-      signal: controller.signal,
-      clientKey: llmClientKey,
-    }), listingBudgetMs, null, controller, {
-      onBackgroundCleanup: cleanupLease.track,
-    });
-    if (!searchResults) {
-      await stream.write("results", { searchResults: publicListing });
-      resultsWritten = true;
-      await stream.write("answer", {
-        result: {
-          ...searchTimeoutFallback(query, { assessmentQuery: query }),
-          searchResults: publicListing,
-        },
-      });
-      return undefined;
-    }
-    publicListing = publicSearchListing(searchResults);
-    await stream.write("results", { searchResults: publicListing });
-    resultsWritten = true;
-    const result = await searchEnvironmentLive(query, {
-      startedAt,
-      deadlineAt,
-      searchResults,
-      filters,
-      signal: controller.signal,
-      llmClientKey,
-      onBackgroundCleanup: cleanupLease.track,
-      onDraft: (draft) => stream.enqueue("draft", {
-        result: { ...draft, searchResults: publicListing },
+    outcome = await streamListingThenAnswer({
+      stream,
+      heartbeatMs: DEFAULT_HEARTBEAT_INTERVAL_MS,
+      answerStartBy,
+      isAborted: () => controller.signal.aborted,
+      onListingSettled: releaseAdmission,
+      publicListing: publicSearchListing,
+      emptyListing: () => emptySearchListing(filters, page, pageSize),
+      listing: () => prepareRankedSearchResults(query, {
+        page,
+        pageSize,
+        filters,
+        deadlineAt,
+        signal: controller.signal,
+        clientKey: llmClientKey,
+      }),
+      answer: (searchResults) => {
+        const published = publicSearchListing(searchResults);
+        return searchEnvironmentLive(query, {
+          startedAt,
+          deadlineAt: answerDeadline(Date.now()),
+          searchResults,
+          filters,
+          signal: controller.signal,
+          llmClientKey,
+          onBackgroundCleanup: cleanupLease.track,
+          onDraft: (draft) => stream.enqueue("draft", {
+            result: { ...draft, searchResults: published },
+          }),
+        });
+      },
+      fallbackAnswer: ({ reason, searchResults }) => searchTimeoutFallback(query, {
+        assessmentQuery: query,
+        ...(searchResults ? { searchResults } : {}),
+        filters,
+        reason: reason === "deadline" ? "deadline" : "source-error",
       }),
     });
-    await stream.write("answer", {
-      result: { ...result, searchResults: publicListing },
-    });
   } catch (error) {
-    if (!controller.signal.aborted && !response.destroyed) {
-      if (!resultsWritten) {
-        await stream.write("results", { searchResults: publicListing });
-        resultsWritten = true;
-      }
-      await stream.write("answer", {
-        result: {
-          ...searchTimeoutFallback(query, {
-            assessmentQuery: query,
-            searchResults: { items: publicListing.items || [] },
-            filters,
-            reason: "source-error",
-          }),
-          searchResults: publicListing,
-        },
-      });
-    }
     if (!controller.signal.aborted) {
       console.warn(JSON.stringify({
         event: "search-stream-degraded",
@@ -708,11 +769,12 @@ app.post("/api/search/stream", async (request, response) => {
     } catch (error) {
       if (!response.destroyed) response.destroy(error);
     }
-    // Hold global/per-client search admission through transport close (or its
-    // bounded destruction), not merely through model/retrieval completion.
+    // The listing already released retrieval capacity; anything still running
+    // is the bounded answer, whose provider cost is separately reserved.
+    releaseAdmission();
     cleanupLease.finish();
   }
-  return undefined;
+  return outcome;
 });
 
 async function handleSearchResults(request, response) {
@@ -834,6 +896,10 @@ app.post("/api/search/follow-up", async (request, response) => {
   const lifecycle = bindRequestAbort(request, response);
   const { controller } = lifecycle;
   let releaseSearch = () => undefined;
+  // Kept outside the inner try so a late answer failure still returns the
+  // listing retrieval already resolved.
+  let resolvedListing = null;
+  let body = null;
   const cleanupLease = createDeadlineCleanupLease(() => {
     releaseSearch();
     lifecycle.cleanup();
@@ -851,6 +917,13 @@ app.post("/api/search/follow-up", async (request, response) => {
         searchResults: emptySearchListing(filters),
       });
     }
+    // The one-shot followed answer is padded while it is generated, so the
+    // body is never silent for longer than the socket and proxy idle windows.
+    // Status and cache headers are final before the first padding byte.
+    response.status(200);
+    response.setHeader("Cache-Control", "no-store");
+    body = createPaddedJsonWriter(response, { signal: controller.signal });
+    const listingWindowMs = progressiveListingBudgetMs({ remainingMs: deadlineAt - Date.now() });
     const payload = await settleWithinDeadline((async () => {
       const searchResults = await prepareRankedSearchResults(retrievalQuery, {
         page: 1,
@@ -860,42 +933,33 @@ app.post("/api/search/follow-up", async (request, response) => {
         signal: controller.signal,
         clientKey: llmClientKey,
       });
-      const result = await searchEnvironmentLive(question, {
-        startedAt,
-        deadlineAt,
-        assessmentQuery: retrievalQuery,
+      resolvedListing = searchResults;
+      return composeFollowUpResult({
+        question,
+        rootQuery,
+        previousQuestions,
+        previousAnswers,
         retrievalQuery,
-        rootContext: [rootQuery, ...previousQuestions].join(" → "),
-        conversationContext: conversationContext(rootQuery, previousQuestions),
-        allowSafeEllipticalFollowUp: true,
-        searchResults,
         filters,
-        useCache: false,
+        startedAt,
+        // The answer clock starts now, after the listing exists.
+        deadlineAt: answerDeadline(Date.now()),
+        searchResults,
         signal: controller.signal,
         llmClientKey,
         onBackgroundCleanup: cleanupLease.track,
       });
-      const answerText = [result.answer?.intro, ...(result.answer?.parts || []).map((part) => part?.text)].filter(Boolean).join(" ");
-      if (repeatsEarlierAnswer(answerText, previousAnswers, { title: result.answer?.title, question })) {
-        // The thread already said this. Keep the no-answer only as long as the
-        // current answer's own cited source text cannot be shown to answer the
-        // current question; earlier answers are a comparison, never evidence.
-        if (!citedEvidenceAnswersQuestion(question, result.answer, result.sources)) {
-          return { ...composeNoAnswerResponse(question), searchResults: publicSearchListing(searchResults) };
-        }
-        return {
-          ...result,
-          answer: withRepeatedAnswerNote(result.answer),
-          searchResults: publicSearchListing(searchResults),
-        };
-      }
-      return { ...result, searchResults: publicSearchListing(searchResults) };
-    })(), deadlineAt - Date.now(), () => ({
-      ...searchTimeoutFallback(question, { assessmentQuery: retrievalQuery }),
-      searchResults: emptySearchListing(filters),
+    })(), listingWindowMs + configuredAnswerBudgetMs(), () => ({
+      ...searchTimeoutFallback(question, {
+        assessmentQuery: retrievalQuery,
+        ...(resolvedListing ? { searchResults: resolvedListing } : {}),
+      }),
+      searchResults: resolvedListing
+        ? publicSearchListing(resolvedListing)
+        : emptySearchListing(filters),
     }), controller, { onBackgroundCleanup: cleanupLease.track });
-    response.setHeader("Cache-Control", "no-store");
-    return response.json(payload);
+    body.send(payload);
+    return undefined;
   } catch (error) {
     if (controller.signal.aborted || response.destroyed) return undefined;
     console.warn(JSON.stringify({
@@ -903,15 +967,403 @@ app.post("/api/search/follow-up", async (request, response) => {
       errorName: String(error?.name || "Error").slice(0, 80),
       errorCode: String(error?.code || "unknown").slice(0, 80),
     }));
+    const fallbackPayload = {
+      ...searchTimeoutFallback(question, {
+        assessmentQuery: retrievalQuery,
+        reason: "source-error",
+        ...(resolvedListing ? { searchResults: resolvedListing } : {}),
+      }),
+      searchResults: resolvedListing
+        ? publicSearchListing(resolvedListing)
+        : emptySearchListing(filters),
+    };
+    if (body) {
+      body.send(fallbackPayload);
+      return undefined;
+    }
     response.setHeader("Cache-Control", "no-store");
-    return response.status(200).json({
-      ...searchTimeoutFallback(question, { assessmentQuery: retrievalQuery, reason: "source-error" }),
-      searchResults: emptySearchListing(filters),
-    });
+    return response.status(200).json(fallbackPayload);
   } finally {
+    body?.stop?.();
     cleanupLease.finish();
   }
 });
+
+// The browser's follow-up path: the ordinary listing for this question is
+// published first, then the answer arrives on its own longer clock. A failed,
+// slow or cancelled answer can therefore never withdraw readable links, and the
+// previous-answer comparison and citation rules stay in composeFollowUpResult.
+app.post("/api/search/follow-up/stream", async (request, response) => {
+  const scope = followUpScope(request);
+  if (scope.error) return response.status(scope.error.status).json(scope.error.payload);
+  const { question, rootQuery, previousQuestions, previousAnswers, filters, blockedAssessment, retrievalQuery } = scope;
+  const llmClientKey = requestRateLimitAddress(request, proxyConfiguration.trustedProxyCidrs, {
+    ipv6PrefixBits: ipv6ClientPrefixBits,
+  });
+  if (blockedAssessment) {
+    return writeBlockedSearchStream(response, question, blockedAssessment, filters, 1, 12);
+  }
+  const startedAt = Date.now();
+  // `deadlineAt` is the listing clock; the answer gets its own later one.
+  const deadlineAt = searchDeadline(startedAt);
+  const lifecycle = bindRequestAbort(request, response);
+  const { controller } = lifecycle;
+  let releaseSearch = () => undefined;
+  let admissionReleased = false;
+  const releaseAdmission = () => {
+    if (admissionReleased) return;
+    admissionReleased = true;
+    const release = releaseSearch;
+    releaseSearch = () => undefined;
+    release();
+  };
+  const cleanupLease = createDeadlineCleanupLease(() => {
+    releaseAdmission();
+    lifecycle.cleanup();
+  });
+  try {
+    releaseSearch = await acquireSearchSlot(request, controller, deadlineAt);
+  } catch (error) {
+    if (controller.signal.aborted || response.destroyed) {
+      cleanupLease.finish();
+      return undefined;
+    }
+    response.status(503);
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("Retry-After", "2");
+    cleanupLease.finish();
+    return response.json({
+      error: "Otsing on hetkel koormatud. Proovi mõne hetke pärast uuesti.",
+      code: "SEARCH_CAPACITY",
+    });
+  }
+
+  response.status(200);
+  response.setHeader("Cache-Control", "no-store");
+  response.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+  response.setHeader("X-Accel-Buffering", "no");
+  const stream = createBoundedNdjsonWriter(response, {
+    idleTimeoutMs: publicResponseConfiguration.idleTimeoutMs,
+    onFailure: (error) => {
+      if (!controller.signal.aborted) controller.abort(error);
+    },
+  });
+  response.flushHeaders?.();
+
+  const listingWindowMs = progressiveListingBudgetMs({ remainingMs: deadlineAt - Date.now() });
+  let outcome = "aborted";
+  try {
+    outcome = await streamListingThenAnswer({
+      stream,
+      heartbeatMs: DEFAULT_HEARTBEAT_INTERVAL_MS,
+      answerStartBy: Date.now() + listingWindowMs,
+      isAborted: () => controller.signal.aborted,
+      onListingSettled: releaseAdmission,
+      publicListing: publicSearchListing,
+      emptyListing: () => emptySearchListing(filters, 1, 12),
+      listing: () => prepareRankedSearchResults(retrievalQuery, {
+        page: 1,
+        pageSize: 12,
+        filters,
+        deadlineAt,
+        signal: controller.signal,
+        clientKey: llmClientKey,
+      }),
+      answer: (searchResults) => composeFollowUpResult({
+        question,
+        rootQuery,
+        previousQuestions,
+        previousAnswers,
+        retrievalQuery,
+        filters,
+        startedAt,
+        deadlineAt: answerDeadline(Date.now()),
+        searchResults,
+        signal: controller.signal,
+        llmClientKey,
+        onBackgroundCleanup: cleanupLease.track,
+      }),
+      fallbackAnswer: ({ reason, searchResults }) => searchTimeoutFallback(question, {
+        assessmentQuery: retrievalQuery,
+        ...(searchResults ? { searchResults } : {}),
+        filters,
+        reason: reason === "deadline" ? "deadline" : "source-error",
+      }),
+    });
+  } catch (error) {
+    if (!controller.signal.aborted) {
+      console.warn(JSON.stringify({
+        event: "follow-up-search-stream-degraded",
+        errorName: String(error?.name || "Error").slice(0, 80),
+        errorCode: String(error?.code || "unknown").slice(0, 80),
+      }));
+    }
+  } finally {
+    try {
+      await stream.finish();
+    } catch (error) {
+      if (!response.destroyed) response.destroy(error);
+    }
+    releaseAdmission();
+    cleanupLease.finish();
+  }
+  return outcome;
+});
+
+// Asynchronous search jobs.
+//
+// A grounded answer can outlive any single origin response, so the reader no
+// longer holds one long exchange open: it creates a job, receives the ordinary
+// listing as the first event and polls for the rest. The runner below is the
+// same coordinator the streaming routes use, with the transport replaced by the
+// job's event sink, so listing, sources, answer and chart still come from one
+// filtered source set and every budget, admission slot and cancellation rule
+// stays in force. The runner never touches the Express request: it outlives it.
+
+// The job routes accept the same request bodies the streaming routes accept, in
+// `request`, so the payload is validated exactly once by the same helpers.
+function jobPayloadRequest(payload) {
+  return { body: payload && typeof payload === "object" ? payload : {}, query: {} };
+}
+
+function parseSearchJobPayload(payload) {
+  const parsed = jobPayloadRequest(payload);
+  const queryInput = searchQuery(parsed);
+  if (queryInput.reason === "empty") return { error: { status: 400, payload: { error: "Sisesta otsingusõna." } } };
+  if (!queryInput.ok) return { error: { status: 400, payload: { error: "Otsing on liiga pikk." } } };
+  const page = searchPage(parsed, "page", 1, 500);
+  const pageSize = searchPage(parsed, "page_size", 12, 50);
+  if (page === null || pageSize === null) {
+    return { error: { status: 400, payload: { error: "Lehekülg ja lehe suurus peavad olema lubatud täisarvud." } } };
+  }
+  const parsedFilters = searchFilters(parsed);
+  if (!parsedFilters.ok) return { error: { status: 400, payload: { error: parsedFilters.error } } };
+  return {
+    question: queryInput.query,
+    retrievalQuery: queryInput.query,
+    page,
+    pageSize,
+    filters: parsedFilters.filters,
+    blockedAssessment: blockedSearchAssessment(queryInput.query),
+  };
+}
+
+function parseFollowUpJobPayload(payload) {
+  const scope = followUpScope(jobPayloadRequest(payload));
+  if (scope.error) return { error: scope.error };
+  return {
+    question: scope.question,
+    retrievalQuery: scope.retrievalQuery,
+    page: 1,
+    pageSize: 12,
+    filters: scope.filters,
+    blockedAssessment: scope.blockedAssessment,
+    rootQuery: scope.rootQuery,
+    previousQuestions: scope.previousQuestions,
+    previousAnswers: scope.previousAnswers,
+  };
+}
+
+// The job's event sink is the store, not a socket, so the only writer call the
+// shared flow needs is the event write. `emit` throws when the job's byte or
+// time budget is spent, and that must stop the run instead of being swallowed.
+function jobStreamWriter(emit) {
+  return {
+    write: async (type, payload) => {
+      emit(type, payload);
+    },
+  };
+}
+
+// The job run itself lives in its own module so its ordering contract can be
+// exercised with injected collaborators; this is only the wiring to the real
+// retrieval, synthesis and publication functions.
+function jobRunFor(kind, parsed, clientKey) {
+  return createSearchJobRun({
+    kind,
+    scope: parsed,
+    clientKey,
+    acquireSlot: (key, { signal, maximumWaitMs }) => searchAdmission.acquire(key, { signal, maximumWaitMs }),
+    listing: ({ page, pageSize, filters, deadlineAt, signal }) => prepareRankedSearchResults(
+      parsed.retrievalQuery,
+      { page, pageSize, filters, deadlineAt, signal, clientKey },
+    ),
+    answerSearch: (options) => searchEnvironmentLive(parsed.question, options),
+    answerFollowUp: (options) => composeFollowUpResult({
+      question: parsed.question,
+      rootQuery: parsed.rootQuery,
+      previousQuestions: parsed.previousQuestions,
+      previousAnswers: parsed.previousAnswers,
+      retrievalQuery: parsed.retrievalQuery,
+      filters: parsed.filters,
+      ...options,
+    }),
+    fallbackAnswer: ({ reason, searchResults }) => searchTimeoutFallback(parsed.question, {
+      assessmentQuery: parsed.retrievalQuery,
+      ...(searchResults ? { searchResults } : {}),
+      filters: parsed.filters,
+      reason: reason === "deadline" ? "deadline" : "source-error",
+    }),
+    blockedPayload: (scope) => blockedSearchPayload(
+      scope.question,
+      scope.blockedAssessment,
+      scope.filters,
+      scope.page,
+      scope.pageSize,
+    ),
+    publishListing: publicSearchListing,
+    emptyListing: (scope) => emptySearchListing(scope.filters, scope.page, scope.pageSize),
+    flow: streamListingThenAnswer,
+    listingDeadline: (startedAt) => searchDeadline(startedAt),
+    listingWindow: ({ remainingMs }) => progressiveListingBudgetMs({ remainingMs }),
+    answerDeadline: (nowMs) => answerDeadline(nowMs),
+    transportReserveMs: SEARCH_TRANSPORT_RESERVE_MS,
+  });
+}
+
+function sendJobResponse(response, outcome) {
+  const retryAfterMs = Number(outcome?.body?.retry_after_ms);
+  if (Number.isFinite(retryAfterMs) && retryAfterMs > 0) {
+    response.setHeader("Retry-After", String(Math.min(60, Math.max(1, Math.ceil(retryAfterMs / 1_000)))));
+  }
+  return response.status(outcome.status).json(outcome.body);
+}
+
+function jobRequestParts(request) {
+  const body = request.body && typeof request.body === "object" ? request.body : {};
+  return {
+    body,
+    payload: body.request && typeof body.request === "object" ? body.request : {},
+    id: body.job_id,
+    key: body.job_key,
+  };
+}
+
+function jobClientKey(request) {
+  return requestRateLimitAddress(request, proxyConfiguration.trustedProxyCidrs, {
+    ipv6PrefixBits: ipv6ClientPrefixBits,
+  });
+}
+
+app.post("/api/search/jobs", (request, response) => {
+  response.setHeader("Cache-Control", "no-store");
+  const { body, payload, id, key } = jobRequestParts(request);
+  const kind = body.kind === "follow-up" ? "follow-up" : body.kind === "search" ? "search" : null;
+  if (!kind) return response.status(400).json({ code: "JOB_INVALID", error: "Töö päring on vigane." });
+  const parsed = kind === "follow-up" ? parseFollowUpJobPayload(payload) : parseSearchJobPayload(payload);
+  if (parsed.error) return response.status(parsed.error.status).json(parsed.error.payload);
+  const clientKey = jobClientKey(request);
+  return sendJobResponse(response, searchJobStore.start({
+    id,
+    key,
+    kind,
+    payload,
+    clientKey,
+    run: jobRunFor(kind, parsed, clientKey),
+  }));
+});
+
+app.post("/api/search/jobs/poll", (request, response) => {
+  response.setHeader("Cache-Control", "no-store");
+  const { body, id, key } = jobRequestParts(request);
+  return sendJobResponse(response, searchJobStore.poll({ id, key, after: body.after }));
+});
+
+app.post("/api/search/jobs/cancel", (request, response) => {
+  response.setHeader("Cache-Control", "no-store");
+  const { id, key } = jobRequestParts(request);
+  // Cancellation needs the same server-derived identity the create path used:
+  // an unknown-id cancel installs a tombstone, and that reservation is bounded
+  // per client, so the key may never come from the request body.
+  return sendJobResponse(response, searchJobStore.cancel({ id, key, clientKey: jobClientKey(request) }));
+});
+
+// The streamed follow-up shares the one-shot route's context, scope checks and
+// repeat-answer rules. Only the transport differs, so the answer logic lives in
+// one helper and both routes call it.
+function followUpScope(request) {
+  const rootInput = canonicalizePublicSearchQuery(request.body?.root_query || "");
+  const questionInput = canonicalizePublicSearchQuery(request.body?.question || "");
+  const previousQuestionValues = Array.isArray(request.body?.previous_questions)
+    ? request.body.previous_questions
+    : [];
+  const previousInputs = previousQuestionValues.length <= 4
+    ? previousQuestionValues.map((value) => canonicalizePublicSearchQuery(value))
+    : [];
+  // Only compared with the new answer, never passed to retrieval or the model.
+  const previousAnswers = (Array.isArray(request.body?.previous_answers) ? request.body.previous_answers : [])
+    .slice(0, 5)
+    .filter((value) => typeof value === "string")
+    .map((value) => value.slice(0, 4000));
+  const parsedFilters = searchFilters(request);
+  if (!parsedFilters.ok) return { error: { status: 400, payload: { error: parsedFilters.error } } };
+  if (rootInput.reason === "empty" || questionInput.reason === "empty") {
+    return { error: { status: 400, payload: { error: "Sisesta jätkuküsimus." } } };
+  }
+  if (!rootInput.ok || !questionInput.ok || previousQuestionValues.length > 4
+    || previousInputs.some((input) => input.reason === "too-long")) {
+    return { error: { status: 400, payload: { error: "Jätkuküsimuse kontekst on liiga pikk." } } };
+  }
+  const rootQuery = rootInput.query;
+  const question = questionInput.query;
+  const previousQuestions = previousInputs.filter((input) => input.ok).map((input) => input.query);
+  return {
+    rootQuery,
+    question,
+    previousQuestions,
+    previousAnswers,
+    filters: parsedFilters.filters,
+    blockedAssessment: blockedFollowUpAssessment(rootQuery, question, previousQuestions),
+    retrievalQuery: contextualRetrievalQuery(rootQuery, question, previousQuestions),
+  };
+}
+
+async function composeFollowUpResult({
+  question,
+  rootQuery,
+  previousQuestions,
+  previousAnswers,
+  retrievalQuery,
+  filters,
+  startedAt,
+  deadlineAt,
+  searchResults,
+  signal,
+  llmClientKey,
+  onBackgroundCleanup,
+}) {
+  const result = await searchEnvironmentLive(question, {
+    startedAt,
+    deadlineAt,
+    assessmentQuery: retrievalQuery,
+    retrievalQuery,
+    rootContext: [rootQuery, ...previousQuestions].join(" → "),
+    conversationContext: conversationContext(rootQuery, previousQuestions),
+    allowSafeEllipticalFollowUp: true,
+    searchResults,
+    filters,
+    useCache: false,
+    signal,
+    llmClientKey,
+    onBackgroundCleanup,
+  });
+  const listing = publicSearchListing(searchResults);
+  const answerText = [result.answer?.intro, ...(result.answer?.parts || []).map((part) => part?.text)].filter(Boolean).join(" ");
+  if (repeatsEarlierAnswer(answerText, previousAnswers, { title: result.answer?.title, question })) {
+    // The thread already said this. Keep the no-answer only as long as the
+    // current answer's own cited source text cannot be shown to answer the
+    // current question; earlier answers are a comparison, never evidence.
+    if (!citedEvidenceAnswersQuestion(question, result.answer, result.sources)) {
+      return { ...composeNoAnswerResponse(question), searchResults: listing };
+    }
+    return {
+      ...result,
+      answer: withRepeatedAnswerNote(result.answer),
+      searchResults: listing,
+    };
+  }
+  return { ...result, searchResults: listing };
+}
 
 app.get("/api/corpus", async (request, response) => {
   const lifecycle = bindRequestAbort(request, response);
@@ -1238,6 +1690,7 @@ const gracefulShutdown = createGracefulShutdown(server, {
     corpusStatsAdmission.close();
     closeCorpusStatsBackendAdmission(new DOMException("Server is shutting down", "AbortError"));
     terrapointAdmission.close();
+    void searchJobStore.close();
     clearTimeout(corpusRefreshTimeout);
     clearInterval(corpusRefreshInterval);
     clearInterval(continuousCorpusBackfillTimer);

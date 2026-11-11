@@ -4,11 +4,9 @@ function boundedInteger(value, fallback, minimum, maximum) {
   return Math.max(minimum, Math.min(parsed, maximum));
 }
 
-// A budget limit of 0, "off", "none" or "unlimited" switches that limit off.
-// The request and token limits are off unless set: a normal reader asking one question
-// after another must not run out of answers.
-// Without this, 0 was clamped up to 1 and "disabling" a limit allowed a single
-// model answer per window for everyone.
+// A budget limit of 0, "off", "none" or "unlimited" explicitly switches it off.
+// Unset or invalid limits use finite defaults so a public deployment is protected
+// even when it is started outside compose.yaml.
 const NO_LIMIT_VALUES = new Set(["0", "off", "none", "unlimited", "false"]);
 
 function budgetLimit(value, fallback, minimum, maximum) {
@@ -46,8 +44,8 @@ export function resolveLlmRollingBudget({
 } = {}) {
   return {
     windowMs: boundedInteger(windowMs, 60 * 60_000, 60_000, 24 * 60 * 60_000),
-    requestBudget: budgetLimit(requestBudget, Infinity, 1, 10_000),
-    tokenBudget: budgetLimit(tokenBudget, Infinity, 1_000, 100_000_000),
+    requestBudget: budgetLimit(requestBudget, 60, 1, 10_000),
+    tokenBudget: budgetLimit(tokenBudget, 240_000, 1_000, 100_000_000),
   };
 }
 
@@ -59,8 +57,8 @@ export function resolveLlmClientBudget({
 } = {}) {
   return {
     windowMs: boundedInteger(windowMs, 60 * 60_000, 60_000, 24 * 60 * 60_000),
-    requestBudget: budgetLimit(requestBudget, Infinity, 1, 1_000),
-    tokenBudget: budgetLimit(tokenBudget, Infinity, 1_000, 10_000_000),
+    requestBudget: budgetLimit(requestBudget, 15, 1, 1_000),
+    tokenBudget: budgetLimit(tokenBudget, 120_000, 1_000, 10_000_000),
     maximumClients: boundedInteger(maximumClients, 2_000, 100, 100_000),
   };
 }

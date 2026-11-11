@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { createPortalDraft, directEvidenceExtract, publicResponse, searchEnvironmentLive } from '../server/pipeline.mjs';
 import { officialServiceCatalogueDocuments } from '../server/search.mjs';
 import { publicSearchItem } from '../server/corpus.mjs';
+import { observeSourcePolicy } from '../server/source_policy.mjs';
+import { sourceResourceKey } from '../server/source-identity.mjs';
 
 test('open explanations retain distinct equally relevant evidence without unrelated page context', () => {
   const cause = 'Radoon on ohtlik, sest selle radioaktiivsed laguproduktid kahjustavad hingamisel kopse.';
@@ -36,13 +39,42 @@ test('a risk question answers the health effect rather than describing the guide
   assert.doesNotMatch(extract, /juhend selgitab|seminar/iu);
 });
 
+// A hydrated row becomes answer evidence only while it carries the source use
+// witness of the read that produced it: the witness has to be observed at the
+// row's fetch time and it has to bind the stored body hash. Without it the same
+// row is link metadata only, which is the safeguard under test elsewhere. The
+// fixture keeps the publisher's extracted text and no separate raw response, so
+// the read is observed over that text and the two digests both name it.
 async function currentFactCheckSource() {
   const row = JSON.parse(await readFile(new URL('./fixtures/forest-fact-check-article.json', import.meta.url), 'utf8'));
+  const observedAt = new Date().toISOString();
+  const readHash = createHash('sha256').update(row.content).digest('hex');
+  assert.equal(row.content_hash, readHash, 'the fixture hash names the body it stores');
+  const sourcePolicy = observeSourcePolicy({
+    requestedUrl: row.canonical_url,
+    finalUrl: row.canonical_url,
+    observedAt,
+    contentKind: 'fetched-html',
+    bodyHash: readHash,
+    artifactHash: row.content_hash,
+    robotsObservation: {
+      status: 'allowed',
+      origin: new URL(row.canonical_url).origin,
+      checkedAt: observedAt,
+    },
+    html: row.content,
+  });
+  assert.equal(sourcePolicy.use.answerEvidence, true, 'the observed decision still permits evidence');
   return publicSearchItem({
     ...row,
     source_key: 'official-page-hydration',
-    fetched_at: new Date().toISOString(),
-    metadata: { hydrated: true, source_kind: 'official-page-hydration' },
+    fetched_at: observedAt,
+    metadata: {
+      hydrated: true,
+      source_kind: 'official-page-hydration',
+      source_policy: sourcePolicy,
+      sourceResourceKey: sourceResourceKey(row.canonical_url),
+    },
   }, true);
 }
 

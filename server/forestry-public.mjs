@@ -619,10 +619,11 @@ const INTENTS = {
     minimumSupportingDocuments: 2,
   },
   "forest-harvest-2025": {
-    serviceDocumentIds: ["forest-smi-2025-presentation"],
-    discoveryQueries: ["SMI 2025 raiemahu eksperthinnang"],
+    serviceDocumentIds: ["forest-smi-2025-presentation", "forest-stock-stable"],
+    discoveryQueries: ["SMI 2025 raiemahu eksperthinnang", "raiemaht 2025 eksperthinnang 11 miljonit"],
     evidenceGroups: [
-      ["2025. aasta raiemahu eksperthinnang"],
+      ["2025"],
+      ["eksperthinnang", "eksperthinnangu", "eksperthinnangul"],
       ["11,0 miljonit m³", "11 miljonit m³"],
     ],
   },
@@ -855,8 +856,8 @@ const INTENTS = {
     minimumSupportingDocuments: 2,
   },
   "forest-harvest-balance": {
-    serviceDocumentIds: ["forest-balance-kaur-methodology"],
-    discoveryQueries: ["netojuurdekasv raiemaht Keskkonnaagentuur", "juurdekasv raiemaht SMI"],
+    serviceDocumentIds: ["forest-balance-kaur-methodology", "forest-stock-stable"],
+    discoveryQueries: ["netojuurdekasv raiemaht Keskkonnaagentuur", "juurdekasv raiemaht SMI", "raiemaht eksperthinnang 2025 netojuurdekasv"],
     evidenceGroups: [
       ["netojuurdekasv"],
       ["raiemaht", "elusate puude raie"],

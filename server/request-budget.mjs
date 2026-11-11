@@ -1,10 +1,18 @@
-export const DEFAULT_SEARCH_DEADLINE_MS = 60_000;
-export const JSON_SEARCH_DEADLINE_CEILING_MS = 50_000;
+// One search request has two clocks. The listing clock bounds retrieval; the
+// answer clock starts only once the listing exists, so a slow listing cannot
+// spend the model's budget and a slow model cannot withdraw the links the
+// reader already has. Both are finite and both sit inside the public
+// transport window validated at startup.
+export const DEFAULT_SEARCH_DEADLINE_MS = 90_000;
+export const DEFAULT_ANSWER_DEADLINE_MS = 195_000;
+// A one-shot JSON route keeps a smaller listing ceiling; its silent body is
+// kept alive by padding so the answer clock can still run to completion.
+export const JSON_SEARCH_DEADLINE_CEILING_MS = 75_000;
 export const DEFAULT_SEARCH_CONCURRENCY = 8;
 export const DEFAULT_SEARCH_QUEUE = 32;
-// Slow listings still leave enough time for hydration, grounded synthesis,
-// citation rebinding and transport under the 90 s public response budget. A
-// reader waits longer rather than losing the grounded answer to a timeout.
+// Listing, answer and transport must all fit: hydration, grounded synthesis,
+// citation rebinding and serialization each need a slice. A reader waits
+// longer rather than losing the grounded answer to a timeout.
 const FINAL_RESPONSE_RESERVE_MS = 12_000;
 
 export function configuredSearchBudgetMs(
@@ -23,6 +31,88 @@ export function progressiveListingBudgetMs({ remainingMs } = {}) {
   const remaining = Math.max(1, Math.trunc(Number(remainingMs) || 1));
   const reserve = Math.min(FINAL_RESPONSE_RESERVE_MS, Math.floor(remaining / 2));
   return Math.max(1, remaining - reserve);
+}
+
+/**
+ * The answer clock is independent of the listing clock: it starts when the
+ * listing is published, so retrieval work can never consume the model's
+ * budget and a provider failure can never withdraw completed links. The
+ * ceiling stays above the provider timeout so the provider timer is the
+ * binding limit, not a shorter local clamp.
+ */
+export function configuredAnswerBudgetMs(
+  value = process.env.ANSWER_DEADLINE_MS,
+  ceilingMs = DEFAULT_ANSWER_DEADLINE_MS,
+) {
+  const ceiling = Math.max(1_000, Math.min(
+    Number(ceilingMs) || DEFAULT_ANSWER_DEADLINE_MS,
+    DEFAULT_ANSWER_DEADLINE_MS,
+  ));
+  return Math.max(1_000, Math.min(Number(value) || DEFAULT_ANSWER_DEADLINE_MS, ceiling));
+}
+
+export function answerDeadline(listingReadyAt, ceilingMs = DEFAULT_ANSWER_DEADLINE_MS, value = process.env.ANSWER_DEADLINE_MS) {
+  return Number(listingReadyAt) + configuredAnswerBudgetMs(value, ceilingMs);
+}
+
+/**
+ * Everything one streamed search can need: the listing window, the answer
+ * window that follows it, and the serialization reserve. The public absolute
+ * response ceiling must cover this sum, otherwise the deployment would
+ * silently shorten the answer phase.
+ */
+export function searchTransportWindowMs({
+  searchBudgetMs = configuredSearchBudgetMs(),
+  answerBudgetMs = configuredAnswerBudgetMs(),
+} = {}) {
+  const budget = Math.max(1, Math.trunc(Number(searchBudgetMs) || DEFAULT_SEARCH_DEADLINE_MS));
+  const answer = Math.max(1, Math.trunc(Number(answerBudgetMs) || DEFAULT_ANSWER_DEADLINE_MS));
+  const listingWindowMs = progressiveListingBudgetMs({ remainingMs: budget });
+  return {
+    listingWindowMs,
+    answerWindowMs: answer,
+    reserveMs: FINAL_RESPONSE_RESERVE_MS,
+    absoluteRequiredMs: listingWindowMs + answer + FINAL_RESPONSE_RESERVE_MS,
+  };
+}
+
+/**
+ * Startup contract check. A search that cannot fit inside the public response
+ * ceiling, or a silent one-shot search longer than the socket idle window, is
+ * reported as an unsupported configuration instead of being shortened
+ * quietly at request time.
+ */
+export function validateSearchTransportBudget({
+  absoluteTimeoutMs,
+  idleTimeoutMs,
+  searchBudgetMs = configuredSearchBudgetMs(),
+  answerBudgetMs = configuredAnswerBudgetMs(),
+  jsonCeilingMs = configuredSearchBudgetMs(process.env.SEARCH_DEADLINE_MS, JSON_SEARCH_DEADLINE_CEILING_MS),
+  padded = false,
+} = {}) {
+  const window = searchTransportWindowMs({ searchBudgetMs, answerBudgetMs });
+  const absolute = Number(absoluteTimeoutMs);
+  if (!Number.isFinite(absolute) || absolute < window.absoluteRequiredMs) {
+    return {
+      ok: false,
+      ...window,
+      ...(padded ? {} : { idleRequiredMs: jsonCeilingMs + 1 }),
+      reason: `search needs ${window.absoluteRequiredMs} ms but the absolute response ceiling is ${Number.isFinite(absolute) ? absolute : 0} ms`,
+    };
+  }
+  // A padded one-shot body is never silent, so only an unpadded route needs
+  // the idle window to cover its whole ceiling.
+  if (padded) return { ok: true, ...window, reason: "supported" };
+  const idle = Number(idleTimeoutMs);
+  if (!Number.isFinite(idle) || idle <= jsonCeilingMs) {
+    return {
+      ok: false,
+      ...window,
+      idleRequiredMs: jsonCeilingMs + 1,
+      reason: `a silent one-shot search needs ${jsonCeilingMs} ms but the idle response ceiling is ${Number.isFinite(idle) ? idle : 0} ms`,
+    };
+  }
+  return { ok: true, ...window, idleRequiredMs: jsonCeilingMs + 1, reason: "supported" };
 }
 
 export function configuredSearchConcurrency(value = process.env.SEARCH_MAX_CONCURRENCY) {

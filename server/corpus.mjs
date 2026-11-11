@@ -7,9 +7,14 @@ import {
 } from "./database.mjs";
 import { createOfficialDiscoveryIndexQueue } from "./live-index-queue.mjs";
 import {
+  requestApprovedPublicHttpsBytes,
   requestApprovedPublicHttpsText,
   validateApprovedPublicHttpsUrl,
 } from "./public-https.mjs";
+import {
+  extractPdfPages,
+  isPdfContentType,
+} from "./pdf_extraction.mjs";
 import { createFairSearchAdmission } from "./request-budget.mjs";
 import {
   canonicalizePublicSearchQuery,
@@ -18,6 +23,16 @@ import {
 } from "./search.mjs";
 import { specialistSubjectRoot, specialistSubjectVariants } from "./topic-keywords.mjs";
 import { SOURCE_IDENTITY_VERSION, sourceResourceKey, sameSourceResource } from "./source-identity.mjs";
+import {
+  SOURCE_CONTENT_KINDS,
+  SOURCE_ROBOTS_ALLOWING_STATUSES,
+  SOURCE_ROBOTS_STATUSES,
+  extractSourceText,
+  observeSourcePolicy,
+  projectSourceText,
+  sourcePolicyBinding,
+  sourcePolicyWitness,
+} from "./source_policy.mjs";
 
 const PORTAL_BASE = "https://keskkonnaportaal.ee";
 const PORTAL_SEARCH = `${PORTAL_BASE}/et/search`;
@@ -65,8 +80,159 @@ const APPROVED_PAGE_EVIDENCE_MAX_AGE_MS = APPROVED_PAGE_EVIDENCE_MAX_AGE_DAYS * 
 // successful body is renewed while it can still answer instead of lapsing first
 // and waiting for a slow refresh cycle.
 const APPROVED_PAGE_REFRESH_DAYS = APPROVED_PAGE_EVIDENCE_MAX_AGE_DAYS - 1;
+// Kinds whose body was read from a publisher. Such a witness carries the hash of
+// the bytes that were read; the authored kinds may carry none. The list mirrors
+// PUBLISHER_KINDS in source_policy.mjs, and the known kinds come from there too,
+// so an unknown kind cannot pass as an authored one.
+const CORPUS_PUBLISHER_CONTENT_KINDS = Object.freeze(["fetched-html", "fetched-pdf", "reviewed-extract"]);
+const CORPUS_SQL_CONTENT_KINDS = SOURCE_CONTENT_KINDS.map((kind) => `'${kind}'`).join(", ");
+const CORPUS_SQL_PUBLISHER_KINDS = CORPUS_PUBLISHER_CONTENT_KINDS.map((kind) => `'${kind}'`).join(", ");
+const CORPUS_SQL_HASH_PATTERN = "^[a-f0-9]{64}$";
+const CORPUS_SQL_ROBOTS_STATUSES = SOURCE_ROBOTS_STATUSES.map((status) => `'${status}'`).join(", ");
+const CORPUS_SQL_ALLOWING_ROBOTS_STATUSES = SOURCE_ROBOTS_ALLOWING_STATUSES.map((status) => `'${status}'`).join(", ");
+// The canonical instant form the witness timestamps use, so a looser date format
+// is not silently accepted where the validator demands this one.
+const CORPUS_SQL_CANONICAL_TIMESTAMP_PATTERN = "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$";
+// `Number.isInteger` in the validator accepts any normalized integer, so 120.0 and
+// 1e20 are fine and 120.5 is not. The only bound is the JavaScript number itself:
+// an integer with more than 309 digits parses as Infinity there, which
+// Number.isInteger rejects, so it is rejected here too without casting.
+const CORPUS_SQL_SNIPPET_LIMIT_PATTERN = "^[0-9]+(\\.[0]+)?$";
+const CORPUS_SQL_SNIPPET_LIMIT_MAX_DIGITS = 309;
+
 const REVIEWED_CATALOGUE_MAX_AGE_MS = 366 * 24 * 60 * 60 * 1_000;
 const REVIEWED_CATALOGUE_SOURCE_KEY = "reviewed-catalogue-source";
+// `search_vector_policy` holds the vector layout, not the policy witness version.
+// The two vectors are split (safe navigation fields, then permitted copied text),
+// so a layout change has to re-derive every stored row; `source-policy-v1` stays
+// the version of the witness inside metadata and keeps its own meaning.
+export const CORPUS_VECTOR_LAYOUT = "index-layout-v2";
+
+// What the search index may contain for one row. The trigger writes the same
+// decision it returns here, and the queries read it back, so copied text is
+// indexed, matched and ranked only when a current source use policy allows
+// indexing it. A reviewed catalogue row is a reviewed extract with its own
+// recorded review, so it is the one explicit carve-out. The decision covers the
+// copied-text vector only: title, category, organization and topics are authored
+// navigation metadata, never copied body text, so they stay matchable without a
+// body permission.
+// Whether a row carries a usable source use witness: a well-formed record bound to
+// this exact row, meaning the same observation time as its stored read, the same
+// resource and the hash of the body that is stored. Availability is deliberately
+// not part of this test. An expired publisher decision is the publisher's answer,
+// so it must not trigger an immediate re-read on every pass; it refreshes on the
+// ordinary age schedule. A null, malformed, unknown-version or mismatched witness
+// is not usable, and only a fresh successful read can replace one.
+//
+// The expression is total on purpose. Every term compares JSON text, so a missing
+// or JSON null field yields SQL NULL rather than false, and `NOT (NULL)` is NULL,
+// which would silently drop the row from both the rehydration queue and the
+// ordering instead of making it due. COALESCE folds that NULL into "not usable",
+// which is the same answer a malformed witness gets.
+function corpusPolicyWitnessSql(alias) {
+  const row = String(alias);
+  const policy = `${row}.metadata->'source_policy'`;
+  const use = `${policy}->'use'`;
+  const directives = `${policy}->'directives'`;
+  const robots = `${policy}->'robots'`;
+  const kind = `${policy}->>'contentKind'`;
+  const bodyHash = `${policy}->>'bodyHash'`;
+  const status = `${robots}->>'status'`;
+  const anyUse = `(${use}->'retainBody' = 'true'::JSONB
+        OR ${use}->'indexBody' = 'true'::JSONB
+        OR ${use}->'displaySnippet' = 'true'::JSONB
+        OR ${use}->'answerEvidence' = 'true'::JSONB)`;
+  return `COALESCE((${row}.metadata ? 'source_policy'
+    AND jsonb_typeof(${policy}) = 'object'
+    AND ${policy}->>'version' = 'source-policy-v1'
+    AND ${policy}->>'observedAt' = to_char(${row}.fetched_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+    AND ${policy}->>'resourceKey' = ${row}.metadata->>'sourceResourceKey'
+    AND length(${policy}->>'resourceKey') BETWEEN 1 AND 2000
+    AND ${policy}->>'artifactHash' = ${row}.content_hash
+    -- A body read from a publisher is bound to the bytes that were read, so a
+    -- publisher witness must carry a real hash. An authored kind may omit it, but
+    -- a value that is present and not a hash is a malformed record. An unknown kind
+    -- is malformed too, exactly as the JavaScript validator treats it.
+    AND ${kind} IN (${CORPUS_SQL_CONTENT_KINDS})
+    AND (
+      (${kind} IN (${CORPUS_SQL_PUBLISHER_KINDS}) AND ${bodyHash} ~ '${CORPUS_SQL_HASH_PATTERN}')
+      OR (${kind} NOT IN (${CORPUS_SQL_PUBLISHER_KINDS})
+        AND (COALESCE(${bodyHash}, '') = '' OR ${bodyHash} ~ '${CORPUS_SQL_HASH_PATTERN}'))
+    )
+    -- use is an object whose four flags must all be present and boolean.
+    AND jsonb_typeof(${use}) = 'object'
+    AND jsonb_typeof(${use}->'retainBody') = 'boolean'
+    AND jsonb_typeof(${use}->'indexBody') = 'boolean'
+    AND jsonb_typeof(${use}->'displaySnippet') = 'boolean'
+    AND jsonb_typeof(${use}->'answerEvidence') = 'boolean'
+    -- directives requires the three booleans, a maxSnippetChars that is present
+    -- as null or a nonnegative integer, an optional boolean readable and an
+    -- optional canonical unavailableAfter.
+    AND jsonb_typeof(${directives}) = 'object'
+    AND jsonb_typeof(${directives}->'noindex') = 'boolean'
+    AND jsonb_typeof(${directives}->'nosnippet') = 'boolean'
+    AND jsonb_typeof(${directives}->'noarchive') = 'boolean'
+    AND (${directives} ? 'maxSnippetChars')
+    AND (
+      jsonb_typeof(${directives}->'maxSnippetChars') = 'null'
+      OR (jsonb_typeof(${directives}->'maxSnippetChars') = 'number'
+        AND (${directives}->>'maxSnippetChars') ~ '${CORPUS_SQL_SNIPPET_LIMIT_PATTERN}'
+        AND length(split_part(${directives}->>'maxSnippetChars', '.', 1)) <= ${CORPUS_SQL_SNIPPET_LIMIT_MAX_DIGITS})
+    )
+    AND (NOT (${directives} ? 'readable') OR jsonb_typeof(${directives}->'readable') = 'boolean')
+    AND (NOT (${directives} ? 'unavailableAfter')
+      OR jsonb_typeof(${directives}->'unavailableAfter') = 'null'
+      OR (jsonb_typeof(${directives}->'unavailableAfter') = 'string'
+        AND (${directives}->>'unavailableAfter') ~ '${CORPUS_SQL_CANONICAL_TIMESTAMP_PATTERN}'))
+    -- robots requires a known status, with an optional string origin and an
+    -- optional canonical checkedAt.
+    AND jsonb_typeof(${robots}) = 'object'
+    AND ${status} IN (${CORPUS_SQL_ROBOTS_STATUSES})
+    AND (NOT (${robots} ? 'origin') OR jsonb_typeof(${robots}->'origin') IN ('null', 'string'))
+    AND (NOT (${robots} ? 'checkedAt')
+      OR jsonb_typeof(${robots}->'checkedAt') = 'null'
+      OR (jsonb_typeof(${robots}->'checkedAt') = 'string'
+        AND (${robots}->>'checkedAt') ~ '${CORPUS_SQL_CANONICAL_TIMESTAMP_PATTERN}'))
+    -- The stored flags may be more conservative than the directives, never more
+    -- permissive: a copy permission is invalid when the witness itself refuses the
+    -- copy, and the internal contradictions the validator rejects are rejected here.
+    AND (
+      (${status} IN (${CORPUS_SQL_ALLOWING_ROBOTS_STATUSES})
+        AND COALESCE(${directives}->'readable', 'true'::JSONB) <> 'false'::JSONB
+        AND ${directives}->'noindex' = 'false'::JSONB
+        AND ${kind} <> 'legacy-unknown')
+      OR NOT ${anyUse}
+    )
+    AND NOT (${directives}->'noarchive' = 'true'::JSONB AND ${use}->'retainBody' = 'true'::JSONB)
+    AND NOT ((${directives}->'nosnippet' = 'true'::JSONB
+        OR ${directives}->'maxSnippetChars' = '0'::JSONB)
+      AND (${use}->'displaySnippet' = 'true'::JSONB OR ${use}->'answerEvidence' = 'true'::JSONB))
+    AND NOT (${use}->'answerEvidence' = 'true'::JSONB AND ${use}->'displaySnippet' = 'false'::JSONB)
+    AND NOT (${use}->'displaySnippet' = 'true'::JSONB AND ${use}->'indexBody' = 'false'::JSONB)
+    ), false)`;
+}
+
+function corpusIndexPolicySql(alias) {
+  const row = String(alias);
+  return `((${row}.search_vector_policy = '${CORPUS_VECTOR_LAYOUT}'
+    AND ${corpusPolicyWitnessSql(row)}
+    AND ${row}.metadata->'source_policy'->'directives'->>'noindex' = 'false'
+    AND ${row}.metadata->'source_policy'->'directives'->>'readable' = 'true'
+    AND ${row}.metadata->'source_policy'->'use'->>'indexBody' = 'true'
+    AND ${row}.metadata->'source_policy'->'robots'->>'status' IN ('allowed', 'absent', 'not-applicable')
+    -- Availability is a clock, not a write. A body indexed before its deadline
+    -- stops qualifying at the deadline even when no later write touches the row.
+    -- pg_input_is_valid needs PostgreSQL 16 or newer; the deployed image is 17.
+    AND CASE WHEN COALESCE(${row}.metadata->'source_policy'->'directives'->>'unavailableAfter', '') = ''
+             THEN TRUE
+             WHEN pg_input_is_valid(${row}.metadata->'source_policy'->'directives'->>'unavailableAfter', 'timestamptz')
+               THEN (${row}.metadata->'source_policy'->'directives'->>'unavailableAfter')::timestamptz > NOW()
+             ELSE FALSE
+        END)
+  OR (${row}.source_key = '${REVIEWED_CATALOGUE_SOURCE_KEY}'
+    AND ${row}.metadata->>'source_kind' = 'reviewed-catalogue'
+    AND COALESCE(${row}.metadata->>'evidence_policy', 'versioned') <> 'route-only'))`;
+}
 const OFFICIAL_DISCOVERY_MAX_ROWS = Math.max(
   1_000,
   Math.min(Math.trunc(Number(process.env.OFFICIAL_DISCOVERY_MAX_ROWS) || 20_000), 100_000),
@@ -534,7 +700,13 @@ export function parseRobotsTxt(value = "", product = CRAWLER_PRODUCT) {
         group = { agents: [], rules: [], hasDirectives: false };
         groups.push(group);
       }
-      if (group.agents.length < 8) group.agents.push(directive.slice(0, 120).toLocaleLowerCase("en"));
+      // A reader can be named anywhere in its group, so a fixed short list
+      // would silently drop the ninth name and miss that reader's rules. The
+      // list is bounded and overflow fails closed instead.
+      if (group.agents.length >= 64) {
+        throw new Error("robots.txt has too many user agents in one group");
+      }
+      group.agents.push(directive.slice(0, 120).toLocaleLowerCase("en"));
       continue;
     }
     if (!group || !["allow", "disallow"].includes(key)) continue;
@@ -956,7 +1128,16 @@ export function extractReadablePage(html, url) {
     "article",
   ].join(","));
   const topLevel = focused.filter((_, element) => !$(element).parents().is(focused));
-  const content = boundedText((topLevel.length ? topLevel : root).text(), 80_000);
+  // The selected nodes are serialised and read through the shared source text
+  // extractor. It removes a `data-nosnippet` section, a hidden node, a script
+  // body and the other non prose nodes there, so text the publisher excluded
+  // from snippets can never become the copied body that snippets and model
+  // evidence are built from.
+  const contentHtml = (topLevel.length ? topLevel : root)
+    .map((_, element) => $.html(element))
+    .get()
+    .join(" ");
+  const content = boundedText(extractSourceText(contentHtml), 80_000);
   return { title: title || placeholderTitle(url), content, publishedAt, updatedAt, organization };
 }
 
@@ -1206,26 +1387,55 @@ async function ensureCorpusSchema() {
             content_hash = md5(canonical_url)
         WHERE source_key = 'reviewed-forestry';
 
+        -- The marker says the stored vector was built under the source use
+        -- policy gate. Adding a nullable column is a metadata-only change, so a
+        -- production table with tens of thousands of rows is not rewritten here.
+        ALTER TABLE practice_corpus_documents
+          ADD COLUMN IF NOT EXISTS search_vector_policy TEXT;
+
+        -- The safe navigation fields and the permitted copied text live in two
+        -- vectors, so withdrawing permission never removes title, category,
+        -- organization or topic navigation from search. A constant default makes
+        -- this a metadata-only change on a large table.
+        ALTER TABLE practice_corpus_documents
+          ADD COLUMN IF NOT EXISTS search_vector_body TSVECTOR NOT NULL DEFAULT ''::TSVECTOR;
+
         CREATE OR REPLACE FUNCTION practice_corpus_vector_update()
         RETURNS TRIGGER LANGUAGE plpgsql AS $$
+        DECLARE
+          policy_allows_copy boolean;
         BEGIN
+          -- The marker is written first because the shared gate reads it; a row
+          -- being written now always carries the current vector layout.
+          NEW.search_vector_policy := '${CORPUS_VECTOR_LAYOUT}';
+          policy_allows_copy := ${corpusIndexPolicySql("NEW")};
+          -- Title and the independently authored navigation columns are always
+          -- indexed, so a restricted or not yet migrated row stays findable by
+          -- its title, category, organization and topics.
           NEW.search_vector :=
             setweight(to_tsvector('simple', public.unaccent(COALESCE(NEW.title, ''))), 'A') ||
-            setweight(to_tsvector('simple', public.unaccent(COALESCE(NEW.category, '') || ' ' || COALESCE(NEW.organization, '') || ' ' || array_to_string(COALESCE(NEW.topics, ARRAY[]::TEXT[]), ' '))), 'B') ||
-            setweight(to_tsvector('simple', public.unaccent(COALESCE(NEW.summary, ''))), 'C') ||
-            setweight(to_tsvector('simple', public.unaccent(COALESCE(NEW.content, ''))), 'D');
+            setweight(to_tsvector('simple', public.unaccent(COALESCE(NEW.category, '') || ' ' || COALESCE(NEW.organization, '') || ' ' || array_to_string(COALESCE(NEW.topics, ARRAY[]::TEXT[]), ' '))), 'B');
+          -- Summary and body are copied text. They keep their old weights (C and
+          -- D) but their own vector, which is read only while the permission that
+          -- allowed the copy still holds at query time.
+          NEW.search_vector_body := CASE WHEN policy_allows_copy THEN
+              setweight(to_tsvector('simple', public.unaccent(COALESCE(NEW.summary, ''))), 'C') ||
+              setweight(to_tsvector('simple', public.unaccent(COALESCE(NEW.content, ''))), 'D')
+            ELSE ''::tsvector END;
           RETURN NEW;
         END
         $$;
 
         DROP TRIGGER IF EXISTS practice_corpus_vector_trigger ON practice_corpus_documents;
         CREATE TRIGGER practice_corpus_vector_trigger
-          BEFORE INSERT OR UPDATE OF title, summary, content, category, organization, topics
+          BEFORE INSERT OR UPDATE OF title, summary, content, category, organization, topics, metadata, fetched_at
           ON practice_corpus_documents
           FOR EACH ROW EXECUTE FUNCTION practice_corpus_vector_update();
 
         CREATE INDEX IF NOT EXISTS practice_corpus_search_vector_idx
           ON practice_corpus_documents USING GIN (search_vector);
+        CREATE INDEX IF NOT EXISTS practice_corpus_search_vector_body_idx
+          ON practice_corpus_documents USING GIN (search_vector_body);
         CREATE INDEX IF NOT EXISTS practice_corpus_title_trgm_idx
           ON practice_corpus_documents USING GIN (lower(title) gin_trgm_ops);
         CREATE INDEX IF NOT EXISTS practice_corpus_published_idx
@@ -2210,7 +2420,17 @@ async function wikipediaDocuments() {
 
 export async function persistHydratedCorpusDocument(
   client,
-  { url, title, content, contentHash, metadata, runId, publishedAt = null, organization = "" },
+  {
+    url,
+    title,
+    content,
+    contentHash,
+    metadata,
+    runId,
+    publishedAt = null,
+    organization = "",
+    fetchedAt = null,
+  },
   { signal, maximumBytes = CORPUS_MAX_BYTES } = {},
 ) {
   const byteCeiling = Math.max(0, Math.trunc(Number(maximumBytes) || 0));
@@ -2237,7 +2457,10 @@ export async function persistHydratedCorpusDocument(
           published_at = COALESCE($7::DATE, published_at),
           published_label = CASE WHEN $7::DATE IS NOT NULL THEN to_char($7::DATE, 'DD.MM.YYYY') ELSE published_label END,
           organization = CASE WHEN $8 <> '' THEN $8 ELSE organization END,
-          fetched_at = NOW(),
+          -- The policy of this read is bound to this instant: a later failed
+          -- attempt moves fetched_at, so the older policy stops matching and the
+          -- body it described loses its evidence standing.
+          fetched_at = COALESCE($9::TIMESTAMPTZ, NOW()),
           last_seen_at = NOW(),
           last_seen_run = COALESCE($6::BIGINT, last_seen_run),
           is_available = TRUE
@@ -2247,7 +2470,7 @@ export async function persistHydratedCorpusDocument(
       ...(typeof metadata === "string" ? JSON.parse(metadata) : metadata),
       sourceResourceKey: sourceResourceKey(url),
       sourceIdentityVersion: SOURCE_IDENTITY_VERSION,
-    }), runId, publishedAt, organization]);
+    }), runId, publishedAt, organization, fetchedAt]);
     throwIfCorpusAborted(signal);
     if (!updated.rowCount) {
       await client.query("COMMIT");
@@ -2286,10 +2509,300 @@ export function corpusHydrationCandidates(urls = []) {
   });
 }
 
-async function hydrateUrls(client, urls, runId, { limit = 0, concurrency = 2, delayMs = 2_000, onProgress } = {}) {
-  const rawCandidates = corpusHydrationCandidates(urls);
-  const safeLimit = Math.max(0, Number(limit) || 0);
-  if (!safeLimit || !rawCandidates.length) return { hydrated: 0, skipped: 0, errors: 0 };
+export function corpusPdfHydrationCandidates(urls = []) {
+  return [...new Set(urls)].filter((url) => {
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === "https:" && !parsed.username && !parsed.password && !parsed.port
+        && OFFICIAL_HOSTS.has(parsed.hostname)
+        && /\.pdf$/iu.test(parsed.pathname);
+    } catch {
+      return false;
+    }
+  });
+}
+
+function responseHeaderInstances(headers, name) {
+  if (!headers || typeof headers !== "object") return [];
+  const key = Object.keys(headers).find((entry) => entry.toLocaleLowerCase("en") === name);
+  if (key === undefined) return [];
+  const value = headers[key];
+  if (Array.isArray(value)) return value.map((entry) => String(entry ?? ""));
+  if (value === undefined || value === null) return [];
+  return [String(value)];
+}
+
+// Background PDF indexing. The bytes go through the same approved transport and
+// the robots gate settles before any request, so a disallowed source costs
+// nothing. Only a full extraction becomes a document: every non success status
+// the extractor reports returns no document and no permission, which is how a
+// partial or textless read is kept out of the index instead of being described
+// as complete.
+export async function hydrateCorpusPdfSource(url, {
+  observedAt = new Date().toISOString(),
+  robotsObservation = null,
+  title = "",
+  requestBytes = requestApprovedPublicHttpsBytes,
+  extractPages = extractPdfPages,
+  signal,
+  maximumBytes = MAX_FETCH_BYTES,
+  maximumPages,
+  maximumTextBytes,
+  timeoutMs,
+  limiter,
+  lookupImpl,
+  requestImpl,
+  assertRedirectAllowed,
+} = {}) {
+  const requestedUrl = validateApprovedPublicHttpsUrl(url, CORPUS_HTTPS_ORIGINS).toString();
+  const origin = new URL(requestedUrl).origin;
+  let robots = robotsObservation;
+  if (!robots) {
+    try {
+      await assertPortalRobotsAllowed(requestedUrl, { signal, lookupImpl, requestImpl });
+      robots = { status: "allowed", origin, checkedAt: observedAt };
+    } catch (error) {
+      if (error?.code === "CORPUS_ROBOTS_DISALLOWED") {
+        return { status: "denied", policy: null, document: null, detail: "robots", pageCount: null };
+      }
+      return {
+        status: "robots-unreadable",
+        policy: null,
+        document: null,
+        detail: error?.message || "robots",
+        pageCount: null,
+      };
+    }
+  }
+  if (!["allowed", "absent"].includes(String(robots.status || ""))) {
+    return { status: "denied", policy: null, document: null, detail: "robots", pageCount: null };
+  }
+
+  const response = await requestBytes(requestedUrl, {
+    approvedOrigins: corpusOriginsForUrl(requestedUrl),
+    headers: { Accept: "application/pdf,application/x-pdf" },
+    signal,
+    maximumBytes: Math.max(1_024, Math.min(Number(maximumBytes) || MAX_FETCH_BYTES, MAX_FETCH_BYTES)),
+    maximumRedirects: 3,
+    lookupImpl,
+    requestImpl,
+    assertRedirectAllowed,
+  });
+  if (!(Number(response.status) >= 200 && Number(response.status) < 300)) {
+    return {
+      status: "fetch-failed",
+      policy: null,
+      document: null,
+      detail: `status ${Number(response.status) || 0}`,
+      pageCount: null,
+    };
+  }
+  const finalUrl = validateApprovedPublicHttpsUrl(
+    response.url || requestedUrl,
+    corpusOriginsForUrl(requestedUrl),
+  ).toString();
+  // A same-origin redirect may name a different resource, and a PDF body is
+  // never promoted under the pre-redirect row.
+  if (!hydrationResourceMatches(requestedUrl, finalUrl)) {
+    return {
+      status: "resource-changed",
+      policy: null,
+      document: null,
+      detail: "redirect target is not this resource",
+      pageCount: null,
+    };
+  }
+  const headerInstances = responseHeaderInstances(response.headers, "x-robots-tag");
+  const contentType = responseHeaderInstances(response.headers, "content-type")[0] || "";
+  if (!isPdfContentType(contentType)) {
+    return {
+      status: "unsupported-content-type",
+      policy: null,
+      document: null,
+      detail: contentType.slice(0, 120),
+      pageCount: null,
+    };
+  }
+
+  const extraction = await extractPages(response.body, {
+    contentType,
+    signal,
+    maximumPages,
+    maximumTextBytes,
+    timeoutMs,
+    limiter,
+  });
+  if (extraction?.status !== "ok") {
+    return {
+      status: String(extraction?.status || "failed"),
+      policy: null,
+      document: null,
+      detail: extraction?.detail ?? null,
+      pageCount: Number.isInteger(extraction?.pageCount) ? extraction.pageCount : null,
+    };
+  }
+
+  // Page breaks are the locator this module publishes, so the assembled body
+  // keeps one space between pages and every locator addresses the stored text.
+  let content = "";
+  let indexedPages = 0;
+  const pageLocators = [];
+  for (const page of extraction.pages) {
+    const text = cleanText(page.text);
+    if (text === "") continue;
+    if (content !== "") content += " ";
+    const start = content.length;
+    content += text;
+    indexedPages += 1;
+    pageLocators.push({
+      pageNumber: Number(page.pageNumber) || indexedPages,
+      start,
+      end: content.length,
+    });
+  }
+  if (content === "") {
+    return {
+      status: "textless",
+      policy: null,
+      document: null,
+      detail: null,
+      pageCount: Number.isInteger(extraction.pageCount) ? extraction.pageCount : 0,
+    };
+  }
+
+  const bodyHash = createHash("sha256").update(response.body).digest("hex");
+  const policy = observeSourcePolicy({
+    requestedUrl,
+    finalUrl,
+    observedAt,
+    contentKind: "fetched-pdf",
+    bodyHash,
+    artifactHash: createHash("sha256").update(content).digest("hex"),
+    robotsObservation: {
+      status: robots.status,
+      origin: robots.origin || origin,
+      checkedAt: robots.checkedAt || observedAt,
+    },
+    html: "",
+    headerInstances,
+  });
+  const retained = policy.use.retainBody;
+  const pageCount = Number.isInteger(extraction.pageCount) && extraction.pageCount > 0
+    ? extraction.pageCount
+    : indexedPages;
+  const pdf = {
+    pageCount,
+    indexedPages,
+    // A complete extraction covers exactly the pages the document declares.
+    complete: extraction.pages.length === pageCount,
+    extractorVersion: extraction.extractorVersion ?? null,
+    retained,
+  };
+  const document = {
+    url: finalUrl,
+    requestedUrl,
+    title: boundedText(title, 500),
+    content: retained ? content : "",
+    contentHash: hash(retained ? content : ""),
+    publishedAt: null,
+    organization: "",
+    observedAt,
+    retained,
+    pageLocators: retained ? pageLocators : [],
+    pdf,
+    metadata: {
+      hydrated: true,
+      source_kind: "official-pdf-hydration",
+      source_policy: policy,
+      source_body_hash: bodyHash,
+      pdf,
+      page_locators: retained ? pageLocators : [],
+      retained,
+    },
+  };
+  return { status: "indexed", policy, document, detail: null, pageCount };
+}
+
+// Failure diagnostics stay aggregate and bounded. A category is a fixed label
+// from this list, never a URL, a hostname, a body fragment or an exception
+// message, so a stored run can be triaged without keeping publisher data or
+// personal data around.
+export const CORPUS_FAILURE_CATEGORIES = Object.freeze([
+  "aborted",
+  "busy",
+  "content-type",
+  "database",
+  "dns",
+  "extraction",
+  "http-status",
+  "network",
+  "parse",
+  "resource-changed",
+  "robots-disallowed",
+  "robots-unreadable",
+  "timeout",
+  "tls",
+  "too-large",
+  "unknown",
+]);
+
+export function corpusFailureCounters() {
+  return Object.fromEntries(CORPUS_FAILURE_CATEGORIES.map((category) => [category, 0]));
+}
+
+export function addCorpusFailure(counters, category) {
+  if (!counters || typeof counters !== "object") return counters;
+  const key = CORPUS_FAILURE_CATEGORIES.includes(category) ? category : "unknown";
+  counters[key] = Number(counters[key] || 0) + 1;
+  return counters;
+}
+
+export function corpusFailureCategory(error) {
+  const code = String(error?.code || "").toUpperCase();
+  const name = String(error?.name || "");
+  const message = String(error?.message || "");
+  if (code === "CORPUS_ROBOTS_DISALLOWED") return "robots-disallowed";
+  if (name === "AbortError" || code === "ABORT_ERR" || code === "ABORTED") return "aborted";
+  if (code === "ETIMEDOUT" || /time[d ]?\s?out/iu.test(message)) return "timeout";
+  if (code === "ENOTFOUND" || code === "EAI_AGAIN") return "dns";
+  if (/CERT|TLS|SSL/u.test(code) || /certificate|\btls\b|\bssl\b/iu.test(message)) return "tls";
+  if (/ECONN|EHOSTUNREACH|ENETUNREACH|EPIPE/u.test(code)) return "network";
+  if (/^Corpus source returned \d+/u.test(message)) return "http-status";
+  if (/too large|exceeds the configured byte/iu.test(message)) return "too-large";
+  if (/content type|not a PDF|invalid-signature/iu.test(message)) return "content-type";
+  if (/redirect|not this resource/iu.test(message)) return "resource-changed";
+  if (/robots/iu.test(message)) return "robots-unreadable";
+  if (/\bpg_\b|postgres|relation|constraint|database/iu.test(`${code} ${message}`)) return "database";
+  if (/sitemap|parse|XML/iu.test(`${code} ${message}`)) return "parse";
+  return "unknown";
+}
+
+// A PDF extractor status is already a closed vocabulary, and it is folded into
+// the same bounded set so one run report has one shape.
+export function pdfFailureCategory(status) {
+  switch (String(status || "")) {
+    case "aborted": return "aborted";
+    case "busy": return "busy";
+    case "timeout": return "timeout";
+    case "too-large":
+    case "text-too-large": return "too-large";
+    case "invalid-signature":
+    case "unsupported-content-type": return "content-type";
+    case "robots-unreadable":
+    case "denied": return "robots-unreadable";
+    case "fetch-failed": return "http-status";
+    case "resource-changed": return "resource-changed";
+    case "encrypted":
+    case "corrupt":
+    case "textless":
+    case "too-many-pages":
+    case "unavailable":
+    case "extraction": return "extraction";
+    default: return "unknown";
+  }
+}
+
+async function selectHydrationCandidates(client, rawCandidates, safeLimit) {
   const prioritized = await client.query(`
     WITH candidates AS (
       SELECT canonical_url, position
@@ -2303,20 +2816,114 @@ async function hydrateUrls(client, urls, runId, { limit = 0, concurrency = 2, de
       CASE
         WHEN document.content = '' AND NOT (document.metadata ? 'hydration_attempted_at') THEN 0
         WHEN document.content = '' THEN 1
-        ELSE 2
+        -- A body stored without the witness of its own read cannot be published,
+        -- so it is useless until it is read again, while a witnessed body that is
+        -- merely due can still answer. Unusable rows are taken first.
+        WHEN NOT ${corpusPolicyWitnessSql("document")} THEN 2
+        ELSE 3
       END,
       CASE
         WHEN document.content = '' AND NOT (document.metadata ? 'hydration_attempted_at')
+          THEN candidates.position
+        WHEN NOT ${corpusPolicyWitnessSql("document")}
           THEN candidates.position
       END ASC NULLS LAST,
       document.fetched_at ASC,
       candidates.position ASC
     LIMIT $2
   `, [rawCandidates, safeLimit]);
-  const candidates = prioritized.rows.map((row) => row.canonical_url);
+  return prioritized.rows.map((row) => row.canonical_url);
+}
+
+// The PDF pass runs after the page pass, one document at a time, because a
+// converter is the expensive part of the run and the extractor already bounds
+// how many may run at once.
+async function hydratePdfUrls(client, urls, runId, {
+  limit = 0,
+  delayMs = 400,
+  onProgress,
+} = {}) {
+  const rawCandidates = corpusPdfHydrationCandidates(urls);
+  const safeLimit = Math.max(0, Number(limit) || 0);
+  if (!safeLimit || !rawCandidates.length) {
+    return { hydrated: 0, skipped: 0, errors: 0, errorCategories: corpusFailureCounters() };
+  }
+  const candidates = await selectHydrationCandidates(client, rawCandidates, safeLimit);
   let hydrated = 0;
   let skipped = 0;
   let errors = 0;
+  const errorCategories = corpusFailureCounters();
+  for (const [index, url] of candidates.entries()) {
+    try {
+      const result = await hydrateCorpusPdfSource(url, { observedAt: new Date().toISOString() });
+      if (result.status !== "indexed" || !result.document) {
+        skipped += 1;
+        addCorpusFailure(errorCategories, pdfFailureCategory(result.status));
+        // A failed or refused read is an attempt, so the older body keeps its
+        // bytes but loses the match with its policy and stops being evidence.
+        await client.query(`
+          UPDATE practice_corpus_documents
+          SET fetched_at = NOW(),
+              metadata = metadata || jsonb_build_object(
+                'hydration_attempted_at', NOW(),
+                'pdf_status', $2::TEXT
+              )
+          WHERE canonical_url = $1
+        `, [url, result.status]);
+      } else if (result.policy?.directives?.noindex) {
+        skipped += 1;
+        await client.query(`
+          UPDATE practice_corpus_documents
+          SET content = '', content_hash = $2, is_available = FALSE,
+              fetched_at = $4::TIMESTAMPTZ,
+              metadata = metadata || $3::JSONB
+          WHERE canonical_url = $1
+        `, [
+          url,
+          hash(JSON.stringify([url, "pdf-noindex"])),
+          JSON.stringify({
+            robots_noindex: true,
+            pdf_status: "noindex",
+            source_policy: result.policy,
+          }),
+          result.document.observedAt,
+        ]);
+      } else {
+        const stored = await persistHydratedCorpusDocument(client, {
+          url,
+          title: result.document.title,
+          content: result.document.content,
+          contentHash: result.document.contentHash,
+          publishedAt: result.document.publishedAt,
+          organization: result.document.organization,
+          fetchedAt: result.document.observedAt,
+          metadata: JSON.stringify({ ...result.document.metadata, pdf_status: "indexed" }),
+          runId,
+        });
+        if (stored) hydrated += 1;
+        else skipped += 1;
+      }
+    } catch (error) {
+      errors += 1;
+      addCorpusFailure(errorCategories, corpusFailureCategory(error));
+    }
+    onProgress?.({ stage: "pdf", completed: index + 1, total: candidates.length, hydrated, skipped, errors });
+    if (index + 1 < candidates.length && delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  return { hydrated, skipped, errors, errorCategories };
+}
+
+async function hydrateUrls(client, urls, runId, { limit = 0, concurrency = 2, delayMs = 2_000, onProgress } = {}) {
+  const rawCandidates = corpusHydrationCandidates(urls);
+  const safeLimit = Math.max(0, Number(limit) || 0);
+  if (!safeLimit || !rawCandidates.length) return { hydrated: 0, skipped: 0, errors: 0 };
+  const candidates = await selectHydrationCandidates(client, rawCandidates, safeLimit);
+  let hydrated = 0;
+  let skipped = 0;
+  let errors = 0;
+  const errorCategories = corpusFailureCounters();
   let databaseMutationQueue = Promise.resolve();
   const serializeDatabaseMutation = (operation) => {
     const queued = databaseMutationQueue.then(operation, operation);
@@ -2326,6 +2933,7 @@ async function hydrateUrls(client, urls, runId, { limit = 0, concurrency = 2, de
   for (let offset = 0; offset < candidates.length; offset += concurrency) {
     const batch = candidates.slice(offset, offset + concurrency);
     const results = await Promise.allSettled(batch.map(async (url) => {
+      const observedAt = new Date().toISOString();
       await assertPortalRobotsAllowed(url);
       // The transport may follow an approved same-resource redirect from the
       // publisher's bare host to its www host; the gate settles the destination
@@ -2339,17 +2947,55 @@ async function hydrateUrls(client, urls, runId, { limit = 0, concurrency = 2, de
       // redirect can still name a different resource. Never promote that body
       // under the pre-redirect row's title, organization, category, or URL.
       if (!hydrationResourceMatches(url, response.finalUrl)) return false;
-      const robots = pageRobotsPolicy(response.text, response.robotsTags);
-      if (robots.noindex) {
+      const extracted = extractReadablePage(response.text, url);
+      // The policy is observed for this exact response and stored with the body,
+      // so the decision can be rechecked later without holding the page.
+      const policy = observeSourcePolicy({
+        requestedUrl: url,
+        finalUrl: response.finalUrl,
+        observedAt,
+        contentKind: "fetched-html",
+        bodyHash: hash(response.text),
+        artifactHash: hash(extracted.content),
+        robotsObservation: {
+          status: "allowed",
+          origin: new URL(url).origin,
+          checkedAt: observedAt,
+        },
+        html: response.text,
+        headerInstances: response.robotsTags,
+      });
+      if (policy.directives.noindex) {
         await serializeDatabaseMutation(() => client.query(`
           UPDATE practice_corpus_documents
-          SET content = '', content_hash = $2, is_available = FALSE, fetched_at = NOW(),
+          SET content = '', content_hash = $2, is_available = FALSE, fetched_at = $4::TIMESTAMPTZ,
               metadata = metadata || $3::JSONB
           WHERE canonical_url = $1
-        `, [url, hash(JSON.stringify([url, "robots-noindex"])), JSON.stringify({ robots_noindex: true })]));
+        `, [
+          url,
+          hash(JSON.stringify([url, "robots-noindex"])),
+          JSON.stringify({ robots_noindex: true, source_policy: policy }),
+          observedAt,
+        ]));
         return false;
       }
-      const extracted = extractReadablePage(response.text, url);
+      if (!policy.use.retainBody) {
+        // noarchive: the page stays discoverable, but no copy of its body is
+        // kept, so there is nothing here that could be quoted later.
+        await serializeDatabaseMutation(() => client.query(`
+          UPDATE practice_corpus_documents
+          SET content = '', summary = '', content_hash = $2, is_available = TRUE,
+              fetched_at = $4::TIMESTAMPTZ,
+              metadata = (metadata - 'robots_noindex' - 'hydration_attempted_at') || $3::JSONB
+          WHERE canonical_url = $1
+        `, [
+          url,
+          hash(JSON.stringify([url, "no-retained-body"])),
+          JSON.stringify({ hydrated: true, retained: false, source_policy: policy }),
+          observedAt,
+        ]));
+        return false;
+      }
       if (extracted.content.length < 80) return false;
       return serializeDatabaseMutation(() => persistHydratedCorpusDocument(client, {
         url,
@@ -2358,10 +3004,13 @@ async function hydrateUrls(client, urls, runId, { limit = 0, concurrency = 2, de
         publishedAt: extracted.publishedAt,
         organization: extracted.organization,
         contentHash: hash(extracted.content),
+        fetchedAt: observedAt,
         metadata: JSON.stringify({
           hydrated: true,
           source_kind: "official-page-hydration",
           source_updated_at: extracted.updatedAt,
+          source_body_hash: hash(response.text),
+          source_policy: policy,
         }),
         runId,
       }));
@@ -2369,6 +3018,11 @@ async function hydrateUrls(client, urls, runId, { limit = 0, concurrency = 2, de
     hydrated += results.filter((result) => result.status === "fulfilled" && result.value).length;
     skipped += results.filter((result) => result.status === "fulfilled" && !result.value).length;
     errors += results.filter((result) => result.status === "rejected").length;
+    for (const result of results) {
+      if (result.status === "rejected") {
+        addCorpusFailure(errorCategories, corpusFailureCategory(result.reason));
+      }
+    }
     const notHydrated = results.flatMap((result, index) => (
       result.status === "fulfilled" && result.value ? [] : [batch[index]]
     ));
@@ -2385,7 +3039,7 @@ async function hydrateUrls(client, urls, runId, { limit = 0, concurrency = 2, de
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
-  return { hydrated, skipped, errors };
+  return { hydrated, skipped, errors, errorCategories };
 }
 
 async function saveQuerySnapshot(client, query, total, urls, {
@@ -2595,15 +3249,133 @@ function isRobotsDisallowedCorpusError(error) {
     || error?.message === "Corpus source is disallowed by robots.txt";
 }
 
+// Bounded, restartable index migration. One statement selects and rewrites a
+// small batch, so two workers never take the same row (SKIP LOCKED) and no long
+// table lock is held. The trigger recomputes the vector from the row's current
+// values, so a concurrent content or policy change is preserved.
+export async function backfillCorpusIndexVectors(client, {
+  limit = 200,
+  timeBudgetMs = 1_000,
+  afterId = 0,
+} = {}) {
+  const boundedLimit = Math.max(1, Math.min(Math.trunc(Number(limit) || 200), 1_000));
+  const budgetMs = Math.max(50, Math.min(Number(timeBudgetMs) || 1_000, 30_000));
+  const cursor = Number.isFinite(Number(afterId)) ? Math.max(0, Math.trunc(Number(afterId))) : 0;
+  const startedAt = Date.now();
+  const updated = await client.query(`
+    WITH batch AS (
+      SELECT id
+      FROM practice_corpus_documents
+      WHERE id > $1
+        AND search_vector_policy IS DISTINCT FROM '${CORPUS_VECTOR_LAYOUT}'
+      ORDER BY id
+      LIMIT $2
+      FOR UPDATE SKIP LOCKED
+    )
+    UPDATE practice_corpus_documents AS document
+    SET title = document.title
+    FROM batch
+    WHERE document.id = batch.id
+    RETURNING document.id
+  `, [cursor, boundedLimit]);
+  const processedIds = updated.rows
+    .map((row) => Number(row.id))
+    .filter((id) => Number.isFinite(id))
+    .sort((left, right) => left - right);
+  // A short or empty batch does not prove the table is clean: SKIP LOCKED hides
+  // rows that another writer holds, and those sit below the cursor. Completion is
+  // "no unmigrated row remains anywhere", asked directly rather than inferred.
+  const pendingRow = await client.query(`
+    SELECT EXISTS (
+      SELECT 1
+      FROM practice_corpus_documents
+      WHERE search_vector_policy IS DISTINCT FROM '${CORPUS_VECTOR_LAYOUT}'
+      LIMIT 1
+    ) AS pending
+  `);
+  const pending = pendingRow.rows[0]?.pending === true;
+  const elapsedMs = Date.now() - startedAt;
+  return {
+    processed: processedIds.length,
+    processedIds,
+    lastId: processedIds.length ? processedIds[processedIds.length - 1] : cursor,
+    complete: !pending,
+    pending,
+    elapsedMs,
+    budgetSpent: elapsedMs >= budgetMs,
+  };
+}
+
+let corpusIndexBackfillRun = null;
+
+// One bounded drain per process at a time, under a shared advisory lock so
+// replicas do not duplicate the work. It yields between batches and never throws
+// into a caller; an unfinished drain simply resumes on the next start.
+export function startCorpusIndexBackfill({
+  batchSize = 200,
+  timeBudgetMs = 750,
+  intervalMs = 250,
+  maximumPasses = 400,
+} = {}) {
+  if (corpusIndexBackfillRun || !databaseEnabled()) return corpusIndexBackfillRun;
+  corpusIndexBackfillRun = (async () => {
+    try {
+      await withDatabaseClient(async (client) => {
+        const lock = await client.query(
+          "SELECT pg_try_advisory_lock(hashtext('practice-corpus-index-backfill')) AS locked",
+        );
+        if (!lock.rows[0]?.locked) return;
+        try {
+          let afterId = 0;
+          for (let pass = 0; pass < maximumPasses; pass += 1) {
+            const batch = await backfillCorpusIndexVectors(client, {
+              limit: batchSize,
+              timeBudgetMs,
+              afterId,
+            });
+            afterId = batch.lastId;
+            if (batch.complete) return;
+            if (batch.processed === 0) {
+              // Work remains but this forward pass saw nothing, which is what a
+              // row held by another writer looks like. Start again from the first
+              // id so a row skipped below the cursor is not left behind until the
+              // next drain; the pass budget keeps this bounded.
+              afterId = 0;
+            }
+            if (intervalMs > 0) {
+              await new Promise((resolve) => {
+                const timer = setTimeout(resolve, intervalMs);
+                timer.unref?.();
+              });
+            }
+          }
+        } finally {
+          await client.query("SELECT pg_advisory_unlock(hashtext('practice-corpus-index-backfill'))")
+            .catch(() => undefined);
+        }
+      });
+    } catch {
+      // A drain must never break a request; the next start resumes it.
+    }
+  })().finally(() => {
+    corpusIndexBackfillRun = null;
+  });
+  return corpusIndexBackfillRun;
+}
+
 export async function syncPortalCorpus({
   mode = "full",
   hydrateLimit = 0,
+  pdfHydrateLimit = 10,
   seedQueries = ["mets"],
   includeCatalog = true,
   includeWikipedia = true,
   onProgress,
 } = {}) {
   await ensureCorpusSchema();
+  // Migration of pre-existing rows runs in the background, bounded and under a
+  // shared lock, so startup never rewrites the table or blocks a request.
+  startCorpusIndexBackfill();
   if (!databaseEnabled()) return { status: "disabled", indexed: 0, discovered: 0, hydrated: 0, skipped: 0, errors: 0 };
   return withDatabaseClient(async (client) => {
     const lock = await client.query("SELECT pg_try_advisory_lock(hashtext('practice-corpus-sync')) AS locked");
@@ -2626,6 +3398,11 @@ export async function syncPortalCorpus({
       seedQueries: {},
       wikipedia: 0,
       unavailableMarked: 0,
+      // Aggregate counts only: a category is a fixed label, never a URL, a
+      // hostname, a body fragment or an exception message.
+      sitemapErrorCategories: corpusFailureCounters(),
+      hydrationErrorCategories: corpusFailureCounters(),
+      pdfErrorCategories: corpusFailureCounters(),
     };
     try {
       const run = await client.query(
@@ -2647,7 +3424,9 @@ export async function syncPortalCorpus({
       } catch (error) {
         // The portal is the primary mirror, not the only scrapeable source.
         // A temporary portal outage must not abort official sitemap refreshes.
-        details.portalSitemap = { error: error.message };
+        const category = corpusFailureCategory(error);
+        details.portalSitemap = { category };
+        addCorpusFailure(details.sitemapErrorCategories, category);
         totals.errors += 1;
       }
       const reviewedSeed = await seedReviewedCatalogueDocuments(client, runId);
@@ -2672,7 +3451,9 @@ export async function syncPortalCorpus({
             totals.capacityDropped += officialUpsert.capacityDropped;
           }
         } catch (error) {
-          details.officialSitemaps[new URL(source.url).hostname] = { error: error.message };
+          const category = corpusFailureCategory(error);
+          details.officialSitemaps[new URL(source.url).hostname] = { category };
+          addCorpusFailure(details.sitemapErrorCategories, category);
           totals.errors += 1;
         }
       }
@@ -2749,7 +3530,8 @@ export async function syncPortalCorpus({
           const wikipediaUpsert = await upsertDocuments(client, wikipedia, runId);
           totals.indexed += wikipediaUpsert.indexed;
           totals.capacityDropped += wikipediaUpsert.capacityDropped;
-        } catch {
+        } catch (error) {
+          addCorpusFailure(details.sitemapErrorCategories, corpusFailureCategory(error));
           totals.errors += 1;
         }
       }
@@ -2763,6 +3545,25 @@ export async function syncPortalCorpus({
       totals.hydrated += hydration.hydrated;
       totals.skipped += hydration.skipped;
       totals.errors += hydration.errors;
+      for (const [category, count] of Object.entries(hydration.errorCategories || {})) {
+        if (!count) continue;
+        details.hydrationErrorCategories[category] = Number(details.hydrationErrorCategories[category] || 0) + count;
+      }
+      // PDFs are their own background pass: the byte transport and a converter
+      // are heavier than a page read, and a partial extraction must never be
+      // stored as a complete index.
+      const pdfHydration = await hydratePdfUrls(client, hydrationCandidates, runId, {
+        limit: pdfHydrateLimit,
+        delayMs: 400,
+        onProgress,
+      });
+      totals.hydrated += pdfHydration.hydrated;
+      totals.skipped += pdfHydration.skipped;
+      totals.errors += pdfHydration.errors;
+      for (const [category, count] of Object.entries(pdfHydration.errorCategories || {})) {
+        if (!count) continue;
+        details.pdfErrorCategories[category] = Number(details.pdfErrorCategories[category] || 0) + count;
+      }
       details.hydrationSkipped = totals.skipped;
 
       // Only a fully completed catalogue run is authoritative enough to retire
@@ -2869,12 +3670,62 @@ export function publicSearchItem(row, includeContent = false) {
   // text. Keep the URL discoverable, but never rank or cite that scaffold as
   // the page's own claims while awaiting a clean refresh.
   const containsPageScaffold = /^(?:Jaga\s)|Kommenteeri või avalda arvamust|Muud sündmused\s+Vaata kõiki/u.test(String(row.content || ""));
+  // The source use policy is the witness that this body was read under a
+  // recorded decision. It belongs to one response: an older policy no longer
+  // matches the row's fetched_at, which is exactly what a failed refresh leaves
+  // behind, and a body without a policy grants nothing at all.
+  const storedPolicy = hydrationMetadata.source_policy;
+  // The delivered witness carries every field the binding hashes, so a consumer
+  // can rehash it, compare the resource and body hash with the record it holds
+  // and project text without the stored row.
+  const sourcePolicy = storedPolicy ? sourcePolicyWitness(storedPolicy) : null;
+  const policyBinding = sourcePolicy ? sourcePolicyBinding(sourcePolicy) : null;
+  const policyObservedAt = canonicalIsoTimestamp(sourcePolicy?.observedAt);
+  const policyIsCurrent = Boolean(sourcePolicy && fetchedAt && policyObservedAt
+    && Date.parse(policyObservedAt) === Date.parse(fetchedAt));
+  // The witness belongs to one stored body version. A policy recorded for another
+  // body, or for a body whose hash is no longer the row's, authorises nothing
+  // here even when its time still matches the row; only a fresh successful read
+  // can replace it.
+  const policyBindsBody = Boolean(sourcePolicy && sourcePolicy.artifactHash
+    && sourcePolicy.artifactHash === String(row.content_hash || ""));
+  const policyApplies = policyIsCurrent && policyBindsBody;
+  // Availability is decided at the moment this row is read, never at the moment
+  // it was fetched: a policy can expire while the stored row is untouched.
+  const policyNow = new Date().toISOString();
+  // Copied text is published only through the projection for its purpose, so a
+  // nosnippet, max-snippet or noindex decision caps or withdraws it here.
+  const bodyProjection = policyApplies
+    ? projectSourceText({
+      url: row.canonical_url,
+      _sourcePolicy: storedPolicy,
+      content: row.content,
+    }, {
+      purpose: "evidence",
+      now: policyNow,
+      limit: 15_000,
+    })
+    : null;
+  const summaryProjection = policyApplies
+    ? projectSourceText({
+      url: row.canonical_url,
+      _sourcePolicy: storedPolicy,
+      summary: row.summary || boundedText(row.content, 500),
+    }, { purpose: "snippet", now: policyNow, limit: 500 })
+    : null;
+  const copiedContent = bodyProjection?.permitted ? String(bodyProjection.text ?? "") : "";
+  const copiedSummary = summaryProjection?.permitted ? String(summaryProjection.text ?? "") : "";
   const isValidatedPageHydration = row.source_key === "official-page-hydration"
     && !containsPageScaffold
     && successfullyRefreshed
     && hydrationMetadata.hydrated === true
-    && hydrationMetadata.source_kind === "official-page-hydration"
-    && boundedText(row.content, 80_000).length >= 80
+    // A PDF read is the same kind of bounded hydration; its byte binding and
+    // page locators travel in metadata.pdf and metadata.page_locators.
+    && (hydrationMetadata.source_kind === "official-page-hydration"
+      || hydrationMetadata.source_kind === "official-pdf-hydration")
+    && policyApplies
+    && sourcePolicy?.use?.answerEvidence === true
+    && copiedContent.length >= 80
     && /^[a-f0-9]{64}$/u.test(String(row.content_hash || ""));
   const reviewedCataloguePolicy = hydrationMetadata.evidence_policy || "versioned";
   const isReviewedCatalogueRow = row.source_key === REVIEWED_CATALOGUE_SOURCE_KEY
@@ -2885,11 +3736,51 @@ export function publicSearchItem(row, includeContent = false) {
     && /^[a-f0-9]{64}$/u.test(String(row.content_hash || ""));
   const isReviewedCatalogueSource = isReviewedCatalogueRow && reviewedCataloguePolicy !== "route-only";
   const isReviewedCatalogueRoute = isReviewedCatalogueRow && reviewedCataloguePolicy === "route-only";
+  // A reviewed catalogue row is a reviewed extract, not a fetched publisher
+  // page, so its reviewed content and evidence facts are kept as they are.
+  const reviewedContent = isReviewedCatalogueRow && !containsPageScaffold
+    ? boundedText(row.content, 15_000)
+    : "";
+  const reviewedSummary = isReviewedCatalogueRow && !containsPageScaffold
+    ? boundedText(row.summary || row.content, 500)
+    : "";
+  const publishedSummary = isReviewedCatalogueRow ? reviewedSummary : copiedSummary;
+  const publishedContent = isReviewedCatalogueRow ? reviewedContent : copiedContent;
+  const sourcePolicyView = sourcePolicy;
+  const pdfMetadata = hydrationMetadata.pdf && typeof hydrationMetadata.pdf === "object"
+    ? hydrationMetadata.pdf
+    : null;
+  const pdfPageCount = Number(pdfMetadata?.pageCount);
+  const pdfIndexedPages = Number(pdfMetadata?.indexedPages);
+  const pdfIndex = pdfPageCount > 0
+    ? Object.freeze({
+      pageCount: Math.trunc(pdfPageCount),
+      indexedPages: Number.isInteger(pdfIndexedPages) && pdfIndexedPages > 0 ? pdfIndexedPages : 0,
+      // Only an extraction recorded as complete may claim it. A partial read
+      // stays visible as partial.
+      complete: pdfMetadata?.complete === true,
+    })
+    : null;
+  // Page locators address the stored body by character offset, so a later
+  // citation can name the page it came from. They are published only while the
+  // body they address is published.
+  const storedLocators = Array.isArray(hydrationMetadata.page_locators)
+    ? hydrationMetadata.page_locators
+      .filter((entry) => entry && Number.isInteger(entry.pageNumber)
+        && Number.isInteger(entry.start) && Number.isInteger(entry.end)
+        && entry.start >= 0 && entry.end >= entry.start)
+      .map((entry) => Object.freeze({
+        pageNumber: entry.pageNumber,
+        start: entry.start,
+        end: entry.end,
+      }))
+    : [];
+  const publishedLocators = publishedContent ? storedLocators : [];
   const item = {
     id: `corpus-${row.id}`,
     title: row.title,
     url: row.canonical_url,
-    summary: containsPageScaffold ? "" : (row.summary || boundedText(row.content, 500)),
+    summary: publishedSummary,
     organization: row.organization || (row.source_tier === "supplementary" ? "Vikipeedia" : "Keskkonnaportaal"),
     type: row.category || "Veebileht",
     published: formatPublished(row),
@@ -2900,6 +3791,9 @@ export function publicSearchItem(row, includeContent = false) {
     sourceTier: row.source_tier,
     _publishedAt: row.published_at ? new Date(row.published_at).toISOString().slice(0, 10) : null,
     _relevance: Number(row.relevance || 0),
+    ...(sourcePolicyView ? { _sourcePolicy: sourcePolicyView, _sourcePolicyBinding: policyBinding } : {}),
+    ...(pdfIndex ? { _pdfIndex: pdfIndex } : {}),
+    ...(publishedLocators.length ? { _pageLocators: Object.freeze(publishedLocators) } : {}),
     ...(isReviewedCatalogueSource ? {
       retrieval: "reviewed-catalogue-source",
       delivery: "reviewed-catalogue",
@@ -2939,7 +3833,7 @@ export function publicSearchItem(row, includeContent = false) {
     }),
   };
   if (includeContent) {
-    item.content = containsPageScaffold ? "" : boundedText(row.content, 15_000);
+    item.content = publishedContent;
     item._contentHash = row.content_hash || "";
   }
   return item;
@@ -3107,7 +4001,7 @@ export async function searchCorpus(query, {
           $3::TEXT[] AS rank_terms,
           $7::BOOLEAN AS freshness_intent
       ), matched AS MATERIALIZED (
-        SELECT document.*
+        SELECT document.*, ${corpusIndexPolicySql("document")} AS index_allowed
         FROM practice_corpus_documents document, parameters
         WHERE document.is_available = TRUE
           AND COALESCE(document.metadata->>'robots_noindex', 'false') <> 'true'
@@ -3126,8 +4020,20 @@ export async function searchCorpus(query, {
             END, '') <> ALL($10::TEXT[])
           )
           AND (
-            document.search_vector @@ parameters.any_prefix_query
-            OR document.search_vector @@ parameters.web_query
+            -- The safe navigation vector is readable for any migrated row. A row
+            -- that has not been migrated yet is matched by its title only, so its
+            -- old mixed vector can never affect matching; the copied-text vector
+            -- is read only while the permission that produced it still holds.
+            ((document.search_vector_policy = '${CORPUS_VECTOR_LAYOUT}')
+              AND (
+                document.search_vector @@ parameters.any_prefix_query
+                OR document.search_vector @@ parameters.web_query
+                OR (${corpusIndexPolicySql("document")}
+                  AND (
+                    document.search_vector_body @@ parameters.any_prefix_query
+                    OR document.search_vector_body @@ parameters.web_query
+                  ))
+              ))
             OR lower(document.title) % parameters.raw_query
             OR lower(document.title) LIKE '%' || parameters.raw_query || '%'
           )
@@ -3139,17 +4045,39 @@ export async function searchCorpus(query, {
         -- expired and the answer silently degraded to catalogue cards.
         SELECT matched.*
         FROM matched, parameters
-        ORDER BY ts_rank(matched.search_vector, parameters.any_prefix_query) DESC,
+        ORDER BY CASE WHEN matched.search_vector_policy = '${CORPUS_VECTOR_LAYOUT}'
+                   THEN CASE WHEN ${corpusIndexPolicySql("matched")}
+                             THEN ts_rank(matched.search_vector || matched.search_vector_body, parameters.any_prefix_query)
+                             ELSE ts_rank(matched.search_vector, parameters.any_prefix_query) END
+                   ELSE 0 END DESC,
                  matched.published_at DESC NULLS LAST, matched.id ASC
         LIMIT $13
       ), ranked AS (
         SELECT document.*,
           (
-            CASE WHEN document.search_vector @@ parameters.prefix_query
-              THEN ts_rank_cd(ARRAY[0.08, 0.2, 0.6, 1.0], document.search_vector, parameters.prefix_query, 32) * 6.0
+            -- A permitted row is ranked over the union of both vectors, exactly as
+            -- it was when one vector held them; a row without permission is ranked
+            -- over its safe navigation vector alone; a row that is not migrated is
+            -- not ranked by any stored vector.
+            CASE WHEN document.search_vector_policy = '${CORPUS_VECTOR_LAYOUT}'
+              AND (CASE WHEN ${corpusIndexPolicySql("document")}
+                        THEN (document.search_vector || document.search_vector_body) @@ parameters.prefix_query
+                        ELSE document.search_vector @@ parameters.prefix_query END)
+              THEN ts_rank_cd(ARRAY[0.08, 0.2, 0.6, 1.0],
+                     CASE WHEN ${corpusIndexPolicySql("document")}
+                          THEN document.search_vector || document.search_vector_body
+                          ELSE document.search_vector END,
+                     parameters.prefix_query, 32) * 6.0
               ELSE 0 END
-            + CASE WHEN document.search_vector @@ parameters.web_query
-              THEN ts_rank_cd(ARRAY[0.08, 0.2, 0.6, 1.0], document.search_vector, parameters.web_query, 32) * 2.0
+            + CASE WHEN document.search_vector_policy = '${CORPUS_VECTOR_LAYOUT}'
+              AND (CASE WHEN ${corpusIndexPolicySql("document")}
+                        THEN (document.search_vector || document.search_vector_body) @@ parameters.web_query
+                        ELSE document.search_vector @@ parameters.web_query END)
+              THEN ts_rank_cd(ARRAY[0.08, 0.2, 0.6, 1.0],
+                     CASE WHEN ${corpusIndexPolicySql("document")}
+                          THEN document.search_vector || document.search_vector_body
+                          ELSE document.search_vector END,
+                     parameters.web_query, 32) * 2.0
               ELSE 0 END
             + GREATEST(
                 similarity(public.unaccent(lower(document.title)), public.unaccent(parameters.raw_query)),
@@ -3161,14 +4089,17 @@ export async function searchCorpus(query, {
                 FROM unnest(parameters.rank_terms) AS term
                 WHERE public.unaccent(lower(document.title)) LIKE '%' || public.unaccent(term) || '%'
               ), 0)
-            + COALESCE((
+            + CASE WHEN document.index_allowed THEN COALESCE((
                 SELECT COUNT(*)::DOUBLE PRECISION * 0.9
                 FROM unnest(parameters.rank_terms) AS term
                 WHERE public.unaccent(lower(document.summary)) LIKE '%' || public.unaccent(term) || '%'
-              ), 0)
-            + CASE WHEN document.search_vector @@ parameters.prefix_query THEN 8.0 ELSE 0 END
+              ), 0) ELSE 0 END
+            + CASE WHEN document.search_vector_policy = '${CORPUS_VECTOR_LAYOUT}'
+              AND (document.search_vector @@ parameters.prefix_query
+                OR (${corpusIndexPolicySql("document")}
+                  AND document.search_vector_body @@ parameters.prefix_query)) THEN 8.0 ELSE 0 END
             + CASE document.source_tier WHEN 'official' THEN 0.45 WHEN 'reviewed' THEN 0.3 WHEN 'supplementary' THEN 0.05 ELSE 0 END
-            + CASE WHEN document.content <> '' THEN 0.3 ELSE 0 END
+            + CASE WHEN document.index_allowed AND document.content <> '' THEN 0.3 ELSE 0 END
             + CASE WHEN COALESCE(document.metadata->>'placeholder', 'false') = 'true' THEN -0.75 ELSE 0 END
             + CASE
                 WHEN document.published_at > CURRENT_DATE THEN -0.5
@@ -3204,8 +4135,20 @@ export async function searchCorpus(query, {
             OR document.last_seen_at >= NOW() - make_interval(hours => ${OFFICIAL_DISCOVERY_RETENTION_HOURS})
           )
           AND (
-            document.search_vector @@ parameters.any_prefix_query
-            OR document.search_vector @@ parameters.web_query
+            -- The safe navigation vector is readable for any migrated row. A row
+            -- that has not been migrated yet is matched by its title only, so its
+            -- old mixed vector can never affect matching; the copied-text vector
+            -- is read only while the permission that produced it still holds.
+            ((document.search_vector_policy = '${CORPUS_VECTOR_LAYOUT}')
+              AND (
+                document.search_vector @@ parameters.any_prefix_query
+                OR document.search_vector @@ parameters.web_query
+                OR (${corpusIndexPolicySql("document")}
+                  AND (
+                    document.search_vector_body @@ parameters.any_prefix_query
+                    OR document.search_vector_body @@ parameters.web_query
+                  ))
+              ))
             OR lower(document.title) % parameters.raw_query
             OR lower(document.title) LIKE '%' || parameters.raw_query || '%'
           )
@@ -3631,6 +4574,7 @@ export function corpusBackfillHydrateLimit(value = process.env.CORPUS_BACKFILL_H
 // still waiting for a read that works carries one.
 export async function hydrateCorpusBacklog({ limit = 300, concurrency = 2, delayMs = 1_000 } = {}) {
   await ensureCorpusSchema();
+  startCorpusIndexBackfill();
   const safeLimit = Math.max(0, Math.trunc(Number(limit) || 0));
   if (!databaseEnabled() || !safeLimit) return { status: "disabled", hydrated: 0, skipped: 0, errors: 0 };
   return withDatabaseClient(async (client) => {
@@ -3657,6 +4601,10 @@ export async function hydrateCorpusBacklog({ limit = 300, concurrency = 2, delay
           AND NOT (document.metadata ? 'robots_noindex')
           AND (
             document.content = ''
+            -- A stored body without the witness of its own read has no publication
+            -- proof, so delivery keeps it route-only. Re-read it instead of letting
+            -- it wait for the age window that only renews bodies it could cite.
+            OR (document.content <> '' AND NOT ${corpusPolicyWitnessSql("document")})
             OR document.source_key IN ('official-sitemap', 'official-live-search')
             OR (document.source_key = 'official-page-hydration'
               AND document.metadata->>'source_kind' IS DISTINCT FROM 'official-page-hydration')
@@ -3682,6 +4630,11 @@ export async function hydrateCorpusBacklog({ limit = 300, concurrency = 2, delay
             OR attempt.attempted_at < NOW() - INTERVAL '7 days'
           )
         ORDER BY
+          -- An unwitnessed body is unusable today, while a witnessed body is merely
+          -- due for renewal, so the unusable rows are taken first. The cooldown and
+          -- the robots and source guards above still decide whether a row may be
+          -- read at all; this only orders the rows that already qualify.
+          CASE WHEN document.content <> '' AND NOT ${corpusPolicyWitnessSql("document")} THEN 0 ELSE 1 END,
           CASE WHEN document.source_key = 'official-page-hydration' THEN 0 ELSE 1 END,
           CASE WHEN document.canonical_url ~ '/(uudised|teemad)/' THEN 0 ELSE 1 END,
           CASE

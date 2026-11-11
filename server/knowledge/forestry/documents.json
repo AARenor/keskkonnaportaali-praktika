@@ -149,19 +149,21 @@
         "Raiutakse rohkem kui juurde kasvab",
         "Kas Eesti metsade kasutus on juurdekasvust suurem?"
       ],
-      "keywords": ["raiemaht", "raie", "juurdekasv", "väljaraie", "2023", "2024", "võrdlus", "jätkusuutlik"],
+      "keywords": ["raiemaht", "raie", "juurdekasv", "netojuurdekasv", "suremus", "väljaraie", "2023", "2024", "2025", "eksperthinnang", "võrdlus", "jätkusuutlik"],
       "topics": ["SMI", "raiemaht", "juurdekasv", "väärarusaam"],
       "answer": {
-        "summary": "SMI 2024 avaldas 2023. aasta raiete tagavaraks 11,736 miljonit tm (suhteline viga ±10,1%) ja metsamaa mudelarvutuslikuks juurdekasvuks 15,4303 miljonit tm aastas (±1,4%). Nende avaldatud hinnangute järgi ei olnud raiemaht juurdekasvust suurem. Ühe arvupaari põhjal ei tohi siiski teha automaatset järeldust pikaajalise jätkusuutlikkuse kohta.",
-        "methodology": "Võrdluses peavad kattuma periood, maa kategooria, omanikering, brutokasvu või netokasvu definitsioon ning raiemahu allikas. Teatiste kavandatud mahtu ei tohi käsitleda toimunud raiemahuna.",
+        "summary": "SMI 2024 avaldas 2023. aasta raiete tagavaraks 11,736 miljonit tm (suhteline viga ±10,1%) ja metsamaa mudelarvutuslikuks juurdekasvuks 15,4303 miljonit tm aastas (±1,4%). SMI 2025 väljaanne lisab samale võrdlusele kaks piiri: osa raiemahust on surnud puidu raie ja 2025. aasta raiemaht on eksperthinnang, mitte mõõdetud tulemus. Kogujuurdekasv ei ole netojuurdekasv: kogujuurdekasvust arvatakse netojuurdekasvu saamiseks maha looduslik suremus ja netojuurdekasvu võrreldakse elusate puude raiega. Keskkonnaagentuuri analüüsi järgi ületas viimase kümnendi keskmisena elusate puude raiemaht majandatavate metsade netojuurdekasvu, 20 aasta vaates jäi see netojuurdekasvust madalamaks, seega ei tohi ühe arvupaari põhjal teha automaatset järeldust pikaajalise jätkusuutlikkuse kohta.",
+        "methodology": "Võrdluses peavad kattuma periood, maa kategooria, omanikering, brutokasvu või netokasvu definitsioon ning raiemahu allikas. Kogujuurdekasvu ei tohi võrrelda kogu raiemahuga: netojuurdekasvu võrreldakse elusate puude raiega, sest surnud puud ja nende raie on arvestatud suremuse all. Teatiste kavandatud mahtu ei tohi käsitleda toimunud raiemahuna.",
         "limitations": [
           "Raiemahu hinnangu suhteline viga on avaldatud juurdekasvu veast märksa suurem.",
-          "Pikaajaline hinnang vajab aegrida, metsade vanusestruktuuri, suremust, kaitse- ja majanduspiiranguid ning sama metoodikaga näitajaid."
+          "Pikaajaline hinnang vajab aegrida, metsade vanusestruktuuri, suremust, kaitse- ja majanduspiiranguid ning sama metoodikaga näitajaid.",
+          "SMI 2025 töövihik ei avalda 2025. aasta mõõdetud raiemahtu ega riiklikku netojuurdekasvu kogumahtu; puuduvat väärtust ei asendata arvutusega."
         ],
         "claim_type": "statistical_comparison"
       },
       "sources": [
         {"source_id": "smi-2024-tables", "locator": "lk 22, juurdekasv; lk 57, 2023. a raiete maht"},
+        {"source_id": "kkp-smi-overview", "locator": "SMI 2025 tulemuste ja ettekande avaldamisleht seisuga 18.08.2026: raiemahu eksperthinnang ja suremus"},
         {"source_id": "kkp-current-forest", "locator": "Metsateatised: lubatud teatis ei võrdu realiseeritud raiega"}
       ],
       "related_questions": ["Kuidas arvutatakse juurdekasvu?", "Kas praegu raiutakse rohkem kui 20 aastat tagasi?"]

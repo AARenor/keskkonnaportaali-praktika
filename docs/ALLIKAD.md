@@ -1,6 +1,6 @@
 # Ametlike allikate ja API-de register
 
-Uuendatud: 21.10.2026
+Uuendatud: 21.10.2026; täiendatud 11.11.2026 avaldaja õiguste, lühiväljavõtete, ajamudeli ning SMI juurdekasvu ja raie võrdluse osas.
 
 See register kirjeldab, millised allikad on otsingu päringuteel aktiivsed, millised on kasutajale suunavad kataloogiallikad ning milliseid teenuseid ei kasutata enne eraldi valideeritud adapterit. Ükski allikas ei anna mudelile õigust kasutada üldteadmisi: vastus peab jääma tagastatud tõendite piiresse.
 
@@ -101,11 +101,31 @@ Diagrammi pealkiri ja legend nimetavad tabeli 25 näitajat metsamaa kasvava mets
 | Eesti nelja ööpäeva prognoos | Keskkonnaagentuur / Ilmateenistus | [`forecast.php`](https://www.ilmateenistus.ee/ilma_andmed/xml/forecast.php), XML, CC-BY 4.0 | Adapter nõuab nelja järjestikust kuupäeva, valib Eesti ajavööndi homse kuupäeva ja seob öö/päeva temperatuuri samade perioodide ametliku Eesti tekstiga. See ei omista Eesti üldprognoosi linnale; linnapäring jääb Ilm+ suunamiseks | 5 min; kohalik allalaadimisolek kuni 15 min, XML ei avalda dokumenteeritud väljastusaega | Homse kuupäeva valik, öö/päev, puuduv/katkendlik/mittejärjestikune/stale XML, linnapiiri negatiivne juht ja pipeline |
 | Viimati avaldatud hüdroloogilised tunniandmed | Keskkonnaagentuur | [`f_hydroseire`](https://keskkonnaandmed.envir.ee/f_hydroseire), PostgREST JSON, CC-BY 4.0; [Tartu jaam](https://www.ilmateenistus.ee/meist/vaatlusvork/tartu-kvissentali-hudromeetriajaam/) ja [Kloostrimetsa jaam](https://www.ilmateenistus.ee/meist/vaatlusvork/kloostrimetsa-hudromeetriajaam/) | Ainult täpne Tartu–Emajõe (`41025`) või Kloostrimetsa–Pirita (`41157`) jaam, üks `WL avg`, `WT avg` või `Äravool avg` seeria ning sõnaselge „viimati avaldatud” intent ilma ajaloolise ajamääruseta. Adapter kinnitab singularse live-profiili `apijahiala`, JSON-skeemi, jaama, veekogu, koordinaadid, tunni ajamärke, ühiku ja arvupiiri. Veetase on cm jaama graafiku nulli suhtes (Tartu 29,77 m, Kloostrimetsa 6,22 m EH2000), veetemperatuuri andur paikneb jõesängi põhja lähedal ning operatiivsed toorandmed asendatakse pärast iga-aastast lõplikku kontrolli. Andmed avaldatakse kord ööpäevas; neid ei kasutata „praegu” ega ajaloolise kuupäeva vastusena | 5 min; stale-vastus ei ole tõend; andmeaeg kuni 36 h | Kolm keskmist seeriat, kaks jaama, vale profiil/sisutüüp, stale/future, vale identiteet/ühik/seeria, reaalaja, ajaloolise ajamääruse ja ebatäpse jaama negatiivsed juhud ning live smoke |
 
-Kõigil võrguallikatel on HTTPS-hostide allowlist, päringu ajapiir, vastusemahu piir ja kontrollitud redirect. Väliskutsed tehakse paralleelselt. `/api/search` otsingueelarve ülempiir on 50 sekundit; tulemuste loendil ja vool on ülempiir 60 sekundit. Praegune 55 sekundi seadistus annab `/api/search` rajale kuni 50 sekundit ning loendile ja voole kuni 55 sekundit.
+Kõigil võrguallikatel on HTTPS-hostide allowlist, päringu ajapiir, vastusemahu piir ja kontrollitud redirect. Väliskutsed tehakse paralleelselt. Otsingu ajaeelarve on kaks eraldi akent: tulemuste loendit piirab `SEARCH_DEADLINE_MS` ja vastuse etappi `ANSWER_DEADLINE_MS`, mis algab alles loendi avaldamisel. Ühekordne `/api/search` piirab loendit lisaks väärtusega `JSON_SEARCH_DEADLINE_CEILING_MS`. Seadistus võib akent lühendada, kuid käivitumine kontrollib, et need mahuksid avaliku vastuse absoluutsesse lakke. Brauser kasutab pikka vastust töö ja lühiküsitluse kaudu; see muudab ainult transporti, mitte allikate lugemise piire ega tõendinõudeid.
 Taustakorje ja päringuaegne lehelugeja järgivad kumbki oma `User-Agent` tootetunnusele vastavaid avaldaja reegleid. Nimetatud `robots.txt` rühmadest kasutatakse kõige täpsemat ning lehe tootepõhist `noindex` juhist kontrollitakse sama tunnusega.
 Lehelugemise ümbersuunamise sihtkoha lubatavust kontrollitakse enne sihtaadressi päringut. Eraldi `X-Robots-Tag` väljade tootepõhine ulatus säilib ka siis, kui väljaandja saadab mitu päist.
 
 Üldotsingu süntees kasutab autenditud Codex gateway kaudu mudelit `openai-codex/gpt-6-luna` (Responses API). Tootmise `LLM_ORCHESTRATION=direct` kasutab üht mudelikõnet ja endpoint'i otsingueelarvest järelejäänud aega. Valikulises `agents` režiimis juhib sünteesi OpenAI Agents SDK manager: mitme allika korral peab ta esmalt kasutama ühekordset review-tööriista, mis käivitab järjest nii relevantsusspetsialisti kui ka tõendikriitiku. Kõik mudelikutsed jäävad nähtava filtreeritud tulemusehulga ametliku tõendialamhulga ja range skeemi piiresse ning lõppväljund läbib viite-, arvu-, ühiku-, väitekatvuse ja polaarsuse kontrolli. Tõrke korral säilib tulemuste loend ja kuvatakse aus deterministlik vastus, mitte teine mudel; mudelil puudub ligipääs andmebaasile ja veebile. OpenAI töötleb ainult piiratud küsimust ja avalikke tõendeid; autentimis- ja säilituspiir on kirjeldatud [PRIVAATSUS.md](../PRIVAATSUS.md).
+
+## Avaldaja õigused ja lühiväljavõtted
+
+Luba lugeda ei ole luba taaskasutada. `robots.txt` Allow, avalik URL, lubav `X-Robots-Tag` ja sisu räsi on tehnilised faktid; need ei anna litsentsi ega asenda õiguste kokkulepet. Iga kopeeritud allikas kannab seetõttu eraldi poliitikaotsust (`server/source_policy.mjs`, `source-policy-v1`), mille `rightsReview` on `unreviewed`, kuni on olemas viide tegelikule õiguste kontrollile.
+
+| Juhis | Mõju meie koopiale |
+|---|---|
+| `robots.txt` keeld või `noindex` | Teksti ei indekseerita, ei näidata lühiväljavõttena ega anta mudelile tõendiks; link ja metaandmed jäävad. |
+| `nosnippet`, `max-snippet:0` | Lühiväljavõte ja mudeli tõend jäävad ära; link, pealkiri ja kuupäev jäävad. |
+| `max-snippet:N` | Lühiväljavõte ja mudeli tõend piiratakse N märgini ka siis, kui rakenduse enda lagi on suurem. |
+| `noarchive` | Teksti ei säilitata; alles jäävad link ja metaandmed. |
+| `data-nosnippet` | Selle ploki tekst eemaldatakse enne tekstieraldust, seega ei saa sellest ei lühiväljavõtet ega tõendit. |
+| Tundmatu üksikdirektiiv (näiteks `noai`, `noimageai`) | Talletatakse vaatlusena ega otsusta ise midagi: see ei anna luba ega keeldu, kuid jääb õiguste kontrolli jaoks alles. |
+| Puuduv, loetamatu, mitmeti tõlgendatav, aegunud või tundmatu versiooniga poliitika | Käitub keeluna; vana tekst ei jää tõendiks. |
+
+Poliitika lehe vaikelagi on lühiväljavõttel 320 märki, tõendil 1 200 märki ja indekseeritud tekstil 80 000 märki. Kutsuja võib soovida kitsamat piiri; korpus küsib tõendi jaoks kuni 15 000 märki ja tulemuse kirjelduseks kuni 500 märki. Avalikku vastusesse ja mudelile jõudev tõend on igal juhul kuni 4 000 märki allika kohta ja 36 000 märki kogu pakis. Avaldaja `max-snippet` on alati kitsam kui rakenduse enda lagi.
+
+Google'i [robots-meta dokumentatsioon](https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag) kirjeldab, kuidas Google ise neid juhiseid tõlgendab; samas dokumendis on kirjas, et teised otsijad ei pruugi neid ühtemoodi käsitleda, ja `noarchive` ei ole Google'i otsingus enam kasutusel. Seetõttu ei ole Google'i dokumentatsioon üldine õigusnorm ega tõenda, et meie koopia on lubatud või keelatud. Meie lugeja valib `robots.txt` rühma ainult oma tootetunnuse ja `*` järgi; teisele otsijale, sealhulgas Googlebotile, kirjutatud rühma me enda kohta ei kohalda. Lehe `robots` meta ja `X-Robots-Tag` piirangud loeme oma tootetunnuse ulatuses ja üldise `*` korral samuti.
+
+Enne riiklikku kasutuselevõttu tuleb allikate kasutusõigused, omistamine ja võimalikud litsentsid kokku leppida vastuvõtva organisatsiooniga. See register ei tee seda otsust.
 
 ## Metsastatistika avaldamisseis
 
@@ -125,6 +145,14 @@ Lehelugemise ümbersuunamise sihtkoha lubatavust kontrollitakse enne sihtaadress
 21.08.2026 kontrolliti juurdekasvu küsimuse jaoks Keskkonnaportaali [SMI ja LULUCF andmehõive metoodikalehte](https://keskkonnaportaal.ee/et/statistilise-metsainventuuri-smi-ja-maakasutuse-maakasutuse-muutuse-ja-metsanduse-lulucf-andmehoive) ning selle ametlikku 2025 lõpparuannet. Aruande lehekülg 22 defineerib kogu- ja netojuurdekasvu ning kirjeldab mudelipõhist ja mitmese imputeerimise meetodit: mudelpuude andmed viiakse alalistele ja sealt juhumetsa meetodiga ajutistele proovitükkidele. Runtime'i allikas `increment-method` kasutab kontrollitud väljavõtet ja kuvab kasutajale sama lehekülje lokaatori; see ei tuleta meetodit SMI 2024 arvutabeli ühest joonealusest märkusest.
 
 Lageraie 2014–2024 aegrida loeti ametlikust [SMI 2025 tulemuste XLSX-töövihikust](https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI%20tulemused%202025/SMI%202025%20tulemused.xlsx), töölehelt 33 „Raiete pindala raieliigiti aastail 1999–2024”, realt „Lageraie”. Avalik lokaator nimetab töölehe, rea ja aastaveerud; vastus säilitab iga aasta väärtuse ning ei muuda 2014. ja 2024. aasta otspunktide erinevust ühtlase kasvu väiteks.
+
+Juurdekasvu ja raie võrdlusel kehtivad eraldi reeglid, mis on kontrollitud 11.11.2026:
+
+- **Kaks mõistet:** kogujuurdekasv on puistule aastas lisanduv tüvepuidu kogus; netojuurdekasv saadakse loodusliku suremuse mahaarvamisel. Raiemahuga võrreldakse sama ulatuse ja sama perioodi elusate puude raiet, sest raiemahu hulk sisaldab ka surnud puid.
+- **Üks väljaanne ja üks metoodika korraga:** [SMI 2025 tulemuste töövihiku](https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI%20tulemused%202025/SMI%202025%20tulemused.xlsx) tööleht 11 annab kogujuurdekasvu 15 458 tuhat m³ aastas (6,55 m³/ha, suhteline viga ±1,4%), tööleht 34 mõõdetud raiemahu kuni 2024. aastani (12 500 tuhat m³) ja tööleht 23 viie aasta keskmise raiemahu (11 897 tuhat m³). Töövihik ei avalda riiklikku netojuurdekasvu kogumahtu; seda ei tuletata ega lahutata.
+- **2025. aasta raiemaht on eksperthinnang:** 11,0 miljonit m³ pärineb Keskkonnaagentuuri [18.08.2026 ülevaatest](https://keskkonnaagentuur.ee/uudised/smi-metsatagavara-stabiilne), mitte mõõdetud ajareast. Majandatava metsa netojuurdekasv 4,9 m³/ha aastas on samast ülevaatest. Mõlemat tohib näidata ainult siis, kui see ülevaade on vastuses nähtav.
+- **Periood muudab vastust:** viimase kümnendi keskmisena ületas elusate puude raiemaht majandatavates metsades netojuurdekasvu, 20 aasta vaates jäi see alla. Üks aasta ega üks näitaja ei otsusta metsamajanduse kestlikkust: [Keskkonnaagentuur, netojuurdekasvu ja raie tasakaal](https://keskkonnaagentuur.ee/node/2720).
+- **Metoodika muutus:** SMI 2025 esitluse järgi muudeti 2025. aastal kõrguse, tagavara, alla 8 cm puude mahu, juurdekasvu, suremuse ja netojuurdekasvu arvutusmetoodikat, seega eri metoodikaga avaldatud mahte ei käsitleta täielikult võrreldavatena. Eurostati metsa arvepidamise `removals` on teine mõõt teisest definitsioonist: seda ei lahutata SMI juurdekasvust ega esitata sama aasta ühe-ühele võrdlusena.
 
 ## Regressiooni- ja võrdlusmaterjal
 
@@ -236,7 +264,7 @@ Metsateatise üldjuhendi väljavõte kontrolliti 10.11.2026 [Keskkonnaameti juhe
 
 ## Uue allika vastuvõtukriteeriumid
 
-Uus allikas lubatakse vastuse koostamisse alles siis, kui on dokumenteeritud väljaandja, URL/endpoint, litsents või avaliku kasutuse alus, skeem, autentimine, mahu- ja kiiruspiirid, uuendussagedus, cache-poliitika, isikuandmete risk ning vähemalt üks positiivne ja üks negatiivne eval-juht. Allika tõrge peab andma oleku `unavailable`, mitte väite, et otsitavat nähtust ei ole.
+Uus allikas lubatakse vastuse koostamisse alles siis, kui on dokumenteeritud väljaandja, URL/endpoint, litsents või avaliku kasutuse alus, skeem, autentimine, mahu- ja kiiruspiirid, uuendussagedus, cache-poliitika, isikuandmete risk ning vähemalt üks positiivne ja üks negatiivne eval-juht. Allika tõrge peab andma oleku `unavailable`, mitte väite, et otsitavat nähtust ei ole. Lubav `robots.txt` ei täida litsentsi nõuet: see on tehniline fakt, mille tõttu poliitika leht (`rightsReview`) jääb `unreviewed`, kuni õiguste alus on eraldi dokumenteeritud.
 
 Uus ametlik host lubatakse korpusesse alles siis, kui see on lisatud HTTPS-hostide allowlisti ja sitemap-allikate loendisse ning selle `robots.txt`, eestikeelsed URL-i harud ja sitemap'i struktuur on kontrollitud. Sitemap'i kuulumine ei tõenda üksikväidet: tõendivaliku määrab allikaregistri roll ja tõendipoliitika.
 

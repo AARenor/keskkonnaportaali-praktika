@@ -44,6 +44,25 @@ for (const [address, prefix] of [
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
+// A document body and a PDF artifact are not the same resource: the text reader
+// asks for pages and stops at four megabytes, while an approved PDF attachment
+// can legitimately be larger. Both ceilings are transport constants, so a caller
+// can lower its own bound but never raise the one the process enforces.
+const MAXIMUM_TEXT_BYTES = 8_000_000;
+const DEFAULT_TEXT_BYTES = 4_000_000;
+const MAXIMUM_BINARY_BYTES = 16_000_000;
+const DEFAULT_BINARY_BYTES = 12_000_000;
+
+export const PUBLIC_HTTPS_LIMITS = Object.freeze({
+  textBytes: MAXIMUM_TEXT_BYTES,
+  defaultTextBytes: DEFAULT_TEXT_BYTES,
+  binaryBytes: MAXIMUM_BINARY_BYTES,
+  defaultBinaryBytes: DEFAULT_BINARY_BYTES,
+});
+
+export const DEFAULT_TEXT_ACCEPT = "text/html,application/xhtml+xml,text/plain,text/csv;q=0.9,*/*;q=0.5";
+export const DEFAULT_BINARY_ACCEPT = "application/pdf,application/x-pdf;q=0.9,application/octet-stream;q=0.5,*/*;q=0.1";
+
 export function isPublicIpAddress(value) {
   const address = String(value || "").replace(/%.+$/u, "");
   const family = isIP(address);
@@ -65,7 +84,10 @@ export function validateApprovedPublicHttpsUrl(value, approvedOrigins) {
   if (url.protocol !== "https:" || url.username || url.password || url.hash || !origins.has(url.origin)) {
     throw new Error("Outbound URL is outside the approved HTTPS origins");
   }
-  if (isIP(url.hostname) && !isPublicIpAddress(url.hostname)) {
+  // Node reports an IPv6 literal with its brackets on `hostname`, so the address
+  // check has to look at the address itself rather than at the bracketed host.
+  const literal = url.hostname.startsWith("[") ? url.hostname.slice(1, -1) : url.hostname;
+  if (isIP(literal) && !isPublicIpAddress(literal)) {
     throw new Error("Outbound URL resolves to a non-public address");
   }
   return url;
@@ -186,6 +208,7 @@ function requestOnce(url, {
   body = "",
   ca,
   family,
+  accept = DEFAULT_TEXT_ACCEPT,
 } = {}) {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -199,7 +222,7 @@ function requestOnce(url, {
     const request = requestImpl(url, {
       method,
       headers: {
-        Accept: "text/html,application/xhtml+xml,text/plain,text/csv;q=0.9,*/*;q=0.5",
+        Accept: accept,
         "Accept-Encoding": "identity",
         ...headers,
       },
@@ -246,7 +269,7 @@ function requestOnce(url, {
       response.once("end", () => finish(resolve, {
         status,
         location: "",
-        body: Buffer.concat(chunks, size).toString("utf8"),
+        body: Buffer.concat(chunks, size),
         headers: Object.freeze({
           "content-type": firstHeaderInstance(response.headers, "content-type").slice(0, 240),
           "content-profile": firstHeaderInstance(response.headers, "content-profile").slice(0, 120),
@@ -272,19 +295,23 @@ function requestOnce(url, {
   });
 }
 
-export async function requestApprovedPublicHttpsText(value, {
+// One redirect loop serves every approved public read. The origin allowlist, the
+// redirect bound, the destination policy hook and the caller signal are decided
+// once here, and each entry point only chooses its own byte ceiling and what the
+// collected bytes mean.
+async function requestApprovedPublicHttpsArtifact(value, {
   approvedOrigins,
   headers,
   signal,
-  maximumBytes = 4_000_000,
+  maximumBytes,
   maximumRedirects = 3,
   lookupImpl = dnsLookup,
   requestImpl = httpsRequest,
   ca,
   family,
   assertRedirectAllowed,
+  accept = DEFAULT_TEXT_ACCEPT,
 } = {}) {
-  const byteLimit = Math.max(1, Math.min(Number(maximumBytes) || 4_000_000, 8_000_000));
   const configuredRedirectLimit = Number(maximumRedirects);
   const redirectLimit = Math.max(0, Math.min(
     Number.isFinite(configuredRedirectLimit) ? configuredRedirectLimit : 3,
@@ -295,11 +322,12 @@ export async function requestApprovedPublicHttpsText(value, {
     const result = await requestOnce(current, {
       headers,
       signal,
-      maximumBytes: byteLimit,
+      maximumBytes,
       lookupImpl,
       requestImpl,
       ca,
       family,
+      accept,
     });
     if (!REDIRECT_STATUSES.has(result.status)) return { ...result, url: current.toString() };
     if (!result.location || redirects === redirectLimit) {
@@ -329,6 +357,37 @@ export async function requestApprovedPublicHttpsText(value, {
     current = destination;
   }
   throw new Error("Outbound response redirected too many times");
+}
+
+// The text reader keeps the behaviour every existing caller depends on: the same
+// options, the same ceiling, and one decode at this boundary.
+export async function requestApprovedPublicHttpsText(value, options = {}) {
+  const byteLimit = Math.max(1, Math.min(
+    Number(options.maximumBytes) || DEFAULT_TEXT_BYTES,
+    MAXIMUM_TEXT_BYTES,
+  ));
+  const result = await requestApprovedPublicHttpsArtifact(value, {
+    ...options,
+    maximumBytes: byteLimit,
+    accept: options.accept || DEFAULT_TEXT_ACCEPT,
+  });
+  return { ...result, body: result.body.toString("utf8") };
+}
+
+// A byte preserving read of an approved public artifact. The bytes are never
+// decoded here: a PDF round tripped through utf8 loses its binary structure, and
+// a signature check downstream could no longer tell an intact file from a
+// damaged one.
+export async function requestApprovedPublicHttpsBytes(value, options = {}) {
+  const byteLimit = Math.max(1, Math.min(
+    Number(options.maximumBytes) || DEFAULT_BINARY_BYTES,
+    MAXIMUM_BINARY_BYTES,
+  ));
+  return requestApprovedPublicHttpsArtifact(value, {
+    ...options,
+    maximumBytes: byteLimit,
+    accept: options.accept || DEFAULT_BINARY_ACCEPT,
+  });
 }
 
 export async function requestApprovedPublicHttpsJsonPost(value, {
@@ -413,5 +472,8 @@ export async function requestApprovedPublicHttpsJsonPost(value, {
   if (REDIRECT_STATUSES.has(result.status)) {
     throw new Error("Outbound JSON POST redirects are not allowed");
   }
-  return { ...result, url: current.toString() };
+  // The JSON reader owns its own decode boundary, exactly like the text reader:
+  // its callers parse a JSON string, so the collected bytes are decoded once
+  // here instead of handing a Buffer to a contract that never had one.
+  return { ...result, body: result.body.toString("utf8"), url: current.toString() };
 }

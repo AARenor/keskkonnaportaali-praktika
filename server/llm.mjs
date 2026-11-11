@@ -1,9 +1,11 @@
 import { jsonrepair } from "jsonrepair";
 import { createHmac, randomBytes } from "node:crypto";
 import { acceptedClaim } from "./delivered-outcome.mjs";
-import { evidencePackMatchesSources } from "./evidence-pack.mjs";
+import { containsAnswerDirective, evidencePackMatchesSources } from "./evidence-pack.mjs";
 import {
   agentOrchestrationEnabled,
+  PROVIDER_ANSWER_TIMEOUT_CEILING_MS,
+  PROVIDER_ANSWER_TIMEOUT_DEFAULT_MS,
   runGroundedSearchOrchestration,
 } from "./agent-orchestrator.mjs";
 import {
@@ -42,8 +44,16 @@ const model = String(process.env.LLM_MODEL || LLM_GATEWAY_MODEL);
 // Read the credential only after the destination has passed the startup
 // invariant, so an invalid deployment can never attach it to a request.
 const apiKey = String(process.env.LLM_API_KEY || "");
+// The provider needs a long, bounded clock of its own. The earlier 45 s default
+// with a 60 s ceiling aborted finished answers mid-generation, and the reader
+// received the shorter deterministic draft instead. The caller's remaining
+// answer budget still bounds each attempt; these values are only the ceiling.
+// The numbers live in agent-orchestrator.mjs so both provider paths share one
+// clock, and no smaller ceiling can sit behind this one.
+export const LLM_TIMEOUT_DEFAULT_MS = PROVIDER_ANSWER_TIMEOUT_DEFAULT_MS;
+export const LLM_TIMEOUT_CEILING_MS = PROVIDER_ANSWER_TIMEOUT_CEILING_MS;
 export function resolveLlmTimeout(value = process.env.LLM_TIMEOUT_MS) {
-  return Math.max(500, Math.min(Number(value) || 45_000, 60_000));
+  return Math.max(500, Math.min(Number(value) || LLM_TIMEOUT_DEFAULT_MS, LLM_TIMEOUT_CEILING_MS));
 }
 const timeoutMs = resolveLlmTimeout();
 const llmRollingLimits = resolveLlmRollingBudget();
@@ -2040,7 +2050,13 @@ export function buildLlmRequest({
   const canonicalContext = contextInput.ok ? contextInput.query : "";
   const contextAssessment = assessSearchQuery(conversationContext || canonicalContext, { maximumLength: 1_400 });
   const minimizedContext = minimizePublicProviderQuery(canonicalContext, { maximumLength: 1_400 });
+  // A previous turn is disambiguation only. It is never an instruction: an
+  // earlier message that tells the answer how to answer is dropped here, on the
+  // raw and the canonical text, before it can reach the provider.
   const safeConversationContext = containsUnsafeInstruction(canonicalContext)
+    || containsUnsafeInstruction(conversationContext)
+    || containsAnswerDirective(canonicalContext)
+    || containsAnswerDirective(conversationContext)
     || contextAssessment.kind === "out-of-scope"
     ? ""
     : minimizedContext;

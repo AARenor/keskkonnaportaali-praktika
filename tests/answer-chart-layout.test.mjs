@@ -15,15 +15,23 @@ test("niceDomain pads a line domain and starts a bar domain at zero", () => {
   assert.ok(flat.hi > flat.lo);
 });
 
-test("a quantity series is drawn from zero so a small change cannot look like a doubling", () => {
+test("a quantity band is drawn from its own range, a bar chart always from zero", () => {
+  // A line chart of a published quantity shows the years it covers, so a real
+  // change stays visible instead of collapsing into a flat line at the top.
   const raiemaht = chartDomain([10931, 13347, 10143, 12500]);
-  assert.equal(raiemaht.lo, 0);
-  assert.ok(raiemaht.hi >= 13347);
-  assert.equal(raiemaht.ticks[0], 0);
-  // A bar chart always starts at zero, even for a series with a negative value.
-  const bar = chartDomain([-2, 8], { kind: "bar" });
-  assert.ok(bar.lo <= -2);
-  // Only a series that really has negative values keeps a padded axis.
+  assert.ok(raiemaht.lo < 10143 && raiemaht.hi > 13347, `the axis covers the published band: ${raiemaht.lo}–${raiemaht.hi}`);
+  assert.ok(raiemaht.lo >= 9000, `the axis does not collapse onto zero: lo=${raiemaht.lo}`);
+  // A bar chart always starts at zero.
+  const bar = chartDomain([9.1, 14.37], { kind: "bar" });
+  assert.equal(bar.lo, 0);
+  assert.ok(bar.hi >= 14.37);
+  // A bar series with a negative value keeps zero inside the axis, so its bars
+  // grow up and down from the same line.
+  const negativeBar = chartDomain([-2, 8], { kind: "bar" });
+  assert.ok(negativeBar.lo <= -2);
+  assert.ok(negativeBar.hi >= 8);
+  assert.ok(negativeBar.ticks.includes(0));
+  // A line series that really has negative values is padded, never forced to zero.
   const temperature = chartDomain([-4.2, 21.6]);
   assert.ok(temperature.lo < -4.2);
   assert.ok(temperature.hi > 21.6);
@@ -51,10 +59,11 @@ test("formatChartValue uses Estonian decimal comma and thin grouping", () => {
   assert.equal(formatChartValue(2310.6, 1), "2 310,6");
 });
 
-test("seriesPrecision reports the data's own fractional digits, capped at one", () => {
+test("seriesPrecision reports the data's own fractional digits", () => {
   assert.equal(seriesPrecision([{ y: 31.6 }, { y: 34 }]), 1);
   assert.equal(seriesPrecision([{ y: 12247 }, { y: 8081 }]), 0);
   assert.equal(seriesPrecision([{ y: 2310.6 }, { y: 2360.234 }]), 1);
+  assert.equal(seriesPrecision([{ y: 6.55 }, { y: 6.8 }]), 2, "a source value with two decimals keeps both");
   assert.equal(seriesPrecision([]), 0);
 });
 

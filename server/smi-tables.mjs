@@ -90,6 +90,46 @@ export const SMI_2025_FIVE_YEAR_CUT = Object.freeze({
   areaThousandHa: 106.41,
 });
 
+// Worksheet 22 "2024. a. raiete maht metsamaal", row "Raied kokku": the latest
+// measured felling total, its sampling error and the dead-wood note the
+// presentation prints next to the same chart. The public series row (worksheet
+// 34) carries the same total rounded to 12 500 thousand m³; the exact cell is
+// kept here so the error and the rounded series value stay distinguishable.
+export const SMI_2025_MEASURED_CUT = Object.freeze({
+  year: 2024,
+  worksheet: 22,
+  thousandM3: 12499.508,
+  relativeErrorPercent: 9.6399,
+  deadWoodThousandM3: 837.839,
+  deadWoodNote: "ca 8% raiemahust on surnud puidu raie",
+});
+
+// Keskkonnaagentuur's 18.08.2026 review publishes the 2025 felling volume as an
+// expert estimate, not a measurement: the edition's own felling series ends
+// with 2024 and the estimate carries no published sampling error.
+export const SMI_2025_EXPERT_CUT = Object.freeze({
+  year: 2025,
+  thousandM3: 11000,
+  isExpertEstimate: true,
+  relativeErrorPercent: null,
+  publishedAt: "2026-08-18",
+  sourceUrl: "https://keskkonnaagentuur.ee/uudised/smi-metsatagavara-stabiilne",
+  locator: "SMI 2025 ettekanne, slaid „Raiemaht on 11-12 miljoni m3 tasemel“ (2025 veerg on märgitud „eksperthinnang“); Keskkonnaagentuuri uudis 18.08.2026.",
+});
+
+// The same review states the 2025 net annual increment of managed forest per
+// hectare. No national net increment total is published in the workbook, so
+// this constant deliberately carries none and none may be derived downstream.
+export const SMI_2025_NET_INCREMENT = Object.freeze({
+  year: 2025,
+  scope: "majandatav mets",
+  cubicMetresPerHectareYear: 4.9,
+  nationalTotalThousandM3: null,
+  publishedAt: "2026-08-18",
+  sourceUrl: "https://keskkonnaagentuur.ee/uudised/smi-metsatagavara-stabiilne",
+  locator: "Keskkonnaagentuuri uudis 18.08.2026: „2025. aastal oli majandatava metsa netojuurdekasvuks 4,9 m³/ha aastas“.",
+});
+
 function seriesKey(table, indicatorCode) {
   return `${table}:${indicatorCode}`;
 }

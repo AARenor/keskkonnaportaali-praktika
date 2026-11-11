@@ -2,7 +2,7 @@
 
 Keskkonnaportaali visuaalsel keelel põhinev praktikaprojekt, mille põhiosad on:
 
-- vastus-enne-allikaid otsing, kus vastuse koostamine ja tõendikontroll kasutavad sama päringu värsket, filtreeritud ja järjestatud tõendipakki ning lisavad nummerdatud viited;
+- vastus-enne-allikaid otsing, kus vastuse koostamine ja tõendikontroll kasutavad sama päringu värsket, filtreeritud ja järjestatud tõendipakki ning lisavad nummerdatud viited; pikk vastus liigub brauserisse protsessisisese töö ja lühiküsitluse kaudu, seega ei sõltu see ühest kaua lahti hoitavast ühendusest;
 - PostgreSQL-i korpus, mis koondab portaali sitemapilehed, otsingukaardid, valitud täistekstid ning heakskiidetud ametlike väljaandjate (Keskkonnaagentuur, Keskkonnaamet, Kliimaministeerium, RMK, Ilmateenistus, Terviseamet, KIK) eestikeelsed sitemap-URL-id. Lehetekst hüdratiseeritakse kõigilt lubatud ametlikelt hostidelt ning täissünkroonimiste vahel jätkab piiratud taustapartii tühjade ja aegunud leheteksti ridade täitmist; tulemusi täiendavad ametlikud otsinguliidesed, kontrollitud ilma-, hüdroloogia- ja kliimaandmed ning valitud EELISe registrikirjed. Statistikaamet on avalikust allikavalikust välistatud;
 - avatud kvalitatiivsele küsimusele võib vastuse anda üks asjakohane viidatud ametlik lõik; arvu, aastat, nimetatud kohta või tegevust küsiv vastus nõuab endiselt täpset tõendit ning mudeli tõrke korral kuvatakse sama tõendi viidatud väljavõte;
 - pikk loomulik küsimus ei tohi korpuse otsingut vaikselt degradeerida: lai `OR`-vaste järjestatakse odava `ts_rank`-iga piiratud kandidaadiaknasse (vähemalt 1000 rida, sügavamal lehel `offset + 4 × lehe suurus`) ja täpne kaalutud valem arvutatakse ainult selle akna sees. Lehekülgede koguarv tuleb sama filtreeritud vaste hulgast, mitte kandidaadiaknast;
@@ -10,15 +10,30 @@ Keskkonnaportaali visuaalsel keelel põhinev praktikaprojekt, mille põhiosad on
 - toetatud metsaküsimustele Keskkonnaagentuuri kontrollitud esmased SMI töövihiku aegread koos viidatud diagrammiga; sobiva esmase andmerea puudumisel diagrammi ei kuvata;
 - metsa osakaalu küsimusele („kui suur osa Eestist on mets”) SMI 2025 maakategooriate jaotus sektordiagrammina;
 - raie osakaalu küsimusele („kui suur osa raiest on lageraie”) SMI raieliikide jaotus sektordiagrammina;
+- PDF-vormingus ametlike aruannete piiratud taustaindeks (`poppler-utils`): indeksisse läheb ainult täielik, tekstikihiga ja lubatud lugemine, krüpteeritud, skaneeritud, liiga suur või ajapiiri ületanud fail jääb indekseerimata;
+- avaldaja robots- ja lõikepiirangute järgimine ühe allikapoliitika otsusena (`noindex`, `nosnippet`, `max-snippet`, `noarchive`, `data-nosnippet`); lubav `robots.txt` ei ole litsents;
 - portaali sees töötav kogu `terrapoint.ee` rakendus, mis on üldotsingust täielikult eraldatud.
 
+Diagramm järgib avaldatud arve, mitte ümardatud muljet: tulp algab nulljoonest, lõigatud joontelg ütleb seda allkirjas, avaldatud kümnendkohad säilivad ja eri ühikus seeriad joonistatakse eraldi paneelidena. AI koondvastus on tootmises piiratud Eesti metsateemadega (`ALL_ENVIRONMENT_SEARCH_ENABLED` on vaikimisi `false`); muudel keskkonnateemadel jääb lugejale allikate loend. Mudelieelarved on protsessisisesed ja nullistuvad konteineri taaskäivitusel.
+
 Avalik keskkond: [praktika.arle.top](https://praktika.arle.top)
+
+## Üleandmine
+
+Avalik kood ei anna õigust korpuse ega allikate sisule: allikate kasutusõigused tuleb vastuvõtva asutusega eraldi kokku leppida. Koodi litsents ei ole veel otsustatud, seega ära eelda ühtegi litsentsi. Ükski riigiasutus ei ole seda lahendust vastu võtnud ega kinnitanud.
+
+- [IT-halduri juhend](./docs/IT-HOOLDUS.md): juurutus, saladused, varukoopia ja taastamine, hooldus.
+- [Arhitektuur](./docs/ARHITEKTUUR.md) ja [ametlike allikate register](./docs/ALLIKAD.md): andmevoog, piirangud, allikate lepingud.
+- [Privaatsus](./PRIVAATSUS.md) ja [tavakasutaja juhend](./docs/KASUTUSJUHEND.md).
+- [Vastuvõtu tõendid](./acceptance-evidence.md) ja [projekti kirjeldus](./PROJEKT.md).
+
+Lokaalseks käivituseks on vaja Node 24. Andmebaasi või vahemälu kasutamisel on vaja PostgreSQL 17 ning kahte sõltumatut saladust (`POSTGRES_PASSWORD` ja `SEARCH_HASH_SECRET`, mõlemad eraldi juhuslikud); kohaliku `npm start` jaoks koosta ka `DATABASE_URL` ise. LLM on valikuline: `LLM_ENABLED=false` käivitab otsingu ilma mudelivõtmeta. Täpne käsk on allpool ja `.env.example` kirjeldab kõik väärtused.
 
 ## Avalikud juhendid
 
 - [Juhendite ülevaade](https://praktika.arle.top/docs)
 - [Tavakasutaja juhend](https://praktika.arle.top/docs/kasutajale): otsing, filtrid, viited, diagrammid, jätkuküsimused ja privaatsus.
-- [Arendaja integratsioonijuhend](https://praktika.arle.top/docs/arendajale): API leping, sama päritolu ühendamine keskkonnaportaal.ee süsteemiga, voogedastus, seadistus ja üleandmise kontrollnimekiri.
+- [Arendaja integratsioonijuhend](https://praktika.arle.top/docs/arendajale): API leping, sama päritolu ühendamine keskkonnaportaal.ee süsteemiga, töö ja lühiküsitluse transport, ühilduvad voo- ja JSON-liidesed, seadistus ja üleandmise kontrollnimekiri.
 
 Juhendite versioonitud sisu: [src/docs/content.jsx](./src/docs/content.jsx).
 Need kirjeldavad praegust praktikaversiooni, mitte juba tehtud CMS-i või SSO
@@ -43,9 +58,11 @@ Dockeriga:
 ```bash
 cp .env.example .env
 # määra .env-is eraldi juhuslikud POSTGRES_PASSWORD ja SEARCH_HASH_SECRET väärtused
-docker compose up --build
-npm run sync:corpus -- --hydrate-limit=1000 --seed-queries=mets
+docker compose up -d --build
+docker compose exec web node server/sync-corpus.mjs --hydrate-limit=1000 --seed-queries=mets
 ```
+
+Korje käivitub konteineri sees, sest runtime-image'is ei ole npm-i ja hosti `.env` ei laadita sellesse Node-skripti; konteiner saab samad keskkonnamuutujad Compose'ist. Skript loob vajaliku skeemi idempotentselt ja teeb päris ülesvoolu päringuid avalikele allikatele, seega võib see võtta mitu minutit.
 
 Tervisekontroll: `GET /api/health`.
 
@@ -53,14 +70,22 @@ Tervisekontroll: `GET /api/health`.
 
 06.10.2026 seadistuse cutover kasutab olemasolevat autenditud Codex gateway'd:
 `LLM_BASE_URL=https://terrapoint.arle.top/v1`,
-`LLM_MODEL=openai-codex/gpt-6-luna`, `LLM_REASONING_EFFORT=low` ja
-`LLM_TIMEOUT_MS=45000`, `LLM_ORCHESTRATION=direct`. Otsene mudelikõne hoiab
-alles viite- ja tõendikontrollid. Ajaeelarve on tahtlikult helde: kui mudel
-või allikate lugemine võtab kauem, ootab lugeja kauem, selle asemel et kaotada
-tõendatud vastus taimeri taha. JSON-otsingu ülempiir on 50 sekundit ja voo
-otsingueelarve 60 sekundit, avaliku vastuse jõudeaeg 60 ja absoluutne ülempiir
-150 sekundit;
-neljakutseline `agents` režiim ületas varasemas live-kontrollis ajapiiri.
+`LLM_MODEL=openai-codex/gpt-6-luna`, `LLM_REASONING_EFFORT=low`,
+`LLM_ORCHESTRATION=direct` ja mudelikõne taimer `LLM_TIMEOUT_MS`. Otsene
+mudelikõne hoiab alles viite- ja tõendikontrollid. Ajaeelarve on tahtlikult
+helde: kui mudel või allikate lugemine võtab kauem, ootab lugeja kauem, selle
+asemel et kaotada tõendatud vastus taimeri taha.
+
+Otsingul on kaks eraldi kella, mitte üks ühine taimer. Tulemuste loendi aken
+algab päringust ja seda juhib `SEARCH_DEADLINE_MS`; vastuse aken algab alles
+siis, kui loend on avaldatud, ja seda juhib `ANSWER_DEADLINE_MS`. Ühekordne
+`/api/search` piirab loendit lisaks väärtusega `JSON_SEARCH_DEADLINE_CEILING_MS`.
+Transport peab need aknad ära mahtuma: `PUBLIC_RESPONSE_ABSOLUTE_TIMEOUT_MS`
+katab loendi akna, vastuse akna ja lõppvastuse reservi ning
+`PUBLIC_RESPONSE_IDLE_TIMEOUT_MS` on pikem kui ühekordse otsingu loendi lagi.
+Kui see ei kehti, keeldub server käivitumast, mitte ei lühenda eelarvet vaikselt.
+Vaikeväärtused on failis `.env.example`. Neljakutseline `agents` režiim ületas
+varasemas live-kontrollis tolleaegse ajapiiri.
 Transport on alati Responses API; teist varumudelit ei kasutata.
 `LLM_API_KEY` saab ainult serveri runtime-keskkonnas
 gateway bearer'i; `.env.example` ei sisalda võtit. Võtmeta lokaalse käivituse

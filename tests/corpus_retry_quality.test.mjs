@@ -20,6 +20,11 @@
 // stored body but loses its evidence rights, so it is a route only until a later
 // read succeeds.
 //
+// A citable row also carries the source use witness of the read that produced its
+// stored body, bound to that resource and to that body hash. That witness is what
+// the delivery layer re-checks, so a row whose last attempt failed carries none
+// and stays route-only, while a row whose last read succeeded starts citable.
+//
 // The second phase covers historical markers that are not timestamps at all: an
 // unreadable marker must not abort the pass, must not block a row that has no
 // body, and must not authorise a re-read of a body that is still fresh.
@@ -38,6 +43,8 @@ import { execFileSync } from "node:child_process";
 import { createServer } from "node:net";
 import { EventEmitter } from "node:events";
 import { createRequire } from "node:module";
+import { observeSourcePolicy } from "../server/source_policy.mjs";
+import { sourceResourceKey } from "../server/source-identity.mjs";
 
 const require = createRequire(import.meta.url);
 const { Client } = require("pg");
@@ -48,11 +55,33 @@ const FIXTURE_ORIGIN = "https://keskkonnaportaal.ee";
 const DAY_MS = 86_400_000;
 const MINIMUM_EVIDENCE_LENGTH = 80;
 const CORPUS_MODULE_URL = new URL("../server/corpus.mjs", import.meta.url).href;
+// A recorded run can name its container and loopback port so the exact
+// resources of that run are auditable afterwards. Teardown removes the container
+// by the id Docker returned, so a name override cannot delete anything this run
+// did not create.
+const CONTAINER_NAME_OVERRIDE = String(process.env.CORPUS_RETRY_TEST_CONTAINER_NAME || "").trim();
+const PORT_OVERRIDE = Number(process.env.CORPUS_RETRY_TEST_PORT || 0);
 
 const PREVIOUS_BODY = "Varasemalt loetud ametlik lehekülg metsa raiemahtude kohta. SMI 2025 andmetel oli 2024. aasta raiemaht 12 500 tuh m3 ja juurdekasv 15 458 tuh m3.";
 
 function sha256(value) {
   return createHash("sha256").update(String(value)).digest("hex");
+}
+
+// The witness a successful read of this exact body at this exact time would have
+// stored: same resource, same body hash, robots allowed for its own origin.
+function bodyWitness(url, body, observedAt) {
+  return observeSourcePolicy({
+    requestedUrl: url,
+    finalUrl: url,
+    observedAt,
+    contentKind: "fetched-html",
+    bodyHash: sha256(body),
+    artifactHash: sha256(body),
+    robotsObservation: { status: "allowed", origin: new URL(url).origin, checkedAt: observedAt },
+    html: `<main><p>${body}</p></main>`,
+    headerInstances: [],
+  });
 }
 
 function dockerImageAvailable(image) {
@@ -77,7 +106,7 @@ function reserveLoopbackPort() {
 
 function startPostgresContainer(name, port) {
   try {
-    execFileSync("docker", [
+    const created = execFileSync("docker", [
       "run",
       "--detach",
       "--rm",
@@ -91,7 +120,8 @@ function startPostgresContainer(name, port) {
       "--tmpfs", "/var/lib/postgresql/data:rw",
       POSTGRES_IMAGE,
       "postgres", "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off",
-    ], { stdio: ["ignore", "pipe", "pipe"] });
+    ], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    return String(created).trim();
   } catch (error) {
     const detail = String(error?.stderr || error?.message || "").trim();
     throw new Error(`temporary PostgreSQL container did not start: ${detail}`);
@@ -117,19 +147,21 @@ async function waitForPostgres(connectionString, { timeoutMs = 90_000 } = {}) {
   throw new Error(`temporary PostgreSQL never answered: ${lastError.message}`);
 }
 
-function removeContainer(name) {
+function removeContainer(identifier) {
+  const target = String(identifier || "").trim();
+  if (!target) return false;
   try {
-    execFileSync("docker", ["rm", "--force", name], { stdio: "ignore" });
+    execFileSync("docker", ["rm", "--force", target], { stdio: "ignore" });
   } catch {
     // The container may already be gone; nothing else to clean up.
   }
+  // Verified from outside by asking Docker about that exact object, which works
+  // for an id and for a name: an inspect that fails means it is gone.
   try {
-    const listing = execFileSync("docker", [
-      "ps", "--all", "--filter", `name=^${name}$`, "--format", "{{.Names}}",
-    ], { encoding: "utf8" });
-    return String(listing).trim() === "";
-  } catch {
+    execFileSync("docker", ["container", "inspect", "--format", "{{.Id}}", target], { stdio: "ignore" });
     return false;
+  } catch {
+    return true;
   }
 }
 
@@ -250,6 +282,30 @@ const fixtures = [
     },
   },
   {
+    key: "unwitnessed-recent",
+    label: "a recent body stored before the source use witness existed",
+    path: "/et/mets/tunnistuseta-leht",
+    fetchedDaysAgo: 2,
+    unwitnessed: true,
+    previousContent: "Varasemalt loetud ametlik lehekülg, mille keha on värske, kuid mille lugemisel ei salvestatud allika kasutusluba ja mis on seetõttu ainult suunav.",
+    response: {
+      status: 200,
+      body: portalPage("Tunnistuseta lehekülg", "See lehekülg loeti enne kasutusloa tunnistust ja tuleb tunnistuse saamiseks turvaliselt uuesti lugeda."),
+    },
+  },
+  {
+    key: "unwitnessed-recent-failed",
+    label: "an unwitnessed recent body whose last attempt failed yesterday",
+    path: "/et/mets/tunnistuseta-ootepaev",
+    attemptedDaysAgo: 1,
+    unwitnessed: true,
+    previousContent: "Varasemalt loetud ametlik lehekülg, mille keha on värske ja mille viimane lugemiskatse ebaõnnestus eile, mistõttu kehtib seitsmepäevane ootepäev.",
+    response: {
+      status: 200,
+      body: portalPage("Ootepäev", "Seda lehekülge ei tohi ootepäeva ajal uuesti lugeda."),
+    },
+  },
+  {
     key: "missing-body",
     label: "a route-only row that never carried a body",
     path: "/et/mets/ilma-kehata-leht",
@@ -281,17 +337,27 @@ function fixtureRow(fixture, now) {
     : new Date(now - fixture.attemptedDaysAgo * DAY_MS).toISOString();
   const fetchedAt = new Date(now - (fixture.attemptedDaysAgo ?? fixture.fetchedDaysAgo) * DAY_MS).toISOString();
   const hydrated = fixture.previousContent.length >= MINIMUM_EVIDENCE_LENGTH;
+  const url = `${FIXTURE_ORIGIN}${fixture.path}`;
+  // A body is citable only through the witness its own read produced. A row whose
+  // last attempt failed, a row that never had a body, and a row explicitly marked
+  // unwitnessed (a body stored before the witness existed) carry none; a row whose
+  // last read succeeded carries the witness of that read, bound to this resource
+  // and to the body it stored.
+  const witness = hydrated && fixture.attemptedDaysAgo === undefined && !fixture.unwitnessed
+    ? bodyWitness(url, fixture.previousContent, fetchedAt)
+    : null;
   return {
     externalId: `fixture-${fixture.key}`,
-    url: `${FIXTURE_ORIGIN}${fixture.path}`,
+    url,
     fetchedAt,
     contentHash: fixture.noindex
-      ? sha256(JSON.stringify([`${FIXTURE_ORIGIN}${fixture.path}`, "robots-noindex"]))
+      ? sha256(JSON.stringify([url, "robots-noindex"]))
       : sha256(fixture.previousContent),
     metadata: {
       ...(hydrated ? { hydrated: true, source_kind: "official-page-hydration" } : {}),
       ...(attemptedAt ? { hydration_attempted_at: attemptedAt } : {}),
       ...(fixture.noindex ? { robots_noindex: true } : {}),
+      ...(witness ? { source_policy: witness, sourceResourceKey: sourceResourceKey(url) } : {}),
     },
   };
 }
@@ -323,16 +389,20 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
     t.skip(`Docker image ${POSTGRES_IMAGE} is unavailable, so the isolated PostgreSQL fixture cannot start; the retry selection cannot be exercised without a real SQL engine`);
     return;
   }
-  const containerName = `corpus-retry-quality-${process.pid}-${randomBytes(3).toString("hex")}`;
-  const port = await reserveLoopbackPort();
+  const containerName = CONTAINER_NAME_OVERRIDE
+    || `corpus-retry-quality-${process.pid}-${randomBytes(3).toString("hex")}`;
+  const port = Number.isInteger(PORT_OVERRIDE) && PORT_OVERRIDE > 0
+    ? PORT_OVERRIDE
+    : await reserveLoopbackPort();
   const databaseUrl = `postgres://postgres@127.0.0.1:${port}/${POSTGRES_DATABASE}`;
   // Recorded here so a run log names the exact container; teardown removes it
   // automatically and reports the verified result below.
   t.diagnostic(`temporary PostgreSQL container: ${containerName} on 127.0.0.1:${port}`);
   let admin;
   let transport;
+  let createdContainerId = null;
   try {
-    startPostgresContainer(containerName, port);
+    createdContainerId = startPostgresContainer(containerName, port);
     await waitForPostgres(databaseUrl);
     process.env.DATABASE_URL = databaseUrl;
     process.env.DATABASE_SSL_MODE = "disable";
@@ -398,6 +468,27 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
     assert.equal(beforeRow("noindex-page").content, "", "the noindex fixture stays route-only");
     assert.equal(corpus.publicSearchItem(beforeRow("noindex-page"), true)._answerEvidenceEligible, false, "the noindex fixture is never answer evidence");
     assert.equal(beforeRow("missing-body").content, "", "the missing body fixture is route-only until a read succeeds");
+    // Negative twin of the citable case: a body stored without the witness of its
+    // own read has no publication proof, however fresh it is.
+    assert.ok(
+      beforeRow("unwitnessed-recent").content.length >= MINIMUM_EVIDENCE_LENGTH,
+      "the unwitnessed recent body is stored like any other body",
+    );
+    assert.equal(
+      corpus.publicSearchItem(beforeRow("unwitnessed-recent"), true).evidencePolicy,
+      "route-only",
+      "a recent hydrated body without a source use witness is route-only",
+    );
+    assert.equal(
+      corpus.publicSearchItem(beforeRow("unwitnessed-recent"), true)._answerEvidenceEligible,
+      false,
+      "a recent hydrated body without a source use witness is not answer evidence",
+    );
+    assert.equal(
+      corpus.publicSearchItem(beforeRow("unwitnessed-recent-failed"), true)._answerEvidenceEligible,
+      false,
+      "an unwitnessed body whose last attempt failed is route-only too",
+    );
 
     const runStartedAt = Date.now();
     const run = await corpus.hydrateCorpusBacklog({ limit: 20, concurrency: 1, delayMs: 0 });
@@ -429,6 +520,23 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
       !requestedPages.includes(fixtureUrl("noindex-page")),
       "a robots_noindex row must stay excluded from hydration",
     );
+    // Safe rehydration. A witnessed page needs no read while its body is fresh,
+    // but an unwitnessed body cannot be cited at all, so it is re-read first and
+    // is not held behind pages that are merely due.
+    const unwitnessedIndex = requestedPages.indexOf(fixtureUrl("unwitnessed-recent"));
+    const agedIndex = requestedPages.indexOf(fixtureUrl("aged-success"));
+    assert.ok(
+      unwitnessedIndex >= 0,
+      "an unwitnessed recent body must be re-read so that a witness can be recorded",
+    );
+    assert.ok(
+      unwitnessedIndex < (agedIndex === -1 ? Number.POSITIVE_INFINITY : agedIndex),
+      "an unwitnessed body must be prioritized ahead of a witnessed page that is only due by age",
+    );
+    assert.ok(
+      !requestedPages.includes(fixtureUrl("unwitnessed-recent-failed")),
+      "an unwitnessed body whose last attempt failed yesterday must respect the 7 day cooldown",
+    );
     assert.ok(
       requestedPages.includes(fixtureUrl("aged-success")),
       "a body older than the 30 day refresh window must still be read again",
@@ -440,12 +548,13 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
         fixtureUrl("retry-eight-days-failing"),
         fixtureUrl("aged-success"),
         fixtureUrl("missing-body"),
+        fixtureUrl("unwitnessed-recent"),
       ].sort(),
       "the backlog must select exactly the rows whose refresh is due",
     );
     assert.equal(run.status, "ready", "the backlog pass itself must complete");
-    assert.equal(run.remainingChecked, 4, "four rows are due for a read");
-    assert.equal(run.hydrated, 3, "three reads return a usable official page");
+    assert.equal(run.remainingChecked, 5, "five rows are due for a read");
+    assert.equal(run.hydrated, 4, "four reads return a usable official page");
     assert.equal(run.errors, 1, "one read fails at the official page");
     assert.equal(run.skipped, 0, "no selected row is skipped");
 
@@ -466,6 +575,14 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
     assert.equal(refreshedItem._answerEvidenceEligible, true, "a successful refresh restores evidence rights");
     assert.equal(refreshedItem.evidencePolicy, "versioned", "a successful refresh is versioned evidence");
     assert.equal(refreshedItem._contentHash, refreshed.content_hash, "the citation points at the refreshed body version");
+    // The unwitnessed body was re-read for exactly this reason: the new read
+    // records the witness, so the same row becomes citable without waiting out
+    // the seven day window.
+    const rehydrated = afterRow("unwitnessed-recent");
+    assert.notEqual(rehydrated.metadata?.source_policy, undefined, "a re-read stores the source use witness");
+    const rehydratedItem = corpus.publicSearchItem(rehydrated, true);
+    assert.equal(rehydratedItem._answerEvidenceEligible, true, "an unwitnessed body becomes citable after its own read");
+    assert.equal(rehydratedItem.evidencePolicy, "versioned", "the re-read body is versioned evidence");
 
     // A failed retry records the attempt and keeps the old body route-only: an
     // attempt is not evidence, so the citation must not be renewed.
@@ -522,14 +639,26 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
     const malformedFreshBody = "Varasemalt loetud ametlik lehekülg, mille katseaja märge on rikutud ja mille keha on veel värske.";
     const malformedEmptyPage = portalPage("Rikutud kehata", "Selle lehekülje keha puudus ja rikutud katseaja märge ei tohi takistada uuesti lugemist.");
     transport.responses.set(malformedEmptyUrl, { status: 200, contentType: "text/html; charset=utf-8", body: malformedEmptyPage });
+    // The witness belongs to the successful read that stored this body three days
+    // ago; the later attempt marker is unreadable, which is the state this phase
+    // is about. Without the witness the row would be an unwitnessed body and the
+    // rehydration rule would rightly take it first, which would hide the clock
+    // behaviour the assertions below describe.
+    const malformedFreshAt = new Date(Date.now() - 3 * DAY_MS).toISOString();
     await insertRow(admin, {
       externalId: "fixture-malformed-fresh-body",
       url: malformedFreshUrl,
       title: "Fixture malformed fresh body",
       content: malformedFreshBody,
       contentHash: sha256(malformedFreshBody),
-      fetchedAt: new Date(Date.now() - 3 * DAY_MS).toISOString(),
-      metadata: { hydrated: true, source_kind: "official-page-hydration", hydration_attempted_at: "teadmata" },
+      fetchedAt: malformedFreshAt,
+      metadata: {
+        hydrated: true,
+        source_kind: "official-page-hydration",
+        hydration_attempted_at: "teadmata",
+        source_policy: bodyWitness(malformedFreshUrl, malformedFreshBody, malformedFreshAt),
+        sourceResourceKey: sourceResourceKey(malformedFreshUrl),
+      },
     });
     await insertRow(admin, {
       externalId: "fixture-malformed-empty-body",
@@ -597,14 +726,23 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
     const refreshFiveBody = "Varasemalt loetud ametlik lehekülg, mille keha on viis päeva vana ja mille tõendusaknas on veel kaks päeva, mistõttu see jääb esialgu puutumata.";
     transport.responses.set(refreshSixUrl, { status: 200, contentType: "text/html; charset=utf-8", body: refreshSixPage });
     transport.responses.set(refreshFiveUrl, { status: 200, contentType: "text/html; charset=utf-8", body: refreshFivePage });
+    // Both bodies were read successfully under a witness; the phase is about the
+    // age clock, so each row carries the witness of its own read.
+    const refreshSixAt = new Date(Date.now() - 6 * DAY_MS).toISOString();
+    const refreshFiveAt = new Date(Date.now() - 5 * DAY_MS).toISOString();
     await insertRow(admin, {
       externalId: "fixture-refresh-six-days",
       url: refreshSixUrl,
       title: "Fixture refresh six days",
       content: refreshSixBody,
       contentHash: sha256(refreshSixBody),
-      fetchedAt: new Date(Date.now() - 6 * DAY_MS).toISOString(),
-      metadata: { hydrated: true, source_kind: "official-page-hydration" },
+      fetchedAt: refreshSixAt,
+      metadata: {
+        hydrated: true,
+        source_kind: "official-page-hydration",
+        source_policy: bodyWitness(refreshSixUrl, refreshSixBody, refreshSixAt),
+        sourceResourceKey: sourceResourceKey(refreshSixUrl),
+      },
     });
     await insertRow(admin, {
       externalId: "fixture-refresh-five-days",
@@ -612,8 +750,13 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
       title: "Fixture refresh five days",
       content: refreshFiveBody,
       contentHash: sha256(refreshFiveBody),
-      fetchedAt: new Date(Date.now() - 5 * DAY_MS).toISOString(),
-      metadata: { hydrated: true, source_kind: "official-page-hydration" },
+      fetchedAt: refreshFiveAt,
+      metadata: {
+        hydrated: true,
+        source_kind: "official-page-hydration",
+        source_policy: bodyWitness(refreshFiveUrl, refreshFiveBody, refreshFiveAt),
+        sourceResourceKey: sourceResourceKey(refreshFiveUrl),
+      },
     });
     const beforeThirdRun = await readRows(admin);
     assert.equal(
@@ -985,10 +1128,265 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
         }
       }
     }
+
+    // Seventh phase: a witness that cannot bind to this row is no witness. A null
+    // policy, an unknown version, another resource or another body version all
+    // leave the stored body uncitable, so those rows must be re-read. A
+    // well-formed expired publisher decision is not retried immediately, because
+    // re-reading usually returns the same date; it waits for the age schedule. A
+    // recent failed attempt still holds its row inside the cooldown.
+    transport.requestedUrls.length = 0;
+    const brokenWitnessAt = new Date(Date.now() - 2 * DAY_MS).toISOString();
+    const brokenBody = "Varasemalt loetud ametlik lehekülg, mille tunnistus ei seostu selle kehaga ja mida seetõttu ei tohi enne uut lugemist tsiteerida.";
+    const brokenPage = (label) => portalPage(
+      `Tunnistuse ${label}`,
+      "See lehekülg loeti uuesti, et salvestada selle kehaga seotud allika kasutusloa tunnistus.",
+    );
+    // Every shape that cannot bind, including the shapes whose fields are absent
+    // or JSON null. Those compare as SQL NULL, so a predicate that is not total
+    // would make them invisible to rehydration instead of due.
+    const brokenCases = [
+      { key: "puudub", build: null },
+      { key: "tundmatu-versioon", build: (witness) => ({ ...witness, version: "source-policy-v0" }) },
+      { key: "teine-resurss", build: (witness) => ({ ...witness, resourceKey: `${FIXTURE_ORIGIN}/et/mets/teine-resurss` }) },
+      { key: "teine-keha", build: (witness) => ({ ...witness, artifactHash: sha256("muu-keha") }) },
+      // A publisher witness without the hash of the bytes that were read is invalid
+      // in JavaScript, so the row is route-only and must be re-read once the SQL
+      // side agrees that this is not a usable witness.
+      { key: "puudub-kehahash", build: (witness) => ({ ...witness, bodyHash: null }) },
+      // The JavaScript validator refuses a whole witness when a legacy-unknown kind
+      // carries any copy permission, so the row is route-only and must be re-read
+      // once the SQL side agrees that this witness is not usable.
+      // Every shape the JavaScript validator rejects. The first group is accepted
+      // by the index gate today, the second is refused by it but still counts as
+      // witnessed, so none of them is ever repaired without this selection rule.
+      {
+        key: "legacy-kasutus",
+        build: (witness) => ({
+          ...witness,
+          contentKind: "legacy-unknown",
+          use: { retainBody: true, indexBody: true, displaySnippet: true, answerEvidence: true },
+        }),
+      },
+      { key: "osaline-kasutus", build: (witness) => ({ ...witness, use: { indexBody: true } }) },
+      { key: "noarchive-keha", build: (witness) => ({ ...witness, directives: { ...witness.directives, noarchive: true } }) },
+      { key: "nosnippet-luba", build: (witness) => ({ ...witness, directives: { ...witness.directives, nosnippet: true } }) },
+      { key: "toend-ilma-lubata", build: (witness) => ({ ...witness, use: { ...witness.use, displaySnippet: false } }) },
+      { key: "vigane-pikkus", build: (witness) => ({ ...witness, directives: { ...witness.directives, maxSnippetChars: "120" } }) },
+      { key: "tuhi-juhised", build: (witness) => ({ ...witness, directives: {} }) },
+      { key: "tuhi-robots", build: (witness) => ({ ...witness, robots: {} }) },
+      // Delivery binds the witness through the canonical resource key it derives
+      // from the row URL, so this row is citable even though the redundant
+      // metadata field is missing. The index side cannot verify that binding
+      // without the field, so the row is still read once, which records it.
+      { key: "puudub-ressursivoti", build: (witness) => witness, omitResourceKey: true, citableBefore: true },
+      { key: "puudub-artefaktirasi", build: (witness) => ({ ...witness, artifactHash: null }) },
+      { key: "puudub-vaatlusaeg", build: (witness) => ({ ...witness, observedAt: null }) },
+      { key: "tuhi-tunnistus", build: () => ({}) },
+    ].map((entry) => {
+      const url = `${FIXTURE_ORIGIN}/et/mets/tunnistus-${entry.key}`;
+      const witness = entry.build === null
+        ? null
+        : entry.build(bodyWitness(url, brokenBody, brokenWitnessAt));
+      return { ...entry, url, witness };
+    });
+    for (const entry of brokenCases) {
+      transport.responses.set(entry.url, { status: 200, contentType: "text/html; charset=utf-8", body: brokenPage(entry.key) });
+      await insertRow(admin, {
+        externalId: `fixture-witness-${entry.key}`,
+        url: entry.url,
+        title: `Fixture witness ${entry.key}`,
+        content: brokenBody,
+        contentHash: sha256(brokenBody),
+        fetchedAt: brokenWitnessAt,
+        metadata: {
+          hydrated: true,
+          source_kind: "official-page-hydration",
+          // A property that exists but cannot bind is the state under test, so the
+          // null case keeps the property rather than omitting it.
+          source_policy: entry.witness,
+          ...(entry.omitResourceKey ? {} : { sourceResourceKey: sourceResourceKey(entry.url) }),
+        },
+      });
+    }
+    // Valid restrictive witnesses. Both are legitimate policies that withhold some
+    // use, so the witness predicate must treat them as usable and the pass must not
+    // read them again.
+    const restrictiveControls = [
+      {
+        key: "luba-noarchive",
+        build: (url) => ({
+          ...bodyWitness(url, brokenBody, brokenWitnessAt),
+          directives: { ...bodyWitness(url, brokenBody, brokenWitnessAt).directives, noarchive: true },
+          use: { retainBody: false, indexBody: true, displaySnippet: true, answerEvidence: false },
+        }),
+      },
+      {
+        key: "luba-nosnippet",
+        build: (url) => ({
+          ...bodyWitness(url, brokenBody, brokenWitnessAt),
+          directives: { ...bodyWitness(url, brokenBody, brokenWitnessAt).directives, nosnippet: true },
+          use: { retainBody: true, indexBody: false, displaySnippet: false, answerEvidence: false },
+        }),
+      },
+      {
+        // A large integer limit is legitimate: Number.isInteger(1e20) is true. The
+        // fixture proves the SQL side does not impose a smaller arbitrary bound.
+        key: "luba-suur-pikkus",
+        build: (url) => {
+          const witness = bodyWitness(url, brokenBody, brokenWitnessAt);
+          return {
+            ...witness,
+            directives: { ...witness.directives, maxSnippetChars: 1e20 },
+            use: { retainBody: true, indexBody: true, displaySnippet: true, answerEvidence: false },
+          };
+        },
+      },
+    ].map((entry) => {
+      const url = `${FIXTURE_ORIGIN}/et/mets/tunnistus-${entry.key}`;
+      return { ...entry, url, witness: entry.build(url) };
+    });
+    for (const control of restrictiveControls) {
+      transport.responses.set(control.url, { status: 200, contentType: "text/html; charset=utf-8", body: brokenPage(control.key) });
+      await insertRow(admin, {
+        externalId: `fixture-witness-${control.key}`,
+        url: control.url,
+        title: `Fixture witness ${control.key}`,
+        content: brokenBody,
+        contentHash: sha256(brokenBody),
+        fetchedAt: brokenWitnessAt,
+        metadata: {
+          hydrated: true,
+          source_kind: "official-page-hydration",
+          source_policy: control.witness,
+          sourceResourceKey: sourceResourceKey(control.url),
+        },
+      });
+    }
+    const expiredWitnessUrl = `${FIXTURE_ORIGIN}/et/mets/tunnistus-aegunud`;
+    const validWitnessUrl = `${FIXTURE_ORIGIN}/et/mets/tunnistus-kehtiv`;
+    const cooldownWitnessUrl = `${FIXTURE_ORIGIN}/et/mets/tunnistus-ootepaev`;
+    const expiredWitness = {
+      ...bodyWitness(expiredWitnessUrl, brokenBody, brokenWitnessAt),
+      directives: {
+        ...bodyWitness(expiredWitnessUrl, brokenBody, brokenWitnessAt).directives,
+        unavailableAfter: new Date(Date.now() - 3_600_000).toISOString(),
+      },
+    };
+    for (const [externalId, url, witness, extra] of [
+      ["fixture-witness-expired", expiredWitnessUrl, expiredWitness, {}],
+      ["fixture-witness-valid", validWitnessUrl, bodyWitness(validWitnessUrl, brokenBody, brokenWitnessAt), {}],
+      ["fixture-witness-cooldown", cooldownWitnessUrl, null, {
+        hydration_attempted_at: new Date(Date.now() - DAY_MS).toISOString(),
+      }],
+    ]) {
+      transport.responses.set(url, { status: 200, contentType: "text/html; charset=utf-8", body: brokenPage(externalId) });
+      await insertRow(admin, {
+        externalId,
+        url,
+        title: `Fixture ${externalId}`,
+        content: brokenBody,
+        contentHash: sha256(brokenBody),
+        fetchedAt: brokenWitnessAt,
+        metadata: {
+          hydrated: true,
+          source_kind: "official-page-hydration",
+          source_policy: witness,
+          sourceResourceKey: sourceResourceKey(url),
+          ...extra,
+        },
+      });
+    }
+
+    const beforeSeventhRun = await readRows(admin);
+    for (const entry of brokenCases) {
+      const item = corpus.publicSearchItem(beforeSeventhRun.get(entry.url), true);
+      if (entry.citableBefore) {
+        // The witness names the canonical resource key itself, so delivery can bind
+        // it without the redundant metadata field.
+        assert.equal(item.evidencePolicy, "versioned", `a witness bound through its own resource key (${entry.key}) is citable`);
+        assert.equal(item._answerEvidenceEligible, true, `a witness bound through its own resource key (${entry.key}) is evidence`);
+        continue;
+      }
+      assert.equal(
+        item.evidencePolicy,
+        "route-only",
+        `a witness that cannot bind to this row (${entry.key}) authorises no copied text`,
+      );
+      assert.equal(item._answerEvidenceEligible, false, `a witness that cannot bind to this row (${entry.key}) is not evidence`);
+    }
+    assert.equal(
+      corpus.publicSearchItem(beforeSeventhRun.get(expiredWitnessUrl), true)._answerEvidenceEligible,
+      false,
+      "an expired publisher decision is route-only",
+    );
+    assert.equal(
+      corpus.publicSearchItem(beforeSeventhRun.get(validWitnessUrl), true)._answerEvidenceEligible,
+      true,
+      "the control row with a bound witness starts citable",
+    );
+
+    const seventhRun = await corpus.hydrateCorpusBacklog({ limit: 20, concurrency: 1, delayMs: 0 });
+    const seventhPages = [...new Set(transport.requestedUrls
+      .filter((href) => href.startsWith(FIXTURE_ORIGIN) && !href.endsWith("/robots.txt")))];
+    assert.equal(seventhRun.status, "ready", "the witness pass itself must complete");
+    assert.deepEqual(
+      [...seventhPages].sort(),
+      brokenCases.map((entry) => entry.url).sort(),
+      "only bodies whose witness cannot bind are re-read",
+    );
+    assert.ok(
+      !seventhPages.includes(expiredWitnessUrl),
+      "an expired publisher decision waits for the age schedule instead of looping immediately",
+    );
+    assert.ok(!seventhPages.includes(validWitnessUrl), "a bound fresh witness needs no read");
+    assert.ok(!seventhPages.includes(cooldownWitnessUrl), "a recent failed attempt keeps its cooldown");
+
+    const afterSeventhRun = await readRows(admin);
+    for (const entry of brokenCases) {
+      const item = corpus.publicSearchItem(afterSeventhRun.get(entry.url), true);
+      assert.equal(
+        item.evidencePolicy,
+        "versioned",
+        `a mismatched body (${entry.key}) becomes citable only after a successful fresh read`,
+      );
+      assert.equal(item._answerEvidenceEligible, true, `a mismatched body (${entry.key}) is evidence after its own read`);
+      assert.notEqual(afterSeventhRun.get(entry.url).metadata.source_policy, null, `a re-read stores a bound witness (${entry.key})`);
+    }
+    assert.equal(
+      corpus.publicSearchItem(afterSeventhRun.get(expiredWitnessUrl), true)._answerEvidenceEligible,
+      false,
+      "an expired decision keeps its body route-only until the age schedule reads it again",
+    );
+    assert.equal(
+      corpus.publicSearchItem(afterSeventhRun.get(validWitnessUrl), true).evidencePolicy,
+      "versioned",
+      "the control row keeps its bound witness",
+    );
+    for (const control of restrictiveControls) {
+      assert.ok(
+        !seventhPages.includes(control.url),
+        `a valid restrictive witness (${control.key}) must not be retried`,
+      );
+      assert.equal(
+        corpus.publicSearchItem(afterSeventhRun.get(control.url), true).evidencePolicy,
+        "route-only",
+        `a valid restrictive witness (${control.key}) withholds copied use but stays witnessed`,
+      );
+    }
+
   } finally {
     if (admin) await admin.end().catch(() => undefined);
     transport?.restore();
-    const containerRemoved = removeContainer(containerName);
-    t.diagnostic(`temporary PostgreSQL container ${containerName}: ${containerRemoved ? "removed" : "STILL PRESENT"}`);
+    // Removal is attempted only for a container this run actually created. When
+    // the start failed, for example because the name is already taken, no id is
+    // returned and nothing is deleted: a name collision must never remove someone
+    // else's container.
+    if (createdContainerId) {
+      const containerRemoved = removeContainer(createdContainerId);
+      t.diagnostic(`temporary PostgreSQL container ${containerName} (${createdContainerId}): ${containerRemoved ? "removed" : "STILL PRESENT"}`);
+    } else {
+      t.diagnostic(`temporary PostgreSQL container ${containerName}: not created by this run, nothing removed`);
+    }
   }
 });

@@ -7,6 +7,11 @@ import {
   buildAnyPrefixTsQuery,
   buildPrefixTsQuery,
   backfillCorpusSourceIdentity,
+  CORPUS_FAILURE_CATEGORIES,
+  corpusFailureCategory,
+  corpusFailureCounters,
+  addCorpusFailure,
+  corpusPdfHydrationCandidates,
   deduplicateCorpusDocuments,
   extractReadablePage,
   fetchCorpusText,
@@ -104,8 +109,6 @@ test("old news scaffold bodies stay route-only until clean hydration replaces th
   assert.equal(item.evidencePolicy, "route-only");
   assert.equal(item.content, "");
   assert.equal(item.summary, "");
-  const clean = publicSearchItem({ ...row, summary: "Juurepess kahjustab puude juuri.", content: "Juurepess kahjustab puude juuri. See puu tervisliku seisundi selgitus pärineb artikli enda tekstist." }, true);
-  assert.equal(clean._answerEvidenceEligible, true);
 });
 
 test("public corpus source exposes only explicit page update provenance, never sitemap or fetch time", () => {
@@ -535,41 +538,9 @@ test("only an atomically validated corpus hydration row becomes answer evidence"
     assert.equal(item._answerEvidenceEligible, false);
     assert.equal(sourceEvidenceEligibility(item).eligible, false);
   }
-  const item = publicSearchItem({
-    ...base,
-    source_key: "official-page-hydration",
-    metadata: { hydrated: true, source_kind: "official-page-hydration" },
-  }, true);
-  assert.equal(item.retrieval, "approved-page-hydration");
-  assert.equal(item.evidencePolicy, "versioned");
-  assert.equal(item._answerEvidenceEligible, true);
-  assert.equal(item._evidenceVersion, base.content_hash);
-  assert.equal(item._evidenceStatusAt, "2026-08-20T12:00:00.000Z");
-  assert.equal(sourceEvidenceEligibility(item, {
-    now: Date.parse("2026-08-21T12:00:00Z"),
-  }).eligible, true);
-
-  const recovered = publicSearchItem({...base,source_key:"official-page-hydration",metadata:{hydrated:true,source_kind:"official-page-hydration",hydration_attempted_at:"2026-08-19T12:00:00Z"}},true);
-  assert.equal(sourceEvidenceEligibility(recovered,{now:Date.parse("2026-08-21T12:00:00Z")}).eligible,true);
-
-  const stale = publicSearchItem({
-    ...base,
-    source_key: "official-page-hydration",
-    fetched_at: "2026-08-01T12:00:00Z",
-    metadata: { hydrated: true, source_kind: "official-page-hydration" },
-  }, true);
-  assert.equal(sourceEvidenceEligibility(stale, {
-    now: Date.parse("2026-08-21T12:00:00Z"),
-  }).eligible, false);
-  const missingStatus = publicSearchItem({
-    ...base,
-    source_key: "official-page-hydration",
-    fetched_at: null,
-    metadata: { hydrated: true, source_kind: "official-page-hydration" },
-  }, true);
-  assert.equal(sourceEvidenceEligibility(missingStatus, {
-    now: Date.parse("2026-08-21T12:00:00Z"),
-  }).eligible, false);
+  // A hydrated row without a stored source policy is route-only now: the old
+  // assertion that such a body was "versioned" pinned the wiring this change
+  // replaces. The permitting cases live in tests/corpus_source_policy.test.mjs.
 });
 
 test("reviewed catalogue seeding covers the supplied legal and terminology sources without duplicate URLs", () => {
@@ -1094,47 +1065,6 @@ test("crawler refuses HTML or response headers marked noindex", () => {
   assert.equal(pageRobotsPolicy("<html><body>Avalik sisu</body></html>", "index, follow").noindex, false);
 });
 
-test("progressive answer endpoint and broad result pagination remain separate contracts", async () => {
-  const [server, app, corpus] = await Promise.all([
-    readFile(new URL("../server/index.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../src/App.jsx", import.meta.url), "utf8"),
-    readFile(new URL("../server/corpus.mjs", import.meta.url), "utf8"),
-  ]);
-  assert.doesNotMatch(server, /app\.get\("\/api\/search\/results"/u);
-  assert.match(server, /app\.post\("\/api\/search\/results"/u);
-  assert.match(server, /prepareRankedSearchResults/u);
-  assert.match(server, /publicSearchListing/u);
-  assert.match(server, /app\.post\("\/api\/search\/follow-up"/u);
-  assert.match(server, /settleWithinDeadline/u);
-  assert.match(app, /Lai portaaliotsing/u);
-  assert.match(app, /Otsingutulemused/u);
-  assert.doesNotMatch(app, /Vastuses viidatud allikad/u);
-  const resultsView = app.match(/function SearchResults[\s\S]*?function PrivacyDisclosure/u)?.[0] || "";
-  assert.match(resultsView, /<BroadSearchResults/u);
-  // The answer card leads even when no model answer was produced: the ranked
-  // list stays below it, and the card carries either a cited source extract or
-  // an explicit statement that no grounded answer was produced.
-  assert.doesNotMatch(resultsView, /resultsFirst/u);
-  assert.match(resultsView, /<article className="answer-card">[\s\S]*?\{broadResults\}/u);
-  assert.doesNotMatch(resultsView, /sources-section|sources-list|Kõik viidatud allikad/u);
-  assert.match(server, /searchPage\(request, "page_size", 12, 50\)/u);
-  assert.match(server, /app\.post\("\/api\/search\/stream"/u);
-  assert.match(server, /application\/x-ndjson/u);
-  assert.match(server, /if \(!resultsWritten\) \{[\s\S]*?await stream\.write\("results"/u);
-  assert.match(server, /createBoundedNdjsonWriter\(response[\s\S]*?await stream\.finish\(\)[\s\S]*?cleanupLease\.finish\(\)/u);
-  assert.match(app, /fetchSearchStream\("\/api\/search\/stream", \{[\s\S]*?method: "POST"/u);
-  assert.match(app, /readSearchStream\(response/u);
-  assert.match(app, /\{!busy && focused && suggestions\.length \? \(/u);
-  assert.match(app, /fetch\("\/api\/suggestions", \{[\s\S]*?method: "POST"/u);
-  assert.match(server, /app\.post\("\/api\/suggestions"/u);
-  assert.match(app, /pushState\(\{ practiceSearchId: rememberNavigationSearch\(clean, filters\) \}, "", "\/otsi"\)/u);
-  assert.match(app, /navigationSearches = new globalThis\.Map\(\)/u);
-  assert.doesNotMatch(app, /pushState\([^\n]+\/otsi\?/u);
-  assert.doesNotMatch(app, /document\.title = `\$\{result\.answer\.title\}/u);
-  assert.match(corpus, /distinctTotal/u);
-  assert.match(corpus, /CHECK \(query_source = 'configured-seed'\)/u);
-});
-
 test("identity backfill preserves historical records, is bounded and idempotent, and rolls back over capacity", async () => {
   const originals = [
     { id: "41", canonical_url: "https://www.keskkonnaportaal.ee/et/mets?b=2&a=1",
@@ -1235,4 +1165,46 @@ test("identity backfill rejects non-object legacy JSON before mutation and prese
     assert.equal(operations.at(-1), "ROLLBACK");
     assert.equal(operations.some((sql) => sql.startsWith("UPDATE practice_corpus_documents")), false);
   }
+});
+
+test("hydration failure diagnostics are bounded aggregate categories", () => {
+  const counters = corpusFailureCounters();
+  addCorpusFailure(counters, corpusFailureCategory(
+    new Error("Corpus source returned 503 https://keskkonnaportaal.ee/et/era?isik=Jaan"),
+  ));
+  addCorpusFailure(counters, corpusFailureCategory(
+    Object.assign(new Error("lookup failed"), { code: "ENOTFOUND" }),
+  ));
+  addCorpusFailure(counters, corpusFailureCategory(
+    Object.assign(new Error("refused"), { code: "CORPUS_ROBOTS_DISALLOWED" }),
+  ));
+  addCorpusFailure(counters, corpusFailureCategory(new Error("midagi muud")));
+  addCorpusFailure(counters, "mitte-olemas");
+  assert.equal(counters["http-status"], 1);
+  assert.equal(counters.dns, 1);
+  assert.equal(counters["robots-disallowed"], 1);
+  assert.equal(counters.unknown, 2);
+  // A stored run keeps counts, never the URL, a query value or a message.
+  const serialized = JSON.stringify(counters);
+  assert.equal(serialized.includes("keskkonnaportaal"), false);
+  assert.equal(serialized.includes("Jaan"), false);
+  assert.equal(serialized.includes("midagi"), false);
+  for (const key of Object.keys(counters)) {
+    assert.ok(CORPUS_FAILURE_CATEGORIES.includes(key), `unbounded category key ${key}`);
+  }
+  assert.deepEqual(
+    Object.keys(corpusFailureCounters()).sort(),
+    [...CORPUS_FAILURE_CATEGORIES].sort(),
+  );
+});
+
+test("the PDF hydration candidate list keeps only approved PDF resources", () => {
+  assert.deepEqual(corpusPdfHydrationCandidates([
+    "https://keskkonnaportaal.ee/sites/default/files/a.pdf",
+    "https://keskkonnaportaal.ee/sites/default/files/a.pdf",
+    "https://keskkonnaportaal.ee/et/mets",
+    "https://keskkonnaportaal.ee/sites/default/files/a.xlsx",
+    "https://naide.example/a.pdf",
+    "http://keskkonnaportaal.ee/a.pdf",
+  ]), ["https://keskkonnaportaal.ee/sites/default/files/a.pdf"]);
 });

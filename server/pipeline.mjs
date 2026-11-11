@@ -80,14 +80,14 @@ import {
   textHasActionRoot,
   textHasQueryRoot,
 } from "./search.mjs";
-import { sourceCanSupportPublicCitation } from "./source-registry.mjs";
+import { projectSourceCopy, SOURCE_EVIDENCE_COPY_CHARS, sourceCanSupportPublicCitation, sourceCopyPermission } from "./source-registry.mjs";
 import { queryNeedsFreshness } from "./corpus.mjs";
 import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs";
+import { configuredAnswerBudgetMs } from "./request-budget.mjs";
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
 export const SEARCH_RESPONSE_REVISION = "answer-v94-extract-question-frame-terms";
-const DEFAULT_SEARCH_DEADLINE_MS = 60_000;
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
@@ -990,7 +990,186 @@ function attachEvidenceExcerpts(draft, _query, evidencePack) {
   };
 }
 
-export function publicResponse(draft, { now = Date.now() } = {}) {
+// A copied field was legal when the evidence pack was built, but the response
+// can be written much later: a slow model call, a streamed listing, a replayed
+// timeout snapshot, a job poll. These helpers decide, on the clock that writes
+// the response, whether the publisher decision behind each source still
+// releases its copy, and what the response looks like when it no longer does.
+// Link metadata is never part of the question.
+//
+// The bound travels as an enumerable own symbol on the internal result: a
+// `{ ...result }` spread keeps it for an emitter, while JSON.stringify and
+// every serialized body drop it, so an instant can never leak into a payload.
+export const ANSWER_SOURCE_EXPIRY = Symbol.for("keskkonnaportaal.answer-source-expiry");
+export const WITHHELD_COPY_EYEBROW = "Allikas ei ole enam avaldatav";
+export const WITHHELD_COPY_TITLE = "Sisu ei ole enam avaldatav";
+export const WITHHELD_COPY_INTRO = "Selle allika sisu ei ole enam avaldatav, seega ei esita ma selle põhjal vastust. Allikate lingid on alles.";
+export const WITHHELD_COPY_CLARIFICATION = "Ava allikas uuesti, et näha selle praegust sisu.";
+
+function citationSetOf(response = {}) {
+  const cited = new Set();
+  const collect = (citations) => {
+    if (!Array.isArray(citations)) return;
+    citations.forEach((citation) => {
+      if (Number.isInteger(Number(citation))) cited.add(Number(citation));
+    });
+  };
+  collect(response?.answer?.introCitations);
+  if (Array.isArray(response?.answer?.parts)) {
+    response.answer.parts.forEach((part) => collect(part?.citations));
+  }
+  if (Number.isInteger(Number(response?.chart?.citation))) cited.add(Number(response.chart.citation));
+  return cited;
+}
+
+// The finite copied-text window of one source: the publisher's own
+// `unavailable-after`, and the freshness bound the row itself declares. This is
+// a hint for the emitters that need a bound, so it reads the stored decision
+// directly; the authoritative question is the copy permission, which is asked
+// separately on the clock that writes the response.
+function sourceCopyExpiryAt(source = {}) {
+  const windows = [];
+  const stored = source?._sourcePolicy ?? source?.metadata?.source_policy ?? null;
+  const unavailableAfter = Date.parse(String(stored?.directives?.unavailableAfter || ""));
+  if (Number.isFinite(unavailableAfter)) windows.push(unavailableAfter);
+  const maxAgeMs = Number(source?.freshness?.maxAgeMs);
+  const basis = Date.parse(source?._evidenceStatusAt || source?.fetched_at || "");
+  if (Number.isFinite(maxAgeMs) && maxAgeMs > 0 && Number.isFinite(basis)) windows.push(basis + maxAgeMs);
+  return windows.length ? Math.min(...windows) : null;
+}
+
+/**
+ * The earliest copied-text window among the sources this response actually
+ * shows or cites, or null when nothing it shows is windowed. A final response
+ * already carries the answer, a draft carries its own prose and chart, so both
+ * are accepted; a response that was already projected answers from its own
+ * symbol so downstream emitters cannot drift from the request that produced it.
+ */
+export function publicationCopyExpiry(response = {}) {
+  const attached = response?.[ANSWER_SOURCE_EXPIRY];
+  if (typeof attached === "number" && Number.isFinite(attached)) return attached;
+  const sources = Array.isArray(response?.sources) ? response.sources : [];
+  const cited = citationSetOf(response);
+  let earliest = null;
+  for (const source of sources) {
+    const contributes = Boolean(source?.evidenceExcerpt || source?.summary)
+      || cited.has(Number(source?.citation));
+    if (!contributes) continue;
+    const expiryAt = sourceCopyExpiryAt(source);
+    if (expiryAt === null) continue;
+    earliest = earliest === null ? expiryAt : Math.min(earliest, expiryAt);
+  }
+  return earliest;
+}
+
+// The response being written is projected from private sources, while the
+// public source list it carries no longer holds a policy. The bound is therefore
+// computed from the private list, and an already projected response keeps the
+// bound it inherited so a second projection cannot drop it.
+function attachPublicationCopyExpiry(value, sources = [], cited = new Set()) {
+  const inherited = value?.[ANSWER_SOURCE_EXPIRY];
+  let earliest = typeof inherited === "number" && Number.isFinite(inherited) ? inherited : null;
+  for (const source of sources) {
+    const contributes = Boolean(source?.evidenceExcerpt || source?.summary)
+      || cited.has(Number(source?.citation));
+    if (!contributes) continue;
+    const expiryAt = sourceCopyExpiryAt(source);
+    if (expiryAt === null) continue;
+    earliest = earliest === null ? expiryAt : Math.min(earliest, expiryAt);
+  }
+  Object.defineProperty(value, ANSWER_SOURCE_EXPIRY, {
+    value: earliest,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
+  return value;
+}
+
+// One public link field set for both projections below and for the withheld
+// replacement: navigation only, never a copied field, a witness, a policy, a
+// digest, a metadata bag or an internal pack.
+const PUBLIC_LINK_FIELDS = Object.freeze([
+  "id", "citation", "title", "organization", "type", "published", "updated",
+  "dataYear", "dataAsOf", "url", "locator", "actionUrl", "actionLabel", "tags", "sourceTier",
+]);
+
+function publicLinkOnly(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const link = {};
+  for (const key of PUBLIC_LINK_FIELDS) {
+    const field = value[key];
+    if (key === "citation") {
+      if (Number.isInteger(field) && field > 0) link.citation = field;
+      continue;
+    }
+    if (key === "tags") {
+      if (Array.isArray(field)) link.tags = field.filter((tag) => typeof tag === "string").slice(0, 5);
+      continue;
+    }
+    if (typeof field === "string" || (typeof field === "number" && Number.isFinite(field))) link[key] = field;
+  }
+  return link;
+}
+
+function publicListingLinks(listing) {
+  const items = (Array.isArray(listing?.items) ? listing.items : [])
+    .map(publicLinkOnly)
+    .filter(Boolean);
+  const total = Number(listing?.total);
+  return { ...(Number.isFinite(total) ? { total } : {}), items };
+}
+
+function withheldAnswerCard() {
+  return {
+    eyebrow: WITHHELD_COPY_EYEBROW,
+    title: WITHHELD_COPY_TITLE,
+    intro: WITHHELD_COPY_INTRO,
+    introCitations: [],
+    parts: [],
+    note: "",
+  };
+}
+
+/**
+ * The links-only replacement for a response whose copied text may no longer be
+ * shown. It is built from an explicit allowlist rather than by deleting fields
+ * from the original, so a raw draft that still holds bodies, witnesses, digests
+ * or metadata cannot leak any of them, and an embedded listing is reprojected
+ * to links the same way. The card becomes the blanked no-answer card every
+ * consumer already renders, and the chart is withdrawn with the claim it drew.
+ * It accepts a final response or a draft, because a draft carries prose and a
+ * chart of its own.
+ */
+export function withholdPublicationCopy(response = {}) {
+  const safe = response && typeof response === "object" && !Array.isArray(response) ? response : {};
+  const attempt = safe.answerAttempt && typeof safe.answerAttempt === "object"
+    ? {
+      status: typeof safe.answerAttempt.status === "string" ? safe.answerAttempt.status : "",
+      reason: typeof safe.answerAttempt.reason === "string" ? safe.answerAttempt.reason : "",
+    }
+    : undefined;
+  return {
+    ...(typeof safe.query === "string" ? { query: safe.query } : {}),
+    ...(Number.isFinite(Number(safe.total)) ? { total: Number(safe.total) } : {}),
+    ...(typeof safe.generatedAt === "string" ? { generatedAt: safe.generatedAt } : {}),
+    ...(attempt ? { answerAttempt: attempt } : {}),
+    ...(safe.searchResults !== undefined ? { searchResults: publicListingLinks(safe.searchResults) } : {}),
+    related: (Array.isArray(safe.related) ? safe.related : [])
+      .filter((item) => typeof item === "string")
+      .slice(0, 6),
+    answer: safe.answer ? withheldAnswerCard() : safe.answer,
+    chart: undefined,
+    sources: (Array.isArray(safe.sources) ? safe.sources : []).map(publicLinkOnly).filter(Boolean),
+    clarification: WITHHELD_COPY_CLARIFICATION,
+  };
+}
+
+export function publicResponse(draft, { now = Date.now(), copyNow = Date.now() } = {}) {
+  // `now` is the eligibility clock the caller started the request with. The
+  // copy decision has its own clock, because the response can be written long
+  // after the request began; a caller may pin it to keep a test deterministic.
+  const copyClock = typeof copyNow === "number" && Number.isFinite(copyNow) ? copyNow : Date.now();
   const { evidence: _evidence, ...response } = draft;
   const sources = (Array.isArray(response.sources) ? response.sources : [])
     .filter((source) => publicSourceAllowed(source) && officialCitationUrlEligibility(source?.url).eligible)
@@ -1058,12 +1237,66 @@ export function publicResponse(draft, { now = Date.now() } = {}) {
       validMeasureScope = false;
     }
   }
+  // The copy decision belongs to the clock that writes this response, not to
+  // the clock that built the pack. A slow model call, a replayed timeout
+  // snapshot or a job poll can all arrive after a publisher's window closed,
+  // so each source is asked again here. A source whose copy is withheld keeps
+  // its link metadata and loses anything a reader would read as copied text,
+  // and any claim or chart drawn from it goes with the copy.
+  //
+  // The decision is keyed by the source object itself: a producer emits its
+  // rows before any citation is assigned, so a key derived from the citation
+  // would let one uncited source answer for every other one.
+  const copyDecisions = new WeakMap();
+  const copyPermittedFor = (source, purpose) => {
+    if (!source || typeof source !== "object") return true;
+    let decided = copyDecisions.get(source);
+    if (!decided) {
+      decided = {};
+      copyDecisions.set(source, decided);
+    }
+    if (!Object.hasOwn(decided, purpose)) {
+      decided[purpose] = sourceCopyPermission(source, { purpose, now: copyClock }).permitted;
+    }
+    return decided[purpose];
+  };
+  // A claim and a chart are evidence, so they need the evidence permission
+  // specifically. A policy may release the snippet and withhold the model
+  // evidence: that source still shows its link and its snippet, but it cannot
+  // support a claim or a figure.
+  const evidenceWithheld = (source) => !copyPermittedFor(source, "evidence");
+  const withheldCitations = new Set(sources.filter(evidenceWithheld).map((source) => Number(source?.citation)));
+  const citesWithheldCopy = (citations) => (Array.isArray(citations) ? citations : [])
+    .some((citation) => withheldCitations.has(Number(citation)));
+  const withheldAnswer = Boolean(answer) && citesWithheldCopy(answer?.introCitations);
+  // One projection for both returns: link metadata always survives, and a
+  // copied field is emitted only while the publisher decision still releases it
+  // on this clock.
+  const publicSourceList = (list, { copiedText = true } = {}) => list.map((source, index) => {
+    const publicKeys = [...PUBLIC_LINK_FIELDS];
+    if (copiedText) {
+      if (source.evidenceExcerpt && copyPermittedFor(source, "evidence")) publicKeys.push("evidenceExcerpt");
+      else if (source.summary && copyPermittedFor(source, "snippet")) publicKeys.push("summary");
+    }
+    return {
+      ...Object.fromEntries(publicKeys
+        .filter((key) => source[key] !== undefined)
+        .map((key) => [key, source[key]])),
+      id: stablePublicResultId(source),
+      citation: index + 1,
+    };
+  });
   if (!validCitationShape
     || !validAnswerCitations
     || !citationsResolveExactlyOnce
     || !validMeasureScope
     || !citedSourcesSupportPublicClaims) {
-    return {
+    // A cited source that can no longer be verified normally leaves the card
+    // with no results at all. When the reason is a copied-text window that has
+    // closed, the reader still gets the navigation: the links stay, without any
+    // copied text, instead of the source disappearing with its excerpt.
+    const withheldProxy = withheldCitations.size > 0;
+    return attachPublicationCopyExpiry({
       ...response,
       chart: undefined,
       clarification: "Vastuse allikaviiteid ei saanud üheselt kontrollida.",
@@ -1075,8 +1308,8 @@ export function publicResponse(draft, { now = Date.now() } = {}) {
         parts: [],
         note: "Otsingutulemused on kuvatud allpool, kuid neist ei koostatud faktivastust.",
       },
-      sources: [],
-    };
+      sources: withheldProxy ? publicSourceList(sources, { copiedText: false }) : [],
+    }, withheldProxy ? sources : [], new Set());
   }
   const visibleSources = usedCitations.size
     ? sources.filter((source) => usedCitations.has(source.citation))
@@ -1088,33 +1321,28 @@ export function publicResponse(draft, { now = Date.now() } = {}) {
   const compactCitations = (citations = []) => [...new Set(citations
     .map((citation) => citationMap.get(citation))
     .filter(Number.isInteger))];
-  return {
+  return attachPublicationCopyExpiry({
     ...response,
-    chart: chart ? { ...chart, citation: citationMap.get(chart.citation) } : undefined,
-    answer: answer ? {
-      ...answer,
-      intro: condenseRedundantSentences(answer.intro, { mergeDefinitions: true }),
-      introCitations: compactCitations(answer.introCitations),
-      parts: answerParts.map((part) => ({
-        ...part,
-        text: condenseRedundantSentences(part.text, { mergeDefinitions: true }),
-        citations: compactCitations(part.citations),
-      })),
-    } : answer,
-    sources: visibleSources.map((source, index) => {
-      const publicKeys = [
-        "id", "citation", "title", "organization", "type", "published", "updated", "dataYear", "dataAsOf", "url", "evidenceExcerpt", "locator", "actionUrl", "actionLabel", "tags", "sourceTier",
-      ];
-      if (!source.evidenceExcerpt) publicKeys.push("summary");
-      return {
-        ...Object.fromEntries(publicKeys
-          .filter((key) => source[key] !== undefined)
-          .map((key) => [key, source[key]])),
-        id: stablePublicResultId(source),
-        citation: index + 1,
-      };
-    }),
-  };
+    clarification: withheldAnswer ? WITHHELD_COPY_CLARIFICATION : response.clarification,
+    chart: chart && !withheldCitations.has(Number(chart.citation))
+      ? { ...chart, citation: citationMap.get(chart.citation) }
+      : undefined,
+    answer: answer ? (withheldAnswer
+      ? withheldAnswerCard()
+      : {
+        ...answer,
+        intro: condenseRedundantSentences(answer.intro, { mergeDefinitions: true }),
+        introCitations: compactCitations(answer.introCitations),
+        parts: answerParts
+          .filter((part) => !citesWithheldCopy(part?.citations))
+          .map((part) => ({
+            ...part,
+            text: condenseRedundantSentences(part.text, { mergeDefinitions: true }),
+            citations: compactCitations(part.citations),
+          })),
+      }) : answer,
+    sources: publicSourceList(visibleSources),
+  }, visibleSources, usedCitations);
 }
 
 function remainingBudget(deadlineAt, reserveMs = 0) {
@@ -1655,6 +1883,7 @@ async function searchWithinBudget(cleanQuery, {
   llmClientKey = "unknown",
   useCache = true,
   onDraft,
+  onPrivateDraft,
   onBackgroundCleanup,
   generateAnswer = generateGroundedAnswer,
   persistSearch = recordSearch,
@@ -1808,9 +2037,15 @@ async function searchWithinBudget(cleanQuery, {
   const canGenerate = shouldGenerateGroundedAnswer(draft) && evidencePack?.complete === true
     && !(draft.evidence?.lawDefinitionIntro && draft.answer?.intro === draft.evidence.lawDefinitionIntro);
   const llmBudget = remainingBudget(deadlineAt, 300);
-  if (canGenerate && llmBudget >= 500 && typeof onDraft === "function" && !citesRawLawSection(draft)) {
+  if (canGenerate && llmBudget >= 500 && (typeof onDraft === "function" || typeof onPrivateDraft === "function") && !citesRawLawSection(draft)) {
     throwIfRequestAborted(signal);
-    onDraft(publicResponse(withForestContextChart(withLandUseShareChart(withoutOffTargetFallback(draft), retrievalQuery, searchResults?.items, { now: startedAt }), retrievalQuery, searchResults?.items, { now: startedAt }), { now: startedAt }));
+    const streamedDraft = withForestContextChart(withLandUseShareChart(withoutOffTargetFallback(draft), retrievalQuery, searchResults?.items, { now: startedAt }), retrievalQuery, searchResults?.items, { now: startedAt });
+    // A fallback that replays a public snapshot can no longer ask the publisher
+    // decision behind its copied text, because the projection that produced it
+    // removed the private witness. Keep the admitted draft itself for that
+    // replay, and serialize it on the clock that actually writes the answer.
+    if (typeof onPrivateDraft === "function") onPrivateDraft(structuredClone(streamedDraft));
+    if (typeof onDraft === "function") onDraft(publicResponse(streamedDraft, { now: startedAt }));
   }
   // Keep the accepted deterministic result detached from both the provider
   // input and any streamed consumer. A ready model answer must rebind its
@@ -1982,6 +2217,12 @@ export function searchTimeoutFallback(cleanQuery, {
   }) || composeHarvestShareResponse(assessmentQuery, searchResults?.items, {
     total: searchResults?.total,
     now: startedAt,
+  }) || composeMetsandusteatmikResponse(assessmentQuery, searchResults?.items, {
+    total: searchResults?.total,
+    now: startedAt,
+  }) || composeSmiIncrementResponse(assessmentQuery, searchResults?.items, {
+    total: searchResults?.total,
+    now: startedAt,
   }) || composeForestSeriesResponse(assessmentQuery, searchResults?.items, {
     total: searchResults?.total,
     now: startedAt,
@@ -2082,17 +2323,40 @@ export function searchTimeoutFallback(cleanQuery, {
       return publishedAt !== null && new Date(publishedAt).getFullYear() >= requestedYear;
     })
     : null;
-  const citedExtract = extractDocument ? directEvidenceExtract(cleanQuery, extractDocument, null, { requireSubject: true }) : "";
+  // The visible witness is copied text, so it crosses the same publisher
+  // decision as the model evidence. The document is projected for the evidence
+  // purpose, the extract is chosen from that projected body, and the published
+  // excerpt is that same text, so the fallback can never publish more than the
+  // publisher allowed.
+  const extractCopy = extractDocument
+    ? projectSourceCopy(extractDocument, {
+      purpose: "evidence",
+      query: cleanQuery,
+      limit: SOURCE_EVIDENCE_COPY_CHARS,
+    })
+    : null;
+  const extractFields = extractCopy?.permitted ? extractCopy.fields : null;
+  const extractText = extractFields
+    ? String(extractFields.content ?? extractFields.summary ?? "")
+    : "";
+  const citedExtract = extractText
+    ? directEvidenceExtract(
+      cleanQuery,
+      { ...extractDocument, summary: String(extractFields.summary ?? ""), content: extractText },
+      null,
+      { requireSubject: true },
+    )
+    : "";
   const citedExtractCitation = citedExtract
     ? sourceCitation(draft.sources.find((source) => source.id === extractDocument.id))
     : 0;
   if (citedExtract && citedExtractCitation) {
     draft.sources = draft.sources.map((source) => (source.id === extractDocument.id
-      ? { ...source, evidenceExcerpt: String(extractDocument.content || extractDocument.summary || "") }
+      ? { ...source, evidenceExcerpt: extractText }
       : source));
     // The extract is the visible witness the reader can open; the citation is
     // kept only if that witness really contains it.
-    if (claimHasVisibleWitness(citedExtract, String(extractDocument.content || extractDocument.summary || ""), citedExtract, cleanQuery)) {
+    if (claimHasVisibleWitness(citedExtract, extractText, citedExtract, cleanQuery)) {
       draft.answer.eyebrow = "Allika viidatud väljavõte";
       draft.answer.intro = citedExtract;
       draft.answer.introCitations = [citedExtractCitation];
@@ -2246,19 +2510,48 @@ export async function searchEnvironmentLive(query, options = {}) {
     conversationContext: safeConversationContext,
   };
   let acceptedGroundedDraft = null;
+  let admittedGroundedDraft = null;
+  // A clone drops every symbol, and this one decides when the copied text may
+  // still be shown, so it is re-attached after the clone and never serialized.
+  const carryCopyBound = (copy, bound) => {
+    if (typeof bound !== "number" || !Number.isFinite(bound)) return copy;
+    Object.defineProperty(copy, ANSWER_SOURCE_EXPIRY, {
+      value: bound,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
+    return copy;
+  };
   const captureGroundedDraft = (draft) => {
     // publicResponse intentionally shares nested answer objects with the
     // internal draft. Detach the accepted deterministic result before the
     // provider sees that draft, and give stream consumers their own copy too.
     // A timeout or provider failure can then never expose partially mutated
     // answer text without its original citations.
-    acceptedGroundedDraft = structuredClone(draft);
-    if (typeof options.onDraft === "function") options.onDraft(structuredClone(acceptedGroundedDraft));
+    const copyBound = draft?.[ANSWER_SOURCE_EXPIRY];
+    acceptedGroundedDraft = carryCopyBound(structuredClone(draft), copyBound);
+    if (typeof options.onDraft === "function") {
+      options.onDraft(carryCopyBound(structuredClone(acceptedGroundedDraft), copyBound));
+    }
   };
-  const bestAvailableFallback = (reason) => acceptedGroundedDraft
+  const capturePrivateDraft = (draft) => {
+    // The public snapshot above has already lost the private publisher
+    // witness, so a replay after the wait could not ask whether the copied
+    // text is still releasable. Keep the admitted draft for that replay and
+    // project it when the fallback is actually written.
+    admittedGroundedDraft = draft;
+  };
+  const bestAvailableFallback = (reason) => (admittedGroundedDraft
+    ? publicResponse(admittedGroundedDraft, { now: Date.now() })
+    : acceptedGroundedDraft)
     || searchTimeoutFallback(cleanQuery, { ...canonicalFallbackOptions, reason });
 
-  const configuredDeadlineMs = Math.max(1_000, Math.min(Number(process.env.SEARCH_DEADLINE_MS) || DEFAULT_SEARCH_DEADLINE_MS, DEFAULT_SEARCH_DEADLINE_MS));
+  // The answer clock is its own contract: the listing no longer shares this
+  // window, so a slow retrieval cannot shorten the model phase and a long
+  // answer is bounded by the coordinated answer budget, not by an old 60 s
+  // clamp in this module.
+  const configuredDeadlineMs = configuredAnswerBudgetMs();
   const absoluteDeadline = Number(options.deadlineAt) || startedAt + configuredDeadlineMs;
   if (absoluteDeadline <= Date.now()) {
     return searchTimeoutFallback(cleanQuery, canonicalFallbackOptions);
@@ -2280,6 +2573,7 @@ export async function searchEnvironmentLive(query, options = {}) {
     llmClientKey: options.llmClientKey || "unknown",
     useCache: options.useCache !== false,
     onDraft: captureGroundedDraft,
+    onPrivateDraft: capturePrivateDraft,
     onBackgroundCleanup: options.onBackgroundCleanup,
     generateAnswer: typeof options.generateAnswer === "function"
       ? options.generateAnswer

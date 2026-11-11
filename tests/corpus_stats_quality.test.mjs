@@ -35,6 +35,31 @@ const CORPUS_MODULE_URL = new URL("../server/corpus.mjs", import.meta.url).href;
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
 const ROBOTS_EXCLUDED_ROWS = 10;
+// The fixture is disposable, but its exact assets have to be knowable before the
+// run so an operator can audit or clean up around it. Both bounds are optional:
+// a normal run keeps the random name and the kernel-assigned loopback port.
+const CONTAINER_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u;
+const CONTAINER_ID_PATTERN = /^[0-9a-f]{12,64}$/u;
+const CONTAINER_NAME_MAX_LENGTH = 63;
+
+function configuredContainerName() {
+  const raw = (process.env.CORPUS_STATS_TEST_CONTAINER_NAME || "").trim();
+  if (raw === "") return null;
+  if (!CONTAINER_NAME_PATTERN.test(raw) || raw.length > CONTAINER_NAME_MAX_LENGTH) {
+    throw new Error(`CORPUS_STATS_TEST_CONTAINER_NAME must match ${CONTAINER_NAME_PATTERN.source} and stay within ${CONTAINER_NAME_MAX_LENGTH} characters, got ${JSON.stringify(raw)}`);
+  }
+  return raw;
+}
+
+function configuredPort() {
+  const raw = (process.env.CORPUS_STATS_TEST_PORT || "").trim();
+  if (raw === "") return null;
+  const port = Number(raw);
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error(`CORPUS_STATS_TEST_PORT must be an integer between 1 and 65535, got ${JSON.stringify(raw)}`);
+  }
+  return port;
+}
 
 function sha256(value) {
   return createHash("sha256").update(String(value)).digest("hex");
@@ -60,12 +85,18 @@ function reserveLoopbackPort() {
   });
 }
 
+// Returns the id Docker assigned to the container it just created. The id is the
+// only handle the cleanup may use: a name that already belongs to another
+// container, or a run that never created anything, must leave that container
+// untouched.
 function startPostgresContainer(name, port) {
+  let containerId;
   try {
-    execFileSync("docker", [
+    containerId = String(execFileSync("docker", [
       "run",
       "--detach",
       "--rm",
+      "--pull=never",
       "--name", name,
       "--env", "POSTGRES_HOST_AUTH_METHOD=trust",
       "--env", "POSTGRES_USER=postgres",
@@ -76,11 +107,15 @@ function startPostgresContainer(name, port) {
       "--tmpfs", "/var/lib/postgresql/data:rw",
       POSTGRES_IMAGE,
       "postgres", "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off",
-    ], { stdio: ["ignore", "pipe", "pipe"] });
+    ], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" })).trim();
   } catch (error) {
     const detail = String(error?.stderr || error?.message || "").trim();
     throw new Error(`temporary PostgreSQL container did not start: ${detail}`);
   }
+  if (!CONTAINER_ID_PATTERN.test(containerId)) {
+    throw new Error(`docker run did not report a container id for ${name}, so nothing may be removed: ${JSON.stringify(containerId)}`);
+  }
+  return containerId;
 }
 
 async function waitForPostgres(connectionString, { timeoutMs = 90_000 } = {}) {
@@ -102,20 +137,37 @@ async function waitForPostgres(connectionString, { timeoutMs = 90_000 } = {}) {
   throw new Error(`temporary PostgreSQL never answered: ${lastError.message}`);
 }
 
-function removeContainer(name) {
-  try {
-    execFileSync("docker", ["rm", "--force", name], { stdio: "ignore" });
-  } catch {
-    // The container may already be gone; nothing else to clean up.
-  }
+// Cleanup is bound to the created container's id, never to a name that might
+// belong to someone else's container. The verification query is also id based,
+// so the answer describes exactly the container this run created.
+function containerPresent(containerId) {
   try {
     const listing = execFileSync("docker", [
-      "ps", "--all", "--filter", `name=^${name}$`, "--format", "{{.Names}}",
+      "ps", "--all", "--filter", `id=${containerId}`, "--format", "{{.ID}}",
     ], { encoding: "utf8" });
-    return String(listing).trim() === "";
+    return String(listing).trim() !== "";
   } catch {
-    return false;
+    // An unreadable listing cannot prove absence, so it counts as present.
+    return true;
   }
+}
+
+// Docker retires a --rm container asynchronously once it exits, so a single
+// listing right after `rm` can still see it. Poll briefly before claiming, and
+// never claim removal that the daemon did not confirm.
+async function removeContainer(containerId, { timeoutMs = 10_000 } = {}) {
+  try {
+    execFileSync("docker", ["rm", "--force", containerId], { stdio: "ignore" });
+  } catch {
+    // --rm may already have taken it, or it never finished starting; the
+    // verification below decides whether anything is left.
+  }
+  const deadline = Date.now() + timeoutMs;
+  while (containerPresent(containerId)) {
+    if (Date.now() >= deadline) return false;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  return true;
 }
 
 async function insertDocument(client, {
@@ -155,13 +207,20 @@ test("the public corpus status reports robots excluded rows, the last sync error
     t.skip(`Docker image ${POSTGRES_IMAGE} is unavailable, so the isolated PostgreSQL fixture cannot start; the status aggregates cannot be exercised without a real SQL engine`);
     return;
   }
-  const containerName = `corpus-stats-quality-${process.pid}-${randomBytes(3).toString("hex")}`;
-  const port = await reserveLoopbackPort();
+  // Random defaults keep concurrent runs apart; the overrides exist so an
+  // operator can pin the exact name and port before the run starts.
+  const nameOverride = configuredContainerName();
+  const portOverride = configuredPort();
+  const containerName = nameOverride ?? `corpus-stats-quality-${process.pid}-${randomBytes(3).toString("hex")}`;
+  const port = portOverride ?? await reserveLoopbackPort();
   const databaseUrl = `postgres://postgres@127.0.0.1:${port}/${POSTGRES_DATABASE}`;
-  t.diagnostic(`temporary PostgreSQL container: ${containerName} on 127.0.0.1:${port}`);
+  t.diagnostic(`temporary PostgreSQL container name: ${containerName} (${nameOverride ? "CORPUS_STATS_TEST_CONTAINER_NAME" : "random"})`);
+  t.diagnostic(`temporary PostgreSQL container port: 127.0.0.1:${port} (${portOverride ? "CORPUS_STATS_TEST_PORT" : "reserved loopback"})`);
   let admin;
+  let containerId = null;
   try {
-    startPostgresContainer(containerName, port);
+    containerId = startPostgresContainer(containerName, port);
+    t.diagnostic(`temporary PostgreSQL container id: ${containerId}`);
     await waitForPostgres(databaseUrl);
     process.env.DATABASE_URL = databaseUrl;
     process.env.DATABASE_SSL_MODE = "disable";
@@ -381,7 +440,13 @@ test("the public corpus status reports robots excluded rows, the last sync error
     assert.doesNotMatch(serialized, /https?:\/\//u, "the public status payload must not contain a URL");
   } finally {
     if (admin) await admin.end().catch(() => undefined);
-    const containerRemoved = removeContainer(containerName);
-    t.diagnostic(`temporary PostgreSQL container ${containerName}: ${containerRemoved ? "removed" : "STILL PRESENT"}`);
+    if (containerId === null) {
+      // docker run never created a container, so there is nothing this run may
+      // remove; a name collision belongs to whoever owns that container.
+      t.diagnostic(`temporary PostgreSQL container ${containerName}: not created by this run, nothing removed`);
+    } else {
+      const containerRemoved = await removeContainer(containerId);
+      t.diagnostic(`temporary PostgreSQL container ${containerId} (${containerName} on 127.0.0.1:${port}): ${containerRemoved ? "removed" : "STILL PRESENT"}`);
+    }
   }
 });

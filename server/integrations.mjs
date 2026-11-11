@@ -13,17 +13,23 @@ import {
 } from "./public-https.mjs";
 import { createFairSearchAdmission } from "./request-budget.mjs";
 // The live answer path reads the same approved pages as the background corpus,
-// so it enforces the same publisher policy with the same parser rather than a
-// second reading of robots.txt and noindex. server/corpus.mjs imports nothing
-// from this module, so the dependency stays acyclic.
-import { pageRobotsPolicy, parseRobotsTxt, robotsAllowsUrl } from "./corpus.mjs";
+// so both settle a publisher's policy with one implementation instead of two
+// readings of robots.txt and X-Robots-Tag. server/source_policy.mjs is a leaf:
+// it imports neither this module nor the corpus, the retrieval layer or the
+// database, so the dependency stays acyclic.
+import {
+  observeSourcePolicy,
+  parseRobotsTxt,
+  robotsAllowsUrl,
+  sourcePolicyBinding,
+} from "./source_policy.mjs";
 import {
   assessSearchQuery,
   canonicalizePublicSearchQuery,
   minimizePublicProviderQuery,
 } from "./search.mjs";
 import { sourceEvidenceEligibility } from "./source-registry.mjs";
-import { sameSourceResource } from "./source-identity.mjs";
+import { sameSourceResource, sourceResourceKey } from "./source-identity.mjs";
 
 const PORTAL_BASE = "https://keskkonnaportaal.ee";
 const VPORTAL_SEARCH_BASE = "https://search.service.eu-live.vportal.ee/v1/search";
@@ -236,6 +242,50 @@ function unavailablePolicyError(reason, message) {
   return pagePolicyError("OFFICIAL_PAGE_POLICY_UNAVAILABLE", reason, message);
 }
 
+// The page itself may be linked and read, but the publisher withdrew the
+// copying of its text: nosnippet, max-snippet:0 or a reached unavailable-after.
+// That is a use decision about prose taken from the page, not a refusal of the
+// page, so text this application wrote about the publisher is unaffected.
+function withdrawnPageError(reason) {
+  return pagePolicyError(
+    "OFFICIAL_PAGE_USE_WITHDRAWN",
+    reason,
+    "Official page text is withdrawn by the publisher",
+  );
+}
+
+function contentDigest(value) {
+  return createHash("sha256").update(String(value)).digest("hex");
+}
+
+// This application elects to withhold a copy rather than to guess what a
+// withdrawn snippet still allows. nosnippet and max-snippet:0 say that no
+// copied prose may be shown, and unavailable-after withdraws it once the
+// published date has passed. None of them is read as a licence or as a legal
+// conclusion: they are handled as a technical instruction and the rights
+// position stays unreviewed.
+function unavailableAfterReached(policy, nowMs = Date.now()) {
+  const stamp = Date.parse(String(policy?.directives?.unavailableAfter ?? ""));
+  return Number.isFinite(stamp) && nowMs >= stamp;
+}
+
+function copiedTextPermitted(policy, nowMs = Date.now()) {
+  if (!policy) return false;
+  if (policy.use?.displaySnippet !== true) return false;
+  return !unavailableAfterReached(policy, nowMs);
+}
+
+function withdrawnPageReason(policy) {
+  if (policy?.directives?.nosnippet) return "nosnippet";
+  if (policy?.directives?.maxSnippetChars === 0) return "max-snippet-0";
+  return "unavailable-after";
+}
+
+function policyCapsCopiedText(policy) {
+  const limit = policy?.directives?.maxSnippetChars;
+  return Number.isInteger(limit) && limit >= 0;
+}
+
 // A body that an earlier read took from the page itself stands on that policy
 // read, so it may no longer support a citation once the policy is unknown.
 // Text written by a reviewed producer is our own review of the publisher and
@@ -249,16 +299,37 @@ function documentHoldsFetchedPageText(document = {}) {
     || document.freshness?.class === "cached-official-page";
 }
 
+// A discovery card carries the publisher's own search blurb, so that summary is
+// copied text as well even though it was never read from the article page.
+function documentHoldsCopiedPublisherText(document = {}) {
+  return documentHoldsFetchedPageText(document)
+    || document.retrieval === "official-federated-search"
+    || document.delivery === "federated-discovery";
+}
+
+// Link metadata survives a denied body: the address, the title and who
+// published it stay. Copied prose does not, so a page derived body loses its
+// summary too, and the observation that cleared the body is dropped because it
+// no longer describes anything this entry may hand out. Reviewed catalogue text
+// is our own writing and keeps its summary when only the page's copied body is
+// denied.
 function routeOnlyCopy(document = {}) {
-  return {
+  const copy = {
     ...document,
     content: "",
+    excerpt: undefined,
+    evidenceExcerpt: undefined,
+    answer: undefined,
     _contentHash: undefined,
     _evidenceVersion: undefined,
     _evidenceStatusAt: undefined,
+    _sourcePolicy: undefined,
+    _sourcePolicyBinding: undefined,
     evidencePolicy: "route-only",
     _answerEvidenceEligible: false,
   };
+  if (documentHoldsCopiedPublisherText(document)) copy.summary = "";
+  return copy;
 }
 
 async function readHydrationRobotsRules(origin, { timeoutMs, requestText } = {}) {
@@ -354,11 +425,20 @@ function hydrationRobotsRules(origin, options = {}) {
   return entry.promise;
 }
 
+// The observation is returned as well as enforced: a page read records which
+// origin answered its robots.txt and whether that answer was a rule set or a
+// statement that the origin has no policy file. Only an allowing answer is
+// returned at all, because a disallowed path is never fetched.
 async function assertHydrationRobotsAllowed(value, { timeoutMs, requestText, signal } = {}) {
   const target = validatedOfficialUrl(value);
   const rules = await hydrationRobotsRules(target.origin, { timeoutMs, requestText });
   throwIfRequestAborted(signal);
   if (!robotsAllowsUrl(target.toString(), rules)) throw excludedPageError("robots");
+  return {
+    origin: target.origin,
+    status: rules.length === 0 ? "absent" : "allowed",
+    checkedAt: new Date().toISOString(),
+  };
 }
 
 function waitForSharedRequest(entry, signal, disconnectedMessage) {
@@ -396,16 +476,17 @@ async function sharedHydration(url, { timeoutMs, signal, requestText } = {}) {
     entry.promise = officialHydrationGate.run(async () => {
       // Publisher policy is settled before the page is requested, so a
       // robots.txt disallowed page is never fetched, cached or promoted.
-      await assertHydrationRobotsAllowed(canonicalUrl, {
+      const robotsObservation = await assertHydrationRobotsAllowed(canonicalUrl, {
         timeoutMs: timeoutMs || 4_500,
         requestText,
         signal: controller.signal,
       });
-      const { body, finalUrl, fetchedAt, stale } = await fetchCached(canonicalUrl, {
+      const { body, finalUrl, fetchedAt, stale, policy } = await fetchCached(canonicalUrl, {
         ttlMs: 30 * 60_000,
         timeoutMs: timeoutMs || 4_500,
         signal: controller.signal,
         requestText,
+        robotsObservation,
         requireSameResource: true,
         rejectExcludedPage: true,
         // The page was settled for the URL that was asked for. A followed
@@ -415,9 +496,9 @@ async function sharedHydration(url, { timeoutMs, signal, requestText } = {}) {
         // promoted under the requested page's standing.
         gateRedirectDestinations: true,
       });
-      const content = articleText(body);
+      const content = pageCopyText(policy, body);
       await yieldToEventLoop();
-      return { content, finalUrl, fetchedAt, stale };
+      return { content, finalUrl, fetchedAt, stale, policy };
     }, { signal: controller.signal });
     hydrationInflight.set(canonicalUrl, entry);
     void entry.promise.finally(() => {
@@ -521,7 +602,7 @@ function sourceId(prefix, value) {
   return `${prefix}-${createHash("sha256").update(String(value)).digest("hex").slice(0, 16)}`;
 }
 
-function cacheResponse(url, body, finalUrl = url, headers = {}) {
+function cacheResponse(url, body, finalUrl = url, headers = {}, page = null) {
   const bytes = Buffer.byteLength(String(body), "utf8");
   const savedAt = Date.now();
   responseCache.set(url, {
@@ -529,10 +610,30 @@ function cacheResponse(url, body, finalUrl = url, headers = {}) {
     finalUrl,
     bytes,
     savedAt,
+    // A page body is only reusable together with the policy it was cleared
+    // under and the digest of the exact body that policy was observed on.
+    bodyHash: page?.bodyHash ?? null,
+    sourcePolicy: page?.policy ?? null,
     contentType: String(headers?.["content-type"] || "").slice(0, 240),
     contentProfile: String(headers?.["content-profile"] || "").slice(0, 120),
   });
   return savedAt;
+}
+
+// A cached page body is handed back only while the policy that cleared it still
+// belongs to that exact body and resource. A missing, mismatched or since
+// withdrawn witness is treated as no cache entry at all, so an old copy cannot
+// be served under a standing it never had, and an unreadable policy is never
+// silently promoted into a fresh answer.
+function cachedPagePolicy(entry) {
+  if (!entry || typeof entry.body !== "string") return null;
+  const digest = contentDigest(entry.body);
+  if (entry.bodyHash !== digest) return null;
+  const policy = entry.sourcePolicy;
+  if (!policy || policy.bodyHash !== digest) return null;
+  if (policy.resourceKey !== sourceResourceKey(entry.finalUrl)) return null;
+  if (!copiedTextPermitted(policy)) return null;
+  return policy;
 }
 
 export function validatedOfficialUrl(value, base) {
@@ -587,6 +688,7 @@ async function fetchCached(url, {
   maximumRedirects = 3,
   requireSameResource = false,
   rejectExcludedPage = false,
+  robotsObservation = null,
   gateRedirectDestinations = false,
   projectBody,
 } = {}) {
@@ -609,12 +711,18 @@ async function fetchCached(url, {
   const cachedContractMatches = contentTypeMatches(cached?.contentType)
     && profileContentTypeMatches(cached?.contentType)
     && (!requiredContentProfile || cached?.contentProfile === requiredContentProfile);
-  const cachedMatches = cachedResourceMatches && cachedContractMatches;
+  // A page body may only be reused with the policy it was cleared under, so a
+  // page read treats an unbound or mismatched entry as absent. Other reads,
+  // datasets above all, carry no publisher prose and keep the plain cache.
+  const cachedPolicy = rejectExcludedPage ? cachedPagePolicy(cached) : null;
+  const cachedPolicyMatches = !rejectExcludedPage || cachedPolicy !== null;
+  const cachedMatches = cachedResourceMatches && cachedContractMatches && cachedPolicyMatches;
   if (cached && cachedMatches && now - cached.savedAt < ttlMs) {
     return {
       body: cached.body,
       finalUrl: cachedFinalUrl,
       fetchedAt: cached.savedAt,
+      policy: cachedPolicy,
       cache: "hit",
       stale: false,
     };
@@ -670,9 +778,11 @@ async function fetchCached(url, {
     if (requireSameResource && !hydrationResourceMatches(canonicalUrl, finalUrl)) {
       throw new Error("Official hydration redirected to a different resource");
     }
+    const body = typeof projectBody === "function" ? projectBody(upstreamBody) : upstreamBody;
+    let policy = null;
     if (rejectExcludedPage) {
-      // The response is read before the cache so that an excluded body is
-      // never stored, not even for display, and never replaces what the caller
+      // The response is read before the cache so that a refused body is never
+      // stored, not even for display, and never replaces what the caller
       // already holds. The check runs only after the body is bound to the
       // requested resource, so a redirect to some other excluded page can
       // never withdraw the requested page's standing. The header directive
@@ -681,29 +791,81 @@ async function fetchCached(url, {
       const markupBody = !upstreamType
         || upstreamType.startsWith("text/html")
         || upstreamType.startsWith("application/xhtml+xml");
-      const robots = pageRobotsPolicy(
-        markupBody ? upstreamBody : "",
-        upstream.headers?.["x-robots-tag"],
-        LIVE_CRAWLER_PRODUCT,
-      );
-      if (robots.noindex) {
-        responseCache.delete(cacheKey);
-        throw excludedPageError("noindex");
+      const headerInstances = upstream.headers?.["x-robots-tag"];
+      const headerWitness = Array.isArray(headerInstances)
+        ? headerInstances.length > 0
+        : headerInstances !== undefined && headerInstances !== null;
+      // An empty answer is not a page whose policy can be read, and a non
+      // markup answer carries no page policy at all. Neither is turned into an
+      // exclusion: without a witness there is nothing to settle, and a body
+      // that is not publisher prose is not copied as page text anyway.
+      const pageWitness = markupBody && String(upstreamBody).trim() !== "";
+      if (pageWitness || headerWitness) {
+        // A followed redirect leaves the requested origin behind. The
+        // destination was gated on its own robots.txt before the transport
+        // connected to it, so an allowing answer stands; the witness then names
+        // the origin of the resource that is actually held instead of the one
+        // that was asked for.
+        const finalOrigin = new URL(finalUrl).origin;
+        const robotsWitness = robotsObservation && robotsObservation.origin !== finalOrigin
+          ? { ...robotsObservation, origin: null }
+          : robotsObservation;
+        const bodyHash = contentDigest(body);
+        policy = observeSourcePolicy({
+          requestedUrl: canonicalUrl,
+          finalUrl,
+          product: LIVE_CRAWLER_PRODUCT,
+          observedAt: new Date().toISOString(),
+          contentKind: "fetched-html",
+          bodyHash,
+          robotsObservation: robotsWitness,
+          html: pageWitness ? upstreamBody : "",
+          headerInstances,
+        });
+        if (policy.directives.noindex) {
+          responseCache.delete(cacheKey);
+          throw excludedPageError("noindex");
+        }
+        // nosnippet, max-snippet:0 and a reached unavailable-after withdraw the
+        // copying of the page's prose, so the body is neither used nor kept.
+        if (!copiedTextPermitted(policy)) {
+          responseCache.delete(cacheKey);
+          if (policy.directives.nosnippet
+            || policy.directives.maxSnippetChars === 0
+            || unavailableAfterReached(policy)) {
+            throw withdrawnPageError(withdrawnPageReason(policy));
+          }
+          // No snippet was withdrawn; the page's own policy simply could not be
+          // established, so nothing from it is copied either.
+          throw unavailablePolicyError("page-policy-unreadable", "Official page policy could not be established");
+        }
       }
     }
-    const body = typeof projectBody === "function" ? projectBody(upstreamBody) : upstreamBody;
-    const fetchedAt = cacheResponse(cacheKey, body, finalUrl, upstream.headers);
-    return { body, finalUrl, fetchedAt, cache: "miss", stale: false };
+    // A retained copy is itself a copy, so noarchive withdraws it as well, and
+    // an older entry for this URL was exactly such a copy.
+    const retainable = !policy || policy.use.retainBody === true;
+    let fetchedAt;
+    if (retainable) {
+      fetchedAt = cacheResponse(cacheKey, body, finalUrl, upstream.headers, policy
+        ? { policy, bodyHash: policy.bodyHash }
+        : null);
+    } else {
+      responseCache.delete(cacheKey);
+      fetchedAt = Date.now();
+    }
+    return { body, finalUrl, fetchedAt, policy, cache: "miss", stale: false };
   } catch (error) {
     throwIfRequestAborted(externalSignal);
-    // An explicit publisher exclusion is an answer, not a transport failure:
-    // it must never be softened into an older cached copy.
-    if (error?.code === "OFFICIAL_PAGE_EXCLUDED") throw error;
+    // An explicit publisher exclusion or withdrawal is an answer, not a
+    // transport failure: it must never be softened into an older cached copy.
+    if (error?.code === "OFFICIAL_PAGE_EXCLUDED"
+      || error?.code === "OFFICIAL_PAGE_USE_WITHDRAWN") throw error;
     if (cached && cachedMatches && now - cached.savedAt < staleMs) {
       return {
         body: cached.body,
         finalUrl: cachedFinalUrl,
         fetchedAt: cached.savedAt,
+        policy: cachedPolicy,
         cache: "stale",
         stale: true,
       };
@@ -1170,7 +1332,11 @@ export async function searchKeskkonnaportaal(query, limit = 10, options = {}) {
 
 export function articleText(body) {
   const $ = load(body);
-  $("script, style, noscript, nav, header, footer, form, aside, .cookie-consent, .breadcrumb").remove();
+  // `data-nosnippet` marks a section the publisher excluded from snippets and
+  // `hidden` marks markup that is not shown to a reader. Neither may become
+  // copied prose here, whatever the rest of the page's policy says.
+  $("script, style, noscript, template, nav, header, footer, form, aside, [data-nosnippet], [hidden], .cookie-consent, .breadcrumb")
+    .remove();
   const main = $("main article, main .field--name-body, main .node__content, main").first();
   const paragraphs = main
     .find("p, h2, h3, li")
@@ -1178,6 +1344,18 @@ export function articleText(body) {
     .get()
     .filter((value) => value.length >= 35 && value.length <= 1_200);
   return [...new Set(paragraphs)].join("\n").slice(0, 7_500);
+}
+
+// The publisher decides whether page prose may be copied at all and how much of
+// it may be quoted. A finite max-snippet caps the copy here so that no later
+// stage can widen it, and a body with no policy witness at all is not copied:
+// an unreadable policy is not an invitation.
+function pageCopyText(policy, body) {
+  if (!policy || !copiedTextPermitted(policy)) return "";
+  const text = articleText(body);
+  const limit = policy.directives?.maxSnippetChars;
+  if (!Number.isInteger(limit) || limit < 0) return text;
+  return Array.from(text).slice(0, limit).join("").trim();
 }
 
 export async function hydrateOfficialDocuments(documents, limit = 5, options = {}) {
@@ -1192,21 +1370,38 @@ export async function hydrateOfficialDocuments(documents, limit = 5, options = {
       && String(document.content || "").length >= 120
       && sourceEvidenceEligibility(document).eligible) return document;
     try {
-      const { content, finalUrl, fetchedAt, stale } = await sharedHydration(document.url, {
+      const { content, finalUrl, fetchedAt, stale, policy } = await sharedHydration(document.url, {
         timeoutMs: options.timeoutMs || 4_500,
         signal: options.signal,
         requestText: options.requestText,
       });
       if (!hydrationResourceMatches(document.url, finalUrl)) return document;
-      if (content.length < 120) return document;
       // A stale fallback may remain useful for navigation, but it must never
-      // become a fresh claim-evidence body after the official page failed.
-      if (stale) return { ...document, stale: true };
+      // become a fresh claim-evidence body after the official page failed. It is
+      // retained page text as well, so a policy that now withdraws copying takes
+      // the older copy with it.
+      if (stale) return copiedTextPermitted(policy) ? { ...document, stale: true } : routeOnlyCopy(document);
+      if (content.length < 120) {
+        // The page yielded no citable body. When the publisher's own limit is
+        // what shortened it, text that may not be quoted cannot stay in the
+        // entry either, so the older body does not survive this read.
+        return policyCapsCopiedText(policy) ? routeOnlyCopy(document) : document;
+      }
       const page = {
         ...document,
         content,
         stale,
-        _contentHash: createHash("sha256").update(content).digest("hex"),
+        _contentHash: contentDigest(content),
+        // The observed policy travels with the exact body it was settled on.
+        // Downstream projection, deduplication and caching read this one
+        // witness instead of guessing from a URL, a fetch time or a hash.
+        _sourcePolicy: policy,
+        // The binding that was published with the earlier body belongs to that
+        // body. Replacing the policy while keeping the old binding would make
+        // the record contradict itself, so a consumer that rehashes the policy
+        // would refuse a body that is in fact permitted. The fresh observation
+        // therefore states its own binding.
+        _sourcePolicyBinding: sourcePolicyBinding(policy),
       };
       if (document.retrieval !== "official-federated-search") {
         if (!sourceEvidenceEligibility(document).eligible) {
@@ -1252,7 +1447,16 @@ export async function hydrateOfficialDocuments(documents, limit = 5, options = {
       // Either way the entry keeps its place in the result list while nothing
       // read from the page may still be cited. Reviewed catalogue text is our
       // own writing, so a robots read that did not happen leaves it alone.
-      const excluded = error?.code === "OFFICIAL_PAGE_EXCLUDED";
+      //
+      // A publisher refusal and a withdrawn snippet both leave a link only
+      // card: the address, the title and the publisher stay, no copied prose
+      // does, and the entry loses its evidence standing. A discovery card's own
+      // blurb goes with it, because that blurb was copied from the publisher's
+      // search page about the same article. A reviewed description that this
+      // application wrote itself is kept, since the publisher's instruction is
+      // about copying from the page and not about our review of it.
+      const excluded = error?.code === "OFFICIAL_PAGE_EXCLUDED"
+        || error?.code === "OFFICIAL_PAGE_USE_WITHDRAWN";
       const policyUnknown = error?.code === "OFFICIAL_PAGE_POLICY_UNAVAILABLE";
       if (excluded || (policyUnknown && documentHoldsFetchedPageText(document))) {
         return routeOnlyCopy(document);
