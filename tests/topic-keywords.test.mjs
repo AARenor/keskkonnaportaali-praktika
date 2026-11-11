@@ -192,3 +192,24 @@ test("short beetle aliases cannot borrow national monitoring evidence for anothe
     assert.notEqual(selectAnswerEvidence(wrongYear,rankSearchCandidates(wrongYear,labelled))?.strong,true,`${route}: data-year identity`);
   }
 });
+
+test("every case and verb form of a listed word is left as written", async () => {
+  const { REVIEWED_QUERY_WORD_FORMS } = await import("../server/query-word-forms.mjs");
+  const { correctReviewedQueryTypos } = await import("../server/search.mjs");
+  for (const [lemma, forms] of Object.entries(REVIEWED_QUERY_WORD_FORMS)) {
+    for (const form of forms) assert.equal(correctReviewedQueryTypos(form), form, `${lemma}: ${form}`);
+  }
+  // Forms the corrector used to change into another word.
+  for (const query of [
+    "Millised puuliigid on Eestis levinud?",
+    "mis puuliigil on kõige suurem tagavara",
+    "kui palju metsi raiutakse",
+    "kas metsasid on Eestis rohkem",
+    "kui palju raiutakse aastas",
+    "kas ma raiuksin oma metsa",
+    "kui palju raiemahtu on",
+  ]) assert.equal(correctReviewedQueryTypos(query), query, query);
+  // Real typos are still corrected.
+  assert.equal(correctReviewedQueryTypos("kui pallju on metsa eestis"), "kui palju on metsa eestis");
+  assert.equal(correctReviewedQueryTypos("männikute pinndala"), "männikute pindala");
+});
