@@ -1961,6 +1961,22 @@ function forestObservationStatusSentence(observations = []) {
   return details.length ? ` Eurostati kvaliteedimärgendid: ${details.join("; ")}.` : "";
 }
 
+// A combined trend question asks how the felling volume and the increment moved
+// over time, which is not what this extract carries: it prints one annual
+// increment estimate beside a felling series. The card says so instead of
+// printing that pair as the shared trend, and the wording stays scoped to the
+// extract in use, because neither the workbook as a whole nor another publisher
+// is claimed to be empty. No shared window and no chart are invented for it.
+const HARVEST_TREND_CUE = /\b(?:ajas|aegri\w*|aegrea\w*|trend\w*|muutunud|muutub|muutumas|dunaamika\w*|aastate\s+(?:kaupa|loikes)|aasta\s+aastalt|aastati|aja\s+jooksul)\b/u;
+
+function combinedHarvestTrendQuery(value) {
+  const text = normalize(String(value || ""));
+  if (!text || !HARVEST_TREND_CUE.test(text)) return false;
+  const hasHarvest = /\brai\w*|\bpuidu ?varum\w*|\beemaldam\w*/u.test(text);
+  const hasIncrement = /juurdekasv\w*/u.test(text);
+  return hasHarvest && hasIncrement;
+}
+
 // Keskkonnaagentuur's own SMI 2025 edition answers the harvest-versus-
 // increment question with one publisher, one edition and one methodology.
 // Eurostat removal accounting stays the fallback for the same question; it is
@@ -1985,11 +2001,10 @@ function composeSmiHarvestBalanceAnswer(query, sources = [], controlQuery = quer
   const expertCitation = citationFor("forest-stock-stable");
   const cutYear = Number(projection.cutYear);
   const explicitYear = requestedYear(String(controlQuery || query));
-  // A question naming a year after the measured one is not a single-year
-  // comparison: the workbook publishes one annual increment estimate and a
-  // felling series that ends with the measured year. A year inside the series
-  // stays a note that this extract compares the latest measured year.
-  const referencedYear = Number.isInteger(explicitYear) && explicitYear !== cutYear ? explicitYear : null;
+  // The workbook's felling series ends at cutYear. A named year inside that
+  // series still needs a caveat: the card shows a five year mean, not that
+  // year's felling paired with a matching net increment.
+  const referencedYear = Number.isInteger(explicitYear) ? explicitYear : null;
   const askedYear = referencedYear && referencedYear > cutYear ? referencedYear : null;
   const expertCutYear = Number(SMI_2025_EXPERT_CUT.year);
   const expertThousand = Number(projection.cut2025ExpertThousandM3);
@@ -2023,6 +2038,15 @@ function composeSmiHarvestBalanceAnswer(query, sources = [], controlQuery = quer
       citations: [handbookCitation, smiCitation],
     });
   }
+  // A combined trend question is not answered by this extract: it prints one
+  // annual increment estimate beside a felling series. That absence is a limit
+  // of this answer, not a claim the publisher makes, so it belongs in the note,
+  // which states scope. A cited part could not carry it: every sentence of a
+  // part is checked against the source's own wording, and no source phrases the
+  // absence of a series it does not publish.
+  const trendScopeNote = combinedHarvestTrendQuery(query) || combinedHarvestTrendQuery(controlQuery)
+    ? " Kasutatud väljavõte ei anna mõlema näitaja muutust aastate kaupa. Raiemahu aastarida saab vaadata eraldi küsimusena."
+    : "";
   const baseIntro = `SMI ${SMI_2025_YEAR} andmetel oli metsamaa tagavara juurdekasv kõigil omanikel ${etNumberWithDigits(projection.incrementThousandM3PerYear, 0)} tuhat m³ aastas ehk ${etNumberWithDigits(projection.incrementCubicMetresPerHectareYear, 2)} m³ hektari kohta aastas (suhteline viga ±${etNumberWithDigits(projection.incrementRelativeErrorPercent, 1)}%).`;
   const grossNetSentence = "See on kogujuurdekasv, mitte netojuurdekasv: kogujuurdekasvust arvatakse netojuurdekasvu saamiseks maha looduslik suremus, seega võrreldakse netojuurdekasvu elusate puude raiega.";
   // Worksheet 22 prints the 2024 felling total with a ±9,6% relative error
@@ -2049,7 +2073,7 @@ function composeSmiHarvestBalanceAnswer(query, sources = [], controlQuery = quer
     netSentence,
   ].filter(Boolean).join(" ").replace(/\s+/gu, " ").trim();
   const pastYearCaveat = referencedYear && !askedYear
-    ? ` Küsisid ${referencedYear}. aastat, kuid see väljavõte võrdleb ${cutYear}. aastat; töövihik avaldab raiemahu aastate kaupa kuni ${cutYear}. aastani.`
+    ? ` Küsisid ${referencedYear}. aastat, kuid siin on esitatud viie aasta keskmine raiemaht, mitte ${referencedYear}. aasta võrdlus; töövihik avaldab raiemahu aastate kaupa kuni ${cutYear}. aastani.`
     : "";
   return {
     answer: {
@@ -2066,14 +2090,13 @@ function composeSmiHarvestBalanceAnswer(query, sources = [], controlQuery = quer
         ? [smiCitation, ...(expertCitation ? [expertCitation] : [])]
         : [smiCitation],
       parts,
-      note: askedYear
+      note: (askedYear
         ? `Kogujuurdekasv, raiemaht ja nende vead pärinevad SMI ${SMI_2025_YEAR} töövihikust${expertCitation ? ", 2025. aasta eksperthinnang ja netojuurdekasv Keskkonnaagentuuri 18.08.2026 ülevaatest" : ""}. Kogujuurdekasv ei ole netojuurdekasv ja ühe aasta või ühe näitaja põhjal ei saa teha lõplikku järeldust metsamajanduse kestlikkuse kohta.`
-        : `Võrdlus pärineb ühest allikast ja ühest väljaandest: juurdekasv on aastahinnang kõigil omanikel, raiemaht on ${cutYear}. aasta koguraie. Kogujuurdekasv ei ole netojuurdekasv ja ühe aasta või ühe näitaja põhjal ei saa teha lõplikku järeldust metsamajanduse kestlikkuse kohta.`,
+        : `Võrdlus pärineb ühest allikast ja ühest väljaandest: juurdekasv on aastahinnang kõigil omanikel, raiemaht on SMI ${SMI_2025_YEAR} töövihiku töölehe ${projection.worksheetFiveYear} järgi viie aasta keskmine metsamaal, mitte ühe aasta koguraie. Kogujuurdekasv ei ole netojuurdekasv ja ühe aasta või ühe näitaja põhjal ei saa teha lõplikku järeldust metsamajanduse kestlikkuse kohta.`) + trendScopeNote,
     },
     related: [
       "Mis vahe on kogu- ja netojuurdekasvul?",
       "Kui suur oli raiemaht viimastel aastatel?",
-      "Kuidas on raiemaht ja juurdekasv ajas muutunud?",
     ],
   };
 }

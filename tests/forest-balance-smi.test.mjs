@@ -9,6 +9,7 @@ import {
   smiIncrementDocument,
   validatedSmiHarvestBalanceProjection,
 } from "../server/indicators.mjs";
+import { forestSeriesIntent, smiForestSeriesDocument } from "../server/forest-series.mjs";
 import { searchTimeoutFallback } from "../server/pipeline.mjs";
 import { selectAnswerEvidence } from "../server/retrieval.mjs";
 import { sourceCanSupportPublicCitation } from "../server/source-registry.mjs";
@@ -137,6 +138,124 @@ test("harvest versus increment answers from the SMI 2025 edition without a gross
   const reverse = composeForestHarvestBalanceAnswer("kas juurde kasvab rohkem kui raiutakse", documents, "kas juurde kasvab rohkem kui raiutakse");
   assert.equal(reverse.answer.title, direct.answer.title, "the wording of the question does not flip a verdict");
   assert.doesNotMatch(reverse.answer.intro, /^(?:Jah|Ei)\./u);
+});
+
+// The card without a named year prints the five-year mean felling volume in its
+// intro, so its note may not describe that same felling figure as the 2024
+// single-year total: the reader would attach the note to the wrong number.
+test("the note of the five year answer describes the five year mean, not one year's total", () => {
+  const documents = synthesisDocuments();
+  const query = "kas Eestis raiutakse rohkem kui juurde kasvab";
+  const response = composeForestHarvestBalanceAnswer(query, documents, query);
+  const { intro, note, parts } = response.answer;
+
+  assert.match(intro, /Viie aasta keskmine raiemaht metsamaal oli/u, "the intro presents the five year mean");
+  assert.match(note, /viie aasta keskmine/iu, `the note names the five year mean, got: ${note}`);
+  assert.match(note, /mitte ühe aasta koguraie/u, "the note separates the mean from a single year total");
+  assert.doesNotMatch(
+    note,
+    /(?:19|20)\d{2}\. aasta koguraie/u,
+    `the note does not present the printed felling as one year's total, got: ${note}`,
+  );
+  assert.match(note, /ühest allikast ja ühest väljaandest/u, "the single publisher and edition stay stated");
+  assert.match(note, /SMI 2025 töövihik/u, "the note keeps the publication it comes from");
+  assert.match(
+    note,
+    /Kogujuurdekasv ei ole netojuurdekasv[\s\S]*kestlikkuse kohta/u,
+    "the gross versus net and sustainability caveat stays in the note",
+  );
+  assert.ok(parts.length >= 2, "the supporting parts are unaffected");
+
+  const yearResponse = composeForestHarvestBalanceAnswer(
+    "kas 2025. aastal raiuti rohkem kui mets kasvas",
+    documents,
+    "kas 2025. aastal raiuti rohkem kui mets kasvas",
+  );
+  assert.match(
+    yearResponse.answer.intro,
+    /2024\. aasta[^.]*12 500 tuhat m³/u,
+    "the year-specific answer keeps the 2024 felling estimate as context",
+  );
+  assert.match(
+    yearResponse.answer.note,
+    /raiemaht ja nende vead pärinevad SMI 2025 töövihikust/u,
+    "the year-specific note still names the workbook as the source of that total",
+  );
+});
+
+test("a named year question does not turn the five year mean into a single year comparison", () => {
+  for (const year of [2020, 2024]) {
+    const query = `kas Eestis raiuti ${year}. aastal rohkem kui juurde kasvas?`;
+    const response = composeForestHarvestBalanceAnswer(query, synthesisDocuments(), query);
+    assert.match(response.answer.intro, new RegExp(`${year}\\. aasta`, "u"), "the asked year remains visible");
+    assert.match(response.answer.intro, /viie aasta keskmine/iu, "the value remains a five year mean");
+    assert.doesNotMatch(response.answer.intro, /väljavõte võrdleb 2024\. aastat/u, "the mean is not called a 2024 comparison");
+    assert.match(response.answer.intro, new RegExp(`mitte ${year}\\. aasta võrdlus`, "iu"), "the answer does not pretend to answer that year");
+  }
+});
+
+// A single annual estimate and a felling mean do not establish both trends.
+test("a combined trend question shows the extract limitation", () => {
+  const query = "Kuidas on raiemaht ja juurdekasv ajas muutunud?";
+  const response = composeForestHarvestBalanceAnswer(query, synthesisDocuments(), query);
+  const text = `${cardTextOf(response)} ${response.answer.note}`;
+  const { note } = response.answer;
+  assert.match(note, /Kasutatud väljavõte ei anna mõlema näitaja muutust aastate kaupa/u, `the note says the extract in use does not give both measures by year, got: ${note}`);
+  assert.match(note, /Raiemahu aastarida saab vaadata eraldi küsimusena/u, `the note points to the felling series as a separate question, got: ${note}`);
+  assert.doesNotMatch(text, /(?:19|20)\d{2}\s*[–-]\s*(?:19|20)\d{2}/u, "no window is invented for either trend");
+  assert.doesNotMatch(
+    text,
+    /kõik\w* (?:allika\w*|väljaannet\w*)|ükski (?:allikas|väljaanne)/iu,
+    "no claim covers every source or edition",
+  );
+  assert.match(response.answer.intro, /15 458 tuhat m³/u, "the increment figure stays as context");
+  assert.match(response.answer.intro, /11 897 tuhat m³/u, "the felling figure stays as context");
+  assert.deepEqual(response.answer.introCitations, [1], "the citations are unchanged");
+  assert.match(note, /Kogujuurdekasv ei ole netojuurdekasv/u, "the gross versus net caveat stays");
+});
+
+test("a plain comparison and a named year keep no missing series note", () => {
+  for (const query of [
+    "kas Eestis raiutakse rohkem kui juurde kasvab",
+    "kas Eestis raiuti 2020. aastal rohkem kui juurde kasvas?",
+  ]) {
+    const response = composeForestHarvestBalanceAnswer(query, synthesisDocuments(), query);
+    assert.doesNotMatch(response.answer.note, /Kasutatud väljavõte ei anna mõlema näitaja muutust/u, `no missing series note for: ${query}`);
+    assert.doesNotMatch(cardTextOf(response), /aastaseeri/iu, `no missing series note for: ${query}`);
+  }
+  const direct = composeForestHarvestBalanceAnswer(
+    "kas Eestis raiutakse rohkem kui juurde kasvab",
+    synthesisDocuments(),
+    "kas Eestis raiutakse rohkem kui juurde kasvab",
+  );
+  assert.equal(direct.answer.parts.length, 2, "the plain comparison keeps its two supporting parts");
+});
+
+// A suggestion is only offered when its own series can be answered from the
+// material already at hand. The per hectare increment series has no local SMI
+// witness and returned no answer when asked live, so the card offers the
+// felling series and the definition question instead of that one.
+test("the balance card offers only trend questions that its sources answer", () => {
+  const query = "Kuidas on raiemaht ja juurdekasv ajas muutunud?";
+  const response = composeForestHarvestBalanceAnswer(query, synthesisDocuments(), query);
+  const related = response.related;
+  assert.ok(Array.isArray(related) && related.length >= 2, "the card keeps its suggestions");
+  assert.ok(related.includes("Mis vahe on kogu- ja netojuurdekasvul?"), "the definition question stays");
+  assert.ok(!related.includes(query), "the combined trend question is not offered back");
+  assert.doesNotMatch(related.join(" "), /raiemaht ja juurdekasv/iu, "no suggestion asks both measures at once");
+  assert.doesNotMatch(related.join(" "), /hektar/iu, "no suggestion promises a series the used sources do not carry");
+
+  const fellingQuestion = related.find((question) => forestSeriesIntent(question)?.table === "MM03");
+  assert.ok(fellingQuestion, `a separately answerable felling trend stays offered, got: ${related.join(" | ")}`);
+  const fellingIntent = forestSeriesIntent(fellingQuestion);
+  assert.equal(fellingIntent.cutType.code, "1", "the felling trend is the total felling row");
+  assert.equal(fellingIntent.measure.code, "3");
+  assert.equal(fellingIntent.measure.unit, "tuhat m³");
+  assert.ok(fellingIntent.years.to - fellingIntent.years.from + 1 >= 5, "the offered felling trend covers several years");
+  assert.ok(
+    smiForestSeriesDocument(fellingQuestion),
+    "the offered felling trend is answered from the local SMI workbook extract, not a network only series",
+  );
 });
 
 test("the 2025 expert estimate is stated only when its own source is visible", () => {

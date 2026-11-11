@@ -2,7 +2,7 @@
 // attribution, the gross/net increment boundary and the handbook limit.
 //
 // These assert the reviewed facts: SMI 2025 workbook worksheet 11 (increment),
-// worksheet 22 and 34 (measured felling, latest year 2024), worksheet 23 (five
+// worksheet 22 and 34 (sample based felling estimates, latest year 2024), worksheet 23 (five
 // year average with no printed window), Keskkonnaagentuur 18.08.2026 news (2025
 // felling is an expert estimate, managed forest net increment 4,9 m³/ha) and
 // Keskkonnaagentuur 09.04.2026 analysis (decade versus 20 year relation).
@@ -136,7 +136,7 @@ test("2025 felling is never attributed to a source that does not publish it", ()
   assert.match(workbook.content, /ega sisalda 2025\. aasta raiemahtu/u);
 
   const projection = ok(validatedSmiHarvestBalanceProjection(workbook));
-  assert.equal(projection.cutYear, 2024, "the measured felling series ends in 2024");
+  assert.equal(projection.cutYear, 2024, "the workbook felling series ends in 2024");
   assert.equal(projection.cut2025ExpertThousandM3, 11_000, "the 2025 expert estimate is carried as its own field");
   assert.equal(projection.cut2025IsExpertEstimate, true);
   assert.equal(

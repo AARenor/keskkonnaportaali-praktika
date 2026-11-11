@@ -243,3 +243,27 @@ test("the 2025 harvest balance answer states the expert estimate and keeps the g
     `the estimate must be cited to the source that publishes it, got: ${cited.map((source) => source.url).join(", ")}`,
   );
 });
+
+test("a combined trend answer keeps the source limitation through the public pipeline", async () => {
+  const query = "Kuidas on raiemaht ja juurdekasv ajas muutunud?";
+  const response = await searchEnvironmentLive(query, {
+    startedAt: NOW,
+    deadlineAt: Date.now() + 120_000,
+    searchResults: reviewedListing(query),
+    filters: {},
+    useCache: false,
+    generateAnswer: async () => ({
+      answer: null,
+      acceptedClaims: [],
+      attempt: { provider: "estimate-regression", status: "degraded", reason: "provider-error" },
+    }),
+    recordSearch: async () => ({ status: "skipped" }),
+    llmClientKey: "estimate-regression",
+  });
+  assert.match(response.answer.note, /väljavõte ei anna mõlema näitaja muutust aastate kaupa/iu, "the extract limitation remains visible");
+  assert.match(response.answer.note, /raiemahu aastarida.*eraldi küsimusena/iu, "the note points to the separate felling series");
+  assert.ok(response.answer.introCitations?.some((number) => /SMI.*tulemused\.xlsx/iu.test(
+    decodeURIComponent(String(response.sources?.find((source) => Number(source.citation) === Number(number))?.url || "")),
+  )), "the answer links to the SMI workbook");
+  assert.doesNotMatch(response.answer.note, /2024\. aasta koguraie/u, "the five year mean is not called a single year total");
+});
