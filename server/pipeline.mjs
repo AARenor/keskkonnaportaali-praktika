@@ -87,7 +87,7 @@ import { configuredAnswerBudgetMs } from "./request-budget.mjs";
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v96-smi-estimate-scope";
+export const SEARCH_RESPONSE_REVISION = "answer-v97-smi-wording-and-broad-match";
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
@@ -579,18 +579,45 @@ const NARROW_FALLBACK_KINDS = new Set(["forest-notice-exception", "bark-beetle-g
 // tagavara" is not answered by area shares.
 const TOPIC_ASK_ROOT_PATTERN = /^(?:moot|mõõt|arvut|hinda|hinnang|osa$|osakaal|protsent|measur|calculat|estimat|share|percent|proportion|area$|much$|many$)/u;
 
+// "rohkem metsa" is answered by "kõige metsarikkamad": a comparison word is
+// covered when the card itself states a comparison. A card that only lists
+// shares ("kask 30%, mänd 29%") does not.
+const COMPARISON_ROOT_PATTERN = /^(?:rohkem|enam|vahem|vähem|suurem|vaiksem|väiksem|parem|halvem)$/u;
+const STATED_COMPARISON_PATTERN = /\b(?:koige|enim|vahim|suurim|vaikseim|parim|halvim)\b|\p{L}{3,}(?:mad|maid|imad|eimad)\b/u;
+
+function cardAnswersQueryWords(query, text) {
+  if (extractAnswersQuery(query, text)) return true;
+  if (!STATED_COMPARISON_PATTERN.test(normalize(text))) return false;
+  return queryTerms(query).every((term) => textHasQueryRoot(text, term)
+    || COMPARISON_ROOT_PATTERN.test(term)
+    || extractAnswersQuery(term, text));
+}
+
 function offTargetFallback(query, kind, fallback) {
   if (NARROW_FALLBACK_KINDS.has(kind)) return false;
   const text = [fallback.intro, ...(fallback.parts || []).map((part) => part.text)].join(" ");
-  if (extractAnswersQuery(query, text)) return false;
+  if (cardAnswersQueryWords(query, text)) return false;
   if (!/-(?:method|share)$/u.test(kind || "")) return true;
   return queryTerms(query).some((term) => !textHasQueryRoot(text, term)
     && !TOPIC_ASK_ROOT_PATTERN.test(term)
     && extractAnswersQuery(term, text) === false);
 }
 
+// The first sentence of a fallback card that does not answer the question.
+// Kept as text, not a flag: a later step may replace the card with a good one,
+// and only the off-target text itself is withheld.
+function offTargetLead(draft) {
+  const lead = normalize(splitTextPassages(draft?.evidence?.offTargetIntro || "")[0] || "");
+  return lead.length >= 40 ? lead : "";
+}
+
+function repeatsOffTargetLead(draft, text) {
+  const lead = offTargetLead(draft);
+  return Boolean(lead) && normalize(text || "").includes(lead);
+}
+
 function withoutOffTargetFallback(draft) {
-  if (!draft?.evidence?.offTargetFallback) return draft;
+  if (!repeatsOffTargetLead(draft, draft?.answer?.intro)) return draft;
   // The blanked card shows no excerpt and no parts, so a note that scoped or
   // qualified the withdrawn excerpt would describe text the reader cannot see.
   return {
@@ -1597,6 +1624,13 @@ export async function createPortalDraft(query, {
       draft.clarification = null;
       // The law's own definition, word for word, needs no rewording by the model.
       if (broadDocument?._lawDefinition) draft.evidence.lawDefinitionIntro = extract;
+      // A broad match shares a word with the question ("RMK", "metsamaa"), not
+      // necessarily its subject: an RMK area figure for a Christmas tree price.
+      // Without every content word of the question it is not shown as the
+      // answer; the model may still answer from the same document.
+      else if (!broadDocument?._focusedLawTerm && !cardAnswersQueryWords(retrievalQuery, extract)) {
+        draft.evidence.offTargetIntro = extract;
+      }
     }
   }
   if (forestBalance) {
@@ -1662,7 +1696,9 @@ export async function createPortalDraft(query, {
     // without the model says there is no answer. A narrow topic is resolved
     // only by the question its passages answer ("ilma loata" → 20 tm without a
     // notice), so its words need not repeat the question's.
-    draft.evidence.offTargetFallback = offTargetFallback(retrievalQuery, plannedEvidence?.kind, officialForestryFallback);
+    if (offTargetFallback(retrievalQuery, plannedEvidence?.kind, officialForestryFallback)) {
+      draft.evidence.offTargetIntro = officialForestryFallback.intro;
+    }
   } else if (directExtract && !plannedEvidence?.strong && !REVIEWED_RETRIEVAL_PATTERN.test(direct.retrieval || "")
     && !extractAnswersQuery(retrievalQuery, directExtract)) {
     // The model may still answer from these sources. Without it, say there is
@@ -2050,10 +2086,8 @@ async function searchWithinBudget(cleanQuery, {
   // Keep the accepted deterministic result detached from both the provider
   // input and any streamed consumer. A ready model answer must rebind its
   // visible citation witnesses before it can replace this snapshot.
-  // The off-target overview is still the model's starting card. A model
-  // answer that only repeats it is the same wrong answer, so it is rejected.
-  const offTargetLead = draft.evidence?.offTargetFallback
-    ? normalize(splitTextPassages(draft.answer?.intro || "")[0] || "") : "";
+  // The off-target card is still the model's starting card. A model answer
+  // that only repeats it is the same wrong answer, so it is rejected.
   const deterministicDraft = withoutOffTargetFallback(structuredClone(draft));
   // Keep opaque source admission on our snapshot, never on provider copies.
   // Cloning a descriptor cannot recreate its private constructor binding.
@@ -2100,7 +2134,7 @@ async function searchWithinBudget(cleanQuery, {
     // supported by the bounded excerpt a reader can actually inspect.
     visibleRejected = !answerClaimsHaveVisibleWitnesses(modelDraft)
       || !answersAskedConcept(retrievalQuery, answerCardText(modelDraft))
-      || (offTargetLead.length >= 40 && normalize(answerCardText(modelDraft)).includes(offTargetLead));
+      || repeatsOffTargetLead(draft, answerCardText(modelDraft));
     draft = visibleRejected ? withoutRawLawSection(deterministicDraft) : modelDraft;
   } else {
     draft = withoutRawLawSection(deterministicDraft);

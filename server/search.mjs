@@ -4648,15 +4648,19 @@ function isPlainEcologicalResidenceDescriptionQuestion(value) {
       ECOLOGICAL_MODIFIER_PATTERN.test(word) || ECOLOGICAL_SUBJECT_PATTERN.test(word)
     ));
 }
-const PUBLIC_CONTACT_ROLE_PATTERN = /^(?:büroo\w*|buroo\w*|e|info\w*|juht\w*|keskkonnaosakond\w*|klienditeenindus\w*|nõunik\w*|nounik\w*|osakond\w*|post|press\w*|projektiosakond\w*|spetsialist\w*|teenindus\w*|ühine|uhine|üld\w*|uld\w*|yld\w*|vaatlus\w*|customer|data|office|regional|research|service|support)$/iu;
-// Words that cannot be part of a person's name: "ühe", "eesti", and
+// Support desk and opening-hours words ("tehnilise toe telefon, mis kellast
+// kellani see töötab") name a service, not a person. "Kell" alone is a
+// surname, so only the hour forms are listed.
+const PUBLIC_CONTACT_ROLE_PATTERN = /^(?:tehnili\w*|tugi|toe|tuge|klienditug\w*|klienditoe\w*|kellast|kellani|t[oö][oö]tab|lahtiolek\w*|avatud|büroo\w*|buroo\w*|e|info\w*|juht\w*|keskkonnaosakond\w*|klienditeenindus\w*|nõunik\w*|nounik\w*|osakond\w*|post|press\w*|projektiosakond\w*|spetsialist\w*|teenindus\w*|ühine|uhine|üld\w*|uld\w*|yld\w*|vaatlus\w*|customer|data|office|regional|research|service|support)$/iu;
+// Words that cannot be part of a person's name: "ühe", "eesti", "mitu",
+// statistics words (protsent, osakaal, pindala, hektar), and
 // forestry nouns that are not also surnames (tree species such as tamm, kask
 // and mänd are, so they stay out). Without these, "harvendusraiet ühes metsas"
 // and "surnud puidu tagavara metsamaal" read as a name in front of a forest.
 // Pronouns and verbs (ma tohin, nad võivad, raiusin mu) stay out: a name
 // after "oma metsas" ("kas ma tohin oma metsas Mari Tammele ...") is held
 // private only because that pair itself reads as a name.
-const PERSON_CONTEXT_STOPWORD_PATTERN = /^(?:p[õo]ud\p{L}*|ühe\p{L}*|uhe\p{L}*|eesti|\p{L}*raie\p{L}*|puid\p{L}*|puit\p{L}*|tagavar\p{L}*|jahime\p{L}*|aga|alal|andm\w*|andmev[äa]rav\p{L}*|andmetel|anna|andke|asub|asuv\w*|avalik\w*|jaoks|kaudu|kas|kaits\w*|kasuta\w*|katastri\w*|kehti\w*|kes|kuidas|kinnist\w*|konkreetse|kohta|kuulu\w*|kui|kus|kust|küsimus\w*|kõrval|lahedal|lähedal|lasta|lei\w*|loa\w*|luba\w*|maaüksus\w*|maauksus\w*|maatükk\w*|maatukk\w*|metsaeraldis\w*|metsaregister\w*|millal|millin\w*|millis\w*|minu|mis|mida|midagi|miks|nõu\w*|näen|näha|näita|naita|oleva|oma|on|otsing\w*|palju|p[õo]him[õo]t\w*|poliitik\w*|puurkaev\w*|s[äa]ilita\w*|smi|sügavus\w*|tagasta|tagastage|talu\w*|testida|too|t[öo][öo]tle\w*|ütleb|vaadata|valda|vaja|ööbib|oobib|paikneb|peatub|piirkonn\w*|resideerib|registr\w*|viibib|järgi|ja|ning|või|voi|ääres|aasta|elab|elava|majas|a|about|affect\w*|are|area\w*|at|be|by|can|could|customer|data|did|do|does|for|from|get|give|handle[sd]?|handling|how|in|information|is|live[sd]?|living|may|me|must|near|number|occup(?:y|ies|ied|ying)|of|office|on|permit\w*|polic(?:y|ies)|process(?:es|ed|ing)?|protect(?:s|ed|ing)?|protected|public|regional|register\w*|requirement\w*|research|reside[sd]?|residing|return|s|service|should|show|state|stor(?:e|es|ed|ing)|stay(?:s|ed|ing)?|support|tell|that|the|this|to|use[sd]?|using|what|where|which|who|with|would)$/iu;
+const PERSON_CONTEXT_STOPWORD_PATTERN = /^(?:mitu|protsent\p{L}*|osakaal\p{L}*|pindala\p{L}*|hektar\p{L}*|p[õo]ud\p{L}*|ühe\p{L}*|uhe\p{L}*|eesti|\p{L}*raie\p{L}*|puid\p{L}*|puit\p{L}*|tagavar\p{L}*|jahime\p{L}*|aga|alal|andm\w*|andmev[äa]rav\p{L}*|andmetel|anna|andke|asub|asuv\w*|avalik\w*|jaoks|kaudu|kas|kaits\w*|kasuta\w*|katastri\w*|kehti\w*|kes|kuidas|kinnist\w*|konkreetse|kohta|kuulu\w*|kui|kus|kust|küsimus\w*|kõrval|lahedal|lähedal|lasta|lei\w*|loa\w*|luba\w*|maaüksus\w*|maauksus\w*|maatükk\w*|maatukk\w*|metsaeraldis\w*|metsaregister\w*|millal|millin\w*|millis\w*|minu|mis|mida|midagi|miks|nõu\w*|näen|näha|näita|naita|oleva|oma|on|otsing\w*|palju|p[õo]him[õo]t\w*|poliitik\w*|puurkaev\w*|s[äa]ilita\w*|smi|sügavus\w*|tagasta|tagastage|talu\w*|testida|too|t[öo][öo]tle\w*|ütleb|vaadata|valda|vaja|ööbib|oobib|paikneb|peatub|piirkonn\w*|resideerib|registr\w*|viibib|järgi|ja|ning|või|voi|ääres|aasta|elab|elava|majas|a|about|affect\w*|are|area\w*|at|be|by|can|could|customer|data|did|do|does|for|from|get|give|handle[sd]?|handling|how|in|information|is|live[sd]?|living|may|me|must|near|number|occup(?:y|ies|ied|ying)|of|office|on|permit\w*|polic(?:y|ies)|process(?:es|ed|ing)?|protect(?:s|ed|ing)?|protected|public|regional|register\w*|requirement\w*|research|reside[sd]?|residing|return|s|service|should|show|state|stor(?:e|es|ed|ing)|stay(?:s|ed|ing)?|support|tell|that|the|this|to|use[sd]?|using|what|where|which|who|with|would)$/iu;
 const ESTONIAN_PRIVATE_OWNERSHIP_PATTERN = /\b(?:omanik\w*|omaja\w*|omand(?:is|uses)\w*|oma(?:b|vad|s|sid|nud|ma|takse|tud)|valdaj\w*|valduses\w*|valda(?:b|vad|s|sid|nud|ma)|kellele\s+kuulub)\b/iu;
 const ESTONIAN_FOREST_NOUN_PATTERN = /^(?:mets(?:a(?:s|st|le|lt|ga|d(?:e(?:s|st|le|lt|ga)?)?)?|i)?|metsaa)$/iu;
 const ESTONIAN_PRIVATE_FOREST_NOUN_PATTERN = /^(?:eramets(?:a(?:s|st|le|lt|ga|d(?:e(?:s|st|le|lt|ga)?)?)?|i)?|erametsaa)$/iu;
@@ -5405,6 +5409,7 @@ export function containsPrivatePersonLookup(value, {
   // Classify the same text without that opening, so any name or contact field
   // in it still fails.
   // "Eelmine omanik" is a role in a buyer's own question, not an identity.
+  // "Mis kellast see töötab" is about opening hours, not where someone works.
   // "Kas ma tohin oma metsas ..." is a forest owner asking about their own
   // land: the pronoun and modal verb otherwise read as a lowercase two-token
   // name ("ma tohin") beside a private asset. Drop only that first-person
@@ -5416,7 +5421,9 @@ export function containsPrivatePersonLookup(value, {
   const familyForest = canonicalText
     .replace(/^(?:tahaks(?:in)?|soovi(?:n|ksin))\s+teada,?\s+et\s+(?=meie\s+(?:pere\s+)?mets)/iu, "")
     .replace(/^meie\s+pere(?=\s+mets)/iu, "meie")
-    .replace(/^(ostsin\s+metsa\b.*?)\beelmine\s+omanik\s+/iu, "$1")
+    // "mis kellast see töötab" asks a service's opening hours; "see" is no person.
+    .replace(/\bsee\s+t[oö][oö]tab\b/iu, "on avatud")
+    .replace(/^(ostsin\s+(?:metsa|kinnistu|metsakinnistu|maa|talu)\b.*?)\beelmine\s+omanik\s+/iu, "$1")
     .replace(ownForestOpeningAllowed ? OWN_FOREST_FIRST_PERSON_OPENING_PATTERN : /(?!)/u, "$1");
   // A forest term with "mis see tähendab", and the size of RMK's holding, name
   // no person. Both grammars are closed, so an added name misses them.

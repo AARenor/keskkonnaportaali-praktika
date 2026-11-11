@@ -109,6 +109,9 @@ test("forestry nouns, 'ühe' and 'eesti' before 'metsas' are not read as a name"
     "mitu korda tohib harvendusraiet ühes metsas teha",
     "mis puud kõige paremini põuda kannatavad eesti metsas",
     "surnud puidu tagavara metsamaal 2025",
+    "mitu protsenti metsamaast kasvab vähemalt kaks puuliiki",
+    "ostsin kinnistu, aga eelmine omanik oli raieõiguse juba ära müünud, kas see leping kehtib edasi",
+    "metsaregistri tehnilise toe telefon ja mis kellast kellani see tootab",
   ]) assert.equal(containsPrivatePersonLookup(query), false, query);
   // Tree species are also surnames, and pronoun + verb pairs are what holds a
   // later name private, so every one of these stays private.
@@ -123,6 +126,11 @@ test("forestry nouns, 'ühe' and 'eesti' before 'metsas' are not read as a name"
     "harvendusraie Mari Tamme metsas",
     "puidu müük Jaan Kase metsamaal",
     "põua kahjud Mari Tamme metsas",
+    "mitu protsenti Jaan Kase metsamaast on kuusk",
+    "ostsin kinnistu, aga eelmine omanik Jaan Kask oli raieõiguse müünud",
+    "ostsin kinnistu, kes oli eelmine omanik",
+    "metsaregistri tehnilise toe Jaan Kase telefon",
+    "mari tamm klienditoe telefon",
   ]) assert.equal(containsPrivatePersonLookup(query), true, query);
 });
 
@@ -574,6 +582,12 @@ test("a broad topic overview is not shown as the answer to a narrower question a
     });
   })();
   assert.match(repeated.answer.intro, /Meil ei ole sellele küsimusele vastust/u);
+  // A broad match that only shares a word ("RMK") is not shown as the answer.
+  const broad = await ask("palju maksab rmk joulukuusk 1,5 meetrit");
+  assert.match(broad.result.answer.intro, /Meil ei ole sellele küsimusele vastust/u);
+  // A comparison word is covered by a card that states the comparison.
+  const comparison = await ask("mis maakonnas on eestis koige rohkem metsa");
+  assert.match(comparison.result.answer.intro, /metsarikkamad maakonnad/u);
   // A narrow topic answers what resolved it: cutting without a notice.
   const exception = await ask("kas metsaomanik vajab raieks luba");
   assert.match(exception.result.answer.intro, /20 tihumeetrit/u);
