@@ -87,7 +87,7 @@ import { configuredAnswerBudgetMs } from "./request-budget.mjs";
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v100-amount-and-area-checks";
+export const SEARCH_RESPONSE_REVISION = "answer-v101-amount-and-area-checks";
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
@@ -1605,9 +1605,7 @@ export async function createPortalDraft(query, {
     // A focused law section already holds only the sentences about the term.
     const extract = broadDocument?._focusedLawTerm
       ? broadDocument._lawDefinition || String(broadDocument.content).split(/(?<=[.;])\s/u)[0].replace(/^\(\d+[^)]*\)\s*/u, "")
-      : broadDocument ? directEvidenceExtract(retrievalQuery, broadDocument, null, { requireSubject: true })
-        // A subsection number ("(5)") means nothing on its own at the start of a card.
-        .replace(broadDocument._lawSection ? /^\(\d+[¹²³⁴⁵⁶⁷⁸⁹]*\)\s*/u : /$^/u, "") : "";
+      : broadDocument ? directEvidenceExtract(retrievalQuery, broadDocument, null, { requireSubject: true }) : "";
     const broadCitation = broadDocument
       ? answerDocuments.findIndex((document) => document.id === broadDocument.id) + 1
       : 0;
