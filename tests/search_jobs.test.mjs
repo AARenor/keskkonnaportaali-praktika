@@ -497,7 +497,7 @@ test("a duplicate create replays the same job and never starts a second runner",
 });
 
 test("admission is bounded per client and in total", async () => {
-  const { store } = createHarness();
+  const { store } = createHarness({ liveJobsPerClient: 2 });
   const gate = deferred();
   const run = () => gate.promise;
 
@@ -532,8 +532,50 @@ test("admission is bounded per client and in total", async () => {
   await store.close();
 });
 
-test("a cancelled job keeps holding its slot until the runner really settles", async () => {
+test("the default store admits ten live jobs for one address and refuses the eleventh", async (t) => {
   const { store } = createHarness();
+  const gate = deferred();
+  t.after(async () => {
+    gate.resolve();
+    await flush();
+    await store.close();
+  });
+  const run = () => gate.promise;
+
+  for (let slot = 1; slot <= 10; slot += 1) {
+    const created = store.start(job({
+      id: `job-solo-${String(slot).padStart(2, "0")}-0001`,
+      run,
+    }));
+    assert.equal(created.status, 201, `live job ${slot} for one address should be admitted`);
+  }
+  assert.equal(store.stats().charged, 10);
+
+  const eleventh = store.start(job({ id: "job-solo-11-0001", run }));
+  assert.equal(eleventh.status, 429);
+  assert.equal(eleventh.body.code, "JOB_CAPACITY");
+  assert.equal(store.stats().charged, 10);
+
+  // The per-address allowance does not open the global one: another address
+  // still fits, and the store refuses at the global limit of 40 live jobs.
+  assert.equal(store.start(job({ id: "job-other-0001", clientKey: "10.0.0.2", run })).status, 201);
+  for (let filler = 0; filler < 29; filler += 1) {
+    const created = store.start(job({
+      id: `job-fill-${String(filler).padStart(2, "0")}-0001`,
+      clientKey: `10.0.1.${filler}`,
+      run,
+    }));
+    assert.equal(created.status, 201);
+  }
+  assert.equal(store.stats().charged, 40);
+  const overflow = store.start(job({ id: "job-overflow-1", clientKey: "10.0.2.1", run }));
+  assert.equal(overflow.status, 429);
+  assert.equal(overflow.body.code, "JOB_CAPACITY");
+  assert.equal(store.stats().charged, 40);
+});
+
+test("a cancelled job keeps holding its slot until the runner really settles", async () => {
+  const { store } = createHarness({ liveJobsPerClient: 2 });
   const gates = [deferred(), deferred()];
   const runs = [
     () => gates[0].promise,
@@ -567,7 +609,7 @@ test("a cancelled job keeps holding its slot until the runner really settles", a
 });
 
 test("a wedged runner keeps its slot past the owner lease and past the record tombstone", async () => {
-  const { clock, store } = createHarness();
+  const { clock, store } = createHarness({ liveJobsPerClient: 2 });
   const gate = deferred();
   const run = () => gate.promise;
   assert.equal(store.start(job({ id: "wedged-job-001", run })).status, 201);

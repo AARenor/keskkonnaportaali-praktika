@@ -737,7 +737,7 @@ test("public search concurrency always leaves a caller-isolation boundary", () =
   assert.equal(configuredSearchConcurrency("1"), 2);
   assert.equal(configuredSearchConcurrency("2.9"), 2);
   assert.equal(configuredSearchPerClientConcurrency(undefined, 8), 2);
-  assert.equal(configuredSearchPerClientConcurrency("99", 4), 2);
+  assert.equal(configuredSearchPerClientConcurrency("99", 4), 3);
   assert.equal(configuredSearchPerClientConcurrency("1", 2), 1);
   assert.equal(configuredSearchPerClientConcurrency("1.9", 4), 1);
 
@@ -751,6 +751,58 @@ test("public search concurrency always leaves a caller-isolation boundary", () =
   assert.equal(fractional.stats().maximumActivePerClient, 1);
   assert.equal(fractional.stats().maximumQueue, 2);
   fractional.close();
+});
+
+test("configured per-client search capacity of 5 is honored under a global 12 and queues five waiters", async () => {
+  const configuredPerClient = configuredSearchPerClientConcurrency("5", 12);
+  assert.equal(configuredPerClient, 5);
+
+  const queueDelaysMs = [];
+  const admission = createFairSearchAdmission({
+    maximumActive: 12,
+    maximumActivePerClient: configuredPerClient,
+    maximumQueue: 32,
+    maximumQueuedPerClient: 5,
+    maximumWaitMs: 5_000,
+    setTimer(callback, delayMs) {
+      queueDelaysMs.push(delayMs);
+      return { unref() {} };
+    },
+    clearTimer() {},
+  });
+  assert.equal(admission.stats().maximumActivePerClient, 5);
+  assert.equal(admission.stats().maximumWaitMs, 5_000);
+
+  const clientA = "198.51.100.20";
+  const releasesA = [];
+  for (let index = 0; index < 5; index += 1) releasesA.push(await admission.acquire(clientA));
+  assert.equal(admission.stats().active, 5);
+
+  const waitingA = Array.from({ length: 5 }, () => admission.acquire(clientA));
+  assert.equal(admission.stats().queued, 5);
+  assert.deepEqual(queueDelaysMs, [5_000, 5_000, 5_000, 5_000, 5_000]);
+  await assert.rejects(admission.acquire(clientA), (error) => error?.code === "SEARCH_CAPACITY");
+  assert.equal(admission.stats().queued, 5);
+
+  // Global fairness: another client starts while client A's five waiters are parked.
+  const releaseB = await admission.acquire("198.51.100.21");
+  assert.equal(admission.stats().active, 6);
+  assert.equal(admission.stats().queued, 5);
+
+  releasesA[0]();
+  const finalReleases = [await waitingA[0]];
+  assert.equal(admission.stats().queued, 4);
+  releaseB();
+  assert.equal(admission.stats().active, 5);
+  for (let index = 1; index < 5; index += 1) {
+    releasesA[index]();
+    finalReleases.push(await waitingA[index]);
+  }
+  assert.equal(admission.stats().queued, 0);
+  assert.equal(admission.stats().active, 5);
+  finalReleases.forEach((release) => release());
+  assert.equal(admission.stats().active, 0);
+  assert.equal(admission.stats().clients, 0);
 });
 
 test("the all-at-once search keeps transport margin under load", () => {

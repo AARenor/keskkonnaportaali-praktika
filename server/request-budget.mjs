@@ -127,8 +127,11 @@ export function configuredSearchPerClientConcurrency(
   maximumActive = configuredSearchConcurrency(),
 ) {
   const globalMaximum = Math.max(1, Math.trunc(Number(maximumActive) || DEFAULT_SEARCH_CONCURRENCY));
-  const safeDefault = globalMaximum === 1 ? 1 : Math.min(2, globalMaximum - 1);
-  return Math.max(1, Math.min(Math.trunc(Number(value) || safeDefault), safeDefault));
+  // One caller may hold every slot but one, so another address always finds a
+  // free slot. The default stays at two; an operator may raise it up to that ceiling.
+  const ceiling = globalMaximum === 1 ? 1 : globalMaximum - 1;
+  const safeDefault = Math.min(2, ceiling);
+  return Math.max(1, Math.min(Math.trunc(Number(value) || safeDefault), ceiling));
 }
 
 function admissionError(message = "Search admission capacity is full", code = "SEARCH_CAPACITY") {

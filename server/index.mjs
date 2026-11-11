@@ -56,6 +56,7 @@ import {
   configuredAnswerBudgetMs,
   createFairSearchAdmission,
   configuredSearchConcurrency,
+  configuredSearchPerClientConcurrency,
   JSON_SEARCH_DEADLINE_CEILING_MS,
   progressiveListingBudgetMs,
   searchDeadline,
@@ -138,7 +139,19 @@ const MAX_TERRAPOINT_QUEUE_WAIT_MS = 1_800;
 const SEARCH_TRANSPORT_RESERVE_MS = 250;
 const TERRAPOINT_OUTBOUND_ORIGINS = new Set(["https://terrapoint.ee"]);
 const MAX_ACTIVE_SEARCHES = configuredSearchConcurrency();
-const searchAdmission = createFairSearchAdmission({ maximumActive: MAX_ACTIVE_SEARCHES });
+// Each address may run up to the configured per-client searches and queue five
+// more; a queued search waits at most five seconds for a slot.
+const MAX_QUEUED_SEARCHES_PER_CLIENT = 5;
+const MAX_SEARCH_QUEUE_WAIT_MS = 5_000;
+const searchAdmission = createFairSearchAdmission({
+  maximumActive: MAX_ACTIVE_SEARCHES,
+  maximumActivePerClient: configuredSearchPerClientConcurrency(
+    process.env.SEARCH_MAX_CONCURRENCY_PER_CLIENT,
+    MAX_ACTIVE_SEARCHES,
+  ),
+  maximumQueuedPerClient: MAX_QUEUED_SEARCHES_PER_CLIENT,
+  maximumWaitMs: MAX_SEARCH_QUEUE_WAIT_MS,
+});
 // The process-local registry behind the asynchronous search job routes.
 const searchJobStore = createSearchJobStore();
 const corpusStatsAdmission = createFairSearchAdmission({

@@ -43,7 +43,7 @@ const JOB_KINDS = new Set(["search", "follow-up"]);
 // any of them, none may be raised past these numbers.
 export const JOB_BOUNDS = Object.freeze({
   liveJobs: 40,
-  liveJobsPerClient: 2,
+  liveJobsPerClient: 10,
   records: 2_000,
   // Cancelling an identifier that never existed buys a record slot that blocks
   // a later same-key create, so it is spent from its own small budget rather
