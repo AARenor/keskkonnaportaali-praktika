@@ -1996,6 +1996,8 @@ function composeSmiHarvestBalanceAnswer(query, sources = [], controlQuery = quer
   const expertEstimateWitnessed = Boolean(expertCitation)
     && askedYear === expertCutYear
     && Number.isFinite(expertThousand);
+  // Match the cited article's precision so the visible witness accepts it.
+  const expertMillions = expertEstimateWitnessed ? etNumberWithDigits(expertThousand / 1_000, 0) : "";
   const parts = [];
   if (methodCitation) {
     parts.push({
@@ -2006,7 +2008,7 @@ function composeSmiHarvestBalanceAnswer(query, sources = [], controlQuery = quer
   }
   if (askedYear) {
     const availabilityText = expertEstimateWitnessed
-      ? `SMI ${SMI_2025_YEAR} töövihiku raiemahu aegrida lõpeb ${cutYear}. aastaga ja ${askedYear}. aasta raiemaht on eksperthinnang ${etNumberWithDigits(expertThousand / 1_000, 1)} miljonit m³, mitte mõõdetud tulemus. ${askedYear}. aasta mõõdetud raiemahtu ei ole avaldatud, seega ei saa ${askedYear}. aasta raiet ja kasvu ühe aasta lõikes kõrvutada.`
+      ? `SMI ${SMI_2025_YEAR} töövihiku raiemahu aegrida lõpeb ${cutYear}. aastaga ja ${askedYear}. aasta raiemaht on eksperthinnang ${expertMillions} miljonit m³, mitte mõõdetud tulemus. ${askedYear}. aasta mõõdetud raiemahtu ei ole avaldatud, seega ei saa ${askedYear}. aasta raiet ja kasvu ühe aasta lõikes kõrvutada.`
       : `SMI ${SMI_2025_YEAR} töövihik avaldab raiemahu aastate kaupa kuni ${cutYear}. aastani, seega ${askedYear}. aasta raiemaht ei ole selles väljaandes avaldatud.`;
     parts.push({
       title: `${askedYear}. aasta kohta avaldatud andmed`,
@@ -2027,7 +2029,7 @@ function composeSmiHarvestBalanceAnswer(query, sources = [], controlQuery = quer
     ? `${cutYear}. aasta mõõdetud koguraie raiemaht oli ${etNumberWithDigits(projection.cutThousandM3, 0)} tuhat m³ (suhteline viga ±${etNumberWithDigits(projection.cutRelativeErrorPercent, 1)}%).`
     : "";
   const expertSentence = expertEstimateWitnessed
-    ? `${expertCutYear}. aasta raiemaht on eksperthinnang ${etNumberWithDigits(expertThousand / 1_000, 1)} miljonit m³, mitte mõõdetud tulemus.`
+    ? `${expertCutYear}. aasta raiemaht on eksperthinnang ${expertMillions} miljonit m³, mitte mõõdetud tulemus.`
     : "";
   const netSentence = expertCitation && Number.isFinite(projection.netIncrementManagedCubicMetresPerHectareYear)
     ? `Majandatava metsa netojuurdekasv oli ${expertCutYear}. aastal ${etNumberWithDigits(projection.netIncrementManagedCubicMetresPerHectareYear, 1)} m³ hektari kohta aastas, kuid riiklikku netojuurdekasvu kogumahtu ei ole avaldatud.`

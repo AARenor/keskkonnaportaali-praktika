@@ -37,7 +37,7 @@ import { contextualSuggestions } from "./suggestion_context.js";
 import { searchWaitingMessage } from "./search-stream.js";
 import AnswerChart, { chartSourceDiffers } from "./AnswerChart.jsx";
 import { APP_BUILD_MISMATCH_EVENT, noteServerBuild } from "./app-build.js";
-import { DEFAULT_SEARCH_FILTERS, clientSearchFilters, followUpAnswerPayload, followUpRequestPayload, searchRequestPayload } from "./search_request.js";
+import { DEFAULT_SEARCH_FILTERS, clientSearchFilters, followUpAnswerPayload, followUpRequestPayload, hasNoModelWording, isNoAnswerCard, isSourceOnlyCard, searchRequestPayload } from "./search_request.js";
 import { readSearchJob } from "./search_jobs.js";
 import Chatbot from "./Chatbot.jsx";
 
@@ -940,7 +940,7 @@ function sourceTierLabel(value) {
   return "Veebiallikas";
 }
 
-function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRef, interactive = true, onSearch = null, aiUnavailable = false, answerCited = false, unavailable = false, query = "" }) {
+function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRef, interactive = true, onSearch = null, aiUnavailable = false, noAnswer = false, answerCited = false, unavailable = false, query = "" }) {
   if (!listing && !busy) return null;
   const total = Number(listing?.total || 0);
   const distinctTotal = Number(listing?.distinctTotal || total);
@@ -984,6 +984,10 @@ function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRe
                 ? "AI-sõnastust ei saanud koostada. Vastusekaart esitab allika enda viidatud väljavõtte."
                 : "AI-sõnastust ei saanud koostada. Leitud tulemused on loetletud siin."
               : "AI-vastust ei saanud koostada. Laiast indeksist tulemusi ei leitud."
+            : noAnswer
+            ? total
+              ? "Vastust ei leitud. Leitud tulemused on loetletud siin."
+              : "Vastust ei leitud. Laiast indeksist tulemusi ei leitud."
             : distinctTotal < total
               ? `Leidsin ${total.toLocaleString("et-EE")} vastet ja ühendasin need ${distinctTotal.toLocaleString("et-EE")} eri leheks. Ülal olev koondvastus kasutab sama filtreeritud tulemuste hulka.`
               : "Ülal olev koondvastus põhineb sama päringu filtreeritud ja järjestatud tulemustel."}</p>
@@ -1170,7 +1174,14 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
     allowDefault: false,
   });
   const aiUnavailable = Boolean(result?.answer?.aiUnavailable);
-  const listingLeads = aiUnavailable && Number((listing || result?.searchResults || previewListing)?.items?.length || 0) > 0;
+  const noAnswer = !aiUnavailable && isNoAnswerCard(result?.answer);
+  // A card that carries no model summary: the wording failed, or the server
+  // published the source records without a summary. Neither leads the results.
+  const noSummary = aiUnavailable || isSourceOnlyCard(result?.answer);
+  const listingLeads = (noSummary || noAnswer) && Number((listing || result?.searchResults || previewListing)?.items?.length || 0) > 0;
+  // A stream that ended without an answer card leaves no wording to show, so
+  // the listing header must not claim a summary sits above it either.
+  const wordingMissing = noSummary || Boolean(error && !hasResult);
   const visibleListing = listing || result?.searchResults || previewListing;
   // A fallback card is a status, not the answer. When the model wording is
   // missing the ranked list leads, because that list is the product the reader
@@ -1225,7 +1236,8 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
       onFilters={applyFilters}
       onPage={loadListingPage}
       onSearch={onSearch}
-      aiUnavailable={aiUnavailable}
+      aiUnavailable={wordingMissing}
+      noAnswer={noAnswer}
       answerCited={Boolean(result?.answer?.introCitations?.length)}
       unavailable={listingUnavailable}
       query={query}
@@ -1321,6 +1333,25 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
       </div>
       <div className="shell search-results-shell search-page__content">
         {busy && !hasResult ? <SearchLoadingSkeleton elapsedMs={waitingMs} resultsReady={Boolean(previewListing)} /> : null}
+        {/* The listing that already reached the client leads: a failed stream
+            cannot withdraw it, so it renders before the notice that says what
+            is missing. */}
+        {!hasResult && previewListing ? (
+          <BroadSearchResults
+            busy={false}
+            error=""
+            headingRef={listingHeadingRef}
+            interactive={!listingBusy}
+            listing={listing || previewListing}
+            onFilters={applyFilters}
+            onPage={loadListingPage}
+            onSearch={onSearch}
+            aiUnavailable={wordingMissing}
+            noAnswer={noAnswer}
+            unavailable={listingUnavailable}
+            query={query}
+          />
+        ) : null}
         {error ? <div className="search-error" role="alert"><CircleHelp size={22} /><div><strong>Otsingut ei saanud lõpetada</strong><p>{error}</p><button className="error-retry" disabled={busy} onClick={() => onSearch(query, { filters: appliedFilters })} type="button">Proovi uuesti</button></div></div> : null}
         {hasResult ? (
           <>
@@ -1354,19 +1385,30 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
               <div className="answer-followup">
                 {followUps.length || pendingFollowUpQuestion ? <div className="followup-thread">
                   {followUps.map((turn, turnIndex) => {
-                    if (!turn.result) {
-                      // The answer failed, but the follow-up's own listing did
-                      // not: keep the readable links and say what is missing.
+                    const turnAnswer = turn.result?.answer;
+                    // A card without model wording is a status, not the answer:
+                    // the follow-up's own listing leads it, and everything the
+                    // card does carry (its own label, cited wording, parts,
+                    // chart, legend, note) stays readable. Only a stream that
+                    // ended without any card falls back to a plain status.
+                    const noWording = hasNoModelWording(turnAnswer);
+                    const turnSources = noWording ? (turn.listing?.items || []).slice(0, 5) : [];
+                    const turnListing = turnSources.length ? (
+                      <div className="followup-answer">
+                        <span>Leitud allikad</span>
+                        <ul className="followup-sources">
+                          {turnSources.map((item) => (
+                            <li key={item.id || item.url}><ExternalAnchor href={item.url}>{item.title || item.url}</ExternalAnchor></li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null;
+                    if (!turnAnswer) {
                       return (
                         <section className="followup-turn" key={`${turn.question}-${turnIndex}`}>
                           <div className="followup-question"><span>Teie</span><p>{turn.question}</p></div>
+                          {turnListing}
                           <div className="followup-answer">
-                            <span>Leitud allikad</span>
-                            <ul className="followup-sources">
-                              {(turn.listing?.items || []).slice(0, 5).map((item) => (
-                                <li key={item.id || item.url}><ExternalAnchor href={item.url}>{item.title || item.url}</ExternalAnchor></li>
-                              ))}
-                            </ul>
                             <p className="followup-status" role="status">Koondvastust ei saanud koostada. Proovi sama küsimust uuesti.</p>
                           </div>
                         </section>
@@ -1375,16 +1417,18 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
                     return (
                       <section className="followup-turn" key={`${turn.question}-${turnIndex}`}>
                         <div className="followup-question"><span>Teie</span><p>{turn.question}</p></div>
+                        {noWording ? turnListing : null}
                         <div className="followup-answer">
-                          <span>Koondvastus</span>
-                          <h2 id={`followup-${turnIndex + 1}-title`} tabIndex={-1}>{turn.result.answer.title}</h2>
-                          <p>{turn.result.answer.intro}{" "}{(turn.result.answer.introCitations || []).map((citation) => <Citation key={citation} number={citation} sources={turn.result.sources} />)}</p>
-                          {turn.result.chart ? <AnswerChart chart={turn.result.chart} citation={<Citation number={turn.result.chart.citation} sources={turn.result.sources} />} sourceDiffers={chartSourceDiffers(turn.result.answer, turn.result.chart, turn.result.sources)} key={`${turn.result.chart.title}-${turn.result.chart.series.map((series) => series.id).join("|")}`} /> : null}
-                          {(turn.result.answer.parts || []).map((part, partIndex) => (
+                          <span>{noWording ? turnAnswer.eyebrow || "AI koondvastus" : "Koondvastus"}</span>
+                          <h2 id={`followup-${turnIndex + 1}-title`} tabIndex={-1}>{turnAnswer.title}</h2>
+                          <p>{turnAnswer.intro}{" "}{(turnAnswer.introCitations || []).map((citation) => <Citation key={citation} number={citation} sources={turn.result.sources} />)}</p>
+                          {turn.result.chart ? <AnswerChart chart={turn.result.chart} citation={<Citation number={turn.result.chart.citation} sources={turn.result.sources} />} sourceDiffers={chartSourceDiffers(turnAnswer, turn.result.chart, turn.result.sources)} key={`${turn.result.chart.title}-${turn.result.chart.series.map((series) => series.id).join("|")}`} /> : null}
+                          {(turnAnswer.parts || []).map((part, partIndex) => (
                             <p key={partIndex}>{part.text}{" "}{(part.citations || []).map((citation) => <Citation key={citation} number={citation} sources={turn.result.sources} />)}</p>
                           ))}
                           <SourceActions sources={turn.result.sources} />
-                          <SourceLegend sources={turn.result.sources} answer={turn.result.answer} chart={turn.result.chart} />
+                          <SourceLegend sources={turn.result.sources} answer={turnAnswer} chart={turn.result.chart} />
+                          {noWording ? <AnswerNote note={turnAnswer.note} /> : null}
                         </div>
                       </section>
                     );
@@ -1454,20 +1498,6 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
               </section>
             ) : null}
           </>
-        ) : null}
-        {!hasResult && previewListing ? (
-          <BroadSearchResults
-            busy={false}
-            error=""
-            headingRef={listingHeadingRef}
-            interactive={!listingBusy}
-            listing={listing || previewListing}
-            onFilters={applyFilters}
-            onPage={loadListingPage}
-            onSearch={onSearch}
-            unavailable={listingUnavailable}
-            query={query}
-          />
         ) : null}
       </div>
     </main>

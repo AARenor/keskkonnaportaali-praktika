@@ -1388,8 +1388,9 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
   // Claim-specific national questions must resolve before the generic
   // area/geography fallback. Several begin with “kui palju metsa”, but ask
   // about regeneration, fire events or ownership rather than forest area.
+  // Include the genitive "raiemahu" and expert estimate questions for 2025.
   if (hasHarvest && /\b2025\b/u.test(text)
-    && /\b(?:kui\s+palju|raiemaht\w*|maht\w*|tihumeet\w*)\b/u.test(text)) {
+    && /\b(?:kui\s+palju|raiemah\w*|raie\s+mah\w*|maht\w*|tihumeet\w*|eksper(?:t|di)hinnang\w*)\b/u.test(text)) {
     return resolved("forest-harvest-2025");
   }
   if (/\b(?:puuliig\w*|enamuspuuliig\w*)\b/u.test(text)

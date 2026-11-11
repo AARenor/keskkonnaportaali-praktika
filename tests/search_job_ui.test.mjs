@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 import { DEFAULT_SEARCH_FILTERS } from "../src/search_request.js";
+import { composeSearchResponse, NO_ANSWER_EYEBROW } from "../server/search.mjs";
+
+const SOURCE_ONLY_EYEBROW = composeSearchResponse("mets", [{ id: "mets", title: "Mets" }], { related: [] }).answer.eyebrow;
 
 // The four search flows a reader can start (search page, search page
 // follow-up, chat first question, chat follow-up) must all be served by the
@@ -334,6 +338,142 @@ function staysOpenUntilAborted() {
   });
 }
 
+// The server's own fallback card: the wording is missing, the listing is not,
+// and the card says why instead of pretending to be a summary.
+function unavailableAnswerOf(title, query) {
+  return {
+    ...(query ? { query } : {}),
+    searchResults: listingOf(),
+    answer: {
+      eyebrow: "Otsing on praegu koormatud",
+      title,
+      intro: "Otsing teenindab praegu mitut päringut korraga ning uut faktivastust ei koostatud. See ei tähenda, et otsitud andmeid ei ole.",
+      introCitations: [],
+      parts: [],
+      aiUnavailable: true,
+      note: "Proovi otsingut paari sekundi pärast uuesti.",
+    },
+    sources: [],
+  };
+}
+
+// The server's own no-answer card: the sources were searched and nothing
+// answered the question, so this is an answer about the sources, never a broken
+// search. The listing the reader already got still leads it.
+
+function noAnswerOf(title, query) {
+  return {
+    ...(query ? { query } : {}),
+    searchResults: listingOf(),
+    answer: {
+      eyebrow: NO_ANSWER_EYEBROW,
+      title,
+      intro: "Meil ei ole sellele küsimusele vastust. Meie allikatest ei leidnud me selget ja usaldusväärset vastust.",
+      introCitations: [],
+      parts: [],
+      note: "",
+    },
+    sources: [],
+  };
+}
+
+// Some searches end with source records and no summary at all: the server's
+// "Kontrollitud allikaotsing" card. It is neither a failure nor a no-answer, and
+// it must not push the listing the reader received below itself.
+function sourceOnlyAnswerOf(title, query) {
+  return {
+    ...(query ? { query } : {}),
+    searchResults: listingOf(),
+    answer: {
+      eyebrow: SOURCE_ONLY_EYEBROW,
+      title,
+      intro: "Leidsin küsimusega seotud ametlikud allikad, kuid usaldusväärset koondvastust ei õnnestunud praegu koostada. Ava allikad või proovi hetke pärast uuesti.",
+      introCitations: [],
+      parts: [],
+      note: "",
+    },
+    sources: [{
+      citation: 1,
+      id: "kaevandamine",
+      title: "Kaevandamise keskkonnamõju",
+      url: "https://keskkonnaportaal.ee/et/kaevandamine",
+      organization: "Keskkonnaportaal",
+      type: "Teemaleht",
+      sourceTier: "official",
+    }],
+  };
+}
+
+// A supported factual answer to a yes/no question: the reviewed source
+// disproves the claim, so the negative wording is an answered question and must
+// keep the ordinary answer presentation.
+function factualAnswerOf(title, intro, citationUrl) {
+  return {
+    searchResults: listingOf(),
+    answer: { eyebrow: "AI koondvastus", title, intro, introCitations: [1], parts: [] },
+    sources: [{
+      citation: 1,
+      id: "metsandus",
+      title: "Metsanduse teemaleht",
+      url: citationUrl,
+      organization: "Keskkonnaportaal",
+      type: "Teemaleht",
+      sourceTier: "official",
+    }],
+  };
+}
+
+// A fallback card can still carry the extract the server chose: the wording is
+// the source's own sentence, so its citation, note and legend belong to the
+// reader even though the model wording is missing.
+function extractAnswerOf(citationUrl) {
+  return {
+    searchResults: listingOf(),
+    answer: {
+      eyebrow: "Allika viidatud väljavõte",
+      title: "Metsamaa pindala",
+      intro: "Metsamaa pindala oli 2024. aastal 2,3 miljonit hektarit.",
+      introCitations: [1],
+      parts: [],
+      aiUnavailable: true,
+      aiUnavailableExtract: true,
+      note: "Allika enda sõnastus, mitte mudeli koondvastus.",
+    },
+    sources: [{
+      citation: 1,
+      id: "metsandus",
+      title: "Metsanduse teemaleht",
+      url: citationUrl,
+      organization: "Keskkonnaportaal",
+      type: "Teemaleht",
+      sourceTier: "official",
+    }],
+  };
+}
+
+// The stateful renderer keeps the tree; static markup is what the reader gets,
+// so order and link text are asserted on the rendered HTML. Rendering an
+// already-built element tree runs no effect and no handler, so the assertions
+// stay on the state the controlled events produced.
+function linkIn(html, url) {
+  const hrefIndex = html.indexOf(`href="${url}"`);
+  if (hrefIndex < 0) return null;
+  const start = html.lastIndexOf("<a", hrefIndex);
+  const tagEnd = html.indexOf(">", hrefIndex);
+  const end = html.indexOf("</a>", hrefIndex);
+  return { index: start, opening: html.slice(start, tagEnd + 1), text: html.slice(tagEnd + 1, end) };
+}
+
+function indexOfMarkup(html, marker) {
+  const index = html.indexOf(marker);
+  assert.ok(index >= 0, `the rendered page contains ${marker}`);
+  return index;
+}
+
+function countMarkup(html, marker) {
+  return html.split(marker).length - 1;
+}
+
 let vite;
 let reactInternals;
 let releaseBrowserGlobals;
@@ -556,6 +696,382 @@ test("a failed chat answer keeps the sources the chat already found", async () =
     const turnListing = find(failed, (element) => Array.isArray(element.props?.listing?.items) && element.props.listing.items.length > 0);
     assert.equal(turnListing.props.listing.items[0].title, "Metsandus", "the found source is still listed");
     assert.doesNotMatch(textOf(failed), /Serveriga ei saanud ühendust/u);
+  } finally {
+    delete globalThis.__praktikaSearchJobs;
+  }
+});
+
+// A failed answer never withdraws the listing that already reached the client.
+// The reader came for the ordinary results, so they lead and the notice follows
+// them; the notice stays truthful about what is missing.
+
+const FIRST_RESULT = "https://keskkonnaportaal.ee/et/mets";
+
+test("a terminal search failure shows the received listing before its notice", async () => {
+  const transport = createJobTransport();
+  globalThis.__praktikaSearchJobs = transport;
+  try {
+    const { App } = await loadPages();
+    const renderer = createRenderer(reactInternals);
+    const startSearch = find(renderer.render(App, {}), (element) => element.props?.searchInputRef !== undefined).props.onSearch;
+
+    transport.queue(failsAfter(listingOf()));
+    await startSearch("metsateatis");
+    const page = find(renderer.render(App, {}), (element) => typeof element.props?.onHome === "function");
+    assert.equal(page.props.error, "Koondvastuse voog katkes. Juba leitud otsingutulemused on endiselt saadaval.");
+    assert.equal(page.props.result, null, "no answer card is invented for a failed stream");
+
+    const html = renderToStaticMarkup(page);
+    const link = linkIn(html, FIRST_RESULT);
+    assert.ok(link, "the listing that reached the client is rendered, not dropped");
+    assert.match(link.text, /Metsandus/u, "the received result stays a real link with its title");
+    assert.ok(link.index < indexOfMarkup(html, 'class="search-error"'),
+      "the ordinary results precede the failure notice");
+    assert.match(html.slice(indexOfMarkup(html, 'class="search-error"')),
+      /Juba leitud otsingutulemused on endiselt saadaval/u, "the notice says what survived");
+    assert.match(html, /AI-sõnastust ei saanud koostada\. Leitud tulemused on loetletud siin\./u,
+      "the listing header does not claim a summary sits above it");
+    assert.match(html, /id="broad-results-title"/u, "the listing keeps its heading");
+    assert.equal(countMarkup(html, `href="${FIRST_RESULT}"`), 1, "the listing is rendered once");
+  } finally {
+    delete globalThis.__praktikaSearchJobs;
+  }
+});
+
+test("an unavailable wording card on the search page keeps the listing above it", async () => {
+  const transport = createJobTransport();
+  globalThis.__praktikaSearchJobs = transport;
+  try {
+    const { App } = await loadPages();
+    const renderer = createRenderer(reactInternals);
+    const startSearch = find(renderer.render(App, {}), (element) => element.props?.searchInputRef !== undefined).props.onSearch;
+
+    transport.queue(emits(
+      { type: "results", searchResults: listingOf() },
+      { type: "answer", result: unavailableAnswerOf("metsateatis", "metsateatis") },
+    ));
+    await startSearch("metsateatis");
+    const page = find(renderer.render(App, {}), (element) => typeof element.props?.onHome === "function");
+    const html = renderToStaticMarkup(page);
+
+    assert.equal(countMarkup(html, 'class="search-error"'), 0, "a missing wording is not a broken stream");
+    const link = linkIn(html, FIRST_RESULT);
+    assert.ok(link, "the received listing is rendered");
+    assert.match(link.text, /Metsandus/u, "the received result stays a real link");
+    assert.equal(countMarkup(html, `href="${FIRST_RESULT}"`), 1, "the listing is not duplicated");
+    assert.ok(link.index < indexOfMarkup(html, 'class="answer-card"'),
+      "the ordinary results lead and the fallback card follows");
+    assert.match(html, /AI-sõnastust ei saanud koostada\. Leitud tulemused on loetletud siin\./u);
+    assert.match(html, /Otsing on praegu koormatud/u, "the fallback keeps its own label");
+    assert.match(html, /uut faktivastust ei koostatud/u, "the reason stays readable");
+  } finally {
+    delete globalThis.__praktikaSearchJobs;
+  }
+});
+
+test("a no-answer card on the search page keeps the received listing above it", async () => {
+  const transport = createJobTransport();
+  globalThis.__praktikaSearchJobs = transport;
+  try {
+    const { App } = await loadPages();
+    const renderer = createRenderer(reactInternals);
+    const startSearch = find(renderer.render(App, {}), (element) => element.props?.searchInputRef !== undefined).props.onSearch;
+
+    transport.queue(emits(
+      { type: "results", searchResults: listingOf() },
+      { type: "answer", result: noAnswerOf("metsateadis", "metsateadis") },
+    ));
+    await startSearch("metsateadis");
+    const page = find(renderer.render(App, {}), (element) => typeof element.props?.onHome === "function");
+    assert.equal(page.props.result.answer.eyebrow, NO_ANSWER_EYEBROW);
+    const html = renderToStaticMarkup(page);
+
+    assert.equal(countMarkup(html, 'class="search-error"'), 0, "a no-answer is not a failed search");
+    const link = linkIn(html, FIRST_RESULT);
+    assert.ok(link, "the received listing is rendered");
+    assert.ok(link.index < indexOfMarkup(html, 'class="answer-card"'),
+      "the ordinary results lead the no-answer card");
+    assert.match(html.slice(indexOfMarkup(html, 'class="answer-card"')), /Vastust ei leitud/u,
+      "the no-answer card stays visible");
+    assert.match(html, /Meil ei ole sellele küsimusele vastust/u, "the no-answer wording is kept");
+    assert.match(html, /Vastust ei leitud\. Leitud tulemused on loetletud siin\./u,
+      "the listing header says what the card above it is");
+    assert.equal(countMarkup(html, `href="${FIRST_RESULT}"`), 1, "the listing is rendered once");
+  } finally {
+    delete globalThis.__praktikaSearchJobs;
+  }
+});
+
+test("a source-only search keeps the received listing above the card that says no summary was made", async () => {
+  const transport = createJobTransport();
+  globalThis.__praktikaSearchJobs = transport;
+  try {
+    const { App } = await loadPages();
+    const renderer = createRenderer(reactInternals);
+    const startSearch = find(renderer.render(App, {}), (element) => element.props?.searchInputRef !== undefined).props.onSearch;
+
+    transport.queue(emits(
+      { type: "results", searchResults: listingOf() },
+      { type: "answer", result: sourceOnlyAnswerOf("Kaevandamise keskkonnamõju Ida-Virumaal", "kaevandamise keskkonnamõju") },
+    ));
+    await startSearch("kaevandamise keskkonnamõju");
+    const page = find(renderer.render(App, {}), (element) => typeof element.props?.onHome === "function");
+    assert.equal(page.props.result.answer.eyebrow, SOURCE_ONLY_EYEBROW);
+    const html = renderToStaticMarkup(page);
+
+    assert.equal(countMarkup(html, 'class="search-error"'), 0, "source-only evidence is not a failed search");
+    const link = linkIn(html, FIRST_RESULT);
+    assert.ok(link, "the received listing is rendered");
+    assert.match(link.text, /Metsandus/u, "the received result stays a real link");
+    assert.ok(link.index < indexOfMarkup(html, 'class="answer-card"'),
+      "the ordinary results lead the card that says no summary was made");
+    assert.ok(html.slice(indexOfMarkup(html, 'class="answer-card"')).includes(SOURCE_ONLY_EYEBROW),
+      "the card keeps its own label");
+    assert.match(html, /usaldusväärset koondvastust ei õnnestunud/u, "the card keeps its own wording");
+    assert.match(html, /AI-sõnastust ei saanud koostada\. Leitud tulemused on loetletud siin\./u,
+      "the listing header does not claim a summary sits above it");
+    assert.equal(countMarkup(html, `href="${FIRST_RESULT}"`), 1, "the listing is rendered once");
+  } finally {
+    delete globalThis.__praktikaSearchJobs;
+  }
+});
+
+test("a follow-up without model wording keeps its own listing before the fallback card", async () => {
+  const transport = createJobTransport();
+  globalThis.__praktikaSearchJobs = transport;
+  try {
+    const { App } = await loadPages();
+    const renderer = createRenderer(reactInternals);
+    const startSearch = find(renderer.render(App, {}), (element) => element.props?.searchInputRef !== undefined).props.onSearch;
+
+    transport.queue(emits(
+      { type: "results", searchResults: listingOf() },
+      { type: "answer", result: { ...answerOf("Metsateatis", "metsateatis"), related: ["Kuidas metsa pindala muutus?"] } },
+    ));
+    await startSearch("metsateatis");
+    const page = find(renderer.render(App, {}), (element) => typeof element.props?.onHome === "function");
+    const SearchResults = page.type;
+    const pageProps = page.props;
+    const askFollowUp = (question) => {
+      find(renderer.render(SearchResults, pageProps), (element) => element.props?.id === "answer-followup-input")
+        .props.onChange({ target: { value: question } });
+      find(renderer.render(SearchResults, pageProps), (element) => element.props?.className === "followup-form")
+        .props.onSubmit({ preventDefault() {} });
+    };
+
+    const fallbackTurn = (html, question) => html.slice(indexOfMarkup(html, question));
+
+    transport.queue(emits(
+      { type: "results", searchResults: listingOf() },
+      { type: "answer", result: unavailableAnswerOf("Kuidas metsa pindala muutus?") },
+    ));
+    askFollowUp("Kuidas metsa pindala muutus?");
+    await settle();
+    const first = fallbackTurn(renderToStaticMarkup(renderer.render(SearchResults, pageProps)), "Kuidas metsa pindala muutus?");
+    const firstLink = linkIn(first, FIRST_RESULT);
+    assert.ok(firstLink, "the follow-up's own listing is shown, not dropped");
+    assert.match(firstLink.text, /Metsandus/u, "the follow-up's source stays a real link");
+    const firstCard = indexOfMarkup(first, "Otsing on praegu koormatud");
+    assert.ok(firstLink.index < firstCard, "the listing comes before the fallback card");
+    assert.match(first.slice(firstCard), /uut faktivastust ei koostatud/u, "the card keeps the server's wording");
+
+    transport.queue(emits(
+      { type: "results", searchResults: listingOf() },
+      { type: "answer", result: noAnswerOf("Mis muutus viimase viie aasta jooksul?") },
+    ));
+    askFollowUp("Mis muutus viimase viie aasta jooksul?");
+    await settle();
+    const html = renderToStaticMarkup(renderer.render(SearchResults, pageProps));
+    const second = fallbackTurn(html, "Mis muutus viimase viie aasta jooksul?");
+    const secondLink = linkIn(second, FIRST_RESULT);
+    assert.ok(secondLink, "the no-answer follow-up keeps its listing");
+    const secondCard = indexOfMarkup(second, "Vastust ei leitud");
+    assert.ok(secondLink.index < secondCard, "the listing comes before the no-answer card");
+    assert.match(second.slice(secondCard), /Meil ei ole sellele küsimusele vastust/u, "the no-answer wording is kept");
+    assert.equal(countMarkup(html, ">Koondvastus<"), 0, "a fallback is never labelled as a summary");
+  } finally {
+    delete globalThis.__praktikaSearchJobs;
+  }
+});
+
+test("a cited fallback extract keeps its citation and legend after the listing", async () => {
+  const transport = createJobTransport();
+  globalThis.__praktikaSearchJobs = transport;
+  try {
+    const { App } = await loadPages();
+    const renderer = createRenderer(reactInternals);
+    const startSearch = find(renderer.render(App, {}), (element) => element.props?.searchInputRef !== undefined).props.onSearch;
+
+    transport.queue(emits(
+      { type: "results", searchResults: listingOf() },
+      { type: "answer", result: { ...answerOf("Metsateatis", "metsateatis"), related: ["Kui suur on metsamaa pindala?"] } },
+    ));
+    await startSearch("metsateatis");
+    const page = find(renderer.render(App, {}), (element) => typeof element.props?.onHome === "function");
+    const SearchResults = page.type;
+    const pageProps = page.props;
+
+    const EXTRACT_URL = "https://keskkonnaportaal.ee/et/mets/statistika";
+    transport.queue(emits(
+      { type: "results", searchResults: listingOf() },
+      { type: "answer", result: extractAnswerOf(EXTRACT_URL) },
+    ));
+    find(renderer.render(SearchResults, pageProps), (element) => element.props?.id === "answer-followup-input")
+      .props.onChange({ target: { value: "Kui suur on metsamaa pindala?" } });
+    find(renderer.render(SearchResults, pageProps), (element) => element.props?.className === "followup-form")
+      .props.onSubmit({ preventDefault() {} });
+    await settle();
+
+    const html = renderToStaticMarkup(renderer.render(SearchResults, pageProps));
+    const turn = html.slice(indexOfMarkup(html, "Kui suur on metsamaa pindala?"));
+    const listing = linkIn(turn, FIRST_RESULT);
+    assert.ok(listing, "the follow-up's own listing is shown");
+    const citation = linkIn(turn, EXTRACT_URL);
+    assert.ok(citation, "the extract keeps its citation, it is not flattened into plain text");
+    assert.match(citation.opening, /class="citation"/u, "the cited number is still a link");
+    assert.ok(listing.index < citation.index, "the listing comes before the cited extract card");
+    assert.match(turn, /Allika viidatud väljavõte/u, "the card keeps its own label");
+    assert.match(turn, /Metsamaa pindala oli 2024\. aastal 2,3 miljonit hektarit/u, "the extract stays readable");
+    assert.match(turn, /Allika enda sõnastus, mitte mudeli koondvastus/u, "the card keeps its note");
+    assert.equal(countMarkup(turn, 'class="source-legend"'), 1, "the source legend stays with the card");
+    assert.equal(countMarkup(html, ">Koondvastus<"), 0, "the extract is not labelled as a summary");
+  } finally {
+    delete globalThis.__praktikaSearchJobs;
+  }
+});
+
+test("a supported negative answer keeps its answer card above the listing", async () => {
+  const transport = createJobTransport();
+  globalThis.__praktikaSearchJobs = transport;
+  try {
+    const { App } = await loadPages();
+    const renderer = createRenderer(reactInternals);
+    const startSearch = find(renderer.render(App, {}), (element) => element.props?.searchInputRef !== undefined).props.onSearch;
+
+    const CITATION_URL = "https://keskkonnaportaal.ee/et/mets/statistika";
+    transport.queue(emits(
+      { type: "results", searchResults: listingOf() },
+      {
+        type: "answer",
+        result: factualAnswerOf(
+          "Ei, metsamaa pindala ei ole vähenenud",
+          "Viimase kümne aasta mõõtmised näitavad metsamaa pindala kasvu, seega pindala ei ole vähenenud.",
+          CITATION_URL,
+        ),
+      },
+    ));
+    await startSearch("kas metsamaa pindala on vähenenud");
+    const page = find(renderer.render(App, {}), (element) => typeof element.props?.onHome === "function");
+    assert.equal(page.props.result.answer.title, "Ei, metsamaa pindala ei ole vähenenud");
+    const html = renderToStaticMarkup(page);
+
+    assert.equal(countMarkup(html, 'class="search-error"'), 0, "a supported negative answer is not a failed search");
+    assert.doesNotMatch(html, /Koondvastuse voog katkes|AI-sõnastust ei saanud koostada|Vastust ei leitud/u);
+    assert.match(html, /Ei, metsamaa pindala ei ole vähenenud/u, "the answer stays the answer");
+    const citation = linkIn(html, CITATION_URL);
+    assert.ok(citation, "the answer keeps its citation link");
+    assert.match(citation.opening, /class="citation"/u, "the cited number is still a link");
+    const link = linkIn(html, FIRST_RESULT);
+    assert.ok(link, "the listing stays available beside the answer");
+    assert.ok(indexOfMarkup(html, 'class="answer-card"') < link.index,
+      "an answered search keeps the answer card above its listing");
+    assert.equal(countMarkup(html, `href="${FIRST_RESULT}"`), 1, "the listing is rendered once");
+    assert.match(html, /Ülal olev koondvastus põhineb/u, "an answered listing keeps its usual header");
+  } finally {
+    delete globalThis.__praktikaSearchJobs;
+  }
+});
+
+test("the chat keeps a listing it already found above a fallback answer", async () => {
+  const transport = createJobTransport();
+  globalThis.__praktikaSearchJobs = transport;
+  try {
+    const { Chatbot } = await loadPages();
+    const renderer = createRenderer(reactInternals);
+    const parts = { AnswerNote: () => null, Citation: () => null, SourceActions: () => null, SourceLegend: () => null };
+    const props = { answerParts: parts, answerTextOf: () => "" };
+    find(renderer.render(Chatbot, props), (element) => element.props?.["aria-label"] === "Ava vestlus").props.onClick();
+    const send = (question) => {
+      find(renderer.render(Chatbot, props), (element) => element.props?.id === "chatbot-input")
+        .props.onChange({ target: { value: question } });
+      find(renderer.render(Chatbot, props), (element) => element.props?.className === "chatbot__form")
+        .props.onSubmit({ preventDefault() {} });
+    };
+
+    transport.queue(emits(
+      { type: "results", searchResults: listingOf() },
+      { type: "answer", result: answerOf("Metsateatis", "kui palju metsa on Eestis") },
+    ));
+    send("kui palju metsa on Eestis");
+    await settle();
+    const answered = renderer.render(Chatbot, props);
+    const answeredHtml = renderToStaticMarkup(answered);
+    assert.equal(countMarkup(answeredHtml, 'class="chatbot__results"'), 0,
+      "an answered turn keeps its existing presentation without a second listing");
+    assert.match(answeredHtml, /class="chatbot__answer-title"/u, "the answered turn still renders its answer card");
+
+    transport.queue(emits(
+      { type: "results", searchResults: listingOf() },
+      { type: "answer", result: unavailableAnswerOf("mis muutus viimase viie aasta jooksul") },
+    ));
+    send("mis muutus viimase viie aasta jooksul");
+    await settle();
+    const fallbackHtml = renderToStaticMarkup(renderer.render(Chatbot, props));
+    const fallbackTurn = fallbackHtml.slice(indexOfMarkup(fallbackHtml, "mis muutus viimase viie aasta jooksul"));
+    const fallbackLink = linkIn(fallbackTurn, FIRST_RESULT);
+    assert.ok(fallbackLink, "the listing the panel already found is kept");
+    assert.match(fallbackLink.text, /Metsandus/u, "the kept listing stays a real link");
+    assert.ok(fallbackLink.index < indexOfMarkup(fallbackTurn, 'class="chatbot__answer-title"'),
+      "the listing comes before the fallback card");
+    assert.match(fallbackTurn, /Otsing on praegu koormatud/u, "the fallback keeps its own label");
+    assert.match(fallbackTurn, /See ei tähenda, et otsitud andmeid ei ole/u, "the truthful notice is kept");
+
+    transport.queue(emits(
+      { type: "results", searchResults: listingOf() },
+      { type: "answer", result: noAnswerOf("kas metsa on rohkem") },
+    ));
+    send("kas metsa on rohkem");
+    await settle();
+    const noAnswerHtml = renderToStaticMarkup(renderer.render(Chatbot, props));
+    const noAnswerTurn = noAnswerHtml.slice(indexOfMarkup(noAnswerHtml, "kas metsa on rohkem"));
+    const noAnswerLink = linkIn(noAnswerTurn, FIRST_RESULT);
+    assert.ok(noAnswerLink, "the no-answer turn keeps its listing");
+    assert.ok(noAnswerLink.index < indexOfMarkup(noAnswerTurn, 'class="chatbot__answer-title"'),
+      "the listing comes before the no-answer card");
+    assert.match(noAnswerTurn, /Vastust ei leitud/u, "the no-answer card stays visible");
+    assert.match(noAnswerTurn, /Meil ei ole sellele küsimusele vastust/u, "the no-answer wording is kept");
+  } finally {
+    delete globalThis.__praktikaSearchJobs;
+  }
+});
+
+test("a chat answer with no card at all keeps the listing it already found above it", async () => {
+  const transport = createJobTransport();
+  globalThis.__praktikaSearchJobs = transport;
+  try {
+    const { Chatbot } = await loadPages();
+    const renderer = createRenderer(reactInternals);
+    const parts = { AnswerNote: () => null, Citation: () => null, SourceActions: () => null, SourceLegend: () => null };
+    const props = { answerParts: parts, answerTextOf: () => "" };
+    find(renderer.render(Chatbot, props), (element) => element.props?.["aria-label"] === "Ava vestlus").props.onClick();
+    find(renderer.render(Chatbot, props), (element) => element.props?.id === "chatbot-input")
+      .props.onChange({ target: { value: "kui palju metsa on Eestis" } });
+
+    transport.queue(emits(
+      { type: "results", searchResults: listingOf() },
+      { type: "answer", result: { searchResults: listingOf() } },
+    ));
+    find(renderer.render(Chatbot, props), (element) => element.props?.className === "chatbot__form")
+      .props.onSubmit({ preventDefault() {} });
+    await settle();
+    const html = renderToStaticMarkup(renderer.render(Chatbot, props));
+    const link = linkIn(html, FIRST_RESULT);
+    assert.ok(link, "the found listing is kept");
+    assert.match(link.text, /Metsandus/u, "the kept listing stays a real link");
+    assert.ok(link.index < indexOfMarkup(html, 'class="chatbot__no-answer"'),
+      "the listing comes before the no-answer card");
+    assert.equal(countMarkup(html, `href="${FIRST_RESULT}"`), 1, "the listing is rendered once");
+    assert.match(html, /Sellele küsimusele ei saanud vastust koostada/u);
   } finally {
     delete globalThis.__praktikaSearchJobs;
   }

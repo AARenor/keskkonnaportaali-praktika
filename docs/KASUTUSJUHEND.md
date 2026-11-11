@@ -57,7 +57,7 @@ Juurdekasv on puistule aastas lisanduv tüvepuidu kogus. Netojuurdekasv saadakse
 
 Keskkonnaagentuuri ülevaate järgi oli viimase kümnendi keskmisena elusate puude raiemaht majandatavates metsades netojuurdekasvust kõrgem, 20 aasta vaates aga sellest madalam. Ühe aasta ega ühe näitaja põhjal ei saa metsamajanduse kestlikkuse kohta lõplikku järeldust teha: [netojuurdekasvu ja raie tasakaal](https://keskkonnaagentuur.ee/node/2720).
 
-SMI 2025 töövihik ei avalda kogu riigi netojuurdekasvu kogumahtu. Töövihik annab kogujuurdekasvu kogu riigile ja raiemahu aastate kaupa kuni viimase mõõdetud aastani. 2025. aasta raiemaht on Keskkonnaagentuuri [18.08.2026 ülevaate](https://keskkonnaagentuur.ee/uudised/smi-metsatagavara-stabiilne) eksperthinnang, mitte mõõdetud tulemus. Kui vastus neid arve kõrvutab, nimetab ta iga arvu juures väljaande ja aasta ega lahuta eri avaldajate ridu üksteisest.
+SMI 2025 töövihik ei avalda kogu riigi netojuurdekasvu kogumahtu. Töövihik annab kogujuurdekasvu kogu riigile ja raiemahu aastate kaupa kuni viimase mõõdetud aastani. Keskkonnaagentuuri [18.08.2026 ülevaate](https://keskkonnaagentuur.ee/uudised/smi-metsatagavara-stabiilne) järgi on 2025. aasta raiemahu eksperthinnang 11 miljonit m³, mitte mõõdetud tulemus. Kui vastus neid arve kõrvutab, nimetab ta iga arvu juures väljaande ja aasta ega lahuta eri avaldajate ridu üksteisest.
 
 ## Diagrammid ja jätkuküsimused
 
@@ -79,7 +79,7 @@ Vestlusaken pakub ainult eelnevalt üle vaadatud metsaküsimusi, mis seostuvad p
 
 Vestlusakna sulgemine ja uuesti avamine hoiab selle lehe sõnumid alles. Lehe uuendamisel kaovad need brauseri mälust ning lingi jagamine vestlust ei taasta. Sõnumeid ei salvestata selles brauseris püsivalt.
 
-Kui vastust ei õnnestu koostada, jääb tõrge aknas nähtavaks ja küsimust saab uuesti proovida. Otsing ei asenda puuduvat vastust väljamõeldud tekstiga.
+Kui vastust ei õnnestu koostada, kuvatakse juba leitud otsingutulemused esmalt ja selgitus nende järel. Kui kuvatakse allika enda väljavõte, jäävad selle viide ja märkus alles. Küsimust saab uuesti proovida; puuduvaid tulemusi ega vastust ei mõelda juurde.
 
 Klaviatuuriga saab akna avada ja sulgeda: Escape sulgeb akna ja viib fookuse tagasi nupule „Ava vestlus”. Mobiilivaates püsib aken ekraani piires.
 

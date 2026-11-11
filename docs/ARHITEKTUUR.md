@@ -215,4 +215,6 @@ See eristus on oluline:
 
 Kui mudel ei vasta (ajapiir, allika viga, koormus), ei jää vastusekaart tühjaks ega vaikivaks: `searchTimeoutFallback` näitab ühe juba järjestatud ametliku allika enda lauset koos viitega ja märgib, et see on allika sõnastus, mitte mudeli koondvastus. Seda varuvarianti ei kasutata küsimustele, mille üks vaatlus ei saa vastata — olevikku või minevikku suhteliselt küsivad („tänavu”, „praegu”, „mullu”), võrdlevad, koondavad või muutust jälgivad päringud saavad ausa ajapiiri-teate ja tulemuste loendi.
 
+Kui vastus puudub või mudeli sõnastust ei saadud, näitavad otsing ja vestlus juba saadud tavalisi tulemusi enne teadet või varukaarti. Viidatud väljavõtte kaart säilitab oma allikaviited, allikaloendi ja märkuse. Kui loend kliendini ei jõudnud, ei asendata seda väljamõeldud tulemustega.
+
 Seega ei tähenda viis „Vastuse allikat”, et otsing leidis ainult viis tulemust. Need on AI konkreetse vastuse tõendid; eraldi „Otsingutulemused” loend kuvab sama filtreeritud kandidaadihulga lehekülgede kaupa. Allika-, sisutüübi- või aastafiltri muutmine loob uue tõendihulga ja uue vastuse.

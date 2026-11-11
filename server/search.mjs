@@ -2275,6 +2275,8 @@ function topicRoot(word) {
   if (word.startsWith("keskonnaportaal") || word.startsWith("keskkonnaportaal")) return "keskkonnaportaal";
   if (word.startsWith("keskkonnportal")) return "keskkonnaportaal";
   if (word.startsWith("keskonnaandm")) return "andmed";
+  // Both compounds refer to the same expert estimate.
+  if (word.startsWith("eksperthinnang") || word.startsWith("eksperdihinnang")) return "eksperthinnang";
   if (multilingual && word.startsWith("environmental")) return "keskkond";
   if (multilingual && word.startsWith("conservation")) return "looduskaitse";
   if (multilingual && word.startsWith("wetland")) return "margala";

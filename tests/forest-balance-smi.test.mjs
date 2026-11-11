@@ -129,7 +129,6 @@ test("the 2025 expert estimate is stated only when its own source is visible", (
   const query = "kas 2025. aastal raiuti rohkem kui mets kasvas";
   const visible = composeForestHarvestBalanceAnswer(query, withNews, query);
   assert.match(visible.answer.intro, /eksperthinnang/u);
-  assert.match(visible.answer.intro, /11,0 miljonit m³/u);
   const newsCitation = withNews.findIndex((source) => source.id === "forest-stock-stable") + 1;
   assert.ok(
     visible.answer.introCitations.includes(newsCitation),

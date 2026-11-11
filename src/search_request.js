@@ -66,3 +66,33 @@ export async function readFollowUpResponse(response) {
   if (!response.ok) throw new Error(data?.error || "Jätkuküsimusele ei saanud vastata.");
   return followUpAnswerPayload(data);
 }
+
+// The server marks its plain no-answer card with this public eyebrow (the same
+// string as NO_ANSWER_EYEBROW in server/search.mjs). The search page and the
+// chat panel read the marker from here, so the two renderings cannot drift.
+export const NO_ANSWER_EYEBROW = "Vastust ei leitud";
+
+// The server's other no-summary card: sources were chosen, the summary was not
+// made (server/search.mjs composeSearchResponse). It carries no aiUnavailable
+// flag, so its own public eyebrow is the marker; scripts/load-search.mjs:74
+// already classifies that eyebrow as an evidence fallback, never an answer.
+export const SOURCE_ONLY_EYEBROW = "Kontrollitud allikaotsing";
+
+export function isNoAnswerCard(answer) {
+  return Boolean(answer) && answer.eyebrow === NO_ANSWER_EYEBROW;
+}
+
+export function isSourceOnlyCard(answer) {
+  return Boolean(answer) && answer.eyebrow === SOURCE_ONLY_EYEBROW;
+}
+
+// The card carries no model wording: the wording failed, the sources hold no
+// answer, or the server published the source records without a summary. In
+// every case the listing the reader already received leads, and the card below
+// it says what is missing.
+export function hasNoModelWording(answer) {
+  return !answer
+    || answer.aiUnavailable === true
+    || isNoAnswerCard(answer)
+    || isSourceOnlyCard(answer);
+}

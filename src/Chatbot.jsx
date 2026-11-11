@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, LoaderCircle, MessageCircle, Search, Sparkles, X } from "lucide-react";
 import AnswerChart, { chartSourceDiffers } from "./AnswerChart.jsx";
 import { noteServerBuild } from "./app-build.js";
-import { DEFAULT_SEARCH_FILTERS, followUpAnswerPayload, followUpRequestPayload, searchRequestPayload } from "./search_request.js";
+import { DEFAULT_SEARCH_FILTERS, followUpAnswerPayload, followUpRequestPayload, hasNoModelWording, searchRequestPayload } from "./search_request.js";
 import { REVIEWED_FORESTRY_SEARCH_SUGGESTIONS } from "./search-suggestions.js";
 import { contextualSuggestions } from "./suggestion_context.js";
 import { searchWaitingMessage } from "./search-stream.js";
@@ -510,7 +510,7 @@ export default function Chatbot({ answerParts, answerTextOf, pageContext = null 
             {turns.map((turn, index) => (
               <section className="chatbot__turn" key={`${turn.question}-${index}`}>
                 <div className="chatbot__question"><span>Teie</span><p>{turn.question}</p></div>
-                {!turn.result && turn.listing?.items?.length ? (
+                {hasNoModelWording(turn.result?.answer) && turn.listing?.items?.length ? (
                   <ChatListing ExternalAnchor={answerParts.ExternalAnchor} listing={turn.listing} />
                 ) : null}
                 <div className="chatbot__answer">
