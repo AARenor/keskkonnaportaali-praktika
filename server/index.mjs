@@ -121,6 +121,13 @@ const appBuild = readAppBuild(clientRoot);
 const proxyInflight = new Map();
 const requestWindows = new Map();
 const MAX_RATE_LIMIT_KEYS = 2_000;
+// RATE_LIMIT_WINDOWS_ENABLED=false removes the six public request windows for
+// teammate testing. Unset, or any other value, keeps every window enforced.
+const RATE_LIMIT_WINDOWS_ENABLED = String(process.env.RATE_LIMIT_WINDOWS_ENABLED ?? "true").toLocaleLowerCase("en") !== "false";
+function createPublicRateWindow(options) {
+  const limiter = createFixedWindowRateLimiter(options);
+  return (request, response, next) => (RATE_LIMIT_WINDOWS_ENABLED ? limiter(request, response, next) : next());
+}
 const MAX_PROXY_CACHE_ENTRIES = 250;
 const MAX_PROXY_CACHE_BYTES = 8_000_000;
 const MAX_TERRAPOINT_RESPONSE_BYTES = 2_000_000;
@@ -299,7 +306,7 @@ app.use((request, response, next) => {
   });
 });
 
-app.use("/api", createFixedWindowRateLimiter({
+app.use("/api", createPublicRateWindow({
   maxRequests: 240,
   scope: "api",
   store: requestWindows,
@@ -307,7 +314,7 @@ app.use("/api", createFixedWindowRateLimiter({
   trustedProxyCidrs: proxyConfiguration.trustedProxyCidrs,
   ipv6PrefixBits: ipv6ClientPrefixBits,
 }));
-const searchRateLimiter = createFixedWindowRateLimiter({
+const searchRateLimiter = createPublicRateWindow({
   maxRequests: 20,
   scope: "search",
   store: requestWindows,
@@ -317,7 +324,7 @@ const searchRateLimiter = createFixedWindowRateLimiter({
 });
 // Job polling and cancellation are bounded by their own control budget below,
 // so they never consume a generation slot that a reader needs for a search.
-const jobControlRateLimiter = createFixedWindowRateLimiter({
+const jobControlRateLimiter = createPublicRateWindow({
   maxRequests: 120,
   scope: "search-jobs",
   store: requestWindows,
@@ -332,7 +339,7 @@ app.use("/api/search", (request, response, next) => (
     ? next()
     : searchRateLimiter(request, response, next)
 ));
-app.use("/api/suggestions", createFixedWindowRateLimiter({
+app.use("/api/suggestions", createPublicRateWindow({
   maxRequests: 30,
   scope: "suggestions",
   store: requestWindows,
@@ -340,7 +347,7 @@ app.use("/api/suggestions", createFixedWindowRateLimiter({
   trustedProxyCidrs: proxyConfiguration.trustedProxyCidrs,
   ipv6PrefixBits: ipv6ClientPrefixBits,
 }));
-app.use("/api/corpus", createFixedWindowRateLimiter({
+app.use("/api/corpus", createPublicRateWindow({
   maxRequests: 20,
   scope: "corpus",
   store: requestWindows,
@@ -348,7 +355,7 @@ app.use("/api/corpus", createFixedWindowRateLimiter({
   trustedProxyCidrs: proxyConfiguration.trustedProxyCidrs,
   ipv6PrefixBits: ipv6ClientPrefixBits,
 }));
-app.use("/api/terrapoint", createFixedWindowRateLimiter({
+app.use("/api/terrapoint", createPublicRateWindow({
   maxRequests: 30,
   scope: "terrapoint",
   store: requestWindows,

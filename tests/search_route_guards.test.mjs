@@ -118,10 +118,11 @@ function browserHeaders(origin, extra = {}) {
   };
 }
 
-test("the streamed follow-up route keeps the search route guards and rate limit", { timeout: 120_000 }, async (t) => {
+// Starts the real application on a loopback port with only the variables listed
+// here plus the caller's overrides, so no switch leaks in from the parent shell.
+async function startRouteServer(t, extraEnv = {}) {
   const port = await resolveTestPort();
   const origin = `http://127.0.0.1:${port}`;
-  t.diagnostic(`route test listener: ${origin}${process.env.PRAKTIKA_ROUTE_TEST_PORT ? " (pinned by PRAKTIKA_ROUTE_TEST_PORT)" : " (random)"}`);
   let outputText = "";
   const child = spawn(process.execPath, ["server/index.mjs"], {
     cwd: REPOSITORY_ROOT,
@@ -132,6 +133,7 @@ test("the streamed follow-up route keeps the search route guards and rate limit"
       PROXY_MODE: "direct",
       PUBLIC_ORIGIN: origin,
       LLM_ENABLED: "false",
+      ...extraEnv,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -143,6 +145,12 @@ test("the streamed follow-up route keeps the search route guards and rate limit"
     await stopChild(child);
   });
   await waitForListening(child, () => outputText);
+  return { port, origin };
+}
+
+test("the streamed follow-up route keeps the search route guards and rate limit", { timeout: 120_000 }, async (t) => {
+  const { port, origin } = await startRouteServer(t);
+  t.diagnostic(`route test listener: ${origin}${process.env.PRAKTIKA_ROUTE_TEST_PORT ? " (pinned by PRAKTIKA_ROUTE_TEST_PORT)" : " (random)"}`);
 
   await t.test("a cross-site browser POST is refused before the route runs", async () => {
     const crossSite = await request(port, {
@@ -248,5 +256,45 @@ test("the streamed follow-up route keeps the search route guards and rate limit"
     );
     assert.match(viaNewRoute.body, /Liiga palju päringuid/u);
     assert.equal(viaNewRoute.headers["retry-after"], "60");
+  });
+});
+
+test("RATE_LIMIT_WINDOWS_ENABLED=false turns off the public request windows", { timeout: 120_000 }, async (t) => {
+  const { port, origin } = await startRouteServer(t, { RATE_LIMIT_WINDOWS_ENABLED: "false" });
+
+  await t.test("25 same-origin empty search requests all reach validation", async () => {
+    // The default-on test above spends a 20 request search window on this same
+    // cheap request. With the switch off the budget must never run out.
+    for (let index = 1; index <= 25; index += 1) {
+      const response = await request(port, {
+        path: "/api/search",
+        headers: browserHeaders(origin),
+        body: JSON.stringify({}),
+      });
+      assert.equal(
+        response.status,
+        400,
+        `search request ${index} must reach validation with the windows off, got ${response.status}: ${response.body.slice(0, 160)}`,
+      );
+      assert.equal(response.headers["retry-after"], undefined);
+    }
+  });
+
+  await t.test("35 empty terrapoint lookups all reach validation", async () => {
+    // The terrapoint window allows 30 requests. A lookup without a query is
+    // refused by the route itself before any upstream call is made.
+    for (let index = 1; index <= 35; index += 1) {
+      const response = await request(port, {
+        path: "/api/terrapoint/address",
+        method: "GET",
+        headers: { Origin: origin, "Sec-Fetch-Site": "same-origin" },
+      });
+      assert.equal(
+        response.status,
+        400,
+        `terrapoint lookup ${index} must reach validation with the windows off, got ${response.status}: ${response.body.slice(0, 160)}`,
+      );
+      assert.match(response.body, /Sisesta aadress või kohanimi/u);
+    }
   });
 });
