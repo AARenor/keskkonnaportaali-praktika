@@ -15,6 +15,9 @@ const MINIMUM_SECTION_LENGTH = 40;
 export const FOREST_LAWS = [
   { key: "metsaseadus", actId: "112052026020", title: "Metsaseadus", publicUrl: "https://www.riigiteataja.ee/akt/MS", minimumSections: 40 },
   { key: "metsa-majandamise-eeskiri", actId: "12771900", title: "Metsa majandamise eeskiri", publicUrl: "https://www.riigiteataja.ee/akt/12771900?leiaKehtiv", minimumSections: 10 },
+  // Hoiuala, kaitseala, püsielupaik and shore rules in a forest come from here;
+  // no other official source states them.
+  { key: "looduskaitseseadus", actId: "109072026047", title: "Looduskaitseseadus", publicUrl: "https://www.riigiteataja.ee/akt/LKS", minimumSections: 60, tags: ["looduskaitse", "kaitseala", "hoiuala"] },
 ];
 
 const SUPERSCRIPT = { 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" };
@@ -108,7 +111,7 @@ function sectionDocument(law, section, version) {
     type: "Kehtiv õigusakt",
     published: "jooksev",
     url: `${law.publicUrl}#${section.anchor}`,
-    tags: ["mets", "seadus", law.title.toLocaleLowerCase("et")],
+    tags: [...(law.tags || ["mets"]), "seadus", law.title.toLocaleLowerCase("et")],
     summary: section.heading || law.title,
     content: section.text,
     locator: `${law.title} ${section.number}. Kehtiv redaktsioon: ${[version.mark, validity].filter(Boolean).join(", ")}. Kontrollitud Riigi Teatajast ${estonianDate(version.verifiedAt)}.`,

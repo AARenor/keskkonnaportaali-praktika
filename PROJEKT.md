@@ -207,7 +207,7 @@ Uuringu käigus kontrollitud ametlikud algallikad on lisatud runtime-kataloogi. 
 - muud kui kuue kureeritud Natura loodusala EELISe avalikud JSON-jaotused ning KAUR GeoServeri WFS kaitse-, Natura-, vääriselupaiga ja Metsaregistri andmetele;
 - Maa- ja Ruumiameti AKS WFS aadressi- ja katastriotsingule;
 - Statistikaameti PXWeb tabel MM04 (raiedokumentide statistika); MM03 SMI hinnang on eraldi adapteriga aktiivne ja neid ei tohi kokku segada;
-- Riigi Teataja kuupäevastatud API õiguslikele küsimustele.
+- Riigi Teataja kuupäevastatud API õiguslikele küsimustele. Jooksvalt loetakse metsaseadus, metsa majandamise eeskiri ja looduskaitseseadus (tänane kehtiv redaktsioon).
 
 Ruumipäringu kolm kohustuslikku olekut on `leitud`, `eduka päringu tulemusel ei leitud` ja `allikas ei vastanud`. Timeout või 504 ei tohi kunagi muutuda väiteks, et piirangut või metsa ei ole.
 

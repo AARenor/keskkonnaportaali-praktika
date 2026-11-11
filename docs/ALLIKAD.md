@@ -259,6 +259,7 @@ Metsateatise üldjuhendi väljavõte kontrolliti 10.11.2026 [Keskkonnaameti juhe
 ## Teadlikult mitte automaatselt kasutatavad liidesed
 
 - Riigi Teataja õigusallikas lisatakse vastuse koostamisse alles siis, kui päring säilitab redaktsiooni kehtivusaja, paragrahvi ja tervikteksti viite. Praegu ei tehta otsingutulemuse põhjal siduvat õiguslikku järeldust.
+- Riigi Teataja voost loetakse jooksvalt kolm akti: metsaseadus (MS), metsa majandamise eeskiri ja looduskaitseseadus (LKS, lisatud 11.11.2026). Iga paragrahv kannab kehtiva redaktsiooni RT viidet ja kontrolliaega; kehtiva redaktsiooni kinnituseta teksti ei kasutata.
 - PXWebi ja PostgRESTi suvalisi tabeleid ei anta otse LLM-ile. Iga adapter peab valideerima tabeli skeemi, filtrid, ühiku, perioodi ja maksimaalse ridade arvu.
 - Ohuseire ja ilma reaalaja väärtusi ei kopeerita vana artikli väljavõttest. Kui tüübikindlat hetkeandmete adapterit ei ole, kuvatakse aus suunamisvastus.
 - Qdrant ei ole päringu hot path'is. PostgreSQL-i ja ametliku live-otsingu hübriid koos deterministliku intent- ja relevantsusjärjestusega annab praegu kontrollitavama tulemuse kui räsivektor.

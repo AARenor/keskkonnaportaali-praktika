@@ -4,8 +4,9 @@ import { rankPublicSearchCandidates, withFocusedLawSection } from "../server/ret
 import { FOREST_LAWS, currentForestLawDocuments, definesLawTerm, focusedLawSection, forestLawVersionStamp, parseLawSections, refreshForestLaws, resetForestLawsForTests, reviewedLawSummaryIsOutdated } from "../server/law-texts.mjs";
 import { asksOnlyForestAmount } from "../server/forest-series.mjs";
 import { officialServiceCatalogueDocuments, repeatsEarlierAnswer } from "../server/search.mjs";
-import { answersAskedConcept, answersPermissionQuestion, assessEvidence, assessSearchQuery, composeScopeResponse, containsPrivatePersonLookup, composeSearchResponse, extractAnswersQuery, isForestRelatedQuery, isNonAnswerText } from "../server/search.mjs";
+import { answersAskedConcept, answersPermissionQuestion, assessEvidence, assessSearchQuery, forestEvidenceIntent, composeScopeResponse, containsPrivatePersonLookup, composeSearchResponse, extractAnswersQuery, isForestRelatedQuery, isNonAnswerText } from "../server/search.mjs";
 import { searchEnvironmentLive } from "../server/pipeline.mjs";
+import { assertAnswerAddressesQuery } from "../server/llm.mjs";
 import { blockedFollowUpAssessment, contextualRetrievalQuery, isContinuationFollowUp } from "../server/retrieval.mjs";
 
 // Forest-only contract (production default: ALL_ENVIRONMENT_SEARCH_ENABLED
@@ -356,7 +357,7 @@ function lawFeed({ inForce = "112052026020", starts = "2026-06-30T21:00:00Z", en
     const respond = (body) => ({ ok: status === 200, status, json: async () => body, text: async () => body });
     if (url.endsWith("/redaktsioonid")) return respond({ kehtivRedaktsioon: agreed });
     if (url.endsWith("/blob-xml")) return respond(LAW_XML);
-    const title = url.includes("12771900") ? "Metsa majandamise eeskiri" : "Metsaseadus";
+    const title = FOREST_LAWS.find((law) => url.includes(law.actId))?.title || "Metsaseadus";
     return respond({ kehtivId: inForce, grupiId: 1, aktiParameetrid: { pealkiri: title, kehtivuseAlgus: starts, kehtivuseLopp: ends } });
   };
   return { fetchImpl, calls };
@@ -406,8 +407,8 @@ test("law text is withheld when it can no longer be confirmed, and replaced when
     await refreshForestLaws({ fetchImpl: lawFeed({ inForce: "200000000001" }).fetchImpl, now: LAW_NOW });
     assert.equal(currentForestLawDocuments({ now: LAW_NOW })[0]._lawVersionId, "200000000001");
     assert.equal(reviewedLawSummaryIsOutdated(summary), true);
-    assert.equal(forestLawVersionStamp({ now: LAW_NOW }), "200000000001,200000000001");
-    assert.equal(forestLawVersionStamp({ now: LAW_NOW + 25 * 3_600_000 }), "none,none");
+    assert.equal(forestLawVersionStamp({ now: LAW_NOW }), FOREST_LAWS.map(() => "200000000001").join(","));
+    assert.equal(forestLawVersionStamp({ now: LAW_NOW + 25 * 3_600_000 }), FOREST_LAWS.map(() => "none").join(","));
     // A version that ends is dropped even if nothing newer could be read.
     assert.equal(currentForestLawDocuments({ now: Date.parse("2033-01-01T00:00:00Z") }).length, 0);
   } finally {
@@ -592,4 +593,45 @@ test("a broad topic overview is not shown as the answer to a narrower question a
   const exception = await ask("kas metsaomanik vajab raieks luba");
   assert.match(exception.result.answer.intro, /20 tihumeetrit/u);
   assert.match(exception.result.answer.note || "", /üldjuhise väljavõte/u);
+});
+
+test("forest work and nature conservation in a forest are in scope, everyday topics are not", () => {
+  for (const query of [
+    "mis vanusest loetakse mänd seemnekandvaks", "harvestr tegi langile roopad, kui palju tohib pinnast lohkuda",
+    "hoiuala teatis kui palju enne toid esitada", "kas sihtkaitsevoondis voib telkida voi lokket teha",
+    "leidsin karu talvituspaiga, mis piirangud seal kehtivad", "palju ümarpuitu eesti aastas ekspordib",
+    "kui laiad tohivad kokkuveoteed langil olla", "okkakadu 2025 keskmine",
+  ]) {
+    assert.equal(isForestRelatedQuery(query), true, query);
+    assert.equal(assessSearchQuery(query).kind, "answerable", query);
+  }
+  for (const query of ["kuidas hapukapsast hapendada", "Tallinna lennujaama parkimise hind ööpäevas", "peipsi järve suurim sügavus", "metsik loodus"]) {
+    assert.equal(isForestRelatedQuery(query), false, query);
+  }
+});
+
+test("'ilma ...ta' means without, not weather", () => {
+  assert.equal(assessSearchQuery("kas tohib oma metsa rajakaamera panna ilma hoiatussildita").kind, "answerable");
+  assert.equal(assessSearchQuery("homne ilm tallinnas").kind, "live-weather");
+  assert.equal(assessSearchQuery("ilmahoiatus tartus täna").kind, "live-weather");
+});
+
+test("rule questions are not taken by a statistics or opinion shortcut", () => {
+  for (const query of [
+    "mis aja jooksul peab lageraie langilt kõik puud maha võetud olema",
+    "põder koorinud kuuski, kui palju koort peab kahjustatud olema, et neid sanitaarraiega võtta",
+    "hoiualal kui suur lageraielank tohib olla",
+    "väike metsatukk põllu keskel alla poole hektari, kas metsaseadus kehtib",
+  ]) {
+    assert.equal(["clearcut-value-judgement", "moose-population-2025", "clearcut-size-limits", "forest-area"].includes(forestEvidenceIntent(query)?.kind), false, query);
+  }
+  assert.equal(forestEvidenceIntent("kui palju põtru eestis on")?.kind, "moose-population-2025");
+  assert.equal(forestEvidenceIntent("kui suur võib olla lageraielank")?.kind, "clearcut-size-limits");
+  assert.equal(forestEvidenceIntent("kas lageraie on keskkonnale halb")?.kind, "clearcut-value-judgement");
+});
+
+test("a rule answer does not have to repeat how the question was asked, but must name its subject", () => {
+  const query = "kui kiiresti peab lageraielangi raidmetest puhtaks tegema";
+  assert.equal(assertAnswerAddressesQuery("Uuendusraielangid tuleb raidmetest puhastada hiljemalt ühe aasta jooksul raieõiguse lõppemisest arvates.", query), true);
+  assert.throws(() => assertAnswerAddressesQuery("Metsateatis kehtib 12 kuud ja selle esitab metsaomanik.", query));
 });

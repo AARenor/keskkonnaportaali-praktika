@@ -1652,9 +1652,19 @@ function hasNationalSampleMethod(text) {
     && !/\b(?:ei\s+ole|pole)\b[\s\S]{0,100}\b(?:valikuuring|proovitukk|statistili)\w*/u.test(passage);
 }
 
+// How a question is asked is not what it asks about: "kui kiiresti peab ...
+// tegema" is answered by "ühe aasta jooksul", which repeats none of these words.
+const QUESTION_FORM_ROOTS = new Set([
+  "millal", "mitu", "kiiresti", "tegema", "olema", "olla", "pean", "peab", "aja", "ajaks",
+  // Words that set the scene ("leidsin oma metsast", "eelmine omanik oli juba")
+  // or ask for a choice ("milliseid valida"), not the subject being asked about.
+  "eelmine", "veel", "juba", "nuud", "seal", "oma", "leidsin", "ostsin", "milliseid", "valida",
+  "jatta", "votta", "maha", "minna", "tulla", "jaab", "jaada", "kirjas", "vaatama", "korda", "enne",
+]);
+
 export function assertAnswerAddressesQuery(text, query, label = "answer") {
   const answerIntent = forestEvidenceIntent(query);
-  const roots = queryTerms(query).slice(0, 6);
+  const roots = queryTerms(query).filter((root) => !QUESTION_FORM_ROOTS.has(root)).slice(0, 6);
   if (!roots.length) return true;
   const answer = normalize(text);
   if (answerIntent?.kind === "protected-forest-share") {
@@ -1822,8 +1832,14 @@ function validateGroundedProposal(payload, draft, query, evidencePack) {
   if (proposedIntro !== String(draft.answer.intro || "").trim() && !introCitations.length) {
     throw new Error("LLM changed the introduction without citations");
   }
+  // The law in force is the rule itself, so a lead taken from a current law
+  // section may replace another matched page; its wording is still checked
+  // against the section below like any other claim.
+  const citesLawSection = introCitations.length
+    && introCitations.every((citation) => /riigiteataja\.ee\/.*#para/u.test(draft.sources[citation - 1]?.url || ""));
   if (proposedIntro !== String(draft.answer.intro || "").trim()
     && directDraftCitations.length
+    && !citesLawSection
     && !directDraftCitations.some((citation) => introCitations.includes(citation))) {
     throw rejectionWithText("LLM introduction bypasses the directly matched current source", proposedIntro);
   }

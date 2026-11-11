@@ -2189,12 +2189,14 @@ export function isAllEnvironmentSearchEnabled() {
 // Stems are listed by inflected form because "kuus", "kasu" and "puudub" must
 // not count as trees. "metsik" and "metsloom" are wildlife, not forest.
 const FOREST_STAND_PATTERN = /\b(?:(?!metsik|metsloom)\p{L}*mets\p{L}*|(?:kaasik|kuusik|lepik|haavik|tammik|noorendik|raadam|raadat|saaresurm|vaarisel|vääriselupai|puit|puidu)\p{L}*|\p{L}{3,}puu(?:d|de|l|le|lt|s|st|ga|t|desse)?)\b/iu;
-const FOREST_VOCABULARY_PATTERN = /\b(?:(?!metsik|metsloom)\p{L}*mets\p{L}*|(?:kaasik|kuusik|lepik|haavik|tammik|noorendik|raadam|raadat|saaresurm|vaarisel|vääriselupai)\p{L}*|\p{L}*raie\p{L}*|\p{L}*raiu\p{L}*|\p{L}*puu(?:d|de|l|le|lt|s|st|ga|t|desse)?|pui(?:d|dude|dudel)|puit\p{L}*|puidu\p{L}*|puuliik\p{L}*|puistu\p{L}*|\p{L}*urask\p{L}*|feromoon\p{L}*|juurepess\p{L}*|harvendus\p{L}*|kuusk\p{L}*|kuuse\p{L}*|mand|manni\p{L}*|kask|kaske|kase|kasel|kasesid|haab|haava|lepp|lepa|tamm|tamme|smi|rmk|lulucf)\b/iu;
+const FOREST_VOCABULARY_PATTERN = /\b(?:(?!metsik|metsloom)\p{L}*mets\p{L}*|(?:kaasik|kuusik|lepik|haavik|tammik|noorendik|raadam|raadat|saaresurm|vaarisel|vääriselupai)\p{L}*|\p{L}*raie\p{L}*|\p{L}*raiu\p{L}*|\p{L}*puu(?:d|de|l|le|lt|s|st|ga|t|desse)?|pui(?:d|dude|dudel)|\p{L}*puit\p{L}*|\p{L}*puidu\p{L}*|puuliik\p{L}*|palgi\p{L}*|palkide|harvest\p{L}*|forvarder\p{L}*|forwarder\p{L}*|lang(?:i|il|ile|ilt|id|ide)?|kokkuve\p{L}*|veoseleh\p{L}*|rinnasdiam\p{L}*|okkakad\p{L}*|okkakao\p{L}*|hoiuala\p{L}*|kaitseala\p{L}*|\p{L}*kaitsevoond\p{L}*|piiranguvoond\p{L}*|looduskaitse\p{L}*|pusielupai\p{L}*|kaitsealus\p{L}*|talvituspai\p{L}*|loodusreservaa\p{L}*|rahvuspar\p{L}*|puistu\p{L}*|\p{L}*urask\p{L}*|feromoon\p{L}*|juurepess\p{L}*|harvendus\p{L}*|kuusk\p{L}*|kuuse\p{L}*|mand|manni\p{L}*|kask|kaske|kase|kasel|kasesid|haab|haava|lepp|lepa|tamm|tamme|smi|rmk|lulucf)\b/iu;
 
 export function isForestRelatedQuery(value) {
   const canonical = canonicalizePublicSearchQuery(value, { maximumLength: 1_400 });
   if (!canonical.ok) return false;
-  return FOREST_VOCABULARY_PATTERN.test(normalize(canonical.query)) || Boolean(forestEvidenceIntent(canonical.query));
+  // Without its dots "käsk" (an order) reads as "kask" (birch).
+  const text = canonical.query.replace(/\bkäsk\p{L}*/giu, " ");
+  return FOREST_VOCABULARY_PATTERN.test(normalize(text)) || Boolean(forestEvidenceIntent(text));
 }
 
 export function buildDiscoveryQueries(query, limit = 3) {  const canonicalInput = canonicalizePublicSearchQuery(query);
@@ -3006,6 +3008,13 @@ export function queryRootVariants(root) {
   if (root === "rehv") return ["rehv", "tyre", "tire"];
   if (root === "saaste") return ["saaste", "pollution"];
   if (root === "raie") return ["rai"];
+  // The law's word for what a reader asks in another form of the same word.
+  if (root === "puhtaks") return ["puhtaks", "puhast"];
+  if (root === "vaikeseks") return ["vaikese", "vaiksem", "väiksem", "vahem", "vähem"];
+  if (root === "korge") return ["korge", "korgus"];
+  if (root === "koort" || root === "koorinud") return ["koor"];
+  if (root === "kupsusdiameeter") return ["kupsusdiameet", "rinnasdiameet"];
+  if (root === "uuenemata" || root === "uuendamata") return ["uuenem", "uuenen", "uuendam", "uuendat"];
   if (root === "juurdekasv") return ["juurdekasv", "netojuurdekasv"];
   if (root === "uletamine") return ["ulet", "suurem", "rohkem"];
   if (root === "noor") return ["noor", "vanus", "vanuse", "vanem", "keskeal"];
@@ -7931,7 +7940,11 @@ export function assessSearchQuery(query, options = {}) {
       clarification: null,
     };
   }
-  if (!domainRoots.length && !forestryIntent && !hasRecognizedLiveRoute && !FOREST_STAND_PATTERN.test(normalized)) {
+  // Forest vocabulary in a question ("mis vanusest loetakse mänd seemnekandvaks")
+  // is in scope even when no listed domain root is named; a bare fragment such
+  // as "mand" is not enough on its own.
+  if (!domainRoots.length && !forestryIntent && !hasRecognizedLiveRoute && !FOREST_STAND_PATTERN.test(normalized)
+    && !(normalized.split(" ").length >= 3 && isForestRelatedQuery(cleanQuery))) {
     return {
       kind: "out-of-scope",
       topic: null,
@@ -8083,8 +8096,10 @@ export function assessSearchQuery(query, options = {}) {
   const hasWeatherLocation = textHasTallinnLocation(normalized) || weatherLocationPattern.test(normalized);
   const explicitlyCurrentWeather = /\b(?:tana\w*|homn\w*|homm\w*|homs\w*|ulehomme|praegu|hetkel|hetkeseis\w*|nadalavahet\w*|prognoos\w*|\w*hoiatus\w*|today|tomorrow|current|currently|now|weekend|forecast\w*|warning\w*)\b/u.test(normalized);
   const historicalWeatherContext = /\b(?:(?:19|20)\d{2}|ajalool\w*|kliima\w*|keskm\w*|möödunud|moodunud|historical|historic|archive|past)\b/u.test(normalized);
-  const weatherIntent = analysis.candidateRouteClasses.includes("official_live_weather")
-    || domainRoots.some((root) => ["ilm", "prognoos", "hoiatus", "sademed"].includes(root));
+  // "ilma hoiatussildita" means "without a warning sign", not weather.
+  const ilmaMeansWithout = /\bilma\s+\p{L}+ta\b/u.test(normalized) && !/\bilm(?:\b|[^a\s]\p{L}*)/u.test(normalized);
+  const weatherIntent = !ilmaMeansWithout && (analysis.candidateRouteClasses.includes("official_live_weather")
+    || domainRoots.some((root) => ["ilm", "prognoos", "hoiatus", "sademed"].includes(root)));
   const locationDefaultsToCurrentWeather = weatherIntent
     && hasWeatherLocation
     && !historicalWeatherContext;
@@ -8520,14 +8535,18 @@ export function assessEvidence(query, documents = []) {
     .filter((term) => !/(?:[aeiu]da|tati|takse|tud|nud)$/u.test(term))
     // "tohib" and "taotlema" become these roots; they name the question type, not its subject.
     .filter((term) => !["lubatavus", "piirang", "menetlus", "taotlemine"].includes(term))
-    .sort((left, right) => right.length - left.length)
-    .find((term) => term.length >= 7) || null;
-  const lawDocument = strong || broadDocument || !lawSubject || years.length
+    .filter((term) => term.length >= 7);
+  // Any of the specific nouns will do, and an inflected form counts: the law
+  // says "enne raiesmiku uuenemist" where a reader writes "uuenemata", and
+  // "äravedu langilt" where the question also names "loometsas".
+  const namesLawSubject = (passage) => lawSubject.some((term) => textHasQueryRoot(passage, term)
+    || normalize(passage).includes(term.slice(0, Math.max(6, term.length - 3))));
+  const lawDocument = strong || broadDocument || !lawSubject.length || years.length
     ? null
     : candidates.slice(0, 3).find((document) => document?._lawSection
       && documentCanDirectlyAnswerQuery(query, document)
       && evidencePassages(document).some((passage) => !passageDisclaimsEvidence(passage)
-        && textHasQueryRoot(passage, lawSubject)));
+        && namesLawSubject(passage)));
   const answerable = strong || Boolean(broadDocument) || Boolean(lawDocument);
   return {
     strong,

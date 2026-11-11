@@ -148,6 +148,7 @@ export const userGuide = {
         </ul>
         <p>Praeguse ilma ja õhukvaliteedi küsimused võivad suunata ametlikku ajakohasesse teenusesse. See on kasulik tulemus, mitte lubadus, et kõik teenuse andmed kuvatakse praktikaportaalis.</p>
         <p>Otsing keskendub Eesti keskkonnateemadele. Metsa üldnäitajad on Eesti kohta; välismaa või väga kohaliku küsimuse jaoks ei pruugi olla piisavalt sobivaid andmeid.</p>
+        <p>Vastame metsa, metsatööde ja metsa looduskaitse küsimustele, näiteks hoiuala, kaitseala, püsielupaiga ja rannavööndi piirangute kohta. Seaduse vastused tulevad metsaseaduse, metsa majandamise eeskirja ja looduskaitseseaduse tänasest kehtivast redaktsioonist Riigi Teatajas.</p>
       </>,
     },
     {

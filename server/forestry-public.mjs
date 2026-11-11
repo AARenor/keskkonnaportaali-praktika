@@ -1426,8 +1426,10 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
     && /\b(?:vanus\w*|puistu\w*|tohib\w*|lubat\w*)\b/u.test(text)) {
     return resolved("sanitary-cutting-rules");
   }
+  // "kui palju koort on põder kahjustanud" asks about damage, not the herd.
   if (/\b(?:poder|podr|potr)\w*\b/u.test(text)
-    && /\b(?:arvuk\w*|asurk\w*|palju|arv\w*)\b/u.test(text)) {
+    && /\b(?:arvuk\w*|asurk\w*|palju|arv\w*)\b/u.test(text)
+    && !/\b(?:koor\w*|kahjust\w*|sanitaar\w*|raie\w*|rai\w*)\b/u.test(text)) {
     return resolved("moose-population-2025");
   }
   if (/\blinnujaht\w*\b/u.test(text)
@@ -1449,7 +1451,11 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
     && /\b(?:mis\s+on|kahjust\w*|kuusik\w*|kuiv\w*)\b/u.test(text)) {
     return resolved("bark-beetle-damage");
   }
+  // A hoiuala, kaitseala or shore has its own, smaller limit in
+  // Looduskaitseseadus, so the forest law's 2/5/7 ha would be the wrong answer.
   if (hasClearcut
+    && !hasProtection
+    && !/\b(?:hoiuala\w*|pusielupai\w*|\w*rann\w*|kalda\w*)\b/u.test(text)
     && /\b(?:raielank\w*|lageraielank\w*|langi\w*)\b/u.test(text)
     && /\b(?:suur\w*|pindala\w*|hektar\w*|maksimaal\w*)\b/u.test(text)) {
     return resolved("clearcut-size-limits");
@@ -1629,7 +1635,9 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
       return resolved("clearcut-over-time");
     }
   }
-  if (hasClearcut && /\b(?:koik|alati|keskkonnavast\w*|keskkonn\w*|halb\w*|moju\w*|kahju\w*|elurikk\w*|loodus\w*|keskkond\w*)\b/u.test(text)) {
+  // "kõik puud", "alati" and "looduskaitse" also appear in rule questions
+  // ("kas lageraiel tuleb kõik puud võtta"), so they do not make an opinion.
+  if (hasClearcut && /\b(?:keskkonnavast\w*|keskkonn\w*|halb\w*|moju\w*|kahju\w*|elurikk\w*|loodus(?!kaitse)\w*|keskkond\w*)\b/u.test(text)) {
     return resolved("clearcut-value-judgement");
   }
   if (/\b(?:vana|vanad|vanem)\s+mets\w*\b/u.test(text)
@@ -1762,7 +1770,9 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
   const asksOtherForestSubject = !forPrivacyCheck && /\b(?:\w*puuli(?:ik|ig)\w*|mand|mann\w*|kuus\w*|kask|kase\w*|kaasik\w*|haab|haav\w*|lepp\w*|lepa\w*|okaspuu\w*|lehtpuu\w*|vanus\w*|vana|vanad\w*|vanade\w*|\w*tulekahj\w*|poleng\w*|polen\w*|uuend\w*|istut\w*|kulv\w*|halda\w*|rmk|riigimets\w*|kaitst\w*|kaitse\w*|\w*urask\w*|kahjust\w*|kahjur\w*|haigus\w*|torm\w*|tuuleheit\w*)\b/u.test(text);
   const asksDefinitionOnly = /\b(?:definitsioon\w*|moiste\w*)\b/u.test(text)
     && !/\b(?:kui\s+palju|mitu|kui\s+suur\w*|pindala|osakaal|protsent|hektar\w*)\b/u.test(text);
-  if (hasForest && municipalMetricQuestion && !asksOtherForestSubject && !asksDefinitionOnly && /\b(?:kui\s+palju|mitu|kui\s+suur\w*|metsamaa|metsasus\w*|pindala|osakaal|protsent|hektar\w*)\b/u.test(text)) {
+  // "alla poole hektari, kas metsaseadus kehtib" asks about a rule, not the area.
+  const asksRule = /\b(?:\w*seadus\w*|eeskir\w*|kehti\w*|tohib|tohin|lubat\w*|keelat\w*)\b/u.test(text);
+  if (hasForest && municipalMetricQuestion && !asksOtherForestSubject && !asksDefinitionOnly && !asksRule && /\b(?:kui\s+palju|mitu|kui\s+suur\w*|metsamaa|metsasus\w*|pindala|osakaal|protsent|hektar\w*)\b/u.test(text)) {
     return {
       kind: "forest-area",
       discoveryQueries: ["metsamaa pindala SMI Eesti", "metsasuse pindala Eesti"],
