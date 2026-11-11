@@ -39,6 +39,7 @@ import AnswerChart, { chartSourceDiffers } from "./AnswerChart.jsx";
 import { APP_BUILD_MISMATCH_EVENT, noteServerBuild } from "./app-build.js";
 import { DEFAULT_SEARCH_FILTERS, clientSearchFilters, followUpAnswerPayload, followUpRequestPayload, hasNoModelWording, isNoAnswerCard, isSourceOnlyCard, searchRequestPayload } from "./search_request.js";
 import { readSearchJob } from "./search_jobs.js";
+import { answerHeading } from "./answer_title.js";
 import Chatbot from "./Chatbot.jsx";
 
 const SOURCE = "https://keskkonnaportaal.ee";
@@ -1359,7 +1360,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
             <article className="answer-card">
               {busy ? <div className="answer-progress"><LoaderCircle className="spin" size={16} /> Kontrollin veel AI-sõnastust …</div> : null}
               <div className="answer-label"><Sparkles size={17} /><span>{result.answer.eyebrow || "AI koondvastus"}</span></div>
-              <h1 ref={headingRef} tabIndex={-1}>{result.answer.title}</h1>
+              <h1 ref={headingRef} tabIndex={-1}>{answerHeading(result, query)}</h1>
               <p className="answer-intro">
                 {result.answer.intro}{" "}
                 {(result.answer.introCitations || []).map((citation) => <Citation key={citation} number={citation} sources={result.sources} />)}
@@ -1420,7 +1421,7 @@ function SearchResults({ result, query, busy, error, onSearch, onHome, previewLi
                         {noWording ? turnListing : null}
                         <div className="followup-answer">
                           <span>{noWording ? turnAnswer.eyebrow || "AI koondvastus" : "Koondvastus"}</span>
-                          <h2 id={`followup-${turnIndex + 1}-title`} tabIndex={-1}>{turnAnswer.title}</h2>
+                          <h2 id={`followup-${turnIndex + 1}-title`} tabIndex={-1}>{answerHeading(turn.result, turn.question)}</h2>
                           <p>{turnAnswer.intro}{" "}{(turnAnswer.introCitations || []).map((citation) => <Citation key={citation} number={citation} sources={turn.result.sources} />)}</p>
                           {turn.result.chart ? <AnswerChart chart={turn.result.chart} citation={<Citation number={turn.result.chart.citation} sources={turn.result.sources} />} sourceDiffers={chartSourceDiffers(turnAnswer, turn.result.chart, turn.result.sources)} key={`${turn.result.chart.title}-${turn.result.chart.series.map((series) => series.id).join("|")}`} /> : null}
                           {(turnAnswer.parts || []).map((part, partIndex) => (

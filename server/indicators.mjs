@@ -2008,7 +2008,7 @@ function composeSmiHarvestBalanceAnswer(query, sources = [], controlQuery = quer
   }
   if (askedYear) {
     const availabilityText = expertEstimateWitnessed
-      ? `SMI ${SMI_2025_YEAR} töövihiku raiemahu aegrida lõpeb ${cutYear}. aastaga ja ${askedYear}. aasta raiemaht on eksperthinnang ${expertMillions} miljonit m³, mitte mõõdetud tulemus. ${askedYear}. aasta mõõdetud raiemahtu ei ole avaldatud, seega ei saa ${askedYear}. aasta raiet ja kasvu ühe aasta lõikes kõrvutada.`
+      ? `SMI ${SMI_2025_YEAR} töövihiku raiemahu aegrida lõpeb ${cutYear}. aastaga ja ${askedYear}. aasta raiemaht on eksperthinnang ${expertMillions} miljonit m³, mitte mõõdetud tulemus. ${askedYear}. aasta mõõdetud raiemahtu ei ole SMI ${SMI_2025_YEAR} töövihikus avaldatud, seega ei saa ${askedYear}. aasta raiet ja kasvu ühe aasta lõikes kõrvutada.`
       : `SMI ${SMI_2025_YEAR} töövihik avaldab raiemahu aastate kaupa kuni ${cutYear}. aastani, seega ${askedYear}. aasta raiemaht ei ole selles väljaandes avaldatud.`;
     parts.push({
       title: `${askedYear}. aasta kohta avaldatud andmed`,
@@ -2025,14 +2025,17 @@ function composeSmiHarvestBalanceAnswer(query, sources = [], controlQuery = quer
   }
   const baseIntro = `SMI ${SMI_2025_YEAR} andmetel oli metsamaa tagavara juurdekasv kõigil omanikel ${etNumberWithDigits(projection.incrementThousandM3PerYear, 0)} tuhat m³ aastas ehk ${etNumberWithDigits(projection.incrementCubicMetresPerHectareYear, 2)} m³ hektari kohta aastas (suhteline viga ±${etNumberWithDigits(projection.incrementRelativeErrorPercent, 1)}%).`;
   const grossNetSentence = "See on kogujuurdekasv, mitte netojuurdekasv: kogujuurdekasvust arvatakse netojuurdekasvu saamiseks maha looduslik suremus, seega võrreldakse netojuurdekasvu elusate puude raiega.";
+  // Worksheet 22 prints the 2024 felling total with a ±9,6% relative error
+  // because SMI is a sample survey, so the card calls it an estimate rather
+  // than an exact measurement. Year, amount, error and citation are unchanged.
   const measuredSentence = Number.isFinite(projection.cutRelativeErrorPercent)
-    ? `${cutYear}. aasta mõõdetud koguraie raiemaht oli ${etNumberWithDigits(projection.cutThousandM3, 0)} tuhat m³ (suhteline viga ±${etNumberWithDigits(projection.cutRelativeErrorPercent, 1)}%).`
+    ? `${cutYear}. aasta koguraie raiemaht oli SMI valimil põhinev hinnang ${etNumberWithDigits(projection.cutThousandM3, 0)} tuhat m³ (suhteline viga ±${etNumberWithDigits(projection.cutRelativeErrorPercent, 1)}%), mitte täpne mõõtmistulemus.`
     : "";
   const expertSentence = expertEstimateWitnessed
     ? `${expertCutYear}. aasta raiemaht on eksperthinnang ${expertMillions} miljonit m³, mitte mõõdetud tulemus.`
     : "";
   const netSentence = expertCitation && Number.isFinite(projection.netIncrementManagedCubicMetresPerHectareYear)
-    ? `Majandatava metsa netojuurdekasv oli ${expertCutYear}. aastal ${etNumberWithDigits(projection.netIncrementManagedCubicMetresPerHectareYear, 1)} m³ hektari kohta aastas, kuid riiklikku netojuurdekasvu kogumahtu ei ole avaldatud.`
+    ? `Majandatava metsa netojuurdekasv oli ${expertCutYear}. aastal ${etNumberWithDigits(projection.netIncrementManagedCubicMetresPerHectareYear, 1)} m³ hektari kohta aastas, kuid riiklikku netojuurdekasvu kogumahtu ei ole SMI ${SMI_2025_YEAR} töövihikus avaldatud.`
     : "";
   // No derived subtraction and no year verdict: the workbook publishes a gross
   // annual increment estimate and a total felling volume, which are not the two
@@ -2042,7 +2045,7 @@ function composeSmiHarvestBalanceAnswer(query, sources = [], controlQuery = quer
     grossNetSentence,
     measuredSentence,
     expertSentence,
-    `${askedYear}. aasta mõõdetud raiemahtu ei ole avaldatud.`,
+    `${askedYear}. aasta mõõdetud raiemahtu ei ole SMI ${SMI_2025_YEAR} töövihikus avaldatud.`,
     netSentence,
   ].filter(Boolean).join(" ").replace(/\s+/gu, " ").trim();
   const pastYearCaveat = referencedYear && !askedYear
@@ -2054,7 +2057,7 @@ function composeSmiHarvestBalanceAnswer(query, sources = [], controlQuery = quer
       title: askedYear
         ? expertEstimateWitnessed
           ? `SMI ${SMI_2025_YEAR}: ${askedYear}. aasta raiemaht on eksperthinnang, mitte mõõdetud tulemus`
-          : `SMI ${SMI_2025_YEAR}: ${askedYear}. aasta raiemaht ei ole selles väljaandes avaldatud`
+          : `SMI ${SMI_2025_YEAR} töövihik: ${askedYear}. aasta raiemahtu ei ole avaldatud`
         : "Raiemahu ja juurdekasvu suhe sõltub mõõdikust ja perioodist",
       intro: askedYear
         ? introForAskedYear

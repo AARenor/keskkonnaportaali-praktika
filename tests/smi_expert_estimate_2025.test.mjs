@@ -111,6 +111,16 @@ function cardText(response) {
   return [answer.intro, ...(answer.parts || []).map((part) => part.text)].filter(Boolean).join(" ");
 }
 
+// A year inside Estonian running text ("2025. aasta") looks like a full stop to
+// a naive sentence split. Protect it so a claim can be checked together with
+// the qualifier that limits it.
+function sentencesOf(value) {
+  return String(value)
+    .replace(/(?<=\b\d{4})\.(?=\s)/gu, "\u0000")
+    .split(/(?<=\.)\s+/u)
+    .map((sentence) => sentence.replaceAll("\u0000", "."));
+}
+
 test("the 2025 estimate follow up shows the published estimate with its own source", async () => {
   const retrievalQuery = contextualRetrievalQuery(ROOT_QUERY, ESTIMATE_FOLLOW_UP, []);
   const response = await followUpResponse(retrievalQuery, reviewedListing(retrievalQuery));
@@ -187,8 +197,39 @@ test("the 2025 harvest balance answer states the expert estimate and keeps the g
   );
   assert.match(text, /eksperthinnang/iu, "the 2025 felling figure is labelled an expert estimate");
   assert.match(text, ESTIMATE_RENDERING, "the published 2025 estimate is stated");
-  assert.match(text, /2024\. aasta/u, "the latest measured felling year is named as measured");
+  assert.match(text, /2024\. aasta[^.]*12 500 tuhat m³/u, "the 2024 felling amount is stated with its year");
+  assert.match(text, /12 500 tuhat m³[^.]*±9,6\s?%/u, "the 2024 amount keeps its sampling error");
+  assert.match(text, /2024\. aasta[^.]*hinnang/u, "the 2024 SMI figure is named an estimate, not an exact measurement");
+  assert.doesNotMatch(text, /2024\. aasta mõõdetud/u, "the 2024 SMI figure is not an exact measurement");
+  assert.doesNotMatch(text, /mõõdetud koguraie/u, "no exact measurement wording for the SMI felling series");
+  const availability = sentencesOf(text).filter((sentence) => /2025\. aasta mõõdetud raiemahtu/u.test(sentence));
+  assert.ok(availability.length > 0, `the answer states whether a measured 2025 felling figure exists: ${text}`);
+  for (const claim of availability) {
+    assert.match(
+      claim,
+      /(?:töövihik|selles väljaandes|väljavõttest)/iu,
+      `the 2025 gap must be scoped to the SMI 2025 workbook, got: ${claim}`,
+    );
+  }
   assert.match(text, /netojuurdekasv/u, "net increment is distinguished from gross increment");
+  // The checked evidence is the SMI 2025 workbook, so a missing national net
+  // increment total can only be stated about that workbook. The managed-forest
+  // per-hectare value from the review stays in the answer.
+  const netClaims = sentencesOf(text).filter((sentence) => /netojuurdekasvu kogumahtu/u.test(sentence));
+  assert.ok(netClaims.length > 0, `the answer states whether a national net increment total exists: ${text}`);
+  for (const claim of netClaims) {
+    assert.match(
+      claim,
+      /(?:töövihik|selles väljaandes|väljavõttest)/iu,
+      `the national net increment gap must be scoped to the SMI 2025 workbook, got: ${claim}`,
+    );
+  }
+  assert.match(text, /4,9\s*m(?:³|3)[^.]{0,40}hektari kohta aastas/u, "the managed-forest net increment per hectare is kept");
+  assert.doesNotMatch(
+    text,
+    /netojuurdekasvu kogumahtu (?:ei ole|pole) (?:kusagil|kuskil|üldse|veel) avaldatud/iu,
+    "no global claim about the national net increment total",
+  );
   assert.doesNotMatch(
     text,
     /2\s?958/u,

@@ -111,14 +111,13 @@ test("the 2025 felling question gets no single year verdict", () => {
   assert.doesNotMatch(
     answer.intro,
     /^(?:Jah|Ei)\./u,
-    "no yes or no verdict may open a question about a year that has no measured pair",
+    "no yes or no verdict may open a question about a year without a comparable SMI pair",
   );
   assert.match(answer.intro, /SMI 2025/u, "the answer names the SMI edition it is using");
   assert.match(answer.intro, /eksperthinnang/u, "the 2025 felling figure is labelled an expert estimate");
   assert.match(answer.intro, /11(?:,0)? miljonit m³/u, "the 2025 expert estimate is the published 11 million m³");
-  assert.match(answer.intro, /2024\. aasta/u, "the answer names the latest measured felling year");
+  assert.match(answer.intro, /2024\. aasta/u, "the answer names the latest workbook felling year");
   assert.match(answer.intro, /netojuurdekasv/u, "the answer distinguishes net increment from gross increment");
-  assert.match(answer.intro, /ei ole avaldatud|puudub/u, "the missing 2025 measurement is stated, not replaced");
   assert.ok(
     answer.introCitations.includes(4),
     "the expert estimate is attributed to the 18.08.2026 Keskkonnaagentuur review, not to the workbook",

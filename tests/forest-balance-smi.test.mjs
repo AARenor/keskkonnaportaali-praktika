@@ -17,6 +17,41 @@ import { SMI_2025_TABLES_URL } from "../server/smi-tables.mjs";
 
 const NOW = Date.parse("2026-11-04T12:00:00.000Z");
 
+// A year inside Estonian running text ("2025. aasta") looks like a full stop to
+// a naive sentence split. Protect it so a claim can be checked together with
+// the qualifier that limits it.
+function sentencesOf(value) {
+  return String(value)
+    .replace(/(?<=\b\d{4})\.(?=\s)/gu, "\u0000")
+    .split(/(?<=\.)\s+/u)
+    .map((sentence) => sentence.replaceAll("\u0000", "."));
+}
+
+function cardTextOf(response) {
+  const answer = response?.answer || {};
+  return [answer.title, answer.intro, ...(answer.parts || []).map((part) => part.text)]
+    .filter(Boolean)
+    .join(" ");
+}
+
+// A qualifier that limits an availability claim to the publication it is about.
+const WORKBOOK_SCOPED = /(?:töövihik|selles väljaandes|väljavõttest)/iu;
+const ESTIMATE_2025_SOURCE = {
+  id: "forest-stock-stable",
+  title: "SMI: Metsatagavara on stabiilne",
+  organization: "Keskkonnaagentuur",
+  url: "https://keskkonnaagentuur.ee/uudised/smi-metsatagavara-stabiilne",
+  summary: "",
+  content: "2025. aastal oli majandatava metsa netojuurdekasvuks 4,9 m³/ha aastas. Raiemahu eksperthinnangu alusel oli 2025. aasta raiemaht 11 miljonit m³.",
+  topics: ["mets"],
+  tags: ["mets"],
+  sourceTier: "official",
+  retrieval: "official-structured-forestry-source",
+  evidencePolicy: "claim-specific",
+  _publishedAt: "2026-08-18",
+  _answerEvidenceEligible: true,
+};
+
 function synthesisDocuments() {
   const smi = smiHarvestBalanceDocument();
   const methodology = {
@@ -107,25 +142,7 @@ test("harvest versus increment answers from the SMI 2025 edition without a gross
 test("the 2025 expert estimate is stated only when its own source is visible", () => {
   const workbook = smiHarvestBalanceDocument();
   const methodology = synthesisDocuments()[1];
-  const withNews = [
-    workbook,
-    methodology,
-    {
-      id: "forest-stock-stable",
-      title: "SMI: Metsatagavara on stabiilne",
-      organization: "Keskkonnaagentuur",
-      url: "https://keskkonnaagentuur.ee/uudised/smi-metsatagavara-stabiilne",
-      summary: "",
-      content: "2025. aastal oli majandatava metsa netojuurdekasvuks 4,9 m³/ha aastas. Raiemahu eksperthinnangu alusel oli 2025. aasta raiemaht 11 miljonit m³.",
-      topics: ["mets"],
-      tags: ["mets"],
-      sourceTier: "official",
-      retrieval: "official-structured-forestry-source",
-      evidencePolicy: "claim-specific",
-      _publishedAt: "2026-08-18",
-      _answerEvidenceEligible: true,
-    },
-  ];
+  const withNews = [workbook, methodology, ESTIMATE_2025_SOURCE];
   const query = "kas 2025. aastal raiuti rohkem kui mets kasvas";
   const visible = composeForestHarvestBalanceAnswer(query, withNews, query);
   assert.match(visible.answer.intro, /eksperthinnang/u);
@@ -137,8 +154,57 @@ test("the 2025 expert estimate is stated only when its own source is visible", (
 
   const withoutNews = composeForestHarvestBalanceAnswer(query, [workbook, methodology], query);
   assert.doesNotMatch(withoutNews.answer.intro, /eksperthinnang|11,0 miljonit/u, "the workbook publishes no 2025 estimate");
-  assert.match(withoutNews.answer.intro, /2025\. aasta mõõdetud raiemahtu ei ole avaldatud/u);
   assert.deepEqual(withoutNews.answer.introCitations, [1]);
+});
+
+// The checked evidence is the SMI 2025 workbook plus the review that publishes
+// the 2025 expert estimate. Nothing in it establishes that no 2025 measurement
+// exists anywhere, and the 2024 workbook figure is a sample survey estimate:
+// worksheet 22 prints 12 500 thousand m³ with a ±9,6% relative error.
+test("the 2024 felling figure is an SMI survey estimate, not an exact measurement", () => {
+  const documents = synthesisDocuments();
+  const query = "kas 2025. aastal raiuti rohkem kui mets kasvas";
+  const response = composeForestHarvestBalanceAnswer(query, documents, query);
+  const text = cardTextOf(response);
+
+  assert.match(text, /2024\. aasta[^.]*12 500 tuhat m³/u, "the 2024 felling amount keeps its year");
+  assert.match(text, /12 500 tuhat m³[^.]*±9,6\s?%/u, "the 2024 felling amount keeps its relative error");
+  assert.match(text, /2024\. aasta[^.]*hinnang/u, "the 2024 figure is named an estimate");
+  assert.doesNotMatch(text, /2024\. aasta mõõdetud/u, "the 2024 SMI figure is not an exact measurement");
+  assert.doesNotMatch(text, /mõõdetud koguraie/u, "no exact measurement wording for the SMI felling series");
+  assert.deepEqual(response.answer.introCitations, [1], "the workbook stays the cited witness");
+});
+
+test("the missing 2025 measured felling is scoped to the SMI 2025 workbook", () => {
+  const workbook = smiHarvestBalanceDocument();
+  const methodology = synthesisDocuments()[1];
+  const query = "kas 2025. aastal raiuti rohkem kui mets kasvas";
+  const states = [
+    ["without the review that publishes the estimate", [workbook, methodology]],
+    ["with the review that publishes the estimate", [workbook, methodology, ESTIMATE_2025_SOURCE]],
+  ];
+  for (const [label, sources] of states) {
+    const response = composeForestHarvestBalanceAnswer(query, sources, query);
+    if (!sources.includes(ESTIMATE_2025_SOURCE)) {
+      assert.match(response.answer.title, /töövihik/iu, "the heading limits the missing row to the workbook");
+    }
+    const text = cardTextOf(response);
+    const claims = sentencesOf(text).filter((sentence) => /2025\. aasta mõõdetud raiemahtu/u.test(sentence));
+    assert.ok(claims.length > 0, `${label}: the answer states whether a measured 2025 felling figure exists: ${text}`);
+    for (const claim of claims) {
+      assert.match(
+        claim,
+        WORKBOOK_SCOPED,
+        `${label}: the availability claim must name the publication it is limited to, got: ${claim}`,
+      );
+    }
+    assert.doesNotMatch(
+      text,
+      /2025\. aasta mõõdetud raiemahtu (?:ei ole|pole) (?:kusagil|kuskil|üldse|veel) avaldatud/iu,
+      `${label}: no global claim about unpublished 2025 measurements`,
+    );
+    assert.match(text, /2025\. aasta/u, `${label}: the asked year stays in the answer`);
+  }
 });
 
 test("without the SMI workbook extract the same question keeps its Eurostat fallback", () => {

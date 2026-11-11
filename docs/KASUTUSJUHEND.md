@@ -57,7 +57,7 @@ Juurdekasv on puistule aastas lisanduv tüvepuidu kogus. Netojuurdekasv saadakse
 
 Keskkonnaagentuuri ülevaate järgi oli viimase kümnendi keskmisena elusate puude raiemaht majandatavates metsades netojuurdekasvust kõrgem, 20 aasta vaates aga sellest madalam. Ühe aasta ega ühe näitaja põhjal ei saa metsamajanduse kestlikkuse kohta lõplikku järeldust teha: [netojuurdekasvu ja raie tasakaal](https://keskkonnaagentuur.ee/node/2720).
 
-SMI 2025 töövihik ei avalda kogu riigi netojuurdekasvu kogumahtu. Töövihik annab kogujuurdekasvu kogu riigile ja raiemahu aastate kaupa kuni viimase mõõdetud aastani. Keskkonnaagentuuri [18.08.2026 ülevaate](https://keskkonnaagentuur.ee/uudised/smi-metsatagavara-stabiilne) järgi on 2025. aasta raiemahu eksperthinnang 11 miljonit m³, mitte mõõdetud tulemus. Kui vastus neid arve kõrvutab, nimetab ta iga arvu juures väljaande ja aasta ega lahuta eri avaldajate ridu üksteisest.
+SMI 2025 töövihik ei avalda kogu riigi netojuurdekasvu kogumahtu. Töövihik annab kogujuurdekasvu kogu riigile ja valimil põhineva raiemahuhinnangu aastate kaupa kuni 2024. aastani. Keskkonnaagentuuri [18.08.2026 ülevaate](https://keskkonnaagentuur.ee/uudised/smi-metsatagavara-stabiilne) järgi on 2025. aasta raiemahu eksperthinnang 11 miljonit m³, mitte töövihiku 2025. aasta rida. Kui vastus neid arve kõrvutab, nimetab ta iga arvu juures väljaande ja aasta ega lahuta eri avaldajate ridu üksteisest.
 
 ## Diagrammid ja jätkuküsimused
 

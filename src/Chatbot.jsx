@@ -7,6 +7,7 @@ import { REVIEWED_FORESTRY_SEARCH_SUGGESTIONS } from "./search-suggestions.js";
 import { contextualSuggestions } from "./suggestion_context.js";
 import { searchWaitingMessage } from "./search-stream.js";
 import { readSearchJob } from "./search_jobs.js";
+import { answerHeading } from "./answer_title.js";
 
 // Same bound as the inline follow-ups on the search page, so one conversation
 // limit holds for both entry points.
@@ -38,7 +39,7 @@ function CitedText({ text, citations = [], sources, Citation }) {
 // One conversation turn renders the same server result the search page renders:
 // the same citation chips, chart, source legend, actions, note and clarification.
 // The parts come from App, which owns them, so the two renderings stay one.
-function ChatAnswer({ result, onAsk, busy, atFollowUpLimit, parts, related = [] }) {
+function ChatAnswer({ result, question, onAsk, busy, atFollowUpLimit, parts, related = [] }) {
   const { AnswerNote, Citation, SourceActions, SourceLegend } = parts;
   const answer = result?.answer;
   const sources = Array.isArray(result?.sources) ? result.sources : [];
@@ -52,7 +53,7 @@ function ChatAnswer({ result, onAsk, busy, atFollowUpLimit, parts, related = [] 
   return (
     <>
       <p className="chatbot__answer-label"><Sparkles aria-hidden="true" size={15} />{answer.eyebrow || "AI koondvastus"}</p>
-      <h3 className="chatbot__answer-title">{answer.title}</h3>
+      <h3 className="chatbot__answer-title">{answerHeading(result, question)}</h3>
       <p className="answer-intro"><CitedText Citation={Citation} citations={answer.introCitations} sources={sources} text={answer.intro} /></p>
       {result.chart ? (
         <AnswerChart
@@ -514,7 +515,7 @@ export default function Chatbot({ answerParts, answerTextOf, pageContext = null 
                   <ChatListing ExternalAnchor={answerParts.ExternalAnchor} listing={turn.listing} />
                 ) : null}
                 <div className="chatbot__answer">
-                  <ChatAnswer busy={busy} atFollowUpLimit={atFollowUpLimit} onAsk={ask} parts={answerParts} related={suggestionsForTurn(turn)} result={turn.result} />
+                  <ChatAnswer busy={busy} atFollowUpLimit={atFollowUpLimit} onAsk={ask} parts={answerParts} question={turn.question} related={suggestionsForTurn(turn)} result={turn.result} />
                 </div>
               </section>
             ))}

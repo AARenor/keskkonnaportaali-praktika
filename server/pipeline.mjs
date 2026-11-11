@@ -87,7 +87,7 @@ import { configuredAnswerBudgetMs } from "./request-budget.mjs";
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v95-2025-felling-expert-estimate";
+export const SEARCH_RESPONSE_REVISION = "answer-v96-smi-estimate-scope";
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",

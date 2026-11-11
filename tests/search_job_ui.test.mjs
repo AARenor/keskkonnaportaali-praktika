@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 import { DEFAULT_SEARCH_FILTERS } from "../src/search_request.js";
-import { composeSearchResponse, NO_ANSWER_EYEBROW } from "../server/search.mjs";
+import { canonicalizePublicSearchQuery, composeSearchResponse, NO_ANSWER_EYEBROW } from "../server/search.mjs";
 
 const SOURCE_ONLY_EYEBROW = composeSearchResponse("mets", [{ id: "mets", title: "Mets" }], { related: [] }).answer.eyebrow;
 
@@ -1072,6 +1072,117 @@ test("a chat answer with no card at all keeps the listing it already found above
       "the listing comes before the no-answer card");
     assert.equal(countMarkup(html, `href="${FIRST_RESULT}"`), 1, "the listing is rendered once");
     assert.match(html, /Sellele küsimusele ei saanud vastust koostada/u);
+  } finally {
+    delete globalThis.__praktikaSearchJobs;
+  }
+});
+
+// The reviewed typo list rewrites a grammatical genitive the reader typed on
+// purpose, because "raiemahu" is one substitution from the listed word
+// "raiemaht". The evidence, citations and the response body keep that canonical
+// query, but the heading a reader looks at must keep the words the reader typed.
+const ASKED_GENITIVE = "Kas 2025. aasta raiemahu kohta on eksperdihinnang?";
+const CANONICAL_HARVEST = canonicalizePublicSearchQuery(ASKED_GENITIVE).query;
+
+function equalsOneEditApart() {
+  assert.notEqual(CANONICAL_HARVEST, ASKED_GENITIVE, "the server really rewrites this question");
+  assert.match(CANONICAL_HARVEST, /raiemaht/u);
+}
+
+test("an answer card that only echoes the corrected query keeps the wording the reader typed", async () => {
+  equalsOneEditApart();
+  const transport = createJobTransport();
+  globalThis.__praktikaSearchJobs = transport;
+  try {
+    const { App, Chatbot } = await loadPages();
+    const renderer = createRenderer(reactInternals);
+    const startSearch = find(renderer.render(App, {}), (element) => element.props?.searchInputRef !== undefined).props.onSearch;
+
+    transport.queue(emits(
+      { type: "results", searchResults: listingOf() },
+      { type: "answer", result: answerOf(CANONICAL_HARVEST, CANONICAL_HARVEST) },
+    ));
+    await startSearch(ASKED_GENITIVE);
+    const page = find(renderer.render(App, {}), (element) => typeof element.props?.onHome === "function");
+    assert.equal(page.props.result.answer.title, CANONICAL_HARVEST, "the response body keeps the canonical query");
+    const card = renderer.render(page.type, page.props);
+    const heading = find(card, (element) => element.type === "h1" && element.props?.tabIndex === -1);
+    assert.equal(textOf(heading), ASKED_GENITIVE);
+    assert.doesNotMatch(textOf(heading), /raiemaht/u);
+
+    // The same heading rule holds for the inline follow-up on that page.
+    const SearchResults = page.type;
+    const searchResultsProps = page.props;
+    find(card, (element) => element.props?.id === "answer-followup-input")
+      .props.onChange({ target: { value: ASKED_GENITIVE } });
+    transport.queue(emits(
+      { type: "results", searchResults: listingOf() },
+      { type: "answer", result: answerOf(CANONICAL_HARVEST, CANONICAL_HARVEST) },
+    ));
+    find(renderer.render(SearchResults, searchResultsProps), (element) => element.props?.className === "followup-form")
+      .props.onSubmit({ preventDefault() {} });
+    await settle();
+    const answeredFollowUp = renderer.render(SearchResults, searchResultsProps);
+    const followUpHeading = find(answeredFollowUp, (element) => element.props?.id === "followup-1-title");
+    assert.equal(textOf(followUpHeading), ASKED_GENITIVE);
+    assert.doesNotMatch(textOf(followUpHeading), /raiemaht/u);
+
+    // The chat panel shows the same result, so it shows the same heading.
+    const answers = { AnswerNote: () => null, Citation: () => null, SourceActions: () => null, SourceLegend: () => null };
+    const chatProps = { answerParts: answers, answerTextOf: () => "" };
+    find(renderer.render(Chatbot, chatProps), (element) => element.props?.["aria-label"] === "Ava vestlus").props.onClick();
+    find(renderer.render(Chatbot, chatProps), (element) => element.props?.id === "chatbot-input")
+      .props.onChange({ target: { value: ASKED_GENITIVE } });
+    transport.queue(emits(
+      { type: "results", searchResults: listingOf() },
+      { type: "answer", result: answerOf(CANONICAL_HARVEST, CANONICAL_HARVEST) },
+    ));
+    find(renderer.render(Chatbot, chatProps), (element) => element.props?.className === "chatbot__form")
+      .props.onSubmit({ preventDefault() {} });
+    await settle();
+    const chatHtml = renderToStaticMarkup(renderer.render(Chatbot, chatProps));
+    const chatHeading = chatHtml.slice(indexOfMarkup(chatHtml, 'class="chatbot__answer-title"'));
+    assert.match(chatHeading, /raiemahu/u);
+    assert.doesNotMatch(chatHeading.slice(0, chatHeading.indexOf("</h3>")), /raiemaht/u);
+  } finally {
+    delete globalThis.__praktikaSearchJobs;
+  }
+});
+
+test("a meaningful answer title is never replaced with the question", async () => {
+  const authored = "SMI 2025: 2025. aasta raiemaht on eksperthinnang, mitte mõõdetud tulemus";
+  const transport = createJobTransport();
+  globalThis.__praktikaSearchJobs = transport;
+  try {
+    const { App, Chatbot } = await loadPages();
+    const renderer = createRenderer(reactInternals);
+    const startSearch = find(renderer.render(App, {}), (element) => element.props?.searchInputRef !== undefined).props.onSearch;
+
+    transport.queue(emits(
+      { type: "results", searchResults: listingOf() },
+      { type: "answer", result: answerOf(authored, CANONICAL_HARVEST) },
+    ));
+    await startSearch(ASKED_GENITIVE);
+    const page = find(renderer.render(App, {}), (element) => typeof element.props?.onHome === "function");
+    const heading = find(renderer.render(page.type, page.props), (element) => element.type === "h1" && element.props?.tabIndex === -1);
+    assert.equal(textOf(heading), authored, "an authored heading stays the answer's own wording");
+
+    const answers = { AnswerNote: () => null, Citation: () => null, SourceActions: () => null, SourceLegend: () => null };
+    const chatProps = { answerParts: answers, answerTextOf: () => "" };
+    find(renderer.render(Chatbot, chatProps), (element) => element.props?.["aria-label"] === "Ava vestlus").props.onClick();
+    find(renderer.render(Chatbot, chatProps), (element) => element.props?.id === "chatbot-input")
+      .props.onChange({ target: { value: ASKED_GENITIVE } });
+    transport.queue(emits(
+      { type: "results", searchResults: listingOf() },
+      { type: "answer", result: answerOf(authored, CANONICAL_HARVEST) },
+    ));
+    find(renderer.render(Chatbot, chatProps), (element) => element.props?.className === "chatbot__form")
+      .props.onSubmit({ preventDefault() {} });
+    await settle();
+    const chatHtml = renderToStaticMarkup(renderer.render(Chatbot, chatProps));
+    const chatHeading = chatHtml.slice(indexOfMarkup(chatHtml, 'class="chatbot__answer-title"'));
+    assert.match(chatHeading, /SMI 2025: 2025\. aasta raiemaht on eksperthinnang/u);
+    assert.doesNotMatch(chatHeading.slice(0, chatHeading.indexOf("</h3>")), /raiemahu/u);
   } finally {
     delete globalThis.__praktikaSearchJobs;
   }
