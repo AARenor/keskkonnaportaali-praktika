@@ -1,3 +1,4 @@
+import { REVIEWED_QUERY_WORD_FORMS } from "./query-word-forms.mjs";
 import { currentForestLawDocuments, reviewedLawSummaryIsOutdated } from "./law-texts.mjs";
 import { forestrySourcePreference } from "./forestry-source-policy.mjs";
 import { bindSourceToVisibleService } from "./source-identity.mjs";
@@ -5125,15 +5126,31 @@ function withinOneEdit(left, right) {
   return false;
 }
 
+// Every case form and verb form of the listed words (server/query-word-forms.mjs,
+// from the Vabamorf synthesizer): "metsi", "metsasid", "levinud", "puuliigil",
+// "raiutakse", "raiuksin". These are correct Estonian, not typos.
+const REVIEWED_QUERY_WORD_FORM_SET = new Set(Object.values(REVIEWED_QUERY_WORD_FORMS).flat());
+
+function firstDifference(left, right) {
+  let index = 0;
+  while (index < left.length && index < right.length && left[index] === right[index]) index += 1;
+  return index;
+}
+
 export function correctReviewedQueryTypos(query) {
   if (typeof query !== "string" || !query) return query;
   return query.replace(/\p{L}+/gu, (token) => {
     if (token.length < 5 || token !== token.toLocaleLowerCase("et")) return token;
     if (REVIEWED_QUERY_TYPO_WORD_SET.has(token)) return token;
+    // A case or verb form of a listed word is never a typo.
+    if (REVIEWED_QUERY_WORD_FORM_SET.has(token)) return token;
     // An inflected form ("metsaomanike", "pindalad") starts with a listed word
     // and is not a typo.
     if (REVIEWED_QUERY_TYPO_WORDS.some((word) => token.startsWith(word))) return token;
-    const candidates = REVIEWED_QUERY_TYPO_WORDS.filter((word) => withinOneEdit(token, word));
+    // A difference only in the last letter is an ending: Estonian case and
+    // person endings change the end of the word ("levinud", not "levinum").
+    const candidates = REVIEWED_QUERY_TYPO_WORDS.filter((word) => withinOneEdit(token, word)
+      && firstDifference(token, word) < Math.min(token.length, word.length) - 1);
     return candidates.length === 1 ? candidates[0] : token;
   });
 }
