@@ -3056,7 +3056,10 @@ export function queryRootVariants(root) {
   if (root === "mootmine") return ["mootm", "tulemus"];
   if (root === "harjumaa") return ["harjumaa", "harju"];
   if (root === "liik") return ["liik", "liig", "species"];
-  if (root === "kaitseala") return ["kaitseal", "protected area"];
+  // Questions fold hoiuala, püsielupaik and the zones into this root, so a law
+  // text naming the specific kind still counts; the answer check then makes sure
+  // it is the same kind the question named.
+  if (root === "kaitseala") return ["kaitseal", "protected area", "hoiual", "pusielupai", "sihtkaitsevoond", "piiranguvoond", "loodusreservaa", "rahvuspar"];
   if (root === "elupaik") return ["elupaik", "elupaig", "habitat"];
   if (root === "statistika") return ["statist", "smi", "inventuur", "pxweb"];
   if (root === "tulemus") return ["tulemus"];

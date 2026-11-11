@@ -1667,6 +1667,20 @@ export function assertAnswerAddressesQuery(text, query, label = "answer") {
   const roots = queryTerms(query).filter((root) => !QUESTION_FORM_ROOTS.has(root)).slice(0, 6);
   if (!roots.length) return true;
   const answer = normalize(text);
+  const asked = normalize(query);
+  // "Kui suur, mitu, kui palju" is answered by an amount. A rule about the same
+  // place without one ("kaitsealal võib määrata raied") does not answer it.
+  if (/\b(?:kui\s+(?:suur|lai|korge|pikk|palju|vana|kaua)\w*|mitu|mitme)\b/u.test(asked)
+    && !/\d|\b(?:uks|uhe|kaks|kahe|kolm|kolme|neli|nelja|viis|viie|kuus|kuue|seitse|seitsme|kaheksa|uheksa|kumme|kumne|sada|saja|tuhat|tuhande|pool|poole)\b/u.test(answer)) {
+    throw new Error(`LLM ${label} does not give the amount the question asks for`);
+  }
+  // Search folds hoiuala, püsielupaik and the zones into "kaitseala", but their
+  // rules differ, so the answer must speak about the same kind of area.
+  for (const area of ["hoiuala", "pusielupai", "sihtkaitsevoond", "piiranguvoond", "loodusreservaa", "rahvuspar", "talvituspai", "vaariselupai"]) {
+    if (asked.includes(area) && !answer.includes(area)) {
+      throw new Error(`LLM ${label} does not speak about the protected area the question names`);
+    }
+  }
   if (answerIntent?.kind === "protected-forest-share") {
     const hasMeasure = numberOccurrences(text).some((occurrence) => occurrence.units.has("percent") || occurrence.units.has("area"));
     const hasScope = /\betak\b/u.test(answer) && /\bmetsamaa\w*/u.test(answer)

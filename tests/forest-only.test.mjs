@@ -635,3 +635,11 @@ test("a rule answer does not have to repeat how the question was asked, but must
   assert.equal(assertAnswerAddressesQuery("Uuendusraielangid tuleb raidmetest puhastada hiljemalt ühe aasta jooksul raieõiguse lõppemisest arvates.", query), true);
   assert.throws(() => assertAnswerAddressesQuery("Metsateatis kehtib 12 kuud ja selle esitab metsaomanik.", query));
 });
+
+test("an amount question needs an amount, and a named protected area must be the same kind", () => {
+  const query = "hoiualal kui suur lageraielank tohib olla";
+  assert.throws(() => assertAnswerAddressesQuery("Kaitsealal võib kaitse-eeskirjaga määrata vaadete avamiseks vajalikuks tegevuseks raied.", query), /amount/u);
+  assert.throws(() => assertAnswerAddressesQuery("Kaitsealal on lageraielangi suurus kuni kaks hektarit.", query), /protected area/u);
+  assert.equal(assertAnswerAddressesQuery("Hoiualal on lubatud lageraielangi suurus kuni kaks hektarit ja laius kuni 30 meetrit.", query), true);
+  assert.equal(assertAnswerAddressesQuery("Häilraiel võib ühe hektari kohta sisse raiuda kuni viis häilu.", "häilraie mitu häilu hektarile"), true);
+});
