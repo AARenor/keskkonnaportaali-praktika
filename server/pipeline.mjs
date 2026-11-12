@@ -2217,7 +2217,7 @@ async function searchWithinBudget(cleanQuery, {
       answerAttempt: {
         status: outcome.attempt.status,
         reason: outcome.attempt.reason,
-        ...(attemptCheckCode(visibleCheck, outcome.attempt) ? { check: attemptCheckCode(visibleCheck, outcome.attempt) } : {}),
+        ...(attemptCheckCode(visibleCheck, llmResult.attempt) ? { check: attemptCheckCode(visibleCheck, llmResult.attempt) } : {}),
       },
     }
     : outcome.response;
