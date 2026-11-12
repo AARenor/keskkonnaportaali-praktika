@@ -1326,7 +1326,9 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
   const hasRegistry = hasStem(tokens, ["metsaregis"], true);
   const hasNotice = hasStem(tokens, ["metsateat", "raieteat"], true);
   const hasClearcut = hasStem(tokens, ["lagerai"], true);
-  const hasStock = hasStem(tokens, ["tagavara", "metsavaru", "puiduvaru"], true);
+  // "kogutagavara" and "puidutagavara" are stock questions too.
+  const hasStock = hasStem(tokens, ["tagavara", "metsavaru", "puiduvaru"], true)
+    || tokens.some((token) => /^\p{L}{2,}tagavar/u.test(token));
   const hasParcelRegister = hasStem(tokens, ["eraldisregis"], true);
   const hasHarvest = hasStem(tokens, ["rai", "varum", "eemaldam", "metsatoo"])
     || /\bpuidu\s+(?:eemaldam|varum)\w*/u.test(text);
@@ -1767,7 +1769,7 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
   // fall through and fail closed instead. The same holds for a question about
   // another forest subject (species, age, fire, regeneration, ownership,
   // protection, damage): "kui palju" alone does not make it an area question.
-  const asksOtherForestSubject = !forPrivacyCheck && /\b(?:\w*puuli(?:ik|ig)\w*|mand|mann\w*|kuus\w*|kask|kase\w*|kaasik\w*|haab|haav\w*|lepp\w*|lepa\w*|okaspuu\w*|lehtpuu\w*|vanus\w*|vana|vanad\w*|vanade\w*|\w*tulekahj\w*|poleng\w*|polen\w*|uuend\w*|istut\w*|kulv\w*|halda\w*|rmk|riigimets\w*|kaitst\w*|kaitse\w*|\w*urask\w*|kahjust\w*|kahjur\w*|haigus\w*|torm\w*|tuuleheit\w*)\b/u.test(text);
+  const asksOtherForestSubject = !forPrivacyCheck && /\b(?:\w*puuli(?:ik|ig)\w*|mand|mann\w*|kuus\w*|kask|kase\w*|kaasik\w*|haab|haav\w*|lepp\w*|lepa\w*|okaspuu\w*|lehtpuu\w*|vanus\w*|vana|vanad\w*|vanade\w*|\w*tulekahj\w*|poleng\w*|polen\w*|uuend\w*|istut\w*|kulv\w*|halda\w*|rmk|riigimets\w*|kaitst\w*|kaitse\w*|\w*urask\w*|kahjust\w*|kahjur\w*|haigus\w*|torm\w*|tuuleheit\w*|\w*susinik\w*|\w*biomass\w*|co2|kasvuhoone\w*)\b/u.test(text);
   const asksDefinitionOnly = /\b(?:definitsioon\w*|moiste\w*)\b/u.test(text)
     && !/\b(?:kui\s+palju|mitu|kui\s+suur\w*|pindala|osakaal|protsent|hektar\w*)\b/u.test(text);
   // "alla poole hektari, kas metsaseadus kehtib" asks about a rule, not the area.

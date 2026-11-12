@@ -333,6 +333,19 @@ const REVIEWED_ESTONIAN_COUNTY_SURFACE_CATALOG = Object.freeze([
   ["voru maakond", String.raw`(?:võru|voru)(?:maa|\s+${REVIEWED_COUNTY_SURFACE_MARKER_SOURCE})`],
 ]);
 
+// "Saaremaa" is also written "Saaremaal", "Saaremaast", "Võrumaale". For the
+// answer's geography (not for the privacy surface above) a case ending must not
+// turn a county question into a national one.
+const COUNTY_MAA_CASE_SOURCE = String.raw`maa(?:l|lt|le|s|st|sse|ga|ni|na|ta|ks|d)?`;
+const REVIEWED_ESTONIAN_COUNTY_CASE_SURFACE_CATALOG = Object.freeze(
+  REVIEWED_ESTONIAN_COUNTY_SURFACE_CATALOG.map(([identity, source]) => [
+    identity,
+    source
+      .replace(String.raw`(?:maa|\s+`, String.raw`(?:${COUNTY_MAA_CASE_SOURCE}|\s+`)
+      .replace("viru(?:maa)?", `viru(?:${COUNTY_MAA_CASE_SOURCE})?`),
+  ]),
+);
+
 export const REVIEWED_ESTONIAN_COUNTY_SECURITY_SURFACE_SOURCE = REVIEWED_ESTONIAN_COUNTY_SURFACE_CATALOG
   .map(([, source]) => `(?:${source})`)
   .join("|");
@@ -737,7 +750,7 @@ function unresolvedNationalDefaultForestryAreaResidual(value) {
 
 function reviewedCountyScope(value, { explicitOnly = false } = {}) {
   const raw = String(value || "").normalize("NFKC").normalize("NFC");
-  for (const [identity, source] of REVIEWED_ESTONIAN_COUNTY_SURFACE_CATALOG) {
+  for (const [identity, source] of REVIEWED_ESTONIAN_COUNTY_CASE_SURFACE_CATALOG) {
     const pattern = new RegExp(String.raw`(?<!\p{L})(${source})(?!\p{L})`, "iu");
     const match = raw.match(pattern);
     if (!match) continue;

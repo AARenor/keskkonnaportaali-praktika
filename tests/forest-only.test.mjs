@@ -650,3 +650,96 @@ test("a rejection is named by its check alone, never by the claim or source text
   assert.equal(attemptCheckCode("asked-concept-missing", { detail }), "asked-concept-missing");
   assert.equal(attemptCheckCode("", {}), "");
 });
+
+test("a correct answer need not repeat who asks or how much, but a no-answer never passes", () => {
+  // Taken from local shadow traces of answers the word check had blocked.
+  assert.equal(assertAnswerAddressesQuery(
+    "Keskkonnaameti kehtiva juhise järgi võib metsaomanik metsateatist esitamata raiuda kuni 20 tihumeetrit puitu kinnisasja kohta aastas.",
+    "Kas mul on vaja metsateatist, kui tahan oma metsas paar puud maha võtta?",
+  ), true);
+  assert.equal(assertAnswerAddressesQuery(
+    "Omandivormi tabelis oli riigimaad kokku 1 181,266 tuhat hektarit ehk 50,0% metsamaast.",
+    "Kui palju metsast kuulub riigile?",
+  ), true);
+  assert.equal(assertAnswerAddressesQuery(
+    "SMI tähendab statistilist metsainventuuri: see on üleriigiline valikuuring metsanduses.",
+    "SMI definitsioon metsanduses",
+  ), true);
+  for (const [answer, query] of [
+    ["Tõend ei anna Eesti metsa kogutagavara tihumeetrites. Metsamaa pindala oli 2 360,2 tuhat hektarit.", "Kui suur on Eesti metsade kogutagavara?"],
+    ["Metsateatis esitatakse raiete kohta. Ainult nende tõendite põhjal ei saa öelda, miks naaber teatise esitas.", "miks naaber metsateatise esitas"],
+    ["Evidence ei käsitle Eesti metsade süsinikusidumist.", "Kui palju süsinikku seovad Eesti metsad aastas?"],
+  ]) {
+    assert.throws(() => assertAnswerAddressesQuery(answer, query), /says its sources do not answer/u, answer);
+  }
+});
+
+test("a county named with a case ending is a county question, not an Estonia one", async () => {
+  const { classifyForestryGeographyScope } = await import("../server/municipalities.mjs");
+  for (const [query, identity] of [
+    ["Kui suur osa Saaremaast on metsaga kaetud?", "saare maakond"],
+    ["Kui palju on metsa Võrumaal?", "voru maakond"],
+    ["Kas Harjumaal on metsamaad?", "harju maakond"],
+    ["Kui palju metsa on Ida-Virumaal?", "ida viru maakond"],
+  ]) {
+    const scope = classifyForestryGeographyScope(query);
+    assert.equal(scope.kind, "estonian-region", query);
+    assert.equal(scope.identity, identity, query);
+    assert.equal(containsPrivatePersonLookup(query), false, query);
+  }
+  assert.equal(classifyForestryGeographyScope("Kui palju metsa on Eestis?").kind, "national-estonia");
+});
+
+test("an Estonia-wide figure never answers a question about a named county", () => {
+  // From the local run: the Saaremaa question was shown the national share.
+  assert.throws(() => assertAnswerAddressesQuery(
+    "SMI 2025 töölehe 1 Metsamaa real oli Eesti metsamaa pindala 2 360,2 tuhat ha, osakaal kogu Eesti pindalast 52,1%.",
+    "Kui suur osa Saaremaast on metsaga kaetud?",
+  ), /does not speak about the place/u);
+  assert.throws(() => assertAnswerAddressesQuery(
+    "Eesti metsamaa pindala oli 2 360,2 tuhat hektarit.",
+    "Kui palju on metsa Võrumaal?",
+  ), /does not speak about the place/u);
+  assert.equal(assertAnswerAddressesQuery(
+    "Eesti metsamaa pindala oli 2025. aastal 2 360,2 tuhat hektarit ehk 52,1%.",
+    "Kui palju metsa on Eestis?",
+  ), true);
+});
+
+test("a raw excerpt must keep the whole asked word and give a time for 'millal'", () => {
+  // From the local run: these excerpts were shown as answers without the model.
+  assert.equal(extractAnswersQuery(
+    "Millal on lindude pesitsusperioodil raierahu?",
+    "Õnneks on enamik metsamajandajaid lindude pesitsusperioodiga arvestanud ja planeerinud juba eos raied ajale, mis lindude pesitsemist vähem häirib.",
+  ), false);
+  assert.equal(extractAnswersQuery(
+    "Millal on lindude pesitsusperioodil raierahu?",
+    "Lindude pesitsusperioodil 15. aprillist 15. juulini kehtib raierahu riigimetsas.",
+  ), true);
+  assert.equal(extractAnswersQuery(
+    "Kas Soomaa rahvuspargis on põlismetsa?",
+    "Karula, Soomaa ja Vilsandi rahvuspargi sünnist saab tänavu 30 aastat ning laual on maitseid niitudelt ja metsadest.",
+  ), false);
+  assert.equal(extractAnswersQuery(
+    "Kas Soomaa rahvuspargis on põlismetsa?",
+    "Soomaa rahvuspargis on säilinud põlismetsa laike soosaartel, mis on kaitse all.",
+  ), true);
+  assert.equal(isNonAnswerText("Mai 2023 Autor: Helen Kivisild Karula, Soomaa ja Vilsandi rahvuspargi sünnist saab tänavu 30 aastat."), true);
+});
+
+test("stock and carbon questions never take the forest-area card", () => {
+  for (const query of ["Kui suur on Eesti metsade kogutagavara?", "Kui palju on Eestis metsa kogutagavara tihumeetrites?"]) {
+    assert.equal(forestEvidenceIntent(query)?.kind, "forest-stock-overview", query);
+  }
+  assert.notEqual(forestEvidenceIntent("Kui palju süsinikku seovad Eesti metsad aastas?")?.kind, "forest-area");
+  assert.equal(forestEvidenceIntent("Kui palju metsa on Eestis?")?.kind, "forest-area");
+  // SMI names the total stock "kasvava metsa tagavara"; an area figure alone is still no answer.
+  assert.equal(assertAnswerAddressesQuery(
+    "Uue metoodikaga oli metsamaa pindala 2 360,2 tuhat hektarit ehk 52,1% Eesti pindalast ning kasvava metsa tagavara 466 miljonit m³.",
+    "Kui suur on Eesti metsade kogutagavara?",
+  ), true);
+  assert.throws(() => assertAnswerAddressesQuery(
+    "Uue metoodikaga oli metsamaa pindala 2 360,2 tuhat hektarit ehk 52,1% Eesti pindalast.",
+    "Kui suur on Eesti metsade kogutagavara?",
+  ));
+});

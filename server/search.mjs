@@ -3014,6 +3014,12 @@ export function queryRootVariants(root) {
   if (root === "korge") return ["korge", "korgus"];
   if (root === "koort" || root === "koorinud") return ["koor"];
   if (root === "kupsusdiameeter") return ["kupsusdiameet", "rinnasdiameet"];
+  // "paar puud maha võtta" is answered in timber volume ("20 tihumeetrit puitu").
+  if (root === "puud") return ["puud", "puit", "puidu", "puu"];
+  // SMI states the total growing stock as "kasvava metsa tagavara".
+  if (root === "kogutagavara") return ["kogutagavara", "tagavara"];
+  // Who a forest "belongs to" is its ownership form.
+  if (root === "kuulub") return ["kuulu", "omand", "omani"];
   if (root === "uuenemata" || root === "uuendamata") return ["uuenem", "uuenen", "uuendam", "uuendat"];
   if (root === "juurdekasv") return ["juurdekasv", "netojuurdekasv"];
   if (root === "uletamine") return ["ulet", "suurem", "rohkem"];
@@ -9151,6 +9157,8 @@ export function isNonAnswerText(value) {
   if (/^loomulikult\b/iu.test(text)) return true;
   // A site's news list is navigation, not a statement about the question.
   if (/^hiljutised uudised\b|\bvaata k[oõ]iki\b/iu.test(text)) return true;
+  // An article byline ("Mai 2023 Autor: …") is page furniture, not a statement.
+  if (/^(?:\p{L}+\s+)?\d{4}\s+autor\b|^autor\s*:/iu.test(text)) return true;
   // Map service layer names are data labels, not prose.
   if (/\b[a-z]{2,}__[a-z_]+/u.test(text)) return true;
   if ((text.match(/\.(?:pdf|xlsx?|docx?|zip|csv)\b/giu) || []).length >= 2) return true;
@@ -9174,6 +9182,18 @@ export function isNonAnswerText(value) {
 // question about a person, a contact or a location keeps failing closed.
 const QUESTION_FRAME_TERMS = new Set(["millal", "puhul"]);
 
+// Search shortens a compound to its head ("raierahu" → "raie", "põlismetsa" →
+// "mets") so it finds more pages. A raw extract shown as the answer must still
+// carry the whole word: a passage about "raied" does not say when "raierahu" is,
+// and one that mentions "metsadest" does not say whether there is "põlismets".
+function shortenedQueryWords(query, terms) {
+  return normalize(query).split(/\s+/u).filter((word) => word.length >= 7
+    && terms.some((term) => term.length >= 3 && word.length - term.length >= 3 && word.includes(term)));
+}
+
+// "Millal" is answered by a time, never by the word "millal" itself.
+const STATED_TIME_PATTERN = /\d|\b(?:jaanuar|veebruar|marts|aprill|mai|juuni|juuli|august|september|oktoober|november|detsember|kevad|suvi|suve|sugis|talv|alates|kuni|enne|parast|hiljemalt|jooksul|ajavahemik)\w*/u;
+
 export function extractAnswersQuery(query, extract) {
   if (isNonAnswerText(extract)) return false;
   const terms = queryTerms(query)
@@ -9182,7 +9202,11 @@ export function extractAnswersQuery(query, extract) {
   // A question made only of frame words names no subject an extract could be
   // checked against, so nothing proves that it answers.
   if (terms.length && !required.length) return false;
-  return required.every((term) => textHasQueryRoot(extract, term));
+  if (!required.every((term) => textHasQueryRoot(extract, term))) return false;
+  const text = normalize(extract);
+  if (terms.includes("millal") && !STATED_TIME_PATTERN.test(text)) return false;
+  return shortenedQueryWords(query, terms)
+    .every((word) => text.includes(word.slice(0, Math.max(6, word.length - 3))));
 }
 
 // A question about what is allowed needs a passage that states a rule, not one
