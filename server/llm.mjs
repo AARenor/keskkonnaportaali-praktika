@@ -19,6 +19,7 @@ import {
   normalize,
   queryTerms,
   splitTextPassages,
+  statesAskedAge,
   textHasQueryRoot,
 } from "./search.mjs";
 import {
@@ -1705,6 +1706,8 @@ const SAYS_SOURCES_DO_NOT_ANSWER = /\b(?:(?:esitatud|antud|need|kaasa\s+antud)\s
 // letters: at least five, and all but the last three.
 function answerHasRoot(answer, root) {
   if (textHasQueryRoot(answer, root)) return true;
+  // SMI states forest age and stock per "puistu" (forest stand).
+  if (root === "mets" && /\bpuistu\p{L}*/u.test(answer)) return true;
   if (root.length < 7) return false;
   const prefix = root.slice(0, Math.max(5, root.length - 3));
   return new RegExp(`\\b${prefix}\\p{L}*`, "u").test(answer);
@@ -1744,6 +1747,9 @@ export function assertAnswerAddressesQuery(text, query, label = "answer") {
   if (/\b(?:kui\s+(?:suur|lai|korge|pikk|palju|vana|kaua)\w*|mitu|mitme)\b/u.test(asked)
     && !/\d|\b(?:uks|uhe|kaks|kahe|kolm|kolme|neli|nelja|viis|viie|kuus|kuue|seitse|seitsme|kaheksa|uheksa|kumme|kumne|sada|saja|tuhat|tuhande|pool|poole)\b/u.test(answer)) {
     throw new Error(`LLM ${label} does not give the amount the question asks for`);
+  }
+  if (!statesAskedAge(query, text)) {
+    throw new Error(`LLM ${label} does not give the age the question asks for`);
   }
   // Search folds hoiuala, püsielupaik and the zones into "kaitseala", but their
   // rules differ, so the answer must speak about the same kind of area.

@@ -3018,6 +3018,7 @@ export function queryRootVariants(root) {
   if (root === "puud") return ["puud", "puit", "puidu", "puu"];
   // SMI states the total growing stock as "kasvava metsa tagavara".
   if (root === "kogutagavara") return ["kogutagavara", "tagavara"];
+  if (root === "keskmiselt") return ["keskmiselt", "keskmine", "keskmise"];
   // Who a forest "belongs to" is its ownership form.
   if (root === "kuulub") return ["kuulu", "omand", "omani"];
   if (root === "uuenemata" || root === "uuendamata") return ["uuenem", "uuenen", "uuendam", "uuendat"];
@@ -9186,13 +9187,28 @@ const QUESTION_FRAME_TERMS = new Set(["millal", "puhul"]);
 // "mets") so it finds more pages. A raw extract shown as the answer must still
 // carry the whole word: a passage about "raied" does not say when "raierahu" is,
 // and one that mentions "metsadest" does not say whether there is "põlismets".
+const CASE_ENDING_REMAINDER = /^[aeiou]?(?:d|de|des|dega|deks|dele|del|delt|dest|desse|ga|s|st|sse|le|l|lt|ks|ni|na|ta|t|te|tes|tele|id|ide|sid)?$/u;
+
 function shortenedQueryWords(query, terms) {
   return normalize(query).split(/\s+/u).filter((word) => word.length >= 7
-    && terms.some((term) => term.length >= 3 && word.length - term.length >= 3 && word.includes(term)));
+    && terms.some((term) => {
+      if (term.length < 3 || word.length - term.length < 3) return false;
+      const at = word.indexOf(term);
+      if (at < 0) return false;
+      // "metsade", "metsadele" are case forms of "mets", not compounds.
+      return at > 0 || !CASE_ENDING_REMAINDER.test(word.slice(term.length));
+    }));
 }
 
 // "Millal" is answered by a time, never by the word "millal" itself.
 const STATED_TIME_PATTERN = /\d|\b(?:jaanuar|veebruar|marts|aprill|mai|juuni|juuli|august|september|oktoober|november|detsember|kevad|suvi|suve|sugis|talv|alates|kuni|enne|parast|hiljemalt|jooksul|ajavahemik)\w*/u;
+
+// "Kui vana" is answered by an age. A stock or area figure from the same page
+// shares the words "mets" and "keskmine" but says nothing about age.
+export function statesAskedAge(query, text) {
+  if (!/\bkui\s+vana\w*\b/u.test(normalize(query))) return true;
+  return /\bvanus\w*|\b\d+\s*(?:aastat\b|-?aastane\w*)/u.test(normalize(text));
+}
 
 export function extractAnswersQuery(query, extract) {
   if (isNonAnswerText(extract)) return false;
@@ -9205,6 +9221,7 @@ export function extractAnswersQuery(query, extract) {
   if (!required.every((term) => textHasQueryRoot(extract, term))) return false;
   const text = normalize(extract);
   if (terms.includes("millal") && !STATED_TIME_PATTERN.test(text)) return false;
+  if (!statesAskedAge(query, extract)) return false;
   return shortenedQueryWords(query, terms)
     .every((word) => text.includes(word.slice(0, Math.max(6, word.length - 3))));
 }

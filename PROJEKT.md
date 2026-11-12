@@ -135,13 +135,13 @@ Kontroll ei ole üks reegel, vaid intentide kaupa. Igal järgneval intentil on o
 - `forest-species-share`: puuliigi nimi ja protsendiline osakaal;
 - `climate-impact`: kliimategur, metsamõju ja suund. Suunakomplektis ei ole `muut`, sest „kliimamuutus” rahuldab juba teguri tingimust ja muidu läbiks vabandav lause;
 - `forest-data-sources`, `forest-depletion`: oma sisulised kontrollid;
-- kõik muud: vähemalt 75% küsimuse tüvedest peavad vastuses esinema. Küsija ja vormi sõnad („mul”, „minu”, „paar”, „tahan”, „definitsioon”) ei ole sisutüved; tüvi loetakse kaetuks ka teise lõpuga („katastri-”) ja kontrollitud sünonüümiga (`puud` → `puit`, `kuulub` → `omand`, `kogutagavara` → `tagavara`).
+- kõik muud: vähemalt 75% küsimuse tüvedest peavad vastuses esinema. Küsija ja vormi sõnad („mul”, „minu”, „paar”, „tahan”, „definitsioon”) ei ole sisutüved; tüvi loetakse kaetuks ka teise lõpuga („katastri-”) ja kontrollitud sünonüümiga (`puud` → `puit`, `kuulub` → `omand`, `kogutagavara` → `tagavara`, `keskmiselt` → `keskmine`; vastuse kontrollis katab `puistu` tüve `mets`).
 
 Kõigi intentide kohta kehtib lisaks:
 
 - Vastus, mis ütleb, et tõend või evidence ei näita, ei käsitle või ei anna vastust („tõend ei näita…”, „nende tõendite põhjal ei saa…”), on mittevastus ja lükatakse alati tagasi. Mudelile öeldakse, et ta jätaks katmata osa välja, mitte ei kirjutaks sellest.
 - Kui küsimus nimetab maakonda või omavalitsust, ka käändes („Saaremaast”, „Võrumaal”, „Ida-Virumaale”), peab vastus seda kohta nimetama. Eesti üleriigiline SMI arv ei vasta maakonna küsimusele. Maakonna käändevormi tunneb ainult geograafia klassifitseerija; privaatsuskontrolli muster jääb muutmata.
-- Ilma mudelita näidatav toorkatkend (`extractAnswersQuery`) peab sisaldama küsimuse liitsõna tervikuna, kui otsing on selle peasõnaks lühendanud („raierahu” → `raie`, „põlismetsa” → `mets`), ja „millal” küsimusele aega (kuupäev, kuu, aastaaeg, „alates/kuni/enne/pärast”). Artikli autoririda („Mai 2023 Autor: …”) on lehe kest, mitte vastus.
+- Ilma mudelita näidatav toorkatkend (`extractAnswersQuery`) peab sisaldama küsimuse liitsõna tervikuna, kui otsing on selle peasõnaks lühendanud („raierahu” → `raie`, „põlismetsa” → `mets`), ja „millal” küsimusele aega (kuupäev, kuu, aastaaeg, „alates/kuni/enne/pärast”). Käändevorm („metsade”) ei ole lühendatud liitsõna. „Kui vana” küsimusele peab nii katkend kui ka mudeli vastus andma vanuse („vanus”, „55 aastat”, „-aastane”). Artikli autoririda („Mai 2023 Autor: …”) on lehe kest, mitte vastus.
 - `kogutagavara`, `puidutagavara` jt liitsõnad on tagavara küsimused (`forest-stock-overview`) ning süsiniku, biomassi ja CO2 küsimused ei lähe `forest-area` kaardile.
 
 Tagasilükatud mudelivastuse teksti tootmises ei salvestata (PRIVAATSUS.md). Kontrollide häälestamiseks saab selle näha ainult lokaalselt: `REVIEW_TRACE=local` koos loopback `PUBLIC_ORIGIN`-iga kirjutab iga tagasilükatud vastuse kohta konteineri logisse `review-trace` rea (küsimus, kontrollid, mudeli ettepanek ja see, kas vastus läbiks nelja lõdvendatava kontrollita).

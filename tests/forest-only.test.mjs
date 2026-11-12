@@ -724,6 +724,11 @@ test("a raw excerpt must keep the whole asked word and give a time for 'millal'"
     "Kas Soomaa rahvuspargis on põlismetsa?",
     "Soomaa rahvuspargis on säilinud põlismetsa laike soosaartel, mis on kaitse all.",
   ), true);
+  // A case form ("metsade") is not a shortened compound.
+  assert.equal(extractAnswersQuery(
+    "Kui suur on Eesti metsade kogutagavara?",
+    "Uue metoodikaga oli metsamaa pindala 2 360,2 tuhat hektarit ehk 52,1% Eesti pindalast ning kasvava metsa tagavara 466 miljonit m³.",
+  ), true);
   assert.equal(isNonAnswerText("Mai 2023 Autor: Helen Kivisild Karula, Soomaa ja Vilsandi rahvuspargi sünnist saab tänavu 30 aastat."), true);
 });
 
@@ -742,4 +747,13 @@ test("stock and carbon questions never take the forest-area card", () => {
     "Uue metoodikaga oli metsamaa pindala 2 360,2 tuhat hektarit ehk 52,1% Eesti pindalast.",
     "Kui suur on Eesti metsade kogutagavara?",
   ));
+});
+
+test("an age question is answered by an age, not by a stock or area figure", () => {
+  // From the live run: a stock paragraph was shown for "kui vana".
+  const query = "kui vana on eesti mets keskmiselt";
+  assert.equal(extractAnswersQuery(query, "Metsa pindala kasv on aidanud tasakaalustada keskmise hektaritagavara vähenemise mõju. 2025. aastal oli metsamaa pindala 2,36 miljonit hektarit, millel kasvas 466 miljonit m³ puitu."), false);
+  assert.equal(extractAnswersQuery(query, "Nii noorte kui ka vanade metsade pindala suurenes, puistute keskmine vanus oli 55 aastat ning 2025. aasta raiemahu eksperthinnang 11,0 miljonit m³."), true);
+  assert.equal(assertAnswerAddressesQuery("Eesti puistute keskmine vanus oli 55 aastat.", query), true);
+  assert.throws(() => assertAnswerAddressesQuery("2025. aastal oli metsamaa pindala 2,36 miljonit hektarit ja keskmine hektaritagavara langes.", query), /does not give the age/u);
 });
