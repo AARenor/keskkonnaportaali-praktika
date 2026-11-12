@@ -5,7 +5,7 @@ import { FOREST_LAWS, currentForestLawDocuments, definesLawTerm, focusedLawSecti
 import { asksOnlyForestAmount } from "../server/forest-series.mjs";
 import { officialServiceCatalogueDocuments, repeatsEarlierAnswer } from "../server/search.mjs";
 import { answersAskedConcept, answersPermissionQuestion, assessEvidence, assessSearchQuery, forestEvidenceIntent, composeScopeResponse, containsPrivatePersonLookup, composeSearchResponse, extractAnswersQuery, isForestRelatedQuery, isNonAnswerText } from "../server/search.mjs";
-import { searchEnvironmentLive } from "../server/pipeline.mjs";
+import { attemptCheckCode, searchEnvironmentLive } from "../server/pipeline.mjs";
 import { assertAnswerAddressesQuery } from "../server/llm.mjs";
 import { blockedFollowUpAssessment, contextualRetrievalQuery, isContinuationFollowUp } from "../server/retrieval.mjs";
 
@@ -642,4 +642,11 @@ test("an amount question needs an amount, and a named protected area must be the
   assert.throws(() => assertAnswerAddressesQuery("Kaitsealal on lageraielangi suurus kuni kaks hektarit.", query), /protected area/u);
   assert.equal(assertAnswerAddressesQuery("Hoiualal on lubatud lageraielangi suurus kuni kaks hektarit ja laius kuni 30 meetrit.", query), true);
   assert.equal(assertAnswerAddressesQuery("Häilraiel võib ühe hektari kohta sisse raiuda kuni viis häilu.", "häilraie mitu häilu hektarile"), true);
+});
+
+test("a rejection is named by its check alone, never by the claim or source text", () => {
+  const detail = "LLM introduction has an unbound semantic clause (3/5; Mari Tamm) | claim: Mari Tamm raius 7 ha | source: (2) Hoiualal on keelatud";
+  assert.equal(attemptCheckCode("", { detail }), "introduction-has-an-unbound-semantic-clause");
+  assert.equal(attemptCheckCode("asked-concept-missing", { detail }), "asked-concept-missing");
+  assert.equal(attemptCheckCode("", {}), "");
 });

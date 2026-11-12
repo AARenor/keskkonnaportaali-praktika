@@ -115,7 +115,7 @@ Sõna „kontrollitud” tähendab siin praktikaprojekti tehnilist kontrolli, mi
 
 ### Vastuse staatused, intentide valideerimine ja mõõtmine
 
-Iga vastus kannab sisemist katsemetaandmet (`answerAttempt`), mis ütleb, kust vastuse tekst pärineb. Seda tuleb lugeda enne, kui hinnata, kas parandus midagi muutis:
+Iga vastus kannab sisemist katsemetaandmet (`answerAttempt`), mis ütleb, kust vastuse tekst pärineb. Kui mudeli vastus lükati tagasi, nimetab valikuline `check` lühikoodina kontrolli, mis selle tagasi lükkas (näiteks `introduction-has-an-unbound-semantic-clause` või `asked-concept-missing`); see on kontrolli enda fikseeritud teade, mitte küsimuse, allika ega mudeli tekst, ja võimaldab testvooru tagasilükkamisi põhjuse järgi kokku lugeda. Seda tuleb lugeda enne, kui hinnata, kas parandus midagi muutis:
 
 | `status` / `reason` | Mida lugeja näeb |
 | --- | --- |

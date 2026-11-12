@@ -101,14 +101,18 @@ for (const scenario of REJECTED_PAYLOADS) {
     if (scenario.expectSourceText) assert.match(rejectionDetail, /source: /u);
     assert.equal(rejectionDetail.includes(PRIVACY_MARKER), scenario.markerInDetail);
 
-    // Status words stay. PROJEKT.md documents answerAttempt as status and
-    // reason only, so no extra field may carry provider or evidence prose.
+    // Status words stay. PROJEKT.md documents answerAttempt as status, reason
+    // and an optional check code, so no field may carry provider or evidence prose.
     assert.ok(result.answerAttempt);
     assert.deepEqual(
-      Object.keys(result.answerAttempt).sort(),
+      Object.keys(result.answerAttempt).filter((key) => key !== "check").sort(),
       ATTEMPT_KEYS,
-      `answerAttempt carries status and reason only (PROJEKT.md), got ${JSON.stringify(result.answerAttempt).slice(0, 300)}`,
+      `answerAttempt carries status, reason and a check code only (PROJEKT.md), got ${JSON.stringify(result.answerAttempt).slice(0, 300)}`,
     );
+    if (result.answerAttempt.check !== undefined) {
+      assert.match(result.answerAttempt.check, /^[a-z-]{1,80}$/u);
+      assert.doesNotMatch(result.answerAttempt.check, /zqxprivacy|claim|source-/u);
+    }
     assert.equal(result.answerAttempt.status, "degraded");
     assert.equal(result.answerAttempt.reason, "local-rejected");
 

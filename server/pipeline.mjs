@@ -1168,12 +1168,23 @@ function withheldAnswerCard() {
  * It accepts a final response or a draft, because a draft carries prose and a
  * chart of its own.
  */
+// Names which check turned the model answer down, as a short code built from
+// the check's own fixed message, so a test round can be counted by cause. The
+// private detail's claim and source text never reach it: everything after the
+// first "|" or "(" is dropped and only lowercase letters and hyphens remain.
+export function attemptCheckCode(visibleCheck, attempt) {
+  if (visibleCheck) return visibleCheck;
+  const message = String(attempt?.detail || "").split("|")[0].replace(/\s*\(.*$/su, "");
+  return normalize(message).replace(/^llm\s+/u, "").replace(/[^a-z]+/gu, "-").replace(/^-+|-+$/gu, "").slice(0, 80);
+}
+
 export function withholdPublicationCopy(response = {}) {
   const safe = response && typeof response === "object" && !Array.isArray(response) ? response : {};
   const attempt = safe.answerAttempt && typeof safe.answerAttempt === "object"
     ? {
       status: typeof safe.answerAttempt.status === "string" ? safe.answerAttempt.status : "",
       reason: typeof safe.answerAttempt.reason === "string" ? safe.answerAttempt.reason : "",
+      ...(typeof safe.answerAttempt.check === "string" && /^[a-z-]{1,80}$/u.test(safe.answerAttempt.check) ? { check: safe.answerAttempt.check } : {}),
     }
     : undefined;
   return {
@@ -2122,6 +2133,7 @@ async function searchWithinBudget(cleanQuery, {
   throwIfRequestAborted(signal);
 
   let visibleRejected = false;
+  let visibleCheck = "";
   if (llmResult.answer) {
     const modelDraft = rebindAnswerCitationsToVisibleWitnesses(attachEvidenceExcerpts({
       ...structuredClone(deterministicDraft),
@@ -2132,9 +2144,10 @@ async function searchWithinBudget(cleanQuery, {
     // Validation proves that a model claim is grounded in the internal
     // evidence pack. This second boundary proves that the same claim is also
     // supported by the bounded excerpt a reader can actually inspect.
-    visibleRejected = !answerClaimsHaveVisibleWitnesses(modelDraft)
-      || !answersAskedConcept(retrievalQuery, answerCardText(modelDraft))
-      || repeatsOffTargetLead(draft, answerCardText(modelDraft));
+    visibleCheck = !answerClaimsHaveVisibleWitnesses(modelDraft) ? "visible-witness-missing"
+      : !answersAskedConcept(retrievalQuery, answerCardText(modelDraft)) ? "asked-concept-missing"
+        : repeatsOffTargetLead(draft, answerCardText(modelDraft)) ? "repeats-off-target-lead" : "";
+    visibleRejected = Boolean(visibleCheck);
     draft = visibleRejected ? withoutRawLawSection(deterministicDraft) : modelDraft;
   } else {
     draft = withoutRawLawSection(deterministicDraft);
@@ -2204,6 +2217,7 @@ async function searchWithinBudget(cleanQuery, {
       answerAttempt: {
         status: outcome.attempt.status,
         reason: outcome.attempt.reason,
+        ...(attemptCheckCode(visibleCheck, outcome.attempt) ? { check: attemptCheckCode(visibleCheck, outcome.attempt) } : {}),
       },
     }
     : outcome.response;
