@@ -571,7 +571,9 @@ test("a broad topic overview is not shown as the answer to a narrower question a
   assert.equal(narrow.modelCalls, 1);
   assert.match(narrow.result.answer.intro, /Meil ei ole sellele küsimusele vastust/u);
   assert.doesNotMatch(narrow.result.answer.note || "", /üldjuhise väljavõte/u);
-  // A model answer that only repeats the off-target overview is rejected too.
+  // The model does not get the off-target overview as the lead it must keep,
+  // and a model answer that still repeats it is rejected too.
+  let modelStartingIntro = null;
   const repeated = await (async () => {
     const query = "mis puuliigil on eesti metsades kõige suurem tagavara";
     const items = rankPublicSearchCandidates(query, directory, { intentDocuments: directory }).slice(0, 12);
@@ -579,9 +581,13 @@ test("a broad topic overview is not shown as the answer to a narrower question a
       searchResults: { total: items.length, items },
       useCache: false,
       deadlineAt: Date.now() + 9_000,
-      generateAnswer: async (_query, draft) => ({ answer: draft.answer, acceptedClaims: [], attempt: { status: "ready", reason: "none" } }),
+      generateAnswer: async (_query, draft) => {
+        modelStartingIntro = draft.answer.intro;
+        return { answer: { ...draft.answer, intro: draft.evidence.offTargetIntro }, acceptedClaims: [], attempt: { status: "ready", reason: "none" } };
+      },
     });
   })();
+  assert.equal(modelStartingIntro, "");
   assert.match(repeated.answer.intro, /Meil ei ole sellele küsimusele vastust/u);
   // A broad match that only shares a word ("RMK") is not shown as the answer.
   const broad = await ask("palju maksab rmk joulukuusk 1,5 meetrit");
@@ -756,4 +762,53 @@ test("an age question is answered by an age, not by a stock or area figure", () 
   assert.equal(extractAnswersQuery(query, "Nii noorte kui ka vanade metsade pindala suurenes, puistute keskmine vanus oli 55 aastat ning 2025. aasta raiemahu eksperthinnang 11,0 miljonit m³."), true);
   assert.equal(assertAnswerAddressesQuery("Eesti puistute keskmine vanus oli 55 aastat.", query), true);
   assert.throws(() => assertAnswerAddressesQuery("2025. aastal oli metsamaa pindala 2,36 miljonit hektarit ja keskmine hektaritagavara langes.", query), /does not give the age/u);
+});
+
+test("law and time answers are recognised in the words the source uses", () => {
+  // From local traces: correct answers blocked over the question's own wording.
+  assert.equal(assertAnswerAddressesQuery(
+    "Loodusreservaadis on keelatud igasugune inimtegevus, sealhulgas inimeste viibimine, välja arvatud käesoleva paragrahvi lõigetes 3 ja 4 sätestatud juhtudel.",
+    "kas loodusreservaati võib matkama minna",
+  ), true);
+  assert.equal(assertAnswerAddressesQuery(
+    "Riigimetsas algab pesitsusrahu 15. aprillil ning kõrge lindude asustustihedusega metsades kestab see 15. juulini. Linnurikastes metsades loetakse raiet pesade hävitamiseks.",
+    "Millal on lindude pesitsusperioodil raierahu?",
+  ), true);
+  assert.throws(() => assertAnswerAddressesQuery(
+    "Lindude pesitsusperioodil tuleb raiel arvestada lindudega ja raierahu on oluline.",
+    "Millal on lindude pesitsusperioodil raierahu?",
+  ), /does not give the time/u);
+  assert.equal(assertAnswerAddressesQuery(
+    "Kui looduslike tingimuste omapära tõttu pole metsa uuenemine tähtaja jooksul võimalik, esitab metsaomanik Keskkonnaametile taotluse metsa uuenemise tähtaja pikendamiseks pärast uuendusraiet.",
+    "ei jõua 2 aasta jooksul raiesmikku uuendada, kas saab tähtaega pikendada",
+  ), true);
+});
+
+test("a whole law list item copied word for word is complete; a cut one is not", async () => {
+  const { buildEvidencePack } = await import("../server/evidence-pack.mjs");
+  const { validateGroundedAnswer } = await import("../server/llm.mjs");
+  const query = "Kas võin riigimetsas marju ja seeni korjata?";
+  const item = "(1) Avalik-õigusliku isiku omandis olevas metsas ja piiramata või tähistamata erametsas tohib: 1) viibida ja korjata marju, seeni ja pähkleid metsaomaniku huve põhjendamatult kahjustamata ning tuleohutusnõudeid järgides";
+  const draft = {
+    evidence: { kind: "ranked-search-results", answerable: true },
+    answer: { title: query, intro: "", introCitations: [], parts: [], note: "" },
+    sources: [{ citation: 1, title: "Metsaseadus § 35", content: `${item}\n2) telkida ja lõket teha kohtades, mille metsaomanik on selleks ette valmistanud`, url: "https://www.riigiteataja.ee/akt/123#para35", evidencePolicy: "claim-specific", _answerEvidenceEligible: true }],
+  };
+  const pack = buildEvidencePack({ sources: draft.sources, query, plan: null });
+  const whole = validateGroundedAnswer({ intro: item, intro_citations: [1], parts: [] }, draft, query, pack);
+  assert.equal(whole.answer?.intro, `${item}.`);
+  const withoutNumber = item.replace(/^\(1\) /u, "");
+  assert.equal(validateGroundedAnswer({ intro: withoutNumber, intro_citations: [1], parts: [] }, draft, query, pack).answer?.intro, `${withoutNumber}.`);
+  const cut = validateGroundedAnswer({ intro: item.slice(0, 120), intro_citations: [1], parts: [] }, draft, query, pack);
+  assert.equal(cut.answer, null);
+});
+
+test("who asks and how they phrase it does not make the notice exception off-target", () => {
+  const query = "Kas mul on vaja metsateatist, kui tahan oma metsas paar puud maha võtta?";
+  assert.equal(extractAnswersQuery(query, "Keskkonnaameti kehtiva juhise järgi võib metsaomanik metsateatist esitamata raiuda kuni 20 tihumeetrit puitu kinnisasja kohta aastas."), true);
+  assert.equal(extractAnswersQuery(query, "Metsateatis on dokument, mille metsaomanik esitab Keskkonnaametile kavandatava raie kohta."), false);
+  assert.equal(assertAnswerAddressesQuery(
+    "Seega loetakse raie lindude pesitsemise kõrgperioodil 15. aprillist 15. juulini automaatselt tahtlikuks pesade hävitamiseks.",
+    "Millal on lindude pesitsusperioodil raierahu?",
+  ), true);
 });

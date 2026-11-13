@@ -19,6 +19,7 @@ import {
   normalize,
   queryTerms,
   splitTextPassages,
+  STATED_TIME_PATTERN,
   statesAskedAge,
   textHasQueryRoot,
 } from "./search.mjs";
@@ -413,6 +414,8 @@ function permissionPolarity(polarity) {
 // so the trace shows what a loosened rule would let through. Live answers are
 // never affected: the shadow result is only logged.
 let shadowSkippedChecks = null;
+// Local review trace only: why the lead failed when a later part was promoted.
+let shadowTraceIntro = null;
 const SHADOW_CHECK_PATTERN = /(?:does-not-answer-the-requested-intent|has-an-unbound-factual-negation|reverses-the-polarity-of-cited-evidence|has-an-unbound-semantic-clause)$/u;
 
 export function checkCodeFromMessage(message) {
@@ -1690,6 +1693,7 @@ const QUESTION_FORM_ROOTS = new Set([
   // Words that set the scene ("leidsin oma metsast", "eelmine omanik oli juba")
   // or ask for a choice ("milliseid valida"), not the subject being asked about.
   "eelmine", "veel", "juba", "nuud", "seal", "oma", "leidsin", "ostsin", "milliseid", "valida",
+  "joua", "jouan", "jouab",
   "jatta", "votta", "maha", "minna", "tulla", "jaab", "jaada", "kirjas", "vaatama", "korda", "enne",
   // Who is asking and how much ("mul", "minu", "paar puud"), and the asking
   // verb itself ("tegeleb", "tahan"), name no subject the answer must repeat.
@@ -1708,6 +1712,13 @@ function answerHasRoot(answer, root) {
   if (textHasQueryRoot(answer, root)) return true;
   // SMI states forest age and stock per "puistu" (forest stand).
   if (root === "mets" && /\bpuistu\p{L}*/u.test(answer)) return true;
+  // "pesitsusperiood", "pesitsusrahu" and "pesitsemise aeg" name the same season.
+  if (/^pesits/u.test(root) && /\bpesits\p{L}*/u.test(answer)) return true;
+  // Going somewhere on foot is "viibimine" or "liikumine" in the law.
+  if (/^matka/u.test(root) && /\b(?:viibi|liiku)\p{L}*/u.test(answer)) return true;
+  // A long compound is answered by its first part: "pesitsusperioodil" by
+  // "pesitsusrahu", "pesitsusajal".
+  if (root.length >= 12 && new RegExp(`\\b${root.slice(0, 8)}\\p{L}*`, "u").test(answer)) return true;
   if (root.length < 7) return false;
   const prefix = root.slice(0, Math.max(5, root.length - 3));
   return new RegExp(`\\b${prefix}\\p{L}*`, "u").test(answer);
@@ -1747,6 +1758,9 @@ export function assertAnswerAddressesQuery(text, query, label = "answer") {
   if (/\b(?:kui\s+(?:suur|lai|korge|pikk|palju|vana|kaua)\w*|mitu|mitme)\b/u.test(asked)
     && !/\d|\b(?:uks|uhe|kaks|kahe|kolm|kolme|neli|nelja|viis|viie|kuus|kuue|seitse|seitsme|kaheksa|uheksa|kumme|kumne|sada|saja|tuhat|tuhande|pool|poole)\b/u.test(answer)) {
     throw new Error(`LLM ${label} does not give the amount the question asks for`);
+  }
+  if (/^millal\b|\bmillal\b/u.test(asked) && !STATED_TIME_PATTERN.test(answer)) {
+    throw new Error(`LLM ${label} does not give the time the question asks for`);
   }
   if (!statesAskedAge(query, text)) {
     throw new Error(`LLM ${label} does not give the age the question asks for`);
@@ -1903,6 +1917,20 @@ function requiredRoleWitnessCitations(evidencePack) {
   return [...new Set(witnesses.map((witness) => citationByWitnessKey.get(witness.witnessKey)).filter(Number.isInteger))];
 }
 
+// A law list item ends without a full stop ("… tuleohutusnõudeid järgides").
+// Copied word for word as a whole source line it is complete, so it gets the
+// full stop; any other unterminated text stays incomplete and is rejected.
+function closedEvidenceLine(text, evidencePack) {
+  const value = String(text || "").trim();
+  if (!value || hasCompleteSentenceEnding(value) || value.length < 40) return value;
+  const copiesWholeLine = (evidencePack?.entries || []).some((entry) => String(entry?.content || "")
+    .split(/\n+/u)
+    .map((line) => line.trim())
+    // The subsection number "(1)" is a locator, not part of the rule.
+    .some((line) => line === value || line.replace(/^\(\d+\p{L}?\)\s*/u, "") === value));
+  return copiesWholeLine ? `${value}.` : value;
+}
+
 function validateGroundedProposal(payload, draft, query, evidencePack) {
   const validationContext = groundingValidationContext(evidencePack);
   const sourceCount = draft.sources.length;
@@ -1911,7 +1939,10 @@ function validateGroundedProposal(payload, draft, query, evidencePack) {
     ? suppliedIntroCitations
     : (sourceCount === 1 ? [1] : []);
   const directDraftCitations = validCitations(draft.answer?.introCitations, sourceCount);
-  const proposedIntro = cleanGeneratedText(payload?.intro || draft.answer.intro || "", MAX_ANSWER_INTRO_CHARS);
+  const proposedIntro = closedEvidenceLine(
+    cleanGeneratedText(payload?.intro || draft.answer.intro || "", MAX_ANSWER_INTRO_CHARS),
+    evidencePack,
+  );
   const proposedText = [proposedIntro, ...(Array.isArray(payload?.parts) ? payload.parts : []).map((part) => String(part?.text || ""))].join("\n");
   if (glossaryAvoidHits(proposedText, evidencePack?.entries).length) {
     throw new Error("LLM used a forestry term the glossary marks as a mistranslation");
@@ -1964,7 +1995,7 @@ function validateGroundedProposal(payload, draft, query, evidencePack) {
       })?.title;
       return {
         title: cleanGeneratedText(reviewedTitle || (index === 0 ? "Põhivastus" : "Oluline täpsustus"), 120),
-        text: cleanGeneratedText(part?.text || "", MAX_ANSWER_PART_CHARS),
+        text: closedEvidenceLine(cleanGeneratedText(part?.text || "", MAX_ANSWER_PART_CHARS), evidencePack),
         citations,
       };
     })
@@ -1997,6 +2028,7 @@ function validateGroundedProposal(payload, draft, query, evidencePack) {
   } catch (error) {
     if (error?.code === "LLM_GROUNDING_WORK_LIMIT") throw error;
     introError = error;
+    if (shadowTraceIntro) shadowTraceIntro.error = error;
   }
   const groundedParts = parts.flatMap((part) => {
     try {
@@ -2096,6 +2128,14 @@ function traceShadowReview(payload, draft, query, evidencePack, firstError) {
   const skipped = new Set();
   let error = firstError;
   let shadowAnswer = null;
+  shadowTraceIntro = {};
+  try {
+    validateGroundedProposal(payload, draft, query, evidencePack);
+  } catch {
+    // Only the lead's own failure is wanted here.
+  }
+  const introFailure = shadowTraceIntro.error;
+  shadowTraceIntro = null;
   for (let round = 0; round < 6 && error; round += 1) {
     const check = checkCodeFromMessage(error.message);
     steps.push({ check, message: String(error.message || "").slice(0, 160), claim: error.rejectedText || "", source: error.evidenceText || "" });
@@ -2119,6 +2159,13 @@ function traceShadowReview(payload, draft, query, evidencePack, firstError) {
     steps,
     shadowPasses: !error,
     proposed: text(payload).slice(0, 2000),
+    draftIntro: String(draft?.answer?.intro || "").slice(0, 400),
+    ...(introFailure ? { introFailure: {
+      message: String(introFailure.message || "").slice(0, 200),
+      claim: introFailure.rejectedText || "",
+      source: introFailure.evidenceText || "",
+    } } : {}),
+    evidence: (evidencePack?.entries || []).map((entry) => `[${entry.citation}] ${String(entry.content || "").slice(0, 700)}`).join("\n").slice(0, 4000),
     ...(shadowAnswer ? { shadowAnswer: text(shadowAnswer).slice(0, 2000) } : {}),
     sources: (draft?.sources || []).map((source) => String(source?.title || "").slice(0, 100)),
   }));
@@ -2160,7 +2207,8 @@ const GROUNDED_SYSTEM_INSTRUCTIONS = [
   "Kasuta evidence'i route_classes ja source_type välju allika rolli mõistmiseks, kuid käsitle faktitõendina ainult content-välja. Timestamped väärtust võib nimetada praeguseks ainult siis, kui observed_at on olemas; kui valid_from või valid_until on antud, peab väide jääma sellesse kehtivusaknasse. Versioned staatust või õigusväidet võib kasutada ainult siis, kui version on olemas.",
   "Ära kirjuta vastusesse, mida evidence ei ütle või ei käsitle (näiteks „tõend ei näita“, „evidence ei käsitle“): kui mõni küsimuse osa jääb katmata, jäta see osa lihtsalt välja. Ära kasuta vastuse tekstis sõnu „tõend“ ega „evidence“.",
   "Ära lisa tõendita fakte, numbreid ega õiguslikke järeldusi. Säilita arvväärtus, andmeaasta, mõõtühik, definitsioon ja ebakindlus täpselt; aastaarvu ümber võib muuta ainult grammatilist sõnastust.",
-  "Lause, milles on arv, mõõtühik või seaduse tingimus, erand või viide (näiteks „lõigetes 3 ja 4 sätestatud juhtudel“), võta evidence'ist sõna-sõnalt: ära sõnasta seda ümber, ära lisa sellesse aastat ega muud arvu, mida samas tõendilauses ei ole, ja ära liida kaht tõendilauset üheks. Ära kirjuta oma selgituslauseid arvudega (näiteks „see ei tähenda, et iga mets on 55-aastane“).",
+  "Ära alusta introt sõnaga „Jah“ ega „Ei“ ega oma kokkuvõttega. Alusta introt evidence'i lausega, mis küsimusele vastab, sõna-sõnalt; see lause ise ütleb, kas tegevus on lubatud, keelatud või võimalik.",
+  "Lause, milles on arv, mõõtühik või seaduse tingimus, erand või viide (näiteks „lõigetes 3 ja 4 sätestatud juhtudel“), võta evidence'ist sõna-sõnalt: ära sõnasta seda ümber, ära lisa sellesse aastat ega muud arvu, mida samas tõendilauses ei ole, ära liida kaht tõendilauset üheks ega lõika tõendilauset pooleks: kui lauses on „kuid“, „aga“, „ent“ või „välja arvatud“, võta see lause tervikuna. Ära kirjuta oma selgituslauseid arvudega (näiteks „see ei tähenda, et iga mets on 55-aastane“).",
   "Selgita esmakordsel kasutamisel tõendis defineeritud lühendeid, näiteks SMI-d, lihtsas keeles.",
   "Iga faktiline väide vajab evidence citation numbrit. Ära viita allikale, mis väidet ei toeta. Pane viitenumbrid ainult intro_citations ja parts.citations väljadele, mitte proosasse.",
   "Conversation context aitab ainult jätkuküsimuse mõtet täpsustada: see ei ole tõend. Iga väide peab tulema käesoleva päringu evidence'ist.",

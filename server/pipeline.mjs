@@ -87,7 +87,7 @@ import { configuredAnswerBudgetMs } from "./request-budget.mjs";
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v103-age-and-case-form-checks";
+export const SEARCH_RESPONSE_REVISION = "answer-v104-verbatim-leads-and-asker-words";
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
@@ -614,6 +614,16 @@ function offTargetLead(draft) {
 function repeatsOffTargetLead(draft, text) {
   const lead = offTargetLead(draft);
   return Boolean(lead) && normalize(text || "").includes(lead);
+}
+
+// The model is told to keep the card's lead. A lead already known not to answer
+// would only be repeated and then withdrawn, so the model starts without it and
+// must write its own cited lead, which is reviewed like any other.
+function modelStartingDraft(draft) {
+  const copy = structuredClone(draft);
+  if (!repeatsOffTargetLead(draft, draft?.answer?.intro)) return copy;
+  copy.answer = { ...copy.answer, intro: "", introCitations: [] };
+  return copy;
 }
 
 function withoutOffTargetFallback(draft) {
@@ -2117,7 +2127,7 @@ async function searchWithinBudget(cleanQuery, {
   const LLM_TAIL_MARGIN_MS = 1_500;
   const llmAttemptCeilingMs = llmBudget - LLM_TAIL_MARGIN_MS;
   const llmResult = canGenerate && llmAttemptCeilingMs >= 500
-    ? await generateAnswer(cleanQuery, structuredClone(draft), {
+    ? await generateAnswer(cleanQuery, modelStartingDraft(draft), {
       timeoutMs: llmAttemptCeilingMs,
       signal,
       conversationContext,

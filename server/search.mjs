@@ -9182,6 +9182,9 @@ export function isNonAnswerText(value) {
 // duty. Actor and place words ("kes", "kus") stay required as well, so a
 // question about a person, a contact or a location keeps failing closed.
 const QUESTION_FRAME_TERMS = new Set(["millal", "puhul"]);
+// Who asks and how they phrase the act ("mul", "tahan", "paar puud maha võtta")
+// is not the subject: the rule for cutting without a notice answers it.
+const ASKER_FRAME_TERMS = new Set(["mul", "minu", "mu", "meil", "sul", "paar", "tahan", "tahaks", "soovin", "maha", "votta"]);
 
 // Search shortens a compound to its head ("raierahu" → "raie", "põlismetsa" →
 // "mets") so it finds more pages. A raw extract shown as the answer must still
@@ -9201,7 +9204,7 @@ function shortenedQueryWords(query, terms) {
 }
 
 // "Millal" is answered by a time, never by the word "millal" itself.
-const STATED_TIME_PATTERN = /\d|\b(?:jaanuar|veebruar|marts|aprill|mai|juuni|juuli|august|september|oktoober|november|detsember|kevad|suvi|suve|sugis|talv|alates|kuni|enne|parast|hiljemalt|jooksul|ajavahemik)\w*/u;
+export const STATED_TIME_PATTERN = /\d|\b(?:jaanuar|veebruar|marts|aprill|mai|juuni|juuli|august|september|oktoober|november|detsember|kevad|suvi|suve|sugis|talv|alates|kuni|enne|parast|hiljemalt|jooksul|ajavahemik)\w*/u;
 
 // "Kui vana" is answered by an age. A stock or area figure from the same page
 // shares the words "mets" and "keskmine" but says nothing about age.
@@ -9214,7 +9217,7 @@ export function extractAnswersQuery(query, extract) {
   if (isNonAnswerText(extract)) return false;
   const terms = queryTerms(query)
     .filter((term) => !ADMIN_CONTEXT_ROOTS.has(term) && !GENERIC_QUERY_CONTEXT_TERMS.has(term));
-  const required = terms.filter((term) => !QUESTION_FRAME_TERMS.has(term));
+  const required = terms.filter((term) => !QUESTION_FRAME_TERMS.has(term) && !ASKER_FRAME_TERMS.has(term));
   // A question made only of frame words names no subject an extract could be
   // checked against, so nothing proves that it answers.
   if (terms.length && !required.length) return false;
