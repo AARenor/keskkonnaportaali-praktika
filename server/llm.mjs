@@ -21,6 +21,7 @@ import {
   splitTextPassages,
   STATED_TIME_PATTERN,
   statesAskedAge,
+  namesAskedAreaKind,
   textHasQueryRoot,
 } from "./search.mjs";
 import {
@@ -1770,12 +1771,8 @@ export function assertAnswerAddressesQuery(text, query, label = "answer") {
   if (!statesAskedAge(query, text)) {
     throw new Error(`LLM ${label} does not give the age the question asks for`);
   }
-  // Search folds hoiuala, püsielupaik and the zones into "kaitseala", but their
-  // rules differ, so the answer must speak about the same kind of area.
-  for (const area of ["hoiuala", "pusielupai", "sihtkaitsevoond", "piiranguvoond", "loodusreservaa", "rahvuspar", "talvituspai", "vaariselupai"]) {
-    if (asked.includes(area) && !answer.includes(area)) {
-      throw new Error(`LLM ${label} does not speak about the protected area the question names`);
-    }
+  if (!namesAskedAreaKind(query, text)) {
+    throw new Error(`LLM ${label} does not speak about the protected area the question names`);
   }
   if (answerIntent?.kind === "protected-forest-share") {
     const hasMeasure = numberOccurrences(text).some((occurrence) => occurrence.units.has("percent") || occurrence.units.has("area"));

@@ -9266,9 +9266,20 @@ export function namesDefinitionTerm(query, text) {
   return !defined || normalize(text).includes(defined.slice(0, Math.max(4, defined.length - 2)));
 }
 
+// Search folds hoiuala, püsielupaik, vääriselupaik and the zones into
+// "kaitseala", but their rules differ, so the answer must name the same kind.
+export const ASKED_AREA_KINDS = ["hoiuala", "pusielupai", "sihtkaitsevoond", "piiranguvoond", "loodusreservaa", "rahvuspar", "talvituspai", "vaariselupai"];
+
+export function namesAskedAreaKind(query, text) {
+  const asked = normalize(query);
+  const answer = normalize(text);
+  return ASKED_AREA_KINDS.every((area) => !asked.includes(area) || answer.includes(area));
+}
+
 export function answersAskedConcept(query, text) {
   if (!answersPermissionQuestion(query, text)) return false;
   if (!statesAskedTime(query, text) || !statesAskedAge(query, text)) return false;
+  if (!namesAskedAreaKind(query, text)) return false;
   const normalizedQuery = normalize(query);
   const normalizedText = normalize(text);
   // A news list or a map layer name never answers anything, on any route.

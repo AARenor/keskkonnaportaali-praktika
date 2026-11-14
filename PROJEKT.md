@@ -150,6 +150,7 @@ Kõigi intentide kohta kehtib lisaks:
 - Seaduse loendipunkt lõpeb allikas ilma punktita. Kui mudel kopeerib terve allikarea sõna-sõnalt (ka ilma alalõike numbrita „(1)”), lisatakse punkt; pooleli lõigatud lause lükatakse endiselt tagasi.
 
 - Kõigi kaarditeede järel kehtib lõppvärav: „millal” vajab aega, „kui vana” vanust ning seaduse lõigu algusega katkend („(4) Kokkuleppehinda …”) peab sisaldama küsimuse sõnu nagu iga teine katkend. Võrdluskaart („kõige …”) vastab ainult siis, kui võrdlus ja küsitud näitaja on samas lauses („metsarikkamad maakonnad” ei vasta hektaritagavara küsimusele).
+- Küsimuses nimetatud ala liik (hoiuala, püsielupaik, vääriselupaik, vöönd, loodusreservaat, rahvuspark, talvituspaik) peab olema nimetatud ka lõppvärava läbinud kaardil, mitte ainult mudelivastuses.
 - „Mitu hektarit” vastus peab andma hektarid, mitte protsendi. „X, mida see tähendab” vastuse esimene lause peab X-i nimetama (`definition-lead-missing`).
 
 Tagasilükatud mudelivastuse teksti tootmises ei salvestata (PRIVAATSUS.md). Kontrollide häälestamiseks saab selle näha ainult lokaalselt: `REVIEW_TRACE=local` koos loopback `PUBLIC_ORIGIN`-iga kirjutab iga tagasilükatud vastuse kohta konteineri logisse `review-trace` rea (küsimus, kontrollid, mudeli ettepanek ja see, kas vastus läbiks nelja lõdvendatava kontrollita).

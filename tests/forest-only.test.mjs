@@ -815,6 +815,16 @@ test("who asks and how they phrase it does not make the notice exception off-tar
 
 test("round 14 wrong answers: hectares, definitions, times, law paragraphs and comparisons", async () => {
   const { answersAskedConcept, namesDefinitionTerm } = await import("../server/search.mjs");
+  // A vääriselupaik question was shown a Loodusdirektiiv source card after the
+  // model answer was rejected for not naming vääriselupaik.
+  assert.equal(answersAskedConcept(
+    "Kui palju on Eestis vääriselupaiku ja kui suur on nende pindala?",
+    "Loodusdirektiiv (92/43/EMÜ) on Euroopa Liidu looduskaitselist tegevust korraldav õigusakt.",
+  ), false);
+  assert.equal(answersAskedConcept(
+    "Kui palju on Eestis vääriselupaiku?",
+    "Uuendatud määruse tulemusena suurenes vääriselupaikade koguarv.",
+  ), true);
   // "Mitu hektarit riigimetsa on Ida-Virumaal?" was answered with a metsasus percentage.
   assert.throws(() => assertAnswerAddressesQuery(
     "Kõige metsarikkamad maakonnad on Hiiumaa, Valgamaa ja Ida-Virumaa, kus metsasus ulatub üle 60%.",
