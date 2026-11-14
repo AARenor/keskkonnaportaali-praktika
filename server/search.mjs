@@ -9247,8 +9247,28 @@ const ASKED_CONCEPTS = [
   { asks: /kaitsevoon\w*.*\b(?:joe|jogi|joge|jarve|veekogu\w*|kalda\w*)\b/u, answers: /veekogu|\bjo(?:e|gi|ge)\b|jarve|kalda|ranna/u },
 ];
 
+// "Millal" is answered by a time.
+export function statesAskedTime(query, text) {
+  if (!/\bmillal\b/u.test(normalize(query))) return true;
+  return STATED_TIME_PATTERN.test(normalize(text));
+}
+
+// The term a "mis on X" / "X, mida see tähendab" question asks to define.
+export function askedDefinitionTerm(query) {
+  const normalizedQuery = normalize(query);
+  const definedPhrase = normalizedQuery.match(/^mis on ((?:\p{L}+ ){0,2}\p{L}{4,})\??$/u)?.[1]
+    || normalizedQuery.match(/^((?:\p{L}+ ){0,2}\p{L}{4,}),? (?:mis|mida) see (?:\p{L}+ )?tahendab\??$/u)?.[1];
+  return definedPhrase?.split(" ").sort((left, right) => right.length - left.length)[0] || "";
+}
+
+export function namesDefinitionTerm(query, text) {
+  const defined = askedDefinitionTerm(query);
+  return !defined || normalize(text).includes(defined.slice(0, Math.max(4, defined.length - 2)));
+}
+
 export function answersAskedConcept(query, text) {
   if (!answersPermissionQuestion(query, text)) return false;
+  if (!statesAskedTime(query, text) || !statesAskedAge(query, text)) return false;
   const normalizedQuery = normalize(query);
   const normalizedText = normalize(text);
   // A news list or a map layer name never answers anything, on any route.
@@ -9256,10 +9276,7 @@ export function answersAskedConcept(query, text) {
   // "Mis on X" asks for X itself, so the answer has to name it.
   // For a term of up to three words ("metsa tulevikutehing") the answer must
   // name its longest word, the head of the term, by its stem.
-  const definedPhrase = normalizedQuery.match(/^mis on ((?:\p{L}+ ){0,2}\p{L}{4,})\??$/u)?.[1]
-    || normalizedQuery.match(/^((?:\p{L}+ ){0,2}\p{L}{4,}) (?:mis|mida) see tahendab\??$/u)?.[1];
-  const defined = definedPhrase?.split(" ").sort((left, right) => right.length - left.length)[0];
-  if (defined && !normalizedText.includes(defined.slice(0, Math.max(4, defined.length - 2)))) return false;
+  if (!namesDefinitionTerm(query, text)) return false;
   return ASKED_CONCEPTS.every(({ asks, answers }) => !asks.test(normalizedQuery) || answers.test(normalizedText));
 }
 

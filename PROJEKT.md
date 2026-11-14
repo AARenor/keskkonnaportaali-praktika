@@ -149,6 +149,9 @@ Kõigi intentide kohta kehtib lisaks:
 - Mudelile öeldakse, et ta ei alustaks „Jah”/„Ei” ega oma kokkuvõttega, vaid vastava tõendilausega sõna-sõnalt, ega lõikaks lauset „kuid”/„aga”/„välja arvatud” kohalt pooleks. „Jah, <ümbersõnastus>” ei läbi kontrolli; lõikamata seaduselause läbib.
 - Seaduse loendipunkt lõpeb allikas ilma punktita. Kui mudel kopeerib terve allikarea sõna-sõnalt (ka ilma alalõike numbrita „(1)”), lisatakse punkt; pooleli lõigatud lause lükatakse endiselt tagasi.
 
+- Kõigi kaarditeede järel kehtib lõppvärav: „millal” vajab aega, „kui vana” vanust ning seaduse lõigu algusega katkend („(4) Kokkuleppehinda …”) peab sisaldama küsimuse sõnu nagu iga teine katkend. Võrdluskaart („kõige …”) vastab ainult siis, kui võrdlus ja küsitud näitaja on samas lauses („metsarikkamad maakonnad” ei vasta hektaritagavara küsimusele).
+- „Mitu hektarit” vastus peab andma hektarid, mitte protsendi. „X, mida see tähendab” vastuse esimene lause peab X-i nimetama (`definition-lead-missing`).
+
 Tagasilükatud mudelivastuse teksti tootmises ei salvestata (PRIVAATSUS.md). Kontrollide häälestamiseks saab selle näha ainult lokaalselt: `REVIEW_TRACE=local` koos loopback `PUBLIC_ORIGIN`-iga kirjutab iga tagasilükatud vastuse kohta konteineri logisse `review-trace` rea (küsimus, kontrollid, mudeli ettepanek ja see, kas vastus läbiks nelja lõdvendatava kontrollita).
 
 Intentide klassifitseerija peab tabama ka käändevorme: puuduv `\w*` lõi varem kolm tavalist küsimust rajalt välja (`kuivad suved`, `kaitsealuseid metsi`, `puuliigid`). `kuivendus` (kuivendamine) ei ole kliimateema ja jääb välja. Muutes klassifitseerijat või kontrolli, lisa alati nii positiivne kui ka eitav test.

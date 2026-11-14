@@ -54,6 +54,7 @@ import {
   composeNoAnswerResponse,
   answersAskedConcept,
   extractAnswersQuery,
+  namesDefinitionTerm,
   isAllEnvironmentSearchEnabled,
   isForestRelatedQuery,
   isNonAnswerText,
@@ -87,7 +88,7 @@ import { configuredAnswerBudgetMs } from "./request-budget.mjs";
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v104-verbatim-leads-and-asker-words";
+export const SEARCH_RESPONSE_REVISION = "answer-v105-final-card-gate-and-hectares";
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
@@ -587,10 +588,13 @@ const STATED_COMPARISON_PATTERN = /\b(?:koige|enim|vahim|suurim|vaikseim|parim|h
 
 function cardAnswersQueryWords(query, text) {
   if (extractAnswersQuery(query, text)) return true;
-  if (!STATED_COMPARISON_PATTERN.test(normalize(text))) return false;
-  return queryTerms(query).every((term) => textHasQueryRoot(text, term)
-    || COMPARISON_ROOT_PATTERN.test(term)
-    || extractAnswersQuery(term, text));
+  // A stated comparison answers only when the same sentence compares what was
+  // asked: "kõige metsarikkamad maakonnad" (metsasus) does not answer which
+  // county has the largest hektaritagavara, said in another sentence.
+  return splitTextPassages(text).some((sentence) => STATED_COMPARISON_PATTERN.test(normalize(sentence))
+    && queryTerms(query).every((term) => textHasQueryRoot(sentence, term)
+      || COMPARISON_ROOT_PATTERN.test(term)
+      || extractAnswersQuery(term, sentence)));
 }
 
 function offTargetFallback(query, kind, fallback) {
@@ -1734,7 +1738,11 @@ export async function createPortalDraft(query, {
   }
   // Every route above can fill the card, so this rule check runs after all of
   // them. The model may still answer from the same sources.
-  if (!forestBalance && !answersAskedConcept(retrievalQuery, draft.answer?.intro || "")) {
+  // A raw law paragraph ("(4) Kokkuleppehinda …") shown as the lead must carry
+  // the question's words like any other excerpt, whichever route chose it.
+  const rawLawLead = /^\(?\d+\p{L}?\)\s/u.test(draft.answer?.intro || "")
+    && !extractAnswersQuery(retrievalQuery, draft.answer.intro);
+  if (!forestBalance && (rawLawLead || !answersAskedConcept(retrievalQuery, draft.answer?.intro || ""))) {
     draft.answer = { ...draft.answer, eyebrow: NO_ANSWER_EYEBROW, intro: NO_ANSWER_INTRO, introCitations: [], parts: [] };
     draft.clarification = null;
   }
@@ -2156,6 +2164,9 @@ async function searchWithinBudget(cleanQuery, {
     // supported by the bounded excerpt a reader can actually inspect.
     visibleCheck = !answerClaimsHaveVisibleWitnesses(modelDraft) ? "visible-witness-missing"
       : !answersAskedConcept(retrievalQuery, answerCardText(modelDraft)) ? "asked-concept-missing"
+        // "Mida X tähendab" is answered by a lead that names X, not by a
+        // scope paragraph with the definition further down.
+        : !namesDefinitionTerm(retrievalQuery, modelDraft.answer?.intro || "") ? "definition-lead-missing"
         : repeatsOffTargetLead(draft, answerCardText(modelDraft)) ? "repeats-off-target-lead" : "";
     visibleRejected = Boolean(visibleCheck);
     draft = visibleRejected ? withoutRawLawSection(deterministicDraft) : modelDraft;

@@ -1759,6 +1759,11 @@ export function assertAnswerAddressesQuery(text, query, label = "answer") {
     && !/\d|\b(?:uks|uhe|kaks|kahe|kolm|kolme|neli|nelja|viis|viie|kuus|kuue|seitse|seitsme|kaheksa|uheksa|kumme|kumne|sada|saja|tuhat|tuhande|pool|poole)\b/u.test(answer)) {
     throw new Error(`LLM ${label} does not give the amount the question asks for`);
   }
+  // "Mitu hektarit" is answered in hectares, not by a forest-cover percentage.
+  if (/\b(?:mitu|kui\s+palju|kui\s+mitu)\s+(?:hektarit|hektareid|ha)\b/u.test(asked)
+    && !numberOccurrences(text).some((occurrence) => occurrence.units.has("area"))) {
+    throw new Error(`LLM ${label} does not give the hectares the question asks for`);
+  }
   if (/^millal\b|\bmillal\b/u.test(asked) && !STATED_TIME_PATTERN.test(answer)) {
     throw new Error(`LLM ${label} does not give the time the question asks for`);
   }

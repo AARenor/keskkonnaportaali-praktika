@@ -812,3 +812,18 @@ test("who asks and how they phrase it does not make the notice exception off-tar
     "Millal on lindude pesitsusperioodil raierahu?",
   ), true);
 });
+
+test("round 14 wrong answers: hectares, definitions, times, law paragraphs and comparisons", async () => {
+  const { answersAskedConcept, namesDefinitionTerm } = await import("../server/search.mjs");
+  // "Mitu hektarit riigimetsa on Ida-Virumaal?" was answered with a metsasus percentage.
+  assert.throws(() => assertAnswerAddressesQuery(
+    "Kõige metsarikkamad maakonnad on Hiiumaa, Valgamaa ja Ida-Virumaa, kus metsasus ulatub üle 60%.",
+    "Mitu hektarit riigimetsa on Ida-Virumaal?",
+  ), /hectares/u);
+  // "Millal on raierahu?" was shown a map-layer sentence that names no time.
+  assert.equal(answersAskedConcept("Millal on raierahu?", "Kihil on kuvatud raieliik ja aasta, millal tööd tehti."), false);
+  assert.equal(answersAskedConcept("Millal on raierahu?", "Riigimetsas kestab raierahu 15. aprillist 15. juulini."), true);
+  // "Metsastamine, mida see seaduses tähendab" led with the law's scope paragraph.
+  assert.equal(namesDefinitionTerm("metsastamine mida see seaduses tähendab", "(1) Käesolev seadus reguleerib metsanduse suunamist."), false);
+  assert.equal(namesDefinitionTerm("metsastamine mida see seaduses tähendab", "Metsastamine käesoleva seaduse tähenduses on mittemetsamaale uue metsa rajamine."), true);
+});
