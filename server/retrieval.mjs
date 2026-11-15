@@ -1,4 +1,4 @@
-import { definesLawTerm, focusedLawSection } from "./law-texts.mjs";
+import { definesLawTerm, focusedLawSection, topicalLawSection } from "./law-texts.mjs";
 import { createHash } from "node:crypto";
 import { publicSourceAllowed } from "./citation-policy.mjs";
 import { sameSourceResource, sourceComparisonWitnessKey, sourceEvidenceBinding, sourceResourceKey, sourceWitnessKey } from "./source-identity.mjs";
@@ -2562,8 +2562,14 @@ export function withFocusedLawSection(query, ranked, available) {
   const alreadyDefined = ranked.slice(0, 12).some((document) => canLead(document)
     && definesLawTerm(query, `${document.summary || ""} ${document.content || ""}`));
   const focused = alreadyDefined ? null : focusedLawSection(query, available);
-  if (!focused) return ranked;
-  const reordered = [focused, ...ranked.filter((document) => document.id !== focused.id)];
+  // A forest figure comes from SMI; a heading word must not pull a law in front of it.
+  const topical = focused || forestEvidenceIntent(query) ? null : topicalLawSection(query, available);
+  if (!focused && !topical) return ranked;
+  const lead = focused || topical;
+  const rest = ranked.filter((document) => document.id !== lead.id);
+  // A reviewed official page that already leads keeps its place; the rule's own
+  // section comes right after it.
+  const reordered = topical && rest[0] && canLead(rest[0]) ? [rest[0], lead, ...rest.slice(1)] : [lead, ...rest];
   for (const key of Object.keys(ranked)) {
     if (!/^\d+$/u.test(key)) reordered[key] = ranked[key];
   }

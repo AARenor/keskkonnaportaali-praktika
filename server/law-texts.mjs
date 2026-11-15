@@ -243,6 +243,64 @@ export function focusedLawSection(query, documents = []) {
   };
 }
 
+// A rule question ("kui laiad tohivad kokkuveoteed olla") names the topic of
+// one law section in that section's heading ("§ 8. Metsa kokkuveoteed"). Search
+// ranks such a section below news that repeat the question's common words, so
+// the section is put first, but only when the named word is rare among the
+// headings (one or two sections), the section also speaks of another word of the
+// question, and no other section fits as well. The answer is still checked.
+const TOPIC_WORD = /\p{L}{5,}/gu;
+// Asking words, units and owner words say nothing about which rule is asked.
+const NOT_A_TOPIC = /^(?:hektar|aasta|tohi|peab|peav|voib|voiv|voiks|kuidas|millal|palju|kaua|olla|teha|kehti|lubat|vaja|ilma|kohta|mille|mida|milli|siis|nuud|minu|oma|kelle|kuhu|kust|seadus|eeskir|(?:mets|puu|puid|puit)\p{L}{0,5}$)/u;
+
+function topicStem(word) {
+  return word.slice(0, Math.max(6, word.length - 2));
+}
+
+function topicStems(text) {
+  return [...new Set((plainWord(text).match(TOPIC_WORD) || []).filter((word) => !NOT_A_TOPIC.test(word)).map(topicStem))];
+}
+
+function speaksOf(stem, text) {
+  return new RegExp(`(?:^|[^\\p{L}])\\p{L}{0,12}${stem}`, "u").test(text);
+}
+
+const LONG_SECTION = 2_500;
+
+// A count for a year or a share of Estonia's forest is a statistic, not a rule.
+const ASKS_A_STATISTIC = /\b(?:19|20)\d{2}\b|protsent|osakaal|\bkui (?:palju|suur\p{L}*) (?:on )?eesti/u;
+
+export function topicalLawSection(query, documents = []) {
+  if (askedLawTerm(query) || ASKS_A_STATISTIC.test(plainWord(query))) return null;
+  const sections = [...new Map(documents.filter((document) => document?._lawSection).map((document) => [document.id, document])).values()];
+  if (!sections.length) return null;
+  const asked = topicStems(query);
+  const headingWords = (document) => plainWord(document.summary).match(TOPIC_WORD) || [];
+  const namesTopic = (stem, document) => stem.length >= 6 && headingWords(document).some((word) => word.startsWith(stem));
+  const rareTopics = asked.filter((stem) => {
+    const named = sections.filter((document) => namesTopic(stem, document)).length;
+    return named >= 1 && named <= 2;
+  });
+  if (!rareTopics.length) return null;
+  const candidates = sections.flatMap((document) => {
+    const topics = rareTopics.filter((stem) => namesTopic(stem, document));
+    if (!topics.length) return [];
+    const body = plainWord(document.content);
+    const rest = asked.filter((stem) => !topics.includes(stem));
+    const others = rest.filter((stem) => speaksOf(stem, body));
+    if (!others.length || (rest.length >= 3 && others.length < 2)) return [];
+    return [{ document, score: topics.length * 10 + others.length }];
+  }).sort((left, right) => right.score - left.score);
+  const [best, next] = candidates;
+  if (!best || (next && next.score === best.score)) return null;
+  const content = String(best.document.content || "");
+  if (content.length <= LONG_SECTION) return { ...best.document, _focusedLawTopic: true };
+  const sentences = content.split(/(?<=[.;:])\s+(?=\(?\d*[¹²³⁴⁵⁶⁷⁸⁹]*\)?\s*\p{Lu}|\(\d)/u);
+  const lead = sentences.filter((sentence) => asked.some((stem) => speaksOf(stem, plainWord(sentence)))).slice(0, 6).join(" ");
+  if (lead.length < MINIMUM_SECTION_LENGTH) return null;
+  return { ...best.document, content: lead, _focusedLawTopic: true };
+}
+
 export function definesLawTerm(query, text) {
   const words = askedLawTerm(query);
   if (!words) return false;

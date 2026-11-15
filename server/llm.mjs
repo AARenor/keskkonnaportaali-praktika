@@ -1695,7 +1695,7 @@ const QUESTION_FORM_ROOTS = new Set([
   // or ask for a choice ("milliseid valida"), not the subject being asked about.
   "eelmine", "veel", "juba", "nuud", "seal", "oma", "leidsin", "ostsin", "milliseid", "valida",
   "joua", "jouan", "jouab",
-  "jatta", "votta", "maha", "minna", "tulla", "jaab", "jaada", "kirjas", "vaatama", "korda", "enne",
+  "jatta", "jatma", "votta", "maha", "minna", "tulla", "jaab", "jaada", "kirjas", "vaatama", "korda", "enne",
   // Who is asking and how much ("mul", "minu", "paar puud"), and the asking
   // verb itself ("tegeleb", "tahan"), name no subject the answer must repeat.
   "mul", "minu", "mu", "sul", "sinu", "meil", "meie", "teil", "paar", "moni", "monda",
@@ -1715,6 +1715,10 @@ function answerHasRoot(answer, root) {
   if (root === "mets" && /\bpuistu\p{L}*/u.test(answer)) return true;
   // "pesitsusperiood", "pesitsusrahu" and "pesitsemise aeg" name the same season.
   if (/^pesits/u.test(root) && /\bpesits\p{L}*/u.test(answer)) return true;
+  // "Kui laiad" is answered by a width: "laius", "laiusi", "4 m laiune".
+  if (/^lai(?:ad|a|u|uga|us)?$/u.test(root) && /\blai(?:us|use|usi|ust|une|used|uga)?\b/u.test(answer)) return true;
+  // "Töid", "tööd", "tööde" and "töö" are one word.
+  if (/^to(?:o|od|id|ode)$/u.test(root) && /\bto(?:o|od|ode|id|oga|oks|ost|osse|odest|odele)\b/u.test(answer)) return true;
   // Going somewhere on foot is "viibimine" or "liikumine" in the law.
   if (/^matka/u.test(root) && /\b(?:viibi|liiku)\p{L}*/u.test(answer)) return true;
   // A long compound is answered by its first part: "pesitsusperioodil" by
@@ -1933,7 +1937,20 @@ function closedEvidenceLine(text, evidencePack) {
   return copiesWholeLine ? `${value}.` : value;
 }
 
-function validateGroundedProposal(payload, draft, query, evidencePack) {
+// The model sometimes opens a list with "...järgmistest tingimustest:" and puts
+// the rule itself in the first part. Read as one lead, it is checked like any
+// other; left apart, the lead is an unfinished sentence and the answer is lost.
+export function joinListLead(payload) {
+  const intro = String(payload?.intro || "").trim();
+  const parts = Array.isArray(payload?.parts) ? payload.parts : [];
+  const next = String(parts[0]?.text || "").trim();
+  if (!intro.endsWith(":") || !next) return payload;
+  const citations = [...new Set([...(payload.intro_citations || []), ...(parts[0].citations || [])])];
+  return { ...payload, intro: `${intro} ${next}`, intro_citations: citations, parts: parts.slice(1) };
+}
+
+function validateGroundedProposal(rawPayload, draft, query, evidencePack) {
+  const payload = joinListLead(rawPayload);
   const validationContext = groundingValidationContext(evidencePack);
   const sourceCount = draft.sources.length;
   const suppliedIntroCitations = validCitations(payload?.intro_citations, sourceCount);

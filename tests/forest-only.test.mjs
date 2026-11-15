@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { rankPublicSearchCandidates, withFocusedLawSection } from "../server/retrieval.mjs";
-import { FOREST_LAWS, currentForestLawDocuments, definesLawTerm, focusedLawSection, forestLawVersionStamp, parseLawSections, refreshForestLaws, resetForestLawsForTests, reviewedLawSummaryIsOutdated } from "../server/law-texts.mjs";
+import { FOREST_LAWS, currentForestLawDocuments, definesLawTerm, focusedLawSection, topicalLawSection, forestLawVersionStamp, parseLawSections, refreshForestLaws, resetForestLawsForTests, reviewedLawSummaryIsOutdated } from "../server/law-texts.mjs";
 import { asksOnlyForestAmount } from "../server/forest-series.mjs";
 import { officialServiceCatalogueDocuments, repeatsEarlierAnswer } from "../server/search.mjs";
 import { answersAskedConcept, answersPermissionQuestion, assessEvidence, assessSearchQuery, forestEvidenceIntent, composeScopeResponse, containsPrivatePersonLookup, composeSearchResponse, extractAnswersQuery, isForestRelatedQuery, isNonAnswerText } from "../server/search.mjs";
 import { attemptCheckCode, searchEnvironmentLive } from "../server/pipeline.mjs";
-import { assertAnswerAddressesQuery } from "../server/llm.mjs";
+import { assertAnswerAddressesQuery, joinListLead } from "../server/llm.mjs";
 import { blockedFollowUpAssessment, contextualRetrievalQuery, isContinuationFollowUp } from "../server/retrieval.mjs";
 
 // Forest-only contract (production default: ALL_ENVIRONMENT_SEARCH_ENABLED
@@ -434,6 +434,39 @@ test("a question about one legal term gets the sentence defining it, not the sec
   assert.equal(focusedLawSection("seemnepuud", [seed])._lawDefinition, "");
   const dead = section("d", "Metsa uuendamine", "(5) Käesoleva seaduse tähenduses loetakse hukkunuks mets, milles tuulekahjustuste tõttu on elusate puude võrade liitus alla 30 protsendi.");
   assert.equal(focusedLawSection("hukkunud mets mõiste", [dead]).id, "d");
+});
+
+test("a rule question gets the law section its heading names, and only that one", () => {
+  const section = (id, summary, content) => ({ id, summary, content, _lawSection: true });
+  const roads = section("roads", "Metsa kokkuveoteed", "(1) Metsamaterjali kokkuveoks võib rajada kuni 4 m laiusi kokkuveoteid raielangil.");
+  const regrowth = section("regrowth", "Metsa uuenenuks lugemiseks nõutav puude minimaalne arv hektaril", "(1) Raiesmik loetakse uuenenuks, kui hektaril kasvab vähemalt 1600 puud.");
+  const grant = section("grant", "Erametsanduse toetamine", "(1) Erametsaomanikku toetatakse riigieelarvest.");
+  const sections = [roads, regrowth, grant, roads];
+  assert.equal(topicalLawSection("kui laiad tohivad kokkuveoteed langil olla", sections).id, "roads");
+  assert.equal(topicalLawSection("millal loetakse raiesmik uuenenuks, mitu puud peab hektaril kasvama", sections).id, "regrowth");
+  // The heading word alone is not enough: the section must also speak of the question.
+  assert.equal(topicalLawSection("kas erametsas tohib seenel käia ilma omaniku loata", sections), null);
+  // Forms of "mets" and units name no topic, and a statistic is not a rule.
+  assert.equal(topicalLawSection("kui palju on metsade tagavara hektaril", sections), null);
+  assert.equal(topicalLawSection("mitu kokkuveoteed rajati 2024. aastal langil", sections), null);
+  // A definition question keeps its own route.
+  assert.equal(topicalLawSection("mis on kokkuveotee", sections), null);
+});
+
+test("a list lead and its first item are read as one answer", () => {
+  const joined = joinListLead({ intro: "Lageraie on lubatud puistus, mis vastab vähemalt ühele tingimusele:", intro_citations: [1], parts: [{ text: "Puistu täius on väiksem eeskirjaga kehtestatust.", citations: [2] }, { text: "Teine.", citations: [1] }] });
+  assert.equal(joined.intro, "Lageraie on lubatud puistus, mis vastab vähemalt ühele tingimusele: Puistu täius on väiksem eeskirjaga kehtestatust.");
+  assert.deepEqual(joined.intro_citations, [1, 2]);
+  assert.equal(joined.parts.length, 1);
+  const whole = { intro: "Kokkuveotee võib olla kuni 4 m lai.", intro_citations: [1], parts: [{ text: "Muu.", citations: [1] }] };
+  assert.equal(joinListLead(whole), whole);
+});
+
+test("a width question is answered by a width and leaving trees by keeping them", () => {
+  assert.equal(assertAnswerAddressesQuery("Metsamaterjali kokkuveoks võib rajada kuni 4 m laiusi kokkuveoteid raielangil.", "kui laiad tohivad kokkuveoteed langil olla"), true);
+  assert.equal(assertAnswerAddressesQuery("Lageraielangil tuleb säilitada säilikpuid vähemalt viis tihumeetrit hektari kohta.", "kui palju sailikpuid peab lageraiel jatma"), true);
+  assert.throws(() => assertAnswerAddressesQuery("Raielangil tuleb raidmed koristada ühe aasta jooksul.", "kui laiad tohivad kokkuveoteed langil olla"));
+  assert.equal(assertAnswerAddressesQuery("Teatis tuleb esitada hoiuala valitsejale vähemalt üks kuu enne tööde alustamist.", "hoiuala teatis kui palju enne toid esitada"), true);
 });
 
 test("vääriselupaik counts as a forest word", () => {

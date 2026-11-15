@@ -88,7 +88,7 @@ import { configuredAnswerBudgetMs } from "./request-budget.mjs";
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v107-smi-figure-routing";
+export const SEARCH_RESPONSE_REVISION = "answer-v108-rule-law-section";
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
@@ -1478,11 +1478,18 @@ export async function createPortalDraft(query, {
   const rankingOptions = { sort, now: Date.now() };
   const retainedPlan = currentListingEvidencePlan(listing, retrievalQuery, candidates, sort);
   const focusedLawCandidate = candidates.find((document) => document._focusedLawTerm);
+  const topicalLawCandidate = focusedLawCandidate ? null : candidates.find((document) => document._focusedLawTopic);
   const portalRanked = retainedPlan ? candidates : rankPortalDocuments(retrievalQuery, candidates, rankingOptions);
   // The asked term's law section stays in the running whatever else ranks above it.
+  // The section a rule question names stays among the read sources, after the
+  // page that leads.
+  const topicalLawAt = Math.max(0, Math.min(1, portalRanked.indexOf(topicalLawCandidate)));
+  const withoutTopical = topicalLawCandidate ? portalRanked.filter((document) => document.id !== topicalLawCandidate.id) : portalRanked;
   const ranked = focusedLawCandidate
     ? [focusedLawCandidate, ...portalRanked.filter((document) => document.id !== focusedLawCandidate.id)]
-    : portalRanked;
+    : topicalLawCandidate
+      ? [...withoutTopical.slice(0, topicalLawAt), topicalLawCandidate, ...withoutTopical.slice(topicalLawAt)]
+      : portalRanked;
   const hydrationBudget = remainingBudget(deadlineAt, 7_000);
   const answerCandidates = retainedPlan
     ? ranked.filter((source) => retainedPlan.supportingDocumentIds.includes(source.id))
@@ -1518,7 +1525,7 @@ export async function createPortalDraft(query, {
   const plannedMandateOk = !mandateOrganizationQuery
     || (plannedEvidence?.passages || []).some((passage) => textHasQueryRoot(passage, mandateTerms[0])
       && /\b(?:teeb|tegevus\w*|ulesanne\w*|ülesanne\w*|haldab|korraldab|vastutab|pakub)\b/u.test(normalize(passage)));
-  const focusedLawDocument = reranked.find((document) => document._focusedLawTerm) || null;
+  const focusedLawDocument = reranked.find((document) => document._focusedLawTerm || document._focusedLawTopic) || null;
   const quality = directOverview
     ? {
       ...conventionalQuality,
