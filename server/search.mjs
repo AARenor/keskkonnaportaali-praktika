@@ -9243,7 +9243,7 @@ export function answersPermissionQuestion(query, text) {
 const ASKED_CONCEPTS = [
   { asks: /toetus|taotlus|huvitis/u, answers: /toetus|toetami|taotl|rahasta|huvit|kompens|meetm/u },
   { asks: /puhapaev|laupaev|nadalavahetus|riigipuha/u, answers: /puhapaev|laupaev|nadalavahetus|riigipuha/u },
-  { asks: /\beramets\w*|\beraomand\w*/u, answers: /eramets|eraomand|erao|metsaomanik/u },
+  { asks: /\beramets\w*|\beraomand\w*/u, answers: /eramets|eraomand|erao|metsaomanik|eramaad? kokku/u },
   { asks: /kaitsevoon\w*.*\b(?:joe|jogi|joge|jarve|veekogu\w*|kalda\w*)\b/u, answers: /veekogu|\bjo(?:e|gi|ge)\b|jarve|kalda|ranna/u },
 ];
 

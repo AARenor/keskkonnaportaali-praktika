@@ -837,3 +837,20 @@ test("round 14 wrong answers: hectares, definitions, times, law paragraphs and c
   assert.equal(namesDefinitionTerm("metsastamine mida see seaduses tähendab", "(1) Käesolev seadus reguleerib metsanduse suunamist."), false);
   assert.equal(namesDefinitionTerm("metsastamine mida see seaduses tähendab", "Metsastamine käesoleva seaduse tähenduses on mittemetsamaale uue metsa rajamine."), true);
 });
+
+test("round 14 SMI questions reach the figure they ask about", async () => {
+  const { forestEvidenceIntent, answersAskedConcept } = await import("../server/search.mjs");
+  const kind = (query) => forestEvidenceIntent(query)?.kind ?? null;
+  assert.equal(kind("Kui palju metsa kasvab Eestis aastas juurde?"), "forest-increment-overview");
+  assert.equal(kind("Kui suur osa Eesti metsast on riigimets?"), "forest-ownership-share");
+  assert.equal(kind("kui palju metsast eestis on eramets"), "forest-ownership-share");
+  // A year the SMI 2025 table does not state, and other subjects, never fall
+  // back to the forest-area snapshot.
+  assert.equal(kind("kui palju metsast eestis on eramets 2023"), null);
+  assert.equal(kind("Kui palju on Eestis Natura 2000 alasid metsamaal?"), null);
+  assert.equal(kind("kui palju on yraskikahjustusega metsa juurde tulnud viimastel aastatel"), null);
+  assert.equal(kind("Kas Eestis kasvab metsa juurde rohkem, kui raiutakse?"), null);
+  assert.equal(kind("Kui palju on Eestis metsamaad?"), "forest-area");
+  assert.equal(answersAskedConcept("kui palju metsast eestis on eramets",
+    "Füüsiliste isikute metsamaad oli 618,223 ja juriidiliste isikute metsamaad 559,618 tuhat hektarit ehk eramaad kokku 1 177,841 tuhat hektarit ehk 49,9%."), true);
+});

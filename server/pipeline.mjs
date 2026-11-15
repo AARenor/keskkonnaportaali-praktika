@@ -88,7 +88,7 @@ import { configuredAnswerBudgetMs } from "./request-budget.mjs";
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v106-area-kind-on-every-card";
+export const SEARCH_RESPONSE_REVISION = "answer-v107-smi-figure-routing";
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
@@ -578,7 +578,7 @@ const NARROW_FALLBACK_KINDS = new Set(["forest-notice-exception", "bark-beetle-g
 // mõõdetakse", "kui suur osa"), so that word need not repeat in the card.
 // Every other question word still has to: "mis puuliigil on kõige suurem
 // tagavara" is not answered by area shares.
-const TOPIC_ASK_ROOT_PATTERN = /^(?:moot|mõõt|arvut|hinda|hinnang|osa$|osakaal|protsent|measur|calculat|estimat|share|percent|proportion|area$|much$|many$)/u;
+const TOPIC_ASK_ROOT_PATTERN = /^(?:moot|mõõt|arvut|hinda|hinnang|osa$|osakaal|levinu|protsent|measur|calculat|estimat|share|percent|proportion|area$|much$|many$)/u;
 
 // "rohkem metsa" is answered by "kõige metsarikkamad": a comparison word is
 // covered when the card itself states a comparison. A card that only lists

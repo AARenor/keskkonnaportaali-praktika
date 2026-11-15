@@ -1335,6 +1335,8 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
   const hasIncrement = hasStem(tokens, ["juurdekasv", "netojuurdekasv"], true)
     || /\bjuurde\s+kasv\w*\b/u.test(text)
     || /\b(?:mets|puist)\w*(?:\s+\w+){0,2}\s+kasv\w*\s+juurde\b/u.test(text)
+    // "Kui palju metsa kasvab Eestis aastas juurde?"
+    || /\b(?:mets|puist)\w*\s+kasv\w*(?:\s+\w+){0,3}\s+juurde\b/u.test(text)
     || /\bkasvunaitaj\w*|kasvuhinnang\w*\b/u.test(text);
   const hasProtection = /\b(?:kaitse\s+all|kaitstud|(?:loodus)?kaitseal\w*|kaitstava\w*|kaitsereziim\w*|kaitsevoond\w*|sihtkaitsevoond\w*|piiranguvoond\w*|natura)\b/u.test(text);
   const mentionsSample = hasStem(tokens, ["valim", "proovitukk", "vaatlus"], true);
@@ -1521,6 +1523,17 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
   if (hasForest && municipalMetricQuestion && (/\b(?:koduvall\w*|valla\s+mets\w*|mets\w*(?:\s+\w+){0,3}\s+vallas|vallas(?:\s+\w+){0,3}\s+mets\w*|metsasus\w*(?:\s+\w+){0,4}\somavalitsus\w*)\b/u.test(text)
     || (municipalityScope && municipalityAreaMetric))) {
     return resolved("municipality-forest-area");
+  }
+  // "Kui suur osa Eesti metsast on riigimets?", "kui palju metsast on eramets":
+  // one ownership side and a share or amount is the SMI ownership table, not
+  // the forest-area snapshot. A year other than the table's own is not answered
+  // by it, and harvest or stock by owner is another measure.
+  const askedYears = text.match(/\b(?:19|20)\d{2}\b/gu) || [];
+  if (/\b(?:riigimets\w*|eramets\w*|eraomanik\w*|riigimaa\w*|eramaa\w*)\b/u.test(text)
+    && !hasHarvest && !hasClearcut && !hasStock && !hasIncrement && !regionalScope && !municipalityScope
+    && askedYears.every((year) => year === "2025")
+    && /\b(?:osa|osakaal\w*|protsent\w*|kui\s+palju|kui\s+suur\w*)\b/u.test(text)) {
+    return resolved("forest-ownership-share");
   }
   const asksForestMeasurementMethod = (
     /\b(?:kuidas|mil\s+viisil)\b[\s\S]{0,70}\b(?:moodet\w*|hinnat\w*|arvutat\w*|inventeerit\w*|metoodik\w*)\b/u.test(text)
@@ -1769,7 +1782,7 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
   // fall through and fail closed instead. The same holds for a question about
   // another forest subject (species, age, fire, regeneration, ownership,
   // protection, damage): "kui palju" alone does not make it an area question.
-  const asksOtherForestSubject = !forPrivacyCheck && /\b(?:\w*puuli(?:ik|ig)\w*|mand|mann\w*|kuus\w*|kask|kase\w*|kaasik\w*|haab|haav\w*|lepp\w*|lepa\w*|okaspuu\w*|lehtpuu\w*|vanus\w*|vana|vanad\w*|vanade\w*|\w*tulekahj\w*|poleng\w*|polen\w*|uuend\w*|istut\w*|kulv\w*|halda\w*|rmk|riigimets\w*|kaitst\w*|kaitse\w*|\w*urask\w*|kahjust\w*|kahjur\w*|haigus\w*|torm\w*|tuuleheit\w*|\w*susinik\w*|\w*biomass\w*|co2|kasvuhoone\w*)\b/u.test(text);
+  const asksOtherForestSubject = !forPrivacyCheck && /\b(?:\w*puuli(?:ik|ig)\w*|mand|mann\w*|kuus\w*|kask|kase\w*|kaasik\w*|haab|haav\w*|lepp\w*|lepa\w*|okaspuu\w*|lehtpuu\w*|vanus\w*|vana|vanad\w*|vanade\w*|\w*tulekahj\w*|poleng\w*|polen\w*|uuend\w*|istut\w*|kulv\w*|halda\w*|rmk|riigimets\w*|eramets\w*|eraomani\w*|riigimaa\w*|eramaa\w*|kaitst\w*|kaitse\w*|\w*(?:urask|yrask)\w*|\w*kahjust\w*|kahjur\w*|natura|vaarisel\w*|raada\w*|raadat\w*|haigus\w*|torm\w*|tuuleheit\w*|\w*susinik\w*|\w*biomass\w*|co2|kasvuhoone\w*)\b/u.test(text);
   const asksDefinitionOnly = /\b(?:definitsioon\w*|moiste\w*)\b/u.test(text)
     && !/\b(?:kui\s+palju|mitu|kui\s+suur\w*|pindala|osakaal|protsent|hektar\w*)\b/u.test(text);
   // "alla poole hektari, kas metsaseadus kehtib" asks about a rule, not the area.
