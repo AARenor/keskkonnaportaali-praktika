@@ -41,9 +41,8 @@ export function listingWindowKey({
 
 export function getBoundListingWindow(cache, options = {}) {
   const expectedWindowId = typeof options.windowId === "string" ? options.windowId : "";
-  if (!expectedWindowId || typeof cache?.get !== "function") return null;
-  const window = cache.get(listingWindowKey(options));
-  return window?.windowId === expectedWindowId ? window : null;
+  if (!expectedWindowId || typeof cache?.getWindow !== "function") return null;
+  return cache.getWindow(options);
 }
 
 export function createListingWindowCache({
@@ -55,6 +54,7 @@ export function createListingWindowCache({
   const capacity = Math.max(1, Math.trunc(Number(maxEntries) || 8));
   const entries = new Map();
   let observedEpoch = listingWindowInvalidationEpoch;
+  let freshness = 0;
   const synchronizeInvalidation = () => {
     if (observedEpoch !== listingWindowInvalidationEpoch) {
       entries.clear();
@@ -62,10 +62,16 @@ export function createListingWindowCache({
     }
     return observedEpoch;
   };
+  const windowKey = (id) => JSON.stringify(["retained-window", id]);
+  const bindingKey = (options) => listingWindowKey({ ...options, revision: "" });
 
   return {
     generation() {
       return synchronizeInvalidation();
+    },
+    freshness() {
+      synchronizeInvalidation();
+      return freshness;
     },
     get(key) {
       synchronizeInvalidation();
@@ -82,11 +88,28 @@ export function createListingWindowCache({
     set(key, value, options = {}) {
       const generation = synchronizeInvalidation();
       if ((options.expectedGeneration ?? generation) !== generation) return false;
+      if (options.expectedFreshness !== undefined && options.expectedFreshness !== freshness) return false;
       const cacheKey = String(key);
       entries.delete(cacheKey);
       entries.set(cacheKey, { value, expiresAt: now() + lifetime });
       while (entries.size > capacity) entries.delete(entries.keys().next().value);
       return true;
+    },
+    getWindow(options = {}) {
+      const entry = this.get(windowKey(options.windowId));
+      return entry?.binding === bindingKey(options) ? entry.value : null;
+    },
+    setWindow(options, value, settings = {}) {
+      const generation = synchronizeInvalidation();
+      if ((settings.expectedGeneration ?? generation) !== generation || !value?.windowId) return false;
+      const key = windowKey(value.windowId);
+      if (this.get(key)) return false;
+      return this.set(key, { binding: bindingKey(options), value }, settings);
+    },
+    clearFreshness() {
+      synchronizeInvalidation();
+      freshness += 1;
+      entries.clear();
     },
     delete(key) {
       synchronizeInvalidation();

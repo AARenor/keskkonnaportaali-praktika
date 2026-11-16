@@ -169,7 +169,8 @@ export async function indexOfficialDiscoveryDocuments(rawDocuments = [], { signa
           : { indexed: 0, capacityDropped: 0 };
         throwIfCorpusAborted(signal);
         await client.query("COMMIT");
-        corpusListingWindows.clear();
+        if (maintenance.retired || maintenance.deleted) corpusListingWindows.clear();
+        else corpusListingWindows.clearFreshness();
         return {
           indexed: upsert.indexed,
           capacityDropped: Math.max(0, documents.length - admittedDocuments.length)

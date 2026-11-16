@@ -101,7 +101,7 @@ export async function persistHydratedCorpusDocument(
       return false;
     }
     await client.query("COMMIT");
-    corpusListingWindows.clear();
+    corpusListingWindows.clearFreshness();
     return true;
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);

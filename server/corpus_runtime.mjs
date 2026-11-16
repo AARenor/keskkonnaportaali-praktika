@@ -298,6 +298,44 @@ async function loadCorpusWindowRows(ids, filters, excludedUrls, queryOptions) {
   ], queryOptions);
   return result?.rows || [];
 }
+export async function validateRetainedCorpusWindow(window, filters, { signal, deadlineAt, items = [] } = {}) {
+  if (!databaseEnabled() || !Array.isArray(window?.ids) || !Array.isArray(window?.indexAllowed)
+    || window.ids.length !== window.indexAllowed.length) return false;
+  try {
+    const rows = await loadCorpusWindowRows(window.ids, normalizeSearchFilters(filters), [], { signal, deadlineAt });
+    throwIfCorpusSearchClosed(signal, deadlineAt);
+    const permissions = new Map(window.ids.map((id, index) => [String(id), Boolean(window.indexAllowed[index])]));
+    const originals = new Map(items.map((item) => [item.id, item]));
+    const valid = rows.length === window.ids.length && rows.every((row) => {
+      if (permissions.get(String(row.id)) !== Boolean(row.index_allowed)) return false;
+      const original = originals.get(`corpus-${row.id}`);
+      if (!original) return true;
+      const currentPolicy = row.metadata?.source_policy;
+      if (!original._sourcePolicy && !currentPolicy) return true;
+      return [["summary", "snippet"], ["content", "evidence"]].every(([field, purpose]) => {
+        if (!original[field]) return true;
+        if (original._sourcePolicy) {
+          const oldProjection = projectSourceText({
+            url: original.url, _sourcePolicy: original._sourcePolicy, [field]: original[field],
+          }, { purpose, limit: field === "summary" ? 500 : 15_000 });
+          if (!oldProjection.permitted || oldProjection.text !== original[field]) return false;
+        }
+        const currentProjection = projectSourceText({
+          url: original.url, _sourcePolicy: currentPolicy, [field]: original[field],
+        }, { purpose, limit: field === "summary" ? 500 : 15_000 });
+        return currentProjection.permitted && currentProjection.text === original[field];
+      });
+    });
+    if (!valid) corpusListingWindows.clear();
+    return valid;
+  } catch (error) {
+    if (signal?.aborted || (Number.isFinite(deadlineAt) && Date.now() >= deadlineAt)
+      || error?.name === "AbortError") throw error;
+    corpusListingWindows.clear();
+    return false;
+  }
+}
+
 
 function corpusWindowResult({
   rows,
@@ -339,7 +377,7 @@ function corpusWindowResult({
     hasMore,
     items: pageWindow.items.map(mapItem).filter(Boolean),
     ...(returnRankedWindow
-      ? { rankedWindow: window.ids.map(mapItem).filter(Boolean) }
+      ? { rankedWindow: window.ids.map(mapItem).filter(Boolean), _corpusWindow: window }
       : {}),
     facets: window.facets,
     appliedFilters,
@@ -511,6 +549,7 @@ export async function searchCorpus(query, {
       anyPrefixQuery,
     ];
     let cacheGeneration = corpusListingWindows.generation();
+    let cacheFreshness = corpusListingWindows.freshness();
     let queryRevision = await currentCorpusQueryRevision(queryOptions, cacheGeneration);
     const makeCacheKey = (revision) => listingWindowKey({
       query: normalized,
@@ -566,6 +605,7 @@ export async function searchCorpus(query, {
       // Permissions can change by write or by clock expiry. Rebuild sibling
       // windows too, so retrieval cannot reuse an older full source object.
       cacheGeneration = corpusListingWindows.clear();
+      cacheFreshness = corpusListingWindows.freshness();
       queryRevision = await currentCorpusQueryRevision(queryOptions, cacheGeneration);
       cacheKey = makeCacheKey(queryRevision);
       windowId = corpusListingWindowId(cacheKey);
@@ -671,7 +711,10 @@ export async function searchCorpus(query, {
     };
     // Exact totals come from the existing narrow aggregate query. Search rows
     // remain capped separately and are never hydrated into JavaScript in bulk.
-    const storedWindow = corpusListingWindows.set(cacheKey, window, { expectedGeneration: cacheGeneration });
+    const storedWindow = corpusListingWindows.set(cacheKey, window, {
+      expectedGeneration: cacheGeneration,
+      expectedFreshness: cacheFreshness,
+    });
     return corpusWindowResult({
       rows: candidateRows,
       window,

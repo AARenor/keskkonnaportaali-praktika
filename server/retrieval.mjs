@@ -1,8 +1,8 @@
-import { createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { sourceResourceKey, sourceWitnessKey } from "./source-identity.mjs";
 import { enqueueOfficialDiscoveryDocuments } from "./corpus_ingestion.mjs";
 import { normalizeSearchFilters } from "./corpus_query.mjs";
-import { searchCorpus } from "./corpus_runtime.mjs";
+import { searchCorpus, validateRetainedCorpusWindow } from "./corpus_runtime.mjs";
 import { searchOfficialSites } from "./integrations.mjs";
 import { loadStructuredIndicatorDocuments } from "./indicators.mjs";
 import { buildDiscoveryQueries } from "./search.mjs";
@@ -18,7 +18,6 @@ import {
   createListingWindowCache,
   getBoundListingWindow,
   LISTING_WINDOW_CANDIDATE_LIMIT,
-  listingWindowKey,
   pageListingWindow,
 } from "./listing_window.mjs";
 import { deduplicateResults } from "./retrieval_deduplication.mjs";
@@ -119,16 +118,22 @@ export async function prepareRankedSearchResults(query, {
     const local = await localRequest.catch(() => null);
     throwIfRetrievalClosed(signal, deadlineAt);
     const queryRevision = rankedWindowRevision(local, query, retrievalWindowGeneration);
-    const cached = queryRevision
-      ? getBoundListingWindow(retrievalListingWindows, {
-          query: acceptedQuery,
-          filters: appliedFilters,
-          revision: queryRevision,
-          includeContent: true,
-          windowId: requestedWindowId,
+    const cached = getBoundListingWindow(retrievalListingWindows, {
+      query: acceptedQuery,
+      filters: appliedFilters,
+      includeContent: true,
+      windowId: requestedWindowId,
+    });
+    const corpusValid = cached && local && local.status !== "degraded"
+      && (cached.corpusWindow
+        ? await validateRetainedCorpusWindow(cached.corpusWindow, appliedFilters, {
+          signal, deadlineAt, items: cached.corpusItems,
         })
-      : null;
-    if (!cached) {
+        : cached.corpusStatus === "disabled" && local.status === "disabled");
+    if (!cached || !corpusValid || retrievalListingWindows.generation() !== retrievalWindowGeneration
+      || getBoundListingWindow(retrievalListingWindows, {
+        query: acceptedQuery, filters: appliedFilters, includeContent: true, windowId: requestedWindowId,
+      }) !== cached) {
       return expiredListingWindow({
         page: safePage,
         pageSize: safePageSize,
@@ -273,11 +278,7 @@ export async function prepareRankedSearchResults(query, {
   const total = Math.max(Number(local.total || 0), rankedPrefix.length);
   const totalRelation = local.totalRelation === "eq" && facetExtras.length === 0 ? "eq" : "gte";
   const queryRevision = rankedWindowRevision(local, query, retrievalWindowGeneration);
-  const windowId = queryRevision
-    ? createHash("sha256")
-      .update(`${local.windowId || queryRevision}:${rankedPrefix.map((document) => sourceWitnessKey(document)).join("|")}`)
-      .digest("hex").slice(0, 24)
-    : null;
+  const windowId = queryRevision ? randomUUID() : null;
   const pageWindow = pageListingWindow(rankedPrefix, {
     page: safePage,
     pageSize: safePageSize,
@@ -310,16 +311,18 @@ export async function prepareRankedSearchResults(query, {
   const plan = currentListingEvidencePlan(reviewedRankedPrefix, query, selected, appliedFilters.sort);
   retainOverviewPlan(listing, query, plan, appliedFilters.sort);
   if (windowId && listing.queryRevision) {
-    const cacheKey = listingWindowKey({
+    const storedWindow = retrievalListingWindows.setWindow({
       query: acceptedQuery,
       filters: appliedFilters,
       revision: listing.queryRevision,
       includeContent: true,
-    });
-    const storedWindow = retrievalListingWindows.set(cacheKey, {
+    }, {
       windowId,
       queryRevision: listing.queryRevision,
       total,
+      corpusWindow: local._corpusWindow || null,
+      corpusItems: local.rankedWindow || [],
+      corpusStatus: local.status,
       totalRelation,
       rankedPrefix,
       listing,

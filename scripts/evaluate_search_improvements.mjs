@@ -85,6 +85,27 @@ function boundedString(value, maximumLength = 300) {
   return typeof value === "string" ? value.slice(0, maximumLength) : null;
 }
 
+const SEARCH_FILTER_SOURCES = new Set(["all", "trusted", "official", "reviewed", "supplementary", "other"]);
+
+function projectAppliedFilters(value) {
+  if (!isObject(value)) return null;
+  const source = boundedString(value.source, 20);
+  const category = boundedString(value.category, 120);
+  const year = value.year === null
+    ? null
+    : Number.isSafeInteger(value.year)
+      && value.year >= 1990
+      && value.year <= new Date().getUTCFullYear() + 1
+      ? value.year
+      : null;
+  return {
+    source: SEARCH_FILTER_SOURCES.has(source) ? source : null,
+    category,
+    year,
+    sort: value.sort === "newest" || value.sort === "relevance" ? value.sort : null,
+  };
+}
+
 function nonNegativeInteger(value) {
   return Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
@@ -802,8 +823,10 @@ function paginationPage(body, requestedPage) {
     totalRelation: boundedString(metadata?.totalRelation, 12),
     truncated: typeof metadata?.truncated === "boolean" ? metadata.truncated : null,
     windowId: boundedString(metadata?.windowId, 128),
-    windowExpired: metadata?.windowExpired === true,
+    queryRevision: boundedString(metadata?.queryRevision, 128),
+    appliedFilters: projectAppliedFilters(metadata?.appliedFilters),
     hasMore: typeof metadata?.hasMore === "boolean" ? metadata.hasMore : null,
+    windowExpired: metadata?.windowExpired === true,
     items: paginationItems(body).slice(0, 50).map(projectCitationSource).filter(Boolean),
   };
 }

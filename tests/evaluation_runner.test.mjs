@@ -364,8 +364,26 @@ test("CLI records runtime revision drift and window expiration without accepting
       pageTwoCount += 1;
       pageTwoRequests.push(body);
       return sendJson(response, 200, pageTwoCount === 1
-        ? { page: 2, pageSize: 12, total: 2, windowExpired: true, items: [] }
-        : { ...listing(2), windowExpired: false });
+        ? {
+          page: 2,
+          pageSize: 12,
+          total: 2,
+          windowExpired: true,
+          queryRevision: "expired-window-revision",
+          appliedFilters: FILTERS,
+          items: [],
+        }
+        : {
+          ...listing(2),
+          queryRevision: "current-window-revision",
+          appliedFilters: {
+            ...FILTERS,
+            source: "official",
+            category: "c".repeat(150),
+            sort: "newest",
+            accessToken: "fixture-only",
+          },
+        });
     }
     sendJson(response, 404, { error: "Not found" });
   });
@@ -387,6 +405,19 @@ test("CLI records runtime revision drift and window expiration without accepting
   assert.equal(driftReport.pagination.secondPage.resultPage.windowExpired, true);
   assert.equal(driftReport.pagination.secondPage.resultPage.items.length, 0);
   assert.equal(driftReport.pagination.secondPage.failure.kind, "window_expired");
+  assert.equal(driftReport.pagination.secondPage.resultPage.queryRevision, "expired-window-revision");
+  assert.deepEqual(driftReport.pagination.secondPage.resultPage.appliedFilters, FILTERS);
+  assert.equal(unknownRevisionReport.pagination.secondPage.resultPage.queryRevision, "current-window-revision");
+  assert.deepEqual(unknownRevisionReport.pagination.secondPage.resultPage.appliedFilters, {
+    source: "official",
+    category: "c".repeat(120),
+    year: null,
+    sort: "newest",
+  });
+  assert.equal(
+    Object.hasOwn(unknownRevisionReport.pagination.secondPage.resultPage.appliedFilters, "accessToken"),
+    false,
+  );
   assert.equal(secondExit.code, 1);
   assert.equal(unknownRevisionReport.measurement.revisionStability.status, "unknown");
   assert.equal(unknownRevisionReport.measurement.healthBefore.body.revision, "development");

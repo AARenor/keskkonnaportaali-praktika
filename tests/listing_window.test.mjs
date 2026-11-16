@@ -24,80 +24,133 @@ test("listing window keys keep the full query, filters, and corpus revision dist
   assert.notEqual(listingWindowKey({ ...keyParts, excludeUrls: ["https://keskkonnaportaal.ee/et/mets"] }), base);
   assert.equal(listingWindowKey({ ...keyParts, filters: { ...keyParts.filters } }), base);
 });
-test("page two requires the exact cached query, filters, revision, and window ID", () => {
+test("page two binds query, filters, content mode, exclusions, and ID but ignores revision", () => {
   const cache = createListingWindowCache({ ttlMs: 1_000, now: () => 0 });
-  const key = listingWindowKey(keyParts);
-  const window = { windowId: "window-r1", rankedIds: ["first", "second"] };
-  cache.set(key, window);
+  const window = { windowId: "window-r1", queryRevision: "corpus-r1", rankedIds: ["first", "second"] };
+  assert.equal(cache.setWindow(keyParts, window), true);
 
   assert.equal(getBoundListingWindow(cache, { ...keyParts, windowId: "window-r1" }), window);
-  assert.equal(getBoundListingWindow(cache, keyParts), null);
+  assert.equal(getBoundListingWindow(cache, { ...keyParts, revision: "corpus-r2", windowId: "window-r1" }), window);
+  assert.equal(getBoundListingWindow(cache, { ...keyParts, windowId: "window-other" }), null);
   assert.equal(getBoundListingWindow(cache, { ...keyParts, query: "mida loetakse metsaks", windowId: "window-r1" }), null);
   assert.equal(getBoundListingWindow(cache, {
     ...keyParts,
     filters: { ...keyParts.filters, category: "Õigusakt" },
     windowId: "window-r1",
   }), null);
-  assert.equal(getBoundListingWindow(cache, { ...keyParts, revision: "corpus-r2", windowId: "window-r1" }), null);
-  assert.equal(getBoundListingWindow(cache, { ...keyParts, windowId: "window-other" }), null);
+  assert.equal(getBoundListingWindow(cache, { ...keyParts, includeContent: false, windowId: "window-r1" }), null);
+  assert.equal(getBoundListingWindow(cache, {
+    ...keyParts,
+    excludeUrls: ["https://keskkonnaportaal.ee/et/mets"],
+    windowId: "window-r1",
+  }), null);
+});
+
+test("page two exclusion order is canonical and distinct snapshots never overwrite", () => {
+  const cache = createListingWindowCache({ ttlMs: 1_000, now: () => 0 });
+  const excluded = { ...keyParts, excludeUrls: ["https://example.ee/b", "https://example.ee/a"] };
+  const first = { windowId: "window-r1", queryRevision: "corpus-r1", rankedIds: ["old"] };
+  const second = { windowId: "window-r2", queryRevision: "corpus-r2", rankedIds: ["new"] };
+
+  assert.equal(cache.setWindow(excluded, first), true);
+  assert.equal(cache.setWindow({ ...excluded, revision: "corpus-r2" }, second), true);
+  assert.equal(cache.setWindow(excluded, { ...first, rankedIds: ["replacement"] }), false);
+  assert.equal(getBoundListingWindow(cache, {
+    ...excluded,
+    excludeUrls: [...excluded.excludeUrls].reverse(),
+    revision: "corpus-r3",
+    windowId: first.windowId,
+  }), first);
+  assert.equal(getBoundListingWindow(cache, { ...excluded, windowId: second.windowId }), second);
+  assert.deepEqual(first.rankedIds, ["old"]);
+});
+
+test("listing window expiry prunes its lookup index", () => {
+  let now = 0;
+  const cache = createListingWindowCache({ ttlMs: 100, maxEntries: 2, now: () => now });
+  const window = { windowId: "window-r1", queryRevision: "corpus-r1" };
+  cache.setWindow(keyParts, window);
+
+  now = 100;
+  assert.equal(getBoundListingWindow(cache, { ...keyParts, windowId: window.windowId }), null);
+  assert.equal(cache.size, 0);
+  assert.equal(cache.setWindow(keyParts, window), true);
 });
 
 test("listing window cache expires entries and invalidates late writes after refresh", () => {
   let now = 0;
   const cache = createListingWindowCache({ ttlMs: 100, maxEntries: 2, now: () => now });
-  const key = listingWindowKey(keyParts);
+  const window = { windowId: "window-r1", queryRevision: "corpus-r1", ids: ["1", "2"] };
   const generation = cache.generation();
-  cache.set(key, { ids: ["1", "2"] }, { expectedGeneration: generation });
-  assert.deepEqual(cache.get(key), { ids: ["1", "2"] });
+  assert.equal(cache.setWindow(keyParts, window, { expectedGeneration: generation }), true);
+  assert.equal(getBoundListingWindow(cache, { ...keyParts, windowId: window.windowId }), window);
 
   now = 100;
-  assert.equal(cache.get(key), null);
-  cache.set(key, { ids: ["stale"] }, { expectedGeneration: generation });
+  assert.equal(getBoundListingWindow(cache, { ...keyParts, windowId: window.windowId }), null);
+  assert.equal(cache.setWindow(keyParts, { ...window, windowId: "stale" }, { expectedGeneration: generation }), true);
   cache.clear();
-  cache.set(key, { ids: ["late stale write"] }, { expectedGeneration: generation });
-  assert.equal(cache.get(key), null);
+  assert.equal(cache.setWindow(keyParts, { ...window, windowId: "late-stale" }, { expectedGeneration: generation }), false);
+  assert.equal(getBoundListingWindow(cache, { ...keyParts, windowId: "late-stale" }), null);
 });
 
 test("a corpus refresh invalidates sibling retrieval windows and late writes", () => {
   const corpusCache = createListingWindowCache({ now: () => 0 });
   const retrievalCache = createListingWindowCache({ now: () => 0 });
-  const key = listingWindowKey(keyParts);
   const generation = retrievalCache.generation();
-  retrievalCache.set(key, { ids: ["stale"] }, { expectedGeneration: generation });
+  const window = { windowId: "window-r1", queryRevision: "corpus-r1", ids: ["stale"] };
+  assert.equal(retrievalCache.setWindow(keyParts, window, { expectedGeneration: generation }), true);
 
   corpusCache.clear();
 
-  assert.equal(retrievalCache.get(key), null);
-  assert.equal(retrievalCache.set(key, { ids: ["late stale"] }, { expectedGeneration: generation }), false);
-  assert.equal(retrievalCache.set(key, { ids: ["fresh"] }), true);
+  assert.equal(getBoundListingWindow(retrievalCache, { ...keyParts, windowId: window.windowId }), null);
+  assert.equal(retrievalCache.setWindow(keyParts, { ...window, windowId: "late-stale" }, { expectedGeneration: generation }), false);
+  assert.equal(retrievalCache.setWindow(keyParts, { ...window, windowId: "fresh" }), true);
+});
+
+test("benign discovery or hydration refreshes corpus lookup without expiring a retained page", () => {
+  const corpusCache = createListingWindowCache({ now: () => 0 });
+  const retrievalCache = createListingWindowCache({ now: () => 0 });
+  const generation = retrievalCache.generation();
+  const freshness = corpusCache.freshness();
+  const window = { windowId: "retained", queryRevision: "old", ids: ["first", "second"] };
+  corpusCache.set("fresh-query", { ids: ["old"] });
+  retrievalCache.setWindow(keyParts, window, { expectedGeneration: generation });
+
+  corpusCache.clearFreshness();
+  assert.equal(corpusCache.get("fresh-query"), null);
+  assert.equal(corpusCache.set("fresh-query", { ids: ["stale"] }, { expectedFreshness: freshness }), false);
+  assert.equal(getBoundListingWindow(retrievalCache, { ...keyParts, revision: "new", windowId: "retained" }), window);
+  assert.equal(retrievalCache.setWindow(keyParts, { ...window, windowId: "later" }, { expectedGeneration: generation }), true);
 });
 
 test("default listing retention spans answer generation and normal reading", () => {
   let now = 0;
   const cache = createListingWindowCache({ now: () => now });
-  const key = listingWindowKey(keyParts);
-  const window = { ids: ["first", "second"] };
-  cache.set(key, window);
+  const window = { windowId: "window-r1", queryRevision: "corpus-r1", ids: ["first", "second"] };
+  cache.setWindow(keyParts, window);
 
   now = 285_000 + 600_000 - 1;
-  assert.equal(cache.get(key), window);
+  assert.equal(getBoundListingWindow(cache, { ...keyParts, windowId: window.windowId }), window);
   assert.equal(LISTING_WINDOW_TTL_MS, 900_000);
   now = LISTING_WINDOW_TTL_MS;
-  assert.equal(cache.get(key), null);
+  assert.equal(getBoundListingWindow(cache, { ...keyParts, windowId: window.windowId }), null);
 });
 
-test("listing window cache evicts the least recently used bounded entry", () => {
+test("listing window cache evicts the least recently used bounded entry and prunes its index", () => {
   const cache = createListingWindowCache({ ttlMs: 1_000, maxEntries: 2, now: () => 0 });
-  const first = listingWindowKey({ ...keyParts, query: "esimene" });
-  const second = listingWindowKey({ ...keyParts, query: "teine" });
-  const third = listingWindowKey({ ...keyParts, query: "kolmas" });
-  cache.set(first, { ids: ["1"] });
-  cache.set(second, { ids: ["2"] });
-  assert.deepEqual(cache.get(first), { ids: ["1"] });
-  cache.set(third, { ids: ["3"] });
-  assert.equal(cache.get(second), null);
-  assert.deepEqual(cache.get(first), { ids: ["1"] });
-  assert.deepEqual(cache.get(third), { ids: ["3"] });
+  const firstOptions = { ...keyParts, query: "esimene" };
+  const secondOptions = { ...keyParts, query: "teine" };
+  const thirdOptions = { ...keyParts, query: "kolmas" };
+  const first = { windowId: "window-1", ids: ["1"] };
+  const second = { windowId: "window-2", ids: ["2"] };
+  const third = { windowId: "window-3", ids: ["3"] };
+  cache.setWindow(firstOptions, first);
+  cache.setWindow(secondOptions, second);
+  assert.equal(getBoundListingWindow(cache, { ...firstOptions, windowId: first.windowId }), first);
+  cache.setWindow(thirdOptions, third);
+  assert.equal(getBoundListingWindow(cache, { ...secondOptions, windowId: second.windowId }), null);
+  assert.equal(getBoundListingWindow(cache, { ...firstOptions, windowId: first.windowId }), first);
+  assert.equal(getBoundListingWindow(cache, { ...thirdOptions, windowId: third.windowId }), third);
 });
 
 test("listing window pages preserve rank order and expose only the first two pages", () => {

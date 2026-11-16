@@ -20,6 +20,8 @@ import { execFileSync } from "node:child_process";
 import { createServer } from "node:net";
 import { createRequire } from "node:module";
 
+import { sourceResourceKey } from "../server/source-identity.mjs";
+
 const require = createRequire(import.meta.url);
 const { Client } = require("pg");
 
@@ -149,12 +151,12 @@ async function insertRow(client, {
   const boundMetadata = bindPolicy && metadata.source_policy
     ? {
       ...metadata,
-      sourceResourceKey: url,
+      sourceResourceKey: sourceResourceKey(url),
       // A hydrated row binds its policy to its own resource and to the hash of
       // the body that was stored, exactly as the production writer does.
       source_policy: {
         ...metadata.source_policy,
-        resourceKey: url,
+        resourceKey: sourceResourceKey(url),
         artifactHash: sha256(content),
       },
     }
@@ -908,6 +910,164 @@ test("copied text matches and ranks only under a current allowing index policy",
     assert.equal(refreshedListing.total, 141);
     assert.notEqual(refreshedListing.queryRevision, firstListingPage.queryRevision);
     assert.notEqual(refreshedListing.windowId, firstListingPage.windowId);
+    // A retained item must validate each stored field independently. Its short
+    // summary is deliberately different from its long evidence body.
+    const longBody = "Pikk ametlik metsateabe sisu. ".repeat(30).trim();
+    const shortSummary = "Lühike ametlik kokkuvõte.";
+    const longUrl = urlOf("/et/mets/retained-long");
+    await insertRow(admin, {
+      externalId: "retained-long",
+      path: "/et/mets/retained-long",
+      title: "retainedlongtoken",
+      content: longBody,
+      fetchedAt,
+      metadata: { hydrated: true, source_kind: "official-page-hydration", source_policy: policy },
+    });
+    await admin.query("UPDATE practice_corpus_documents SET summary = $2 WHERE canonical_url = $1", [longUrl, shortSummary]);
+    const longListing = await corpusRuntime.searchCorpus("retainedlongtoken", {
+      includeContent: true, preferSnapshot: false, returnRankedWindow: true,
+    });
+    const longItem = longListing.rankedWindow.find((item) => item.url === longUrl);
+    assert.ok(longItem?._sourcePolicy);
+    assert.equal(longItem.summary, shortSummary);
+    assert.equal(longItem.content, longBody);
+    assert.ok(longItem.content.length > 500);
+    assert.deepEqual(longListing._corpusWindow.indexAllowed, [true]);
+    assert.equal(await corpusRuntime.validateRetainedCorpusWindow(
+      longListing._corpusWindow, {}, { items: longListing.rankedWindow },
+    ), true);
+    const hydration = await import(new URL("../server/corpus_hydration.mjs", import.meta.url).href);
+    const nextBody = "Värskendatud ametlik metsateave. ".repeat(30).trim();
+    const nextAt = new Date().toISOString();
+    assert.equal(await hydration.persistHydratedCorpusDocument(admin, {
+      url: longUrl,
+      title: "retainedlongtoken",
+      content: nextBody,
+      contentHash: sha256(nextBody),
+      fetchedAt: nextAt,
+      metadata: {
+        hydrated: true,
+        source_kind: "official-page-hydration",
+        source_policy: { ...currentPolicy(nextAt), resourceKey: sourceResourceKey(longUrl), artifactHash: sha256(nextBody) },
+      },
+      runId: null,
+    }), true);
+    assert.equal(await corpusRuntime.validateRetainedCorpusWindow(
+      longListing._corpusWindow, {}, { items: longListing.rankedWindow },
+    ), true);
+
+    await admin.query(
+      "UPDATE practice_corpus_documents SET metadata = metadata - 'source_policy' WHERE canonical_url = $1",
+      [longUrl],
+    );
+    assert.equal(await corpusRuntime.validateRetainedCorpusWindow(
+      longListing._corpusWindow, {}, { items: longListing.rankedWindow },
+    ), false, "a missing current policy cannot authorize an older retained policy");
+    await admin.query(`
+      UPDATE practice_corpus_documents SET metadata = jsonb_set(metadata, '{source_policy}', $2::JSONB)
+      WHERE canonical_url = $1
+    `, [longUrl, JSON.stringify({
+      ...currentPolicy(nextAt), resourceKey: sourceResourceKey(longUrl), artifactHash: sha256(nextBody),
+    })]);
+
+    // A reviewed original needs no policy until a later read supplies one.
+    const reviewedUrl = urlOf("/et/mets/kinntatud");
+    const reviewedListing = await corpusRuntime.searchCorpus("markerkinnitatud", {
+      includeContent: true, preferSnapshot: false, returnRankedWindow: true,
+    });
+    const reviewedItem = reviewedListing.rankedWindow.find((item) => item.url === reviewedUrl);
+    assert.ok(reviewedItem?.content);
+    assert.equal(reviewedItem._sourcePolicy, undefined);
+    assert.equal(reviewedListing._corpusWindow.indexAllowed[
+      reviewedListing.rankedWindow.findIndex((item) => item.id === reviewedItem.id)
+    ], true);
+    assert.equal(await corpusRuntime.validateRetainedCorpusWindow(
+      reviewedListing._corpusWindow, {}, { items: reviewedListing.rankedWindow },
+    ), true);
+    const restrictedAt = new Date().toISOString();
+    const restrictedBody = "Värskelt loetud metsateave, mida ei tohi väljavõttena näidata.";
+    assert.equal(await hydration.persistHydratedCorpusDocument(admin, {
+      url: reviewedUrl,
+      title: reviewedItem.title,
+      content: restrictedBody,
+      contentHash: sha256(restrictedBody),
+      fetchedAt: restrictedAt,
+      metadata: {
+        hydrated: true,
+        source_kind: "official-page-hydration",
+        source_policy: {
+          ...currentPolicy(restrictedAt),
+          resourceKey: sourceResourceKey(reviewedUrl),
+          artifactHash: sha256(restrictedBody),
+          directives: { ...policy.directives, nosnippet: true },
+          use: { retainBody: true, indexBody: true, displaySnippet: false, answerEvidence: false },
+        },
+      },
+      runId: null,
+    }), true);
+    const restrictedRow = await admin.query(`
+      SELECT ${corpusStorage.corpusIndexPolicySql("document")} AS index_allowed
+      FROM practice_corpus_documents AS document WHERE canonical_url = $1
+    `, [reviewedUrl]);
+    assert.equal(restrictedRow.rows[0].index_allowed, true);
+    assert.equal(await corpusRuntime.validateRetainedCorpusWindow(
+      reviewedListing._corpusWindow, {}, { items: reviewedListing.rankedWindow },
+    ), false);
+
+    // A database error invalidates sibling windows and prevents an older
+    // in-flight write from putting a retained ID back into the cache.
+    const { createListingWindowCache } = await import(new URL("../server/listing_window.mjs", import.meta.url).href);
+    const { corpusListingWindows } = await import(new URL("../server/corpus_listing_state.mjs", import.meta.url).href);
+    const siblingCache = createListingWindowCache();
+    const binding = { query: "retainedlongtoken", filters: {}, windowId: longListing.windowId };
+    const generationBeforeError = siblingCache.generation();
+    const corpusGenerationBeforeError = corpusListingWindows.generation();
+    assert.equal(siblingCache.setWindow(binding, { windowId: longListing.windowId }), true);
+    assert.ok(siblingCache.getWindow(binding));
+    await admin.query("ALTER TABLE practice_corpus_documents RENAME TO practice_corpus_documents_validation_fixture");
+    try {
+      assert.equal(await corpusRuntime.validateRetainedCorpusWindow(
+        longListing._corpusWindow, {}, { items: longListing.rankedWindow },
+      ), false);
+    } finally {
+      await admin.query("ALTER TABLE practice_corpus_documents_validation_fixture RENAME TO practice_corpus_documents");
+    }
+    assert.equal(siblingCache.getWindow(binding), null);
+    assert.equal(siblingCache.setWindow(binding, { windowId: longListing.windowId }, {
+      expectedGeneration: generationBeforeError,
+    }), false);
+    assert.equal(corpusListingWindows.set("pre-error-write", longListing._corpusWindow, {
+      expectedGeneration: corpusGenerationBeforeError,
+    }), false);
+    const afterError = await corpusRuntime.searchCorpus("retainedlongtoken", {
+      includeContent: true, preferSnapshot: false, returnRankedWindow: true,
+    });
+    assert.notEqual(afterError.windowId, longListing.windowId);
+    assert.equal(afterError.items.find((item) => item.url === longUrl)?.content, nextBody);
+
+    const retained = firstListingPage._corpusWindow;
+    const retainedItems = firstListingPage.rankedWindow;
+    assert.equal(await corpusRuntime.validateRetainedCorpusWindow(retained, {}, { items: retainedItems }), true);
+
+    const hydratedUrl = expectedListingUrls[0];
+    const hydratedBody = "Uuendatud metsateabe sisu ".repeat(8);
+    assert.equal(await hydration.persistHydratedCorpusDocument(admin, {
+      url: hydratedUrl,
+      title: "listingwindowtoken",
+      content: hydratedBody,
+      contentHash: sha256(hydratedBody),
+      metadata: {},
+      runId: null,
+    }), true);
+    assert.equal(await corpusRuntime.validateRetainedCorpusWindow(retained, {}, { items: retainedItems }), true);
+    await admin.query("UPDATE practice_corpus_documents SET is_available = FALSE WHERE canonical_url = $1", [hydratedUrl]);
+    assert.equal(await corpusRuntime.validateRetainedCorpusWindow(retained, {}, { items: retainedItems }), false);
+    await admin.query(`
+      UPDATE practice_corpus_documents
+      SET is_available = TRUE, metadata = metadata || '{"robots_noindex": true}'::JSONB
+      WHERE canonical_url = $1
+    `, [hydratedUrl]);
+    assert.equal(await corpusRuntime.validateRetainedCorpusWindow(retained, {}, { items: retainedItems }), false);
   } finally {
     await admin?.end().catch(() => undefined);
     // Only the container this run created is removed. A failed start, including

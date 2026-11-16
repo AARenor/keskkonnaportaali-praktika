@@ -1120,6 +1120,8 @@ test("forest only listings carry a usable ranked window onto page two", async ()
     assert.equal(published.hasMore, true);
     assert.ok(published.queryRevision);
     assert.ok(published.windowId);
+    const { corpusListingWindows } = await import("../server/corpus_listing_state.mjs");
+    corpusListingWindows.clearFreshness();
 
     const second = await prepareRankedSearchResults(query, {
       page: 2,
@@ -1133,5 +1135,6 @@ test("forest only listings carry a usable ranked window onto page two", async ()
     assert.equal(second.queryRevision, published.queryRevision);
     assert.equal(second.windowId, published.windowId);
     assert.ok(second.items.length);
+    assert.deepEqual(second.items.map((item) => item.id), first.evidenceCandidates.slice(12, 24).map((item) => item.id));
   });
 });
