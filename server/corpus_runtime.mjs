@@ -307,7 +307,7 @@ export async function validateRetainedCorpusWindow(window, filters, { signal, de
     const permissions = new Map(window.ids.map((id, index) => [String(id), Boolean(window.indexAllowed[index])]));
     const originals = new Map(items.map((item) => [item.id, item]));
     const valid = rows.length === window.ids.length && rows.every((row) => {
-      if (permissions.get(String(row.id)) !== Boolean(row.index_allowed)) return false;
+      if (permissions.get(String(row.id)) && !row.index_allowed) return false;
       const original = originals.get(`corpus-${row.id}`);
       if (!original) return true;
       const currentPolicy = row.metadata?.source_policy;

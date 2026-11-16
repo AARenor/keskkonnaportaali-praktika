@@ -134,6 +134,14 @@ export async function prepareRankedSearchResults(query, {
       || getBoundListingWindow(retrievalListingWindows, {
         query: acceptedQuery, filters: appliedFilters, includeContent: true, windowId: requestedWindowId,
       }) !== cached) {
+      console.info("Search result window expired:", JSON.stringify({
+        cacheHit: Boolean(cached),
+        corpusStatus: local?.status || "unavailable",
+        retainedStatus: cached?.corpusStatus || "missing",
+        retainedCorpus: Boolean(cached?.corpusWindow),
+        corpusValid: Boolean(corpusValid),
+        generationChanged: retrievalListingWindows.generation() !== retrievalWindowGeneration,
+      }));
       return expiredListingWindow({
         page: safePage,
         pageSize: safePageSize,

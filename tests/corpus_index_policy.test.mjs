@@ -937,6 +937,41 @@ test("copied text matches and ranks only under a current allowing index policy",
       longListing._corpusWindow, {}, { items: longListing.rankedWindow },
     ), true);
     const hydration = await import(new URL("../server/corpus_hydration.mjs", import.meta.url).href);
+
+    const pendingUrl = urlOf("/et/mets/retained_pending");
+    await insertRow(admin, {
+      externalId: "retained_pending", path: "/et/mets/retained_pending",
+      title: "retainedpendingtoken", content: "", fetchedAt,
+    });
+    const pendingListing = await corpusRuntime.searchCorpus("retainedpendingtoken", {
+      includeContent: true, preferSnapshot: false, returnRankedWindow: true,
+    });
+    const pendingItem = pendingListing.rankedWindow.find((item) => item.url === pendingUrl);
+    assert.ok(pendingItem);
+    assert.equal(Boolean(pendingItem.summary || pendingItem.content), false);
+    const pendingPosition = pendingListing._corpusWindow.ids.findIndex((id) => pendingItem.id === `corpus-${id}`);
+    assert.equal(pendingListing._corpusWindow.indexAllowed[pendingPosition], false);
+    const grantedAt = new Date().toISOString();
+    const grantedBody = "Nüüd kontrollitud ja lubatud metsateabe sisu.";
+    assert.equal(await hydration.persistHydratedCorpusDocument(admin, {
+      url: pendingUrl, title: "retainedpendingtoken", content: grantedBody,
+      contentHash: sha256(grantedBody), fetchedAt: grantedAt, runId: null,
+      metadata: {
+        hydrated: true, source_kind: "official-page-hydration",
+        source_policy: currentPolicy(grantedAt, {
+          resourceKey: sourceResourceKey(pendingUrl), artifactHash: sha256(grantedBody),
+        }),
+      },
+    }), true);
+    const grantedListing = await corpusRuntime.searchCorpus("retainedpendingtoken", {
+      includeContent: true, preferSnapshot: false, returnRankedWindow: true,
+    });
+    const grantedPosition = grantedListing._corpusWindow.ids.findIndex((id) => pendingItem.id === `corpus-${id}`);
+    assert.equal(grantedListing._corpusWindow.indexAllowed[grantedPosition], true);
+    assert.equal(await corpusRuntime.validateRetainedCorpusWindow(
+      pendingListing._corpusWindow, {}, { items: pendingListing.rankedWindow },
+    ), true, "newly permitted content must not expire the earlier title-only snapshot");
+
     const nextBody = "Värskendatud ametlik metsateave. ".repeat(30).trim();
     const nextAt = new Date().toISOString();
     assert.equal(await hydration.persistHydratedCorpusDocument(admin, {
