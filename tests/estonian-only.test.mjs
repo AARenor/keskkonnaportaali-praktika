@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { assessSearchQuery } from "../server/search_query_assessment.mjs";
+import { buildDiscoveryQueries, searchEnvironment } from "../server/search.mjs";
 import {
-  assessSearchQuery,
-  buildDiscoveryQueries,
   isMultilingualSearchEnabled,
   queryTerms,
   russianKeywordRoots,
-  searchEnvironment,
-} from "../server/search.mjs";
+} from "../server/search_query_terms.mjs";
 
 // Estonian-only contract (production default: MULTILINGUAL_SEARCH_ENABLED
 // unset/false). These tests force the flag off regardless of the outer

@@ -4,8 +4,8 @@ import test from "node:test";
 import { streamListingThenAnswer } from "../server/http-stream.mjs";
 import { answerDeadline, progressiveListingBudgetMs, searchDeadline } from "../server/request-budget.mjs";
 import { createSearchJobRun } from "../server/search_job_runner.mjs";
-import { JOB_BOUNDS, createSearchJobStore } from "../server/search_jobs.mjs";
-import { publicSearchListing } from "../server/retrieval.mjs";
+import { createSearchJobStore } from "../server/search_jobs.mjs";
+import { publicSearchListing } from "../server/retrieval_listing.mjs";
 import { SOURCE_POLICY_PRODUCT, observeSourcePolicy } from "../server/source_policy.mjs";
 
 // Behaviour of the detached job run with every collaborator injected: no

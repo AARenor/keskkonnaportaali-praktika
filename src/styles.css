@@ -1723,6 +1723,23 @@ h3 {
   font-size: 1rem;
   line-height: 1.62;
 }
+.answer-procedure-steps {
+  margin: 19px 0 0;
+  padding-inline-start: 1.5rem;
+}
+
+.answer-procedure-steps li {
+  padding-inline-start: 0.4rem;
+}
+
+.answer-procedure-steps li + li {
+  margin-top: 17px;
+}
+
+.answer-procedure-steps li::marker {
+  color: var(--brand-800);
+  font-weight: 700;
+}
 
 .app-update {
   display: flex;
@@ -2374,7 +2391,9 @@ h3 {
   align-items: end;
   gap: 9px;
   margin: 0 0 18px;
+  min-width: 0;
   border-block: 1px solid #dbe4e8;
+  border-inline: 0;
   padding: 14px 0;
 }
 
@@ -2581,6 +2600,11 @@ h3 {
 
 .broad-results__error {
   color: #8a2e35;
+}
+.broad-results__notice {
+  margin: 12px 0;
+  color: #526872;
+  font-size: 0.9rem;
 }
 
 .results-pagination {

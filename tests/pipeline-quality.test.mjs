@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { createPortalDraft, directEvidenceExtract, publicResponse, searchEnvironmentLive } from '../server/pipeline.mjs';
-import { officialServiceCatalogueDocuments } from '../server/search.mjs';
-import { publicSearchItem } from '../server/corpus.mjs';
+import { createPortalDraft, searchEnvironmentLive } from '../server/pipeline.mjs';
+import { comparisonAnswersQuery, directEvidenceExtract } from '../server/search_answer_evidence.mjs';
+import { publicResponse } from '../server/search_public_response.mjs';
+import { officialServiceCatalogueDocuments } from '../server/search_catalogue.mjs';
+import { publicSearchItem } from '../server/corpus_runtime.mjs';
 import { observeSourcePolicy } from '../server/source_policy.mjs';
 import { sourceResourceKey } from '../server/source-identity.mjs';
 
@@ -101,6 +103,17 @@ test('a fact-check answer keeps the source response, disputed headings and histo
   assert.match(response.answer.note, /mitte[\s\S]*tänase metsaseisu/iu);
   assert.equal(response.sources[0].url, source.url);
   assert.ok(response.sources[0].evidenceExcerpt.includes(registry.text.split('. ')[0]));
+});
+
+test('a sustainability correction does not stand in for a dated growth and harvest comparison', () => {
+  const source = officialServiceCatalogueDocuments().find(document => document.id === 'forest-balance-kaur-methodology');
+  assert.ok(source);
+  const conceptual = 'Suurem juurdekasvu number tõestab automaatselt kestliku metsamajanduse';
+  const dated = 'Kas 2023. aasta kogu juurdekasv oli raiemahust suurem ja kas see tõestab automaatselt kestlikku metsamajandust?';
+  const yearless = 'Kas kogu juurdekasv oli raiemahust suurem ja kas see tõestab automaatselt kestlikku metsamajandust?';
+  assert.equal(comparisonAnswersQuery(conceptual, source.content, 'forest-harvest-balance'), true);
+  assert.equal(comparisonAnswersQuery(dated, source.content, 'forest-harvest-balance'), false);
+  assert.equal(comparisonAnswersQuery(yearless, source.content, 'forest-harvest-balance'), false);
 });
 
 test('fact-check rendering cannot recycle a forest overview or an excluded historical source', async () => {

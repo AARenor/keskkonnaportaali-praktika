@@ -10,9 +10,9 @@
 //   2. the real schema, created by hydrateCorpusBacklog itself;
 //   3. deterministic rows inserted with SQL, so the only thing under test is the
 //      production selection and persistence code path;
-//   4. a canned HTTPS transport, installed before the corpus module is imported,
-//      so the robots.txt and page reads stay on this machine. An unexpected URL
-//      gets a 404 instead of a body, and no request reaches a real host.
+//   4. The canned HTTPS transport is installed before canonical hydration is
+//      imported, keeping page and robots reads on this machine. Unexpected URLs
+//      get 404s, and no request reaches a real host.
 //
 // The row shapes mirror what production recorded: fetched_at carries the time of
 // the last attempt, and metadata.hydration_attempted_at marks that attempt as a
@@ -42,8 +42,9 @@ import { createHash, randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { createServer } from "node:net";
 import { EventEmitter } from "node:events";
-import { createRequire } from "node:module";
+import { createRequire, syncBuiltinESMExports } from "node:module";
 import { observeSourcePolicy } from "../server/source_policy.mjs";
+import * as corpusParsing from "../server/corpus_document_parsing.mjs";
 import { sourceResourceKey } from "../server/source-identity.mjs";
 
 const require = createRequire(import.meta.url);
@@ -54,7 +55,8 @@ const POSTGRES_DATABASE = "keskkonnaportaal_practice";
 const FIXTURE_ORIGIN = "https://keskkonnaportaal.ee";
 const DAY_MS = 86_400_000;
 const MINIMUM_EVIDENCE_LENGTH = 80;
-const CORPUS_MODULE_URL = new URL("../server/corpus.mjs", import.meta.url).href;
+const CORPUS_HYDRATION_MODULE_URL = new URL("../server/corpus_hydration.mjs", import.meta.url).href;
+const CORPUS_RUNTIME_MODULE_URL = new URL("../server/corpus_runtime.mjs", import.meta.url).href;
 // A recorded run can name its container and loopback port so the exact
 // resources of that run are auditable afterwards. Teardown removes the container
 // by the id Docker returned, so a name override cannot delete anything this run
@@ -165,8 +167,8 @@ function removeContainer(identifier) {
   }
 }
 
-// The corpus transport uses node:https directly. Replacing that function before
-// the corpus module is imported keeps every robots.txt and page read in memory.
+// The public HTTPS module may already be loaded through corpusParsing. Sync the
+// patched Node HTTPS binding so every fixture read stays on this transport.
 function installCannedTransport() {
   const httpsModule = require("node:https");
   const originalRequest = httpsModule.request;
@@ -202,11 +204,13 @@ function installCannedTransport() {
     };
     return request;
   };
+  syncBuiltinESMExports();
   return {
     responses,
     requestedUrls,
     restore: () => {
       httpsModule.request = originalRequest;
+      syncBuiltinESMExports();
     },
   };
 }
@@ -408,10 +412,13 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
     process.env.DATABASE_SSL_MODE = "disable";
     process.env.SEARCH_HASH_SECRET = createHash("sha512").update("corpus-retry-quality-fixture").digest("base64");
     transport = installCannedTransport();
-    const corpus = await import(CORPUS_MODULE_URL);
+    const [corpusHydration, corpusRuntime] = await Promise.all([
+      import(CORPUS_HYDRATION_MODULE_URL),
+      import(CORPUS_RUNTIME_MODULE_URL),
+    ]);
 
     // A real backlog pass on an empty table creates the schema the fixtures need.
-    const primed = await corpus.hydrateCorpusBacklog({ limit: 20, concurrency: 1, delayMs: 0 });
+    const primed = await corpusHydration.hydrateCorpusBacklog({ limit: 20, concurrency: 1, delayMs: 0 });
     assert.equal(primed.status, "ready", "the isolated database must be reachable before the fixture rows are inserted");
 
     transport.responses.set(`${FIXTURE_ORIGIN}/robots.txt`, {
@@ -454,19 +461,19 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
       assert.ok(row.content.length >= MINIMUM_EVIDENCE_LENGTH, `${describeFixture(key)} must still hold the previously read body`);
       assert.match(row.content_hash, /^[a-f0-9]{64}$/u, `${describeFixture(key)} must hold a hashed body version`);
       assert.equal(row.is_available, true, `${describeFixture(key)} stays available as a route`);
-      const item = corpus.publicSearchItem(row, true);
+      const item = corpusRuntime.publicSearchItem(row, true);
       assert.equal(item._answerEvidenceEligible, false, `${describeFixture(key)} is route-only while its last attempt failed`);
       assert.equal(item.evidencePolicy, "route-only", `${describeFixture(key)} must not cite a failed refresh`);
     }
     assert.equal(beforeRow("retry-eight-days").content, PREVIOUS_BODY, "the 8 day old failure keeps the body that was read successfully before");
     assert.equal(beforeRow("retry-eight-days").content_hash, sha256(PREVIOUS_BODY), "the 8 day old failure keeps the body version read successfully before");
     for (const key of ["fresh-success", "aged-success"]) {
-      const item = corpus.publicSearchItem(beforeRow(key), true);
+      const item = corpusRuntime.publicSearchItem(beforeRow(key), true);
       assert.equal(item._answerEvidenceEligible, true, `${describeFixture(key)} starts as citable evidence`);
       assert.equal(item.evidencePolicy, "versioned", `${describeFixture(key)} starts with versioned evidence policy`);
     }
     assert.equal(beforeRow("noindex-page").content, "", "the noindex fixture stays route-only");
-    assert.equal(corpus.publicSearchItem(beforeRow("noindex-page"), true)._answerEvidenceEligible, false, "the noindex fixture is never answer evidence");
+    assert.equal(corpusRuntime.publicSearchItem(beforeRow("noindex-page"), true)._answerEvidenceEligible, false, "the noindex fixture is never answer evidence");
     assert.equal(beforeRow("missing-body").content, "", "the missing body fixture is route-only until a read succeeds");
     // Negative twin of the citable case: a body stored without the witness of its
     // own read has no publication proof, however fresh it is.
@@ -475,23 +482,23 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
       "the unwitnessed recent body is stored like any other body",
     );
     assert.equal(
-      corpus.publicSearchItem(beforeRow("unwitnessed-recent"), true).evidencePolicy,
+      corpusRuntime.publicSearchItem(beforeRow("unwitnessed-recent"), true).evidencePolicy,
       "route-only",
       "a recent hydrated body without a source use witness is route-only",
     );
     assert.equal(
-      corpus.publicSearchItem(beforeRow("unwitnessed-recent"), true)._answerEvidenceEligible,
+      corpusRuntime.publicSearchItem(beforeRow("unwitnessed-recent"), true)._answerEvidenceEligible,
       false,
       "a recent hydrated body without a source use witness is not answer evidence",
     );
     assert.equal(
-      corpus.publicSearchItem(beforeRow("unwitnessed-recent-failed"), true)._answerEvidenceEligible,
+      corpusRuntime.publicSearchItem(beforeRow("unwitnessed-recent-failed"), true)._answerEvidenceEligible,
       false,
       "an unwitnessed body whose last attempt failed is route-only too",
     );
 
     const runStartedAt = Date.now();
-    const run = await corpus.hydrateCorpusBacklog({ limit: 20, concurrency: 1, delayMs: 0 });
+    const run = await corpusHydration.hydrateCorpusBacklog({ limit: 20, concurrency: 1, delayMs: 0 });
     // A failed read is attempted twice by the transport retry, so compare the
     // distinct set of pages that were read.
     const requestedPages = [...new Set(transport.requestedUrls
@@ -563,7 +570,7 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
 
     // A successful refresh replaces the body and restores evidence rights.
     const refreshed = afterRow("retry-eight-days");
-    const expectedPage = corpus.extractReadablePage(
+    const expectedPage = corpusParsing.extractReadablePage(
       fixtureByKey.get("retry-eight-days").response.body,
       fixtureUrl("retry-eight-days"),
     );
@@ -571,7 +578,7 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
     assert.equal(refreshed.content_hash, sha256(expectedPage.content), "the stored body keeps its provenance hash");
     assert.ok(refreshed.fetched_at.getTime() >= runStartedAt - 5_000, "the retried row records the new read time");
     assert.equal(refreshed.metadata.source_kind, "official-page-hydration", "the refreshed row keeps its hydration provenance");
-    const refreshedItem = corpus.publicSearchItem(refreshed, true);
+    const refreshedItem = corpusRuntime.publicSearchItem(refreshed, true);
     assert.equal(refreshedItem._answerEvidenceEligible, true, "a successful refresh restores evidence rights");
     assert.equal(refreshedItem.evidencePolicy, "versioned", "a successful refresh is versioned evidence");
     assert.equal(refreshedItem._contentHash, refreshed.content_hash, "the citation points at the refreshed body version");
@@ -580,7 +587,7 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
     // the seven day window.
     const rehydrated = afterRow("unwitnessed-recent");
     assert.notEqual(rehydrated.metadata?.source_policy, undefined, "a re-read stores the source use witness");
-    const rehydratedItem = corpus.publicSearchItem(rehydrated, true);
+    const rehydratedItem = corpusRuntime.publicSearchItem(rehydrated, true);
     assert.equal(rehydratedItem._answerEvidenceEligible, true, "an unwitnessed body becomes citable after its own read");
     assert.equal(rehydratedItem.evidencePolicy, "versioned", "the re-read body is versioned evidence");
 
@@ -593,7 +600,7 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
     const failedAttemptAt = Date.parse(failed.metadata.hydration_attempted_at);
     assert.ok(Number.isFinite(failedAttemptAt) && failedAttemptAt >= runStartedAt - 5_000, "the failed retry records hydration_attempted_at");
     assert.equal(failed.is_available, true, "a failed refresh keeps the row available as a route");
-    const failedItem = corpus.publicSearchItem(failed, true);
+    const failedItem = corpusRuntime.publicSearchItem(failed, true);
     assert.equal(failedItem._answerEvidenceEligible, false, "a failed refresh leaves the body route-only");
     assert.equal(failedItem.evidencePolicy, "route-only", "a failed refresh is not versioned evidence");
     assert.equal(failedItem._contentHash, failed.content_hash, "the route still exposes the stored body version for inspection");
@@ -608,8 +615,8 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
       assert.deepEqual(untouched.metadata, original.metadata, `${describeFixture(key)} must keep its attempt metadata`);
       assert.equal(untouched.is_available, true, `${describeFixture(key)} stays available as a route`);
     }
-    assert.equal(corpus.publicSearchItem(afterRow("cooldown-six-days"), true)._answerEvidenceEligible, false, "a 6 day old failed refresh stays route-only");
-    assert.equal(corpus.publicSearchItem(afterRow("fresh-success"), true)._answerEvidenceEligible, true, "a 1 day old successful body stays citable");
+    assert.equal(corpusRuntime.publicSearchItem(afterRow("cooldown-six-days"), true)._answerEvidenceEligible, false, "a 6 day old failed refresh stays route-only");
+    assert.equal(corpusRuntime.publicSearchItem(afterRow("fresh-success"), true)._answerEvidenceEligible, true, "a 1 day old successful body stays citable");
 
     // The noindex row is never read and never rewritten.
     const noindex = afterRow("noindex-page");
@@ -619,7 +626,7 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
     assert.equal(noindex.fetched_at.getTime(), noindexBefore.fetched_at.getTime(), "the noindex row records no read");
     assert.deepEqual(noindex.metadata, noindexBefore.metadata, "the noindex row keeps its metadata");
     assert.equal(noindex.is_available, true, "the noindex row stays available as a route");
-    assert.equal(corpus.publicSearchItem(noindex, true)._answerEvidenceEligible, false, "the noindex row is never answer evidence");
+    assert.equal(corpusRuntime.publicSearchItem(noindex, true)._answerEvidenceEligible, false, "the noindex row is never answer evidence");
 
     // The remaining rows prove the pass really wrote to this database, so the
     // negative assertions above cannot pass on an idle run.
@@ -628,7 +635,7 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
       assert.ok(hydrated.content.length >= MINIMUM_EVIDENCE_LENGTH, `${describeFixture(key)} must be hydrated by the pass`);
       assert.ok(hydrated.fetched_at.getTime() >= runStartedAt - 5_000, `${describeFixture(key)} must record the new read time`);
       assert.equal(hydrated.metadata.hydrated, true, `${describeFixture(key)} must be marked hydrated`);
-      assert.equal(corpus.publicSearchItem(hydrated, true)._answerEvidenceEligible, true, `${describeFixture(key)} becomes citable evidence`);
+      assert.equal(corpusRuntime.publicSearchItem(hydrated, true)._answerEvidenceEligible, true, `${describeFixture(key)} becomes citable evidence`);
     }
 
     // Second phase: historical attempt markers that are not timestamps must not
@@ -671,7 +678,7 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
     });
     const beforeSecondRun = await readRows(admin);
     const secondRunStartedAt = Date.now();
-    const secondRun = await corpus.hydrateCorpusBacklog({ limit: 20, concurrency: 1, delayMs: 0 }).catch((error) => {
+    const secondRun = await corpusHydration.hydrateCorpusBacklog({ limit: 20, concurrency: 1, delayMs: 0 }).catch((error) => {
       assert.fail(`an unreadable hydration attempt marker aborted the whole backlog pass: ${error.message}`);
     });
     const secondRunPages = [...new Set(transport.requestedUrls
@@ -694,18 +701,18 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
     assert.equal(malformedFresh.fetched_at.getTime(), malformedFreshBefore.fetched_at.getTime(), "it records no read");
     assert.deepEqual(malformedFresh.metadata, malformedFreshBefore.metadata, "its metadata is left as it was");
     assert.equal(
-      corpus.publicSearchItem(malformedFresh, true)._answerEvidenceEligible,
+      corpusRuntime.publicSearchItem(malformedFresh, true)._answerEvidenceEligible,
       false,
       "an unreadable marker proves no successful refresh, so the stored body stays route-only",
     );
     const malformedEmpty = afterSecondRun.get(malformedEmptyUrl);
-    const malformedEmptyPageContent = corpus.extractReadablePage(malformedEmptyPage, malformedEmptyUrl).content;
+    const malformedEmptyPageContent = corpusParsing.extractReadablePage(malformedEmptyPage, malformedEmptyUrl).content;
     assert.equal(malformedEmpty.content, malformedEmptyPageContent, "the body-less row stores the freshly read body");
     assert.equal(malformedEmpty.metadata.hydration_attempted_at, undefined, "a successful read clears the unreadable marker");
     assert.equal(malformedEmpty.metadata.hydrated, true, "the refreshed row is marked hydrated");
     assert.ok(malformedEmpty.fetched_at.getTime() >= secondRunStartedAt - 5_000, "the refreshed row records the new read time");
     assert.equal(
-      corpus.publicSearchItem(malformedEmpty, true)._answerEvidenceEligible,
+      corpusRuntime.publicSearchItem(malformedEmpty, true)._answerEvidenceEligible,
       true,
       "the freshly read body is citable evidence",
     );
@@ -760,12 +767,12 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
     });
     const beforeThirdRun = await readRows(admin);
     assert.equal(
-      corpus.publicSearchItem(beforeThirdRun.get(refreshSixUrl), true)._answerEvidenceEligible,
+      corpusRuntime.publicSearchItem(beforeThirdRun.get(refreshSixUrl), true)._answerEvidenceEligible,
       true,
       "a six day old official body is still citable, so the refresh has to happen before the window closes",
     );
     const thirdRunStartedAt = Date.now();
-    const thirdRun = await corpus.hydrateCorpusBacklog({ limit: 20, concurrency: 1, delayMs: 0 });
+    const thirdRun = await corpusHydration.hydrateCorpusBacklog({ limit: 20, concurrency: 1, delayMs: 0 });
     const thirdRunPages = [...new Set(transport.requestedUrls
       .filter((href) => href.startsWith(FIXTURE_ORIGIN) && !href.endsWith("/robots.txt")))];
     assert.ok(
@@ -797,12 +804,12 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
 
     const afterThirdRun = await readRows(admin);
     const refreshedSix = afterThirdRun.get(refreshSixUrl);
-    const refreshedSixPageContent = corpus.extractReadablePage(refreshSixPage, refreshSixUrl).content;
+    const refreshedSixPageContent = corpusParsing.extractReadablePage(refreshSixPage, refreshSixUrl).content;
     assert.equal(refreshedSix.content, refreshedSixPageContent, "the 6 day old body is replaced with the freshly read body");
     assert.equal(refreshedSix.content_hash, sha256(refreshedSixPageContent), "the refreshed body carries its new version hash");
     assert.ok(refreshedSix.fetched_at.getTime() >= thirdRunStartedAt - 5_000, "the refreshed row records the new read time");
     assert.equal(
-      corpus.publicSearchItem(refreshedSix, true)._answerEvidenceEligible,
+      corpusRuntime.publicSearchItem(refreshedSix, true)._answerEvidenceEligible,
       true,
       "the refreshed body stays citable after the read",
     );
@@ -813,7 +820,7 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
     assert.equal(untouchedFive.fetched_at.getTime(), untouchedFiveBefore.fetched_at.getTime(), "a 5 day old body records no read");
     assert.deepEqual(untouchedFive.metadata, untouchedFiveBefore.metadata, "a 5 day old body keeps its metadata");
     assert.equal(
-      corpus.publicSearchItem(untouchedFive, true)._answerEvidenceEligible,
+      corpusRuntime.publicSearchItem(untouchedFive, true)._answerEvidenceEligible,
       true,
       "a 5 day old body stays citable without a new read",
     );
@@ -821,7 +828,7 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
     assert.equal(cooledFailure.content, beforeRow("cooldown-six-days").content, "the cooling failed row keeps its body");
     assert.equal(cooledFailure.fetched_at.getTime(), beforeRow("cooldown-six-days").fetched_at.getTime(), "the cooling failed row records no read");
     assert.equal(
-      corpus.publicSearchItem(cooledFailure, true)._answerEvidenceEligible,
+      corpusRuntime.publicSearchItem(cooledFailure, true)._answerEvidenceEligible,
       false,
       "the cooling failed row stays route-only",
     );
@@ -865,7 +872,7 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
       });
     }
     const fourthRunStartedAt = Date.now();
-    const fourthRun = await corpus.hydrateCorpusBacklog({ limit: 20, concurrency: 1, delayMs: 0 });
+    const fourthRun = await corpusHydration.hydrateCorpusBacklog({ limit: 20, concurrency: 1, delayMs: 0 });
     const fourthRunPages = [...new Set(transport.requestedUrls)]
       .filter((href) => !href.endsWith("/robots.txt"));
     assert.ok(
@@ -891,12 +898,12 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
     assert.equal(refused.metadata.hydrated, undefined, "the refused page is not marked hydrated");
     assert.equal(refused.is_available, true, "the refused page stays available as a route");
     assert.ok(refused.fetched_at.getTime() >= fourthRunStartedAt - 5_000, "the refused page records the attempt");
-    assert.equal(corpus.publicSearchItem(refused, true)._answerEvidenceEligible, false, "the refused page is never answer evidence");
+    assert.equal(corpusRuntime.publicSearchItem(refused, true)._answerEvidenceEligible, false, "the refused page is never answer evidence");
     const hydratedControl = afterFourthRun.get(controlPublisherUrl);
-    const controlPageContent = corpus.extractReadablePage(controlPage, controlPublisherUrl).content;
+    const controlPageContent = corpusParsing.extractReadablePage(controlPage, controlPublisherUrl).content;
     assert.equal(hydratedControl.content, controlPageContent, "the own-origin page stores its freshly read body");
     assert.equal(hydratedControl.content_hash, sha256(controlPageContent), "the own-origin body carries its version hash");
-    assert.equal(corpus.publicSearchItem(hydratedControl, true)._answerEvidenceEligible, true, "the own-origin page becomes citable evidence");
+    assert.equal(corpusRuntime.publicSearchItem(hydratedControl, true)._answerEvidenceEligible, true, "the own-origin page becomes citable evidence");
 
     // Fifth phase: the backlog settles robots.txt for the URL it was given, and
     // the transport may then follow an approved same-resource redirect from the
@@ -942,7 +949,7 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
       });
     }
     const fifthRunStartedAt = Date.now();
-    const fifthRun = await corpus.hydrateCorpusBacklog({ limit: 20, concurrency: 1, delayMs: 0 });
+    const fifthRun = await corpusHydration.hydrateCorpusBacklog({ limit: 20, concurrency: 1, delayMs: 0 });
     const fifthRunPages = [...new Set(transport.requestedUrls)]
       .filter((href) => !href.endsWith("/robots.txt"));
     assert.equal(fifthRun.status, "ready", "the backlog pass itself must complete");
@@ -968,18 +975,18 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
     assert.equal(refusedDestination.is_available, true, "the refused page stays available as a route");
     assert.ok(refusedDestination.fetched_at.getTime() >= fifthRunStartedAt - 5_000, "the refused page records the attempt");
     assert.equal(
-      corpus.publicSearchItem(refusedDestination, true)._answerEvidenceEligible,
+      corpusRuntime.publicSearchItem(refusedDestination, true)._answerEvidenceEligible,
       false,
       "the refused page is never answer evidence",
     );
 
     const hydratedDestination = afterFifthRun.get(allowedDestinationUrl);
-    const allowedDestinationContent = corpus.extractReadablePage(allowedDestinationPage, allowedDestinationUrl).content;
+    const allowedDestinationContent = corpusParsing.extractReadablePage(allowedDestinationPage, allowedDestinationUrl).content;
     assert.equal(hydratedDestination.content, allowedDestinationContent, "the allowed destination stores its freshly read body");
     assert.equal(hydratedDestination.content_hash, sha256(allowedDestinationContent), "the allowed body carries its version hash");
     assert.equal(hydratedDestination.metadata.hydrated, true, "the allowed destination is marked hydrated");
     assert.equal(
-      corpus.publicSearchItem(hydratedDestination, true)._answerEvidenceEligible,
+      corpusRuntime.publicSearchItem(hydratedDestination, true)._answerEvidenceEligible,
       true,
       "the allowed destination becomes citable evidence",
     );
@@ -1079,7 +1086,7 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
       });
     }
     const sixthRunStartedAt = Date.now();
-    const sixthRun = await corpus.hydrateCorpusBacklog({ limit: 20, concurrency: 1, delayMs: 0 });
+    const sixthRun = await corpusHydration.hydrateCorpusBacklog({ limit: 20, concurrency: 1, delayMs: 0 });
     const sixthRequests = [...transport.requestedUrls];
     t.diagnostic(`robots status requests: ${sixthRequests.join(" | ")}`);
     const sixthPages = [...new Set(sixthRequests.filter((href) => !href.endsWith("/robots.txt")))];
@@ -1097,12 +1104,12 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
           sixthPages.includes(policyCase.pageUrl),
           `${policyCase.label}: an absent policy file publishes no rule, so the page is read instead of the source being skipped`,
         );
-        const policyContent = corpus.extractReadablePage(policyCase.body, policyCase.pageUrl).content;
+        const policyContent = corpusParsing.extractReadablePage(policyCase.body, policyCase.pageUrl).content;
         assert.equal(policyRow.content, policyContent, `${policyCase.label}: the page body is stored`);
         assert.equal(policyRow.content_hash, sha256(policyContent), `${policyCase.label}: the stored body carries its version hash`);
         assert.equal(policyRow.metadata.hydrated, true, `${policyCase.label}: the row is marked hydrated`);
         assert.equal(
-          corpus.publicSearchItem(policyRow, true)._answerEvidenceEligible,
+          corpusRuntime.publicSearchItem(policyRow, true)._answerEvidenceEligible,
           true,
           `${policyCase.label}: the row becomes citable evidence`,
         );
@@ -1116,7 +1123,7 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
         assert.equal(policyRow.is_available, true, `${policyCase.label}: the closed row stays available as a route`);
         assert.ok(policyRow.fetched_at.getTime() >= sixthRunStartedAt - 5_000, `${policyCase.label}: the closed row records the attempt`);
         assert.equal(
-          corpus.publicSearchItem(policyRow, true)._answerEvidenceEligible,
+          corpusRuntime.publicSearchItem(policyRow, true)._answerEvidenceEligible,
           false,
           `${policyCase.label}: the closed row is never answer evidence`,
         );
@@ -1300,7 +1307,7 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
 
     const beforeSeventhRun = await readRows(admin);
     for (const entry of brokenCases) {
-      const item = corpus.publicSearchItem(beforeSeventhRun.get(entry.url), true);
+      const item = corpusRuntime.publicSearchItem(beforeSeventhRun.get(entry.url), true);
       if (entry.citableBefore) {
         // The witness names the canonical resource key itself, so delivery can bind
         // it without the redundant metadata field.
@@ -1316,17 +1323,17 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
       assert.equal(item._answerEvidenceEligible, false, `a witness that cannot bind to this row (${entry.key}) is not evidence`);
     }
     assert.equal(
-      corpus.publicSearchItem(beforeSeventhRun.get(expiredWitnessUrl), true)._answerEvidenceEligible,
+      corpusRuntime.publicSearchItem(beforeSeventhRun.get(expiredWitnessUrl), true)._answerEvidenceEligible,
       false,
       "an expired publisher decision is route-only",
     );
     assert.equal(
-      corpus.publicSearchItem(beforeSeventhRun.get(validWitnessUrl), true)._answerEvidenceEligible,
+      corpusRuntime.publicSearchItem(beforeSeventhRun.get(validWitnessUrl), true)._answerEvidenceEligible,
       true,
       "the control row with a bound witness starts citable",
     );
 
-    const seventhRun = await corpus.hydrateCorpusBacklog({ limit: 20, concurrency: 1, delayMs: 0 });
+    const seventhRun = await corpusHydration.hydrateCorpusBacklog({ limit: 20, concurrency: 1, delayMs: 0 });
     const seventhPages = [...new Set(transport.requestedUrls
       .filter((href) => href.startsWith(FIXTURE_ORIGIN) && !href.endsWith("/robots.txt")))];
     assert.equal(seventhRun.status, "ready", "the witness pass itself must complete");
@@ -1344,7 +1351,7 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
 
     const afterSeventhRun = await readRows(admin);
     for (const entry of brokenCases) {
-      const item = corpus.publicSearchItem(afterSeventhRun.get(entry.url), true);
+      const item = corpusRuntime.publicSearchItem(afterSeventhRun.get(entry.url), true);
       assert.equal(
         item.evidencePolicy,
         "versioned",
@@ -1354,12 +1361,12 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
       assert.notEqual(afterSeventhRun.get(entry.url).metadata.source_policy, null, `a re-read stores a bound witness (${entry.key})`);
     }
     assert.equal(
-      corpus.publicSearchItem(afterSeventhRun.get(expiredWitnessUrl), true)._answerEvidenceEligible,
+      corpusRuntime.publicSearchItem(afterSeventhRun.get(expiredWitnessUrl), true)._answerEvidenceEligible,
       false,
       "an expired decision keeps its body route-only until the age schedule reads it again",
     );
     assert.equal(
-      corpus.publicSearchItem(afterSeventhRun.get(validWitnessUrl), true).evidencePolicy,
+      corpusRuntime.publicSearchItem(afterSeventhRun.get(validWitnessUrl), true).evidencePolicy,
       "versioned",
       "the control row keeps its bound witness",
     );
@@ -1369,7 +1376,7 @@ test("the corpus backlog refreshes bodies before the seven day evidence window c
         `a valid restrictive witness (${control.key}) must not be retried`,
       );
       assert.equal(
-        corpus.publicSearchItem(afterSeventhRun.get(control.url), true).evidencePolicy,
+        corpusRuntime.publicSearchItem(afterSeventhRun.get(control.url), true).evidencePolicy,
         "route-only",
         `a valid restrictive witness (${control.key}) withholds copied use but stays witnessed`,
       );

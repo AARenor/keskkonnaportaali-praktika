@@ -1,25 +1,53 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { rankPublicSearchCandidates, withFocusedLawSection } from "../server/retrieval.mjs";
+import {
+  evidenceDocumentsFromListing,
+  publicSearchListing,
+} from "../server/retrieval_listing.mjs";
+import { prepareRankedSearchResults } from "../server/retrieval.mjs";
+import {
+  rankPublicSearchCandidates,
+  withFocusedLawSection,
+} from "../server/retrieval_ranking.mjs";
 import { FOREST_LAWS, currentForestLawDocuments, definesLawTerm, focusedLawSection, topicalLawSection, forestLawVersionStamp, parseLawSections, refreshForestLaws, resetForestLawsForTests, reviewedLawSummaryIsOutdated } from "../server/law-texts.mjs";
 import { asksOnlyForestAmount } from "../server/forest-series.mjs";
-import { officialServiceCatalogueDocuments, repeatsEarlierAnswer } from "../server/search.mjs";
-import { answersAskedConcept, answersPermissionQuestion, assessEvidence, assessSearchQuery, forestEvidenceIntent, composeScopeResponse, containsPrivatePersonLookup, composeSearchResponse, extractAnswersQuery, isForestRelatedQuery, isNonAnswerText } from "../server/search.mjs";
-import { attemptCheckCode, searchEnvironmentLive } from "../server/pipeline.mjs";
-import { assertAnswerAddressesQuery, joinListLead } from "../server/llm.mjs";
-import { blockedFollowUpAssessment, contextualRetrievalQuery, isContinuationFollowUp } from "../server/retrieval.mjs";
+import { officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
+import { assessEvidence, splitTextPassages } from "../server/search_evidence.mjs";
+import { forestEvidenceIntent } from "../server/search_query_terms.mjs";
+import {
+  assessSearchQuery,
+  isForestRelatedQuery,
+} from "../server/search_query_assessment.mjs";
+import { containsPrivatePersonLookup } from "../server/search_query_privacy.mjs";
+import {
+  composeScopeResponse,
+  composeSearchResponse,
+} from "../server/search_response.mjs";
+import { answersAskedConcept, answersPermissionQuestion, extractAnswersQuery, isNonAnswerText, namesDefinitionTerm, rawLawLeadAnswersQuery, repeatsEarlierAnswer } from "../server/answer_coverage.mjs";
+import { cardAnswersQueryWords, comparisonAnswersQuery } from "../server/search_answer_evidence.mjs";
+import { searchEnvironmentLive } from "../server/pipeline.mjs";
+import { attemptCheckCode } from "../server/search_public_response.mjs";
+import { assertAnswerAddressesQuery, joinListLead } from "../server/llm_answer_validation.mjs";
+import {
+  blockedFollowUpAssessment,
+  contextualRetrievalQuery,
+  isContinuationFollowUp,
+} from "../server/retrieval_context.mjs";
 
-// Forest-only contract (production default: ALL_ENVIRONMENT_SEARCH_ENABLED
-// unset/false). These tests force the flag off regardless of the outer
-// environment and restore it afterwards.
+// Forest-only contract uses both search flags unset/false.
+// These tests force both flags off, then restore the outer environment.
 async function withForestOnly(fn) {
-  const previous = process.env.ALL_ENVIRONMENT_SEARCH_ENABLED;
+  const previousAllEnvironment = process.env.ALL_ENVIRONMENT_SEARCH_ENABLED;
+  const previousMultilingual = process.env.MULTILINGUAL_SEARCH_ENABLED;
   delete process.env.ALL_ENVIRONMENT_SEARCH_ENABLED;
+  delete process.env.MULTILINGUAL_SEARCH_ENABLED;
   try {
     return await fn();
   } finally {
-    if (previous === undefined) delete process.env.ALL_ENVIRONMENT_SEARCH_ENABLED;
-    else process.env.ALL_ENVIRONMENT_SEARCH_ENABLED = previous;
+    if (previousAllEnvironment === undefined) delete process.env.ALL_ENVIRONMENT_SEARCH_ENABLED;
+    else process.env.ALL_ENVIRONMENT_SEARCH_ENABLED = previousAllEnvironment;
+    if (previousMultilingual === undefined) delete process.env.MULTILINGUAL_SEARCH_ENABLED;
+    else process.env.MULTILINGUAL_SEARCH_ENABLED = previousMultilingual;
   }
 }
 
@@ -27,6 +55,7 @@ const FOREST_QUERIES = [
   "mets", "Kui palju on Eestis metsamaad?", "lageraie lubatud pindala erametsas", "mis on metsateatis",
   "kas tohin oma metsast kutet votta", "kuuse-kooreüraski seire", "raiemaht 2023", "kas tohib puid raiuda",
   "mis on puidubilanss", "SMI tulemused", "männi osakaal", "aga kuusel?", "RMK raied", "kuivanud puud", "LULUCF süsinik",
+  "Mida loetakse lageraiks?",
 ];
 const OTHER_QUERIES = [
   "mis on ringmajandus", "suplusvee kvaliteet pirita", "homne ilm tallinnas", "jäätmete ringlussevõtu määr Eestis 2023",
@@ -314,7 +343,7 @@ test("a follow-up card that restates an earlier answer is caught, a new one is n
 });
 
 test("a follow-up data card with a new finding title is not a repeat of the same table sentence", async () => {
-  const { contextualRetrievalQuery: followUpQuery } = await import("../server/retrieval.mjs");
+  const { contextualRetrievalQuery: followUpQuery } = await import("../server/retrieval_context.mjs");
   const { harvestShareIntent } = await import("../server/harvest-share.mjs");
   const root = "kui suur osa raiest on lageraie";
   assert.equal(harvestShareIntent(followUpQuery(root, "aga harvendusraie?"))?.cutType.name, "Harvendusraie");
@@ -349,14 +378,24 @@ const LAW_XML = `<?xml version="1.0"?><oigusakt><metaandmed><vastuvoetud><aktiku
 <loige id="l0"><kuvatavNr><![CDATA[(4)]]></kuvatavNr><sisuTekst><tavatekst>Vääriselupaik on ala, kus haruldaste liikide esinemise tõenäosus on suur.</tavatekst></sisuTekst></loige>
 <loige id="l2"><kuvatavNr id="n"><![CDATA[(2)]]></kuvatavNr><muutmismarge id="x"><tavatekst>Kehtetu - </tavatekst></muutmismarge></loige>
 <loige id="l3"><kuvatavNr><![CDATA[(3)]]></kuvatavNr><sisuTekst><tavatekst>Rinnaspindala ei tohi olla väiksem kui:</tavatekst></sisuTekst><sisuTekst><HTMLKonteiner><![CDATA[<table><tr><td>mänd</td><td>16</td></tr></table>]]></HTMLKonteiner></sisuTekst></loige></paragrahv></oigusakt>`;
+const RAIEVANUS_LAW_XML = LAW_XML.replace(
+  "</oigusakt>",
+  `<paragrahv id="para29"><paragrahvNr>29</paragrahvNr><kuvatavNr><![CDATA[§ 29. ]]></kuvatavNr><paragrahvPealkiri id="p">Lageraie</paragrahvPealkiri><loige id="l41"><loigeNr ylaIndeks="1">4</loigeNr><kuvatavNr><![CDATA[(4¹)]]></kuvatavNr><sisuTekst><tavatekst>Puistu koosseisu põhjal kaalutud esimese rinde keskmise vanuse ja raievanuse arvutamise metoodika kehtestab </tavatekst><viide><kuvatavTekst>valdkonna eest vastutav minister</kuvatavTekst></viide><tavatekst> metsa majandamise eeskirjaga.</tavatekst></sisuTekst></loige></paragrahv></oigusakt>`,
+);
 
-function lawFeed({ inForce = "112052026020", starts = "2026-06-30T21:00:00Z", ends = "2032-12-30T22:00:00Z", agreed = inForce, status = 200 } = {}) {
+const CLEARCUT_LAW_XML = LAW_XML.replace(
+  "</oigusakt>",
+  `<paragrahv id="para29"><paragrahvNr>29</paragrahvNr><kuvatavNr><![CDATA[§ 29. ]]></kuvatavNr><paragrahvPealkiri id="p">Lageraie</paragrahvPealkiri><loige id="l1"><kuvatavNr><![CDATA[(1)]]></kuvatavNr><sisuTekst><tavatekst>Lageraie korral raiutakse raielangilt ühe aasta jooksul raie algusest arvates kõik puud, välja arvatud: 1) seemnepuudeks jäetavad 20–70 hajali või mõnepuuliste gruppidena paiknevat mändi, arukaske, saart, tamme, sangleppa, künnapuud või jalakat ühe hektari kohta ja elujõuline järelkasv; 3) säilikpuud ehk elustiku mitmekesisuse tagamiseks vajalikud puud või nende säilinud püstiseisvad osad tüvepuidu kogumahuga vähemalt viis tihumeetrit ühe hektari kohta, üle viie hektari suurusel raielangil vähemalt kümme tihumeetrit ühe hektari kohta.</tavatekst></sisuTekst></loige></paragrahv></oigusakt>`,
+);
+
+
+function lawFeed({ inForce = "112052026020", starts = "2026-06-30T21:00:00Z", ends = "2032-12-30T22:00:00Z", agreed = inForce, status = 200, xml = LAW_XML } = {}) {
   const calls = [];
   const fetchImpl = async (url) => {
     calls.push(url);
     const respond = (body) => ({ ok: status === 200, status, json: async () => body, text: async () => body });
     if (url.endsWith("/redaktsioonid")) return respond({ kehtivRedaktsioon: agreed });
-    if (url.endsWith("/blob-xml")) return respond(LAW_XML);
+    if (url.endsWith("/blob-xml")) return respond(xml);
     const title = FOREST_LAWS.find((law) => url.includes(law.actId))?.title || "Metsaseadus";
     return respond({ kehtivId: inForce, grupiId: 1, aktiParameetrid: { pealkiri: title, kehtivuseAlgus: starts, kehtivuseLopp: ends } });
   };
@@ -436,37 +475,97 @@ test("a question about one legal term gets the sentence defining it, not the sec
   assert.equal(focusedLawSection("hukkunud mets mõiste", [dead]).id, "d");
 });
 
-test("a rule question gets the law section its heading names, and only that one", () => {
-  const section = (id, summary, content) => ({ id, summary, content, _lawSection: true });
-  const roads = section("roads", "Metsa kokkuveoteed", "(1) Metsamaterjali kokkuveoks võib rajada kuni 4 m laiusi kokkuveoteid raielangil.");
-  const regrowth = section("regrowth", "Metsa uuenenuks lugemiseks nõutav puude minimaalne arv hektaril", "(1) Raiesmik loetakse uuenenuks, kui hektaril kasvab vähemalt 1600 puud.");
-  const grant = section("grant", "Erametsanduse toetamine", "(1) Erametsaomanikku toetatakse riigieelarvest.");
-  const sections = [roads, regrowth, grant, roads];
-  assert.equal(topicalLawSection("kui laiad tohivad kokkuveoteed langil olla", sections).id, "roads");
-  assert.equal(topicalLawSection("millal loetakse raiesmik uuenenuks, mitu puud peab hektaril kasvama", sections).id, "regrowth");
-  // The heading word alone is not enough: the section must also speak of the question.
-  assert.equal(topicalLawSection("kas erametsas tohib seenel käia ilma omaniku loata", sections), null);
-  // Forms of "mets" and units name no topic, and a statistic is not a rule.
-  assert.equal(topicalLawSection("kui palju on metsade tagavara hektaril", sections), null);
-  assert.equal(topicalLawSection("mitu kokkuveoteed rajati 2024. aastal langil", sections), null);
-  // A definition question keeps its own route.
-  assert.equal(topicalLawSection("mis on kokkuveotee", sections), null);
+test("definition, criteria, and permission queries focus different live law sections", () => {
+  const law = (anchor, title, content) => ({
+    id: `law-metsaseadus-${anchor}`,
+    title: `Metsaseadus ${title}`,
+    summary: title,
+    organization: "Riigi Teataja",
+    url: `https://www.riigiteataja.ee/akt/MS#${anchor}`,
+    content,
+    _lawSection: true,
+  });
+  const forest = law("para3", "§ 3. Mõisted", "(1) Mets on ökosüsteem, mis koosneb metsaalast ja seda hõlmavast elustikust. (2) Metsamaa on maa-ala, mille pindala ja puude kõrgus ning võrade liitus vastavad seaduse tingimustele. (3) Metsamaaks ei loeta seaduses nimetatud muid maa-alasid.");
+  const clearcut = law("para29", "§ 29. Lageraie", "(1) Lageraie korral raiutakse raielangil kõik puud raie algusest arvates ühe aasta jooksul. (4) Lageraie korral peab puistu vastama vanuse või diameetri tingimusele või jääma alla rinnaspindala või täiuse piirväärtuse.");
+
+  const forestDefinition = focusedLawSection("Mis on mets?", [forest]);
+  assert.match(forestDefinition._lawDefinition, /^Mets on ökosüsteem/u);
+  assert.match(focusedLawSection("metsa definitsioon", [forest])._lawDefinition, /^Mets on ökosüsteem/u);
+  assert.equal(definesLawTerm("metsa definitsioon", "Mets on paljude taimede kasvukoht ning loomade elupaik."), false);
+  assert.equal(definesLawTerm("metsa definitsioon", "Mets on ökosüsteem, mis koosneb metsamaast, taimestikust ja loomastikust."), true);
+  assert.equal(focusedLawSection("metsa definitsioon 1990. aastal", [forest]), null);
+  const forestCriteria = focusedLawSection("Mida loetakse metsaks?", [forest]);
+  assert.match(forestCriteria.content, /Metsamaa on maa-ala/u);
+  assert.match(forestCriteria.content, /Metsamaaks ei loeta/u);
+
+  const forestLandDefinition = focusedLawSection("Mis on metsamaa?", [forest]);
+  assert.match(forestLandDefinition._lawDefinition, /^Metsamaa on maa-ala/u);
+
+  const clearcutDefinition = focusedLawSection("Mis on lageraie?", [clearcut]);
+  assert.match(clearcutDefinition._lawDefinition, /^Lageraie korral raiutakse/u);
+  const clearcutCriteria = focusedLawSection("Mida loetakse lageraiks?", [clearcut]);
+  assert.match(clearcutCriteria._lawDefinition, /^Lageraie korral raiutakse/u);
+  assert.equal(focusedLawSection("Mis on lageraie mõju elurikkusele?", [clearcut]), null);
+  const conditions = focusedLawSection("Millal on lageraie lubatud?", [clearcut]);
+  assert.match(conditions.content, /^\(4\)/u);
+  assert.match(conditions.content, /vanuse või diameetri/u);
+  assert.doesNotMatch(conditions.content, /kõik puud raie algusest/u);
+
+  assert.equal(definesLawTerm("Mis on lageraie?", "Lageraie on lubatud."), false);
+  const unrelated = law("para3", "§ 3. Metsloomad", "(1) Metssiga on loom, kes elab metsas ja sööb taimi.");
+  assert.equal(focusedLawSection("Mis on mets?", [unrelated]), null);
 });
 
-test("a list lead and its first item are read as one answer", () => {
-  const joined = joinListLead({ intro: "Lageraie on lubatud puistus, mis vastab vähemalt ühele tingimusele:", intro_citations: [1], parts: [{ text: "Puistu täius on väiksem eeskirjaga kehtestatust.", citations: [2] }, { text: "Teine.", citations: [1] }] });
-  assert.equal(joined.intro, "Lageraie on lubatud puistus, mis vastab vähemalt ühele tingimusele: Puistu täius on väiksem eeskirjaga kehtestatust.");
-  assert.deepEqual(joined.intro_citations, [1, 2]);
-  assert.equal(joined.parts.length, 1);
-  const whole = { intro: "Kokkuveotee võib olla kuni 4 m lai.", intro_citations: [1], parts: [{ text: "Muu.", citations: [1] }] };
-  assert.equal(joinListLead(whole), whole);
-});
+test("public ranking keeps clearcut law evidence across inflected criteria queries", () => {
+  const definition = {
+    id: "clearcut-definition-fixture",
+    title: "Metsaseadus § 29. Lageraie",
+    summary: "Metsaseaduse § 29 kirjeldab lageraie tegevust.",
+    organization: "Riigi Teataja",
+    url: "https://www.riigiteataja.ee/akt/MS#para29",
+    content: "Lageraie korral raiutakse raielangilt ühe aasta jooksul kõik puud, välja arvatud seaduses määratud säilikpuud ja järelkasv.",
+    sourceTier: "official",
+    retrieval: "reviewed-official-source",
+    evidencePolicy: "claim-specific",
+    _answerEvidenceEligible: true,
+  };
+  const permission = {
+    id: "clearcut-permission-fixture",
+    title: "Raielangi tingimused",
+    summary: "Lageraielangi suurim lubatud pindala on 7 hektarit.",
+    organization: "Keskkonnaamet",
+    url: "https://keskkonnaamet.ee/metsandus/raie-tingimused",
+    content: "Lageraielangi suurim lubatud pindala on 7 hektarit. Lageraie tegemisel tuleb arvestada puistu vanuse ja diameetri tingimustega.",
+    sourceTier: "official",
+    retrieval: "reviewed-official-source",
+    evidencePolicy: "claim-specific",
+    _answerEvidenceEligible: true,
+  };
+  const candidates = evidenceDocumentsFromListing({ items: [permission, definition] });
+  assert.deepEqual(candidates.map((document) => document.id), [permission.id, definition.id]);
+  assert.equal(Object.hasOwn(definition, "_lawSection"), false);
 
-test("a width question is answered by a width and leaving trees by keeping them", () => {
-  assert.equal(assertAnswerAddressesQuery("Metsamaterjali kokkuveoks võib rajada kuni 4 m laiusi kokkuveoteid raielangil.", "kui laiad tohivad kokkuveoteed langil olla"), true);
-  assert.equal(assertAnswerAddressesQuery("Lageraielangil tuleb säilitada säilikpuid vähemalt viis tihumeetrit hektari kohta.", "kui palju sailikpuid peab lageraiel jatma"), true);
-  assert.throws(() => assertAnswerAddressesQuery("Raielangil tuleb raidmed koristada ühe aasta jooksul.", "kui laiad tohivad kokkuveoteed langil olla"));
-  assert.equal(assertAnswerAddressesQuery("Teatis tuleb esitada hoiuala valitsejale vähemalt üks kuu enne tööde alustamist.", "hoiuala teatis kui palju enne toid esitada"), true);
+  for (const query of ["Mis on lageraie?", "Mida loetakse lageraiks?", "Mida loetakse lageraieks?"]) {
+    const ranked = rankPublicSearchCandidates(query, candidates, { intentDocuments: candidates });
+    assert.equal(ranked[0]?.id, definition.id, query);
+  }
+
+  const conditions = rankPublicSearchCandidates(
+    "Millal on lageraie lubatud?",
+    candidates,
+    { intentDocuments: candidates },
+  );
+  assert.equal(conditions[0]?.id, permission.id);
+
+  const constrained = rankPublicSearchCandidates(
+    "Mida loetakse lageraieks Harjumaal kuuse metsas 2024?",
+    [definition],
+    { intentDocuments: [definition] },
+  );
+  assert.equal(constrained[0]?.id, definition.id);
+  assert.ok(constrained[0]._ranking.missingRoots.includes("2024"));
+  assert.ok(constrained[0]._ranking.missingRoots.some((root) => root.includes("harju")));
+  assert.ok(constrained[0]._ranking.missingRoots.some((root) => root.includes("kuus")));
 });
 
 test("vääriselupaik counts as a forest word", () => {
@@ -523,7 +622,7 @@ test("a page that cannot be cited does not stop the law from defining the term",
   }
 });
 
-test("a found law section reaches the model even when no passage can be shown on its own", async () => {
+test("a focused law answer cites the minister clause directly", async () => {
   resetForestLawsForTests();
   const minimums = FOREST_LAWS.map((law) => law.minimumSections);
   FOREST_LAWS.forEach((law) => { law.minimumSections = 1; });
@@ -531,25 +630,119 @@ test("a found law section reaches the model even when no passage can be shown on
     await refreshForestLaws({ fetchImpl: lawFeed().fetchImpl });
     const query = "kes kehtestab vääriselupaiga korra";
     const directory = officialServiceCatalogueDocuments();
+    const ministerClause = directory.find((document) => document.id === "law-metsaseadus-para23b1");
+    assert.ok(ministerClause);
+    assert.equal(ministerClause._lawSection, true);
+    assert.ok(ministerClause._lawVersionId);
+    assert.equal(ministerClause.organization, "Riigi Teataja");
+    assert.match(ministerClause.title, /^Metsaseadus\b/u);
+    const lawUrl = new URL(ministerClause.url);
+    assert.equal(lawUrl.pathname, "/akt/MS");
+    assert.equal(lawUrl.hash, "#para23b1");
+    assert.ok(ministerClause.content.length >= 40);
+    assert.ok(ministerClause._answerEvidenceEligible);
     const items = rankPublicSearchCandidates(query, directory, { intentDocuments: directory }).slice(0, 12);
     let modelCalls = 0;
     const result = await searchEnvironmentLive(query, {
       searchResults: { total: items.length, items },
       useCache: false,
       deadlineAt: Date.now() + 9_000,
-      generateAnswer: async () => { modelCalls += 1; return { answer: null, acceptedClaims: [], attempt: {} }; },
+      generateAnswer: async () => {
+        modelCalls += 1;
+        throw new Error("The directly supported law answer must not call the model");
+      },
     });
-    assert.equal(modelCalls, 1);
-    // Without a model answer the card still says plainly that there is none.
-    assert.equal(result.answer.eyebrow, "Vastust ei leitud");
+    assert.equal(result.answer.intro, "Vääriselupaiga korra kehtestab valdkonna eest vastutav minister määrusega ja see kehtib kogu Eestis.");
+    assert.equal(result.answer.format, "general");
+    assert.equal(modelCalls, 0);
+    const citation = result.answer.introCitations[0];
+    assert.ok(citation > 0);
+    assert.match(result.sources[citation - 1].url, /#para23b1$/u);
   } finally {
     FOREST_LAWS.forEach((law, index) => { law.minimumSections = minimums[index]; });
     resetForestLawsForTests();
   }
 });
 
+test("a second law authority answer follows the requested subject", async () => {
+  resetForestLawsForTests();
+  const minimums = FOREST_LAWS.map((law) => law.minimumSections);
+  FOREST_LAWS.forEach((law) => { law.minimumSections = 1; });
+  try {
+    await refreshForestLaws({ fetchImpl: lawFeed({ xml: RAIEVANUS_LAW_XML }).fetchImpl });
+    const query = "kes kehtestab raievanuse arvutamise metoodika";
+    const directory = officialServiceCatalogueDocuments();
+    const items = rankPublicSearchCandidates(query, directory, { intentDocuments: directory }).slice(0, 12);
+    const result = await searchEnvironmentLive(query, {
+      searchResults: { total: items.length, items },
+      useCache: false,
+      deadlineAt: Date.now() + 9_000,
+      generateAnswer: async () => { throw new Error("The directly supported law answer must not call the model"); },
+    });
+    assert.equal(result.answer.intro, "Puistu koosseisu põhjal kaalutud esimese rinde keskmise vanuse ja raievanuse arvutamise metoodika kehtestab valdkonna eest vastutav minister metsa majandamise eeskirjaga.");
+    assert.equal(result.answer.format, "general");
+    const citation = result.answer.introCitations[0];
+    assert.ok(citation > 0);
+    assert.match(result.sources[citation - 1].url, /#para29$/u);
+  } finally {
+    FOREST_LAWS.forEach((law, index) => { law.minimumSections = minimums[index]; });
+    resetForestLawsForTests();
+  }
+});
+
+test("clearcut criteria keeps its law citation with both search flags off", async () => {
+  await withForestOnly(async () => {
+    assert.notEqual(process.env.ALL_ENVIRONMENT_SEARCH_ENABLED, "true");
+    assert.notEqual(process.env.MULTILINGUAL_SEARCH_ENABLED, "true");
+    resetForestLawsForTests();
+    const minimums = FOREST_LAWS.map((law) => law.minimumSections);
+    FOREST_LAWS.forEach((law) => { law.minimumSections = 1; });
+    try {
+      await refreshForestLaws({ fetchImpl: lawFeed({ xml: CLEARCUT_LAW_XML }).fetchImpl });
+      const query = "Mida loetakse lageraiks?";
+      const directory = officialServiceCatalogueDocuments();
+      const items = rankPublicSearchCandidates(query, directory, { intentDocuments: directory }).slice(0, 12);
+      let modelCalls = 0;
+      const result = await searchEnvironmentLive(query, {
+        searchResults: { total: items.length, items },
+        useCache: false,
+        deadlineAt: Date.now() + 9_000,
+        recordSearch: async () => ({ status: "disabled" }),
+        generateAnswer: async () => {
+          modelCalls += 1;
+          throw new Error("a reviewed clearcut criteria answer must not call the model");
+        },
+      });
+      assert.equal(result.answer.format, "criteria");
+      assert.match(result.answer.intro, /Lageraie korral raiutakse raielangilt/u);
+      assert.equal(result.answer.parts.length, 1);
+      assert.equal(result.answer.parts[0].text, "1) seemnepuudeks jäetavad 20–70 hajali või mõnepuuliste gruppidena paiknevat mändi, arukaske, saart, tamme, sangleppa, künnapuud või jalakat ühe hektari kohta ja elujõuline järelkasv; 3) säilikpuud ehk elustiku mitmekesisuse tagamiseks vajalikud puud või nende säilinud püstiseisvad osad tüvepuidu kogumahuga vähemalt viis tihumeetrit ühe hektari kohta, üle viie hektari suurusel raielangil vähemalt kümme tihumeetrit ühe hektari kohta.");
+      assert.deepEqual(result.answer.introCitations, [1]);
+      assert.deepEqual(result.answer.parts[0].citations, [1]);
+      assert.equal(result.sources[0].id, "law-metsaseadus-para29");
+      assert.equal(result.sources[0].url, "https://www.riigiteataja.ee/akt/MS#para29");
+      assert.equal(modelCalls, 0);
+
+      const privacyResult = await searchEnvironmentLive("Jaan Tamme lageraie metsas omaniku nimi", {
+        useCache: false,
+        deadlineAt: Date.now() + 9_000,
+        recordSearch: async () => ({ status: "disabled" }),
+        generateAnswer: async () => {
+          modelCalls += 1;
+          throw new Error("a private lookup must not call the model");
+        },
+      });
+      assert.equal(privacyResult.answer.title, "Eraisiku andmeid otsing ei kuva");
+      assert.deepEqual(privacyResult.sources, []);
+      assert.equal(modelCalls, 0);
+    } finally {
+      FOREST_LAWS.forEach((law, index) => { law.minimumSections = minimums[index]; });
+      resetForestLawsForTests();
+    }
+  });
+});
+
 test("a law's numbered subsections are separate sentences, so a quote of one is not checked against the next", async () => {
-  const { splitTextPassages } = await import("../server/search.mjs");
   assert.deepEqual(
     splitTextPassages("(1) Seemnepuudeks jäetakse hea tüvevormiga puud. (2) Seemnepuud, mis ei ole säilikpuud, võib koristada."),
     ["(1) Seemnepuudeks jäetakse hea tüvevormiga puud.", "(2) Seemnepuud, mis ei ole säilikpuud, võib koristada."],
@@ -578,60 +771,56 @@ test("a law section naming the question's own subject reaches the model despite 
 });
 
 test("a source's own data year does not make a sentence that repeats the year win", async () => {
-  const { directEvidenceExtract } = await import("../server/pipeline.mjs");
+  const { directEvidenceExtract } = await import("../server/search_answer_evidence.mjs");
   const source = { id: "smi-x", title: "SMI", dataYear: "2025",
     content: "Okaspuu enamusega metsade osakaal metsade kogupindalast on 48% (1,13 miljonit hektarit). Probleemiks on okaspuumetsade vähenemine, viimase kümne aastaga (2016–2025) on nende pindala vähenenud." };
   assert.match(directEvidenceExtract("okaspuu enamusega metsade osakaal 2025", source), /^Okaspuu enamusega metsade osakaal .* 48%/u);
 });
 
-test("a broad topic overview is not shown as the answer to a narrower question about it", async () => {
+test("the final answer relevance gate accepts a broad SMI overview but rejects it for a species stock question", () => {
+  const source = officialServiceCatalogueDocuments()
+    .find((item) => item.id === "forest-smi-2025-presentation");
+  assert.ok(source, "the reviewed SMI 2025 presentation fixture must exist");
+  const text = "Uue metoodikaga oli metsamaa pindala 2 360,2 tuhat hektarit ehk 52,1% Eesti pindalast ning kasvava metsa tagavara 466 miljonit m³.";
+  assert.ok(source.content.includes(text), "the answer wording must come from the selected source");
+
+  assert.equal(
+    assertAnswerAddressesQuery(text, "Kui suur on Eesti metsamaa pindala ja kasvava metsa tagavara?"),
+    true,
+  );
+  assert.throws(() => assertAnswerAddressesQuery(text, "mis puuliigil on eesti metsades kõige suurem tagavara"));
+});
+
+test("notice, RMK price, county comparison and exception answers stay scoped", async (t) => {
   resetForestLawsForTests();
   const directory = officialServiceCatalogueDocuments();
+  const answerText = (answer) => [answer.intro, ...answer.parts.map((part) => part.text)].join(" ");
+  const startedAt = Date.now();
+  t.mock.method(Date, "now", () => startedAt);
+
   const ask = async (query) => {
     const items = rankPublicSearchCandidates(query, directory, { intentDocuments: directory }).slice(0, 12);
-    let modelCalls = 0;
-    const result = await searchEnvironmentLive(query, {
-      searchResults: { total: items.length, items },
-      useCache: false,
-      deadlineAt: Date.now() + 9_000,
-      generateAnswer: async () => { modelCalls += 1; return { answer: null, acceptedClaims: [], attempt: {} }; },
-    });
-    return { result, modelCalls };
-  };
-  // "Metsateatis" is the topic, the processing time is the question. The model
-  // still reads the sources, but the overview is not presented as the answer.
-  const narrow = await ask("kui kaua keskkonnaamet metsateatist menetleb");
-  assert.equal(narrow.modelCalls, 1);
-  assert.match(narrow.result.answer.intro, /Meil ei ole sellele küsimusele vastust/u);
-  assert.doesNotMatch(narrow.result.answer.note || "", /üldjuhise väljavõte/u);
-  // The model does not get the off-target overview as the lead it must keep,
-  // and a model answer that still repeats it is rejected too.
-  let modelStartingIntro = null;
-  const repeated = await (async () => {
-    const query = "mis puuliigil on eesti metsades kõige suurem tagavara";
-    const items = rankPublicSearchCandidates(query, directory, { intentDocuments: directory }).slice(0, 12);
     return searchEnvironmentLive(query, {
+      startedAt,
       searchResults: { total: items.length, items },
       useCache: false,
-      deadlineAt: Date.now() + 9_000,
-      generateAnswer: async (_query, draft) => {
-        modelStartingIntro = draft.answer.intro;
-        return { answer: { ...draft.answer, intro: draft.evidence.offTargetIntro }, acceptedClaims: [], attempt: { status: "ready", reason: "none" } };
-      },
+      deadlineAt: startedAt + 3_000,
+      recordSearch: () => {},
+      generateAnswer: async () => ({ answer: null, acceptedClaims: [], attempt: {} }),
     });
-  })();
-  assert.equal(modelStartingIntro, "");
-  assert.match(repeated.answer.intro, /Meil ei ole sellele küsimusele vastust/u);
-  // A broad match that only shares a word ("RMK") is not shown as the answer.
-  const broad = await ask("palju maksab rmk joulukuusk 1,5 meetrit");
-  assert.match(broad.result.answer.intro, /Meil ei ole sellele küsimusele vastust/u);
-  // A comparison word is covered by a card that states the comparison.
+  };
+  const notice = await ask("kui kaua keskkonnaamet metsateatist menetleb");
+  assert.deepEqual(notice.answer.introCitations, []);
+  assert.deepEqual(notice.answer.parts, []);
+  assert.doesNotMatch(answerText(notice.answer), /metsamaa pindala|metsatagavara|metsarikkamad maakonnad|2,36 miljonit hektarit|466 miljonit m3/iu);
+
+  const rmkPrice = await ask("palju maksab rmk joulukuusk 1,5 meetrit");
+  assert.doesNotMatch(answerText(rmkPrice.answer), /1\s*029\s*902|RMK hallatavat metsamaad/iu);
+
   const comparison = await ask("mis maakonnas on eestis koige rohkem metsa");
-  assert.match(comparison.result.answer.intro, /metsarikkamad maakonnad/u);
-  // A narrow topic answers what resolved it: cutting without a notice.
+  assert.match(comparison.answer.intro, /metsarikkamad maakonnad/u);
   const exception = await ask("kas metsaomanik vajab raieks luba");
-  assert.match(exception.result.answer.intro, /20 tihumeetrit/u);
-  assert.match(exception.result.answer.note || "", /üldjuhise väljavõte/u);
+  assert.match(exception.answer.intro, /20 tihumeetrit/u);
 });
 
 test("forest work and nature conservation in a forest are in scope, everyday topics are not", () => {
@@ -819,7 +1008,7 @@ test("law and time answers are recognised in the words the source uses", () => {
 
 test("a whole law list item copied word for word is complete; a cut one is not", async () => {
   const { buildEvidencePack } = await import("../server/evidence-pack.mjs");
-  const { validateGroundedAnswer } = await import("../server/llm.mjs");
+  const { validateGroundedAnswer } = await import("../server/llm_answer_validation.mjs");
   const query = "Kas võin riigimetsas marju ja seeni korjata?";
   const item = "(1) Avalik-õigusliku isiku omandis olevas metsas ja piiramata või tähistamata erametsas tohib: 1) viibida ja korjata marju, seeni ja pähkleid metsaomaniku huve põhjendamatult kahjustamata ning tuleohutusnõudeid järgides";
   const draft = {
@@ -845,11 +1034,12 @@ test("who asks and how they phrase it does not make the notice exception off-tar
     "Millal on lindude pesitsusperioodil raierahu?",
   ), true);
 });
-
-test("round 14 wrong answers: hectares, definitions, times, law paragraphs and comparisons", async () => {
-  const { answersAskedConcept, namesDefinitionTerm } = await import("../server/search.mjs");
-  // A vääriselupaik question was shown a Loodusdirektiiv source card after the
-  // model answer was rejected for not naming vääriselupaik.
+test("round 14 wrong answers: hectares, definitions, times, law paragraphs and comparisons", () => {
+  // A percentage does not answer a question for hectares.
+  assert.throws(() => assertAnswerAddressesQuery(
+    "Kõige metsarikkamad maakonnad on Hiiumaa, Valgamaa ja Ida-Virumaa, kus metsasus ulatub üle 60%.",
+    "Mitu hektarit riigimetsa on Ida-Virumaal?",
+  ), /hectares/u);
   assert.equal(answersAskedConcept(
     "Kui palju on Eestis vääriselupaiku ja kui suur on nende pindala?",
     "Loodusdirektiiv (92/43/EMÜ) on Euroopa Liidu looduskaitselist tegevust korraldav õigusakt.",
@@ -858,27 +1048,24 @@ test("round 14 wrong answers: hectares, definitions, times, law paragraphs and c
     "Kui palju on Eestis vääriselupaiku?",
     "Uuendatud määruse tulemusena suurenes vääriselupaikade koguarv.",
   ), true);
-  // "Mitu hektarit riigimetsa on Ida-Virumaal?" was answered with a metsasus percentage.
-  assert.throws(() => assertAnswerAddressesQuery(
-    "Kõige metsarikkamad maakonnad on Hiiumaa, Valgamaa ja Ida-Virumaa, kus metsasus ulatub üle 60%.",
-    "Mitu hektarit riigimetsa on Ida-Virumaal?",
-  ), /hectares/u);
-  // "Millal on raierahu?" was shown a map-layer sentence that names no time.
   assert.equal(answersAskedConcept("Millal on raierahu?", "Kihil on kuvatud raieliik ja aasta, millal tööd tehti."), false);
   assert.equal(answersAskedConcept("Millal on raierahu?", "Riigimetsas kestab raierahu 15. aprillist 15. juulini."), true);
-  // "Metsastamine, mida see seaduses tähendab" led with the law's scope paragraph.
   assert.equal(namesDefinitionTerm("metsastamine mida see seaduses tähendab", "(1) Käesolev seadus reguleerib metsanduse suunamist."), false);
   assert.equal(namesDefinitionTerm("metsastamine mida see seaduses tähendab", "Metsastamine käesoleva seaduse tähenduses on mittemetsamaale uue metsa rajamine."), true);
+  assert.equal(rawLawLeadAnswersQuery("Millal on raierahu?", "(1) Kihil on kuvatud raieliik ja aasta, millal tööd tehti."), false);
+  assert.equal(rawLawLeadAnswersQuery("Millal on raierahu?", "(1) Riigimetsas kestab raierahu 15. aprillist 15. juulini."), true);
+  const measureAndComparison = "kõige rohkem metsamaad hektarites";
+  assert.equal(comparisonAnswersQuery(measureAndComparison, "Kõige rohkem metsamaad on Hiiumaal, kokku 180 000 ha."), true);
+  assert.equal(comparisonAnswersQuery(measureAndComparison, "Kõige rohkem on Hiiumaal. Metsamaad on kokku 180 000 ha."), false);
+  assert.equal(cardAnswersQueryWords("Milline puuliik on kõige levinum?", "Mänd on Eestis kõige levinum puuliik."), true);
 });
 
-test("round 14 SMI questions reach the figure they ask about", async () => {
-  const { forestEvidenceIntent, answersAskedConcept } = await import("../server/search.mjs");
+test("round 14 SMI questions reach the figure they ask about", () => {
   const kind = (query) => forestEvidenceIntent(query)?.kind ?? null;
   assert.equal(kind("Kui palju metsa kasvab Eestis aastas juurde?"), "forest-increment-overview");
   assert.equal(kind("Kui suur osa Eesti metsast on riigimets?"), "forest-ownership-share");
   assert.equal(kind("kui palju metsast eestis on eramets"), "forest-ownership-share");
-  // A year the SMI 2025 table does not state, and other subjects, never fall
-  // back to the forest-area snapshot.
+  assert.equal(kind("Kui palju metsast Eestis on riigimets 2025?"), "forest-ownership-share");
   assert.equal(kind("kui palju metsast eestis on eramets 2023"), null);
   assert.equal(kind("Kui palju on Eestis Natura 2000 alasid metsamaal?"), null);
   assert.equal(kind("kui palju on yraskikahjustusega metsa juurde tulnud viimastel aastatel"), null);
@@ -886,4 +1073,65 @@ test("round 14 SMI questions reach the figure they ask about", async () => {
   assert.equal(kind("Kui palju on Eestis metsamaad?"), "forest-area");
   assert.equal(answersAskedConcept("kui palju metsast eestis on eramets",
     "Füüsiliste isikute metsamaad oli 618,223 ja juriidiliste isikute metsamaad 559,618 tuhat hektarit ehk eramaad kokku 1 177,841 tuhat hektarit ehk 49,9%."), true);
+});
+
+test("a rule question gets the law section its heading names, and only that one", () => {
+  const section = (id, summary, content) => ({ id, summary, content, _lawSection: true });
+  const roads = section("roads", "Metsa kokkuveoteed", "(1) Metsamaterjali kokkuveoks võib rajada kuni 4 m laiusi kokkuveoteid raielangil.");
+  const regrowth = section("regrowth", "Metsa uuenenuks lugemiseks nõutav puude minimaalne arv hektaril", "(1) Raiesmik loetakse uuenenuks, kui hektaril kasvab vähemalt 1600 puud.");
+  const grant = section("grant", "Erametsanduse toetamine", "(1) Erametsaomanikku toetatakse riigieelarvest.");
+  const sections = [roads, regrowth, grant, roads];
+  assert.equal(topicalLawSection("kui laiad tohivad kokkuveoteed langil olla", sections)?.id, "roads");
+  assert.equal(topicalLawSection("millal loetakse raiesmik uuenenuks, mitu puud peab hektaril kasvama", sections)?.id, "regrowth");
+  assert.equal(topicalLawSection("kas erametsas tohib seenel käia ilma omaniku loata", sections), null);
+  assert.equal(topicalLawSection("kui palju on metsade tagavara hektaril", sections), null);
+  assert.equal(topicalLawSection("mitu kokkuveoteed rajati 2024. aastal langil", sections), null);
+  assert.equal(topicalLawSection("mis on kokkuveotee", sections), null);
+});
+
+test("a list lead and its first item are read as one answer", () => {
+  const joined = joinListLead({ intro: "Lageraie on lubatud puistus, mis vastab vähemalt ühele tingimusele:", intro_citations: [1], parts: [{ text: "Puistu täius on väiksem eeskirjaga kehtestatust.", citations: [2] }, { text: "Teine.", citations: [1] }] });
+  assert.equal(joined.intro, "Lageraie on lubatud puistus, mis vastab vähemalt ühele tingimusele: Puistu täius on väiksem eeskirjaga kehtestatust.");
+  assert.deepEqual(joined.intro_citations, [1, 2]);
+  assert.equal(joined.parts.length, 1);
+  const whole = { intro: "Kokkuveotee võib olla kuni 4 m lai.", intro_citations: [1], parts: [{ text: "Muu.", citations: [1] }] };
+  assert.equal(joinListLead(whole), whole);
+});
+
+test("a width question is answered by a width and leaving trees by keeping them", () => {
+  assert.equal(assertAnswerAddressesQuery("Metsamaterjali kokkuveoks võib rajada kuni 4 m laiusi kokkuveoteid raielangil.", "kui laiad tohivad kokkuveoteed langil olla"), true);
+  assert.equal(assertAnswerAddressesQuery("Lageraielangil tuleb säilitada säilikpuid vähemalt viis tihumeetrit hektari kohta.", "kui palju sailikpuid peab lageraiel jatma"), true);
+  assert.throws(() => assertAnswerAddressesQuery("Raielangil tuleb raidmed koristada ühe aasta jooksul.", "kui laiad tohivad kokkuveoteed langil olla"));
+  assert.equal(assertAnswerAddressesQuery("Teatis tuleb esitada hoiuala valitsejale vähemalt üks kuu enne tööde alustamist.", "hoiuala teatis kui palju enne toid esitada"), true);
+});
+
+test("forest only listings carry a usable ranked window onto page two", async () => {
+  await withForestOnly(async () => {
+    const query = "metsa ülevaade";
+    const first = await prepareRankedSearchResults(query, {
+      page: 1,
+      pageSize: 12,
+      deadlineAt: Date.now() + 15_000,
+      clientKey: "forest-only-pagination-regression",
+    });
+    const published = publicSearchListing(first);
+    assert.equal(published.page, 1);
+    assert.equal(published.pageCount, 2);
+    assert.equal(published.hasMore, true);
+    assert.ok(published.queryRevision);
+    assert.ok(published.windowId);
+
+    const second = await prepareRankedSearchResults(query, {
+      page: 2,
+      pageSize: 12,
+      windowId: published.windowId,
+      deadlineAt: Date.now() + 5_000,
+      clientKey: "forest-only-pagination-regression",
+    });
+    assert.equal(second.windowExpired, undefined);
+    assert.equal(second.page, 2);
+    assert.equal(second.queryRevision, published.queryRevision);
+    assert.equal(second.windowId, published.windowId);
+    assert.ok(second.items.length);
+  });
 });

@@ -2,7 +2,8 @@ import { createHmac } from "node:crypto";
 import pg from "pg";
 import { boundedChart, validPublicChart } from "./answer-chart.mjs";
 import { projectSourceCacheCopy } from "./source-registry.mjs";
-import { canonicalizePublicSearchQuery, containsPrivatePersonLookup } from "./search.mjs";
+import { canonicalizePublicSearchQuery } from "./search_query_canonicalization.mjs";
+import { containsPrivatePersonLookup } from "./search_query_privacy.mjs";
 import { deterministicCacheValue } from "./delivered-outcome.mjs";
 
 const { Pool } = pg;

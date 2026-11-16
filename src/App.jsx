@@ -1,8 +1,6 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
-  ArrowRight,
-  Building2,
   CalendarDays,
   CheckCircle2,
   ChevronDown,
@@ -11,40 +9,28 @@ import {
   CloudSun,
   ExternalLink,
   Facebook,
-  Globe2,
   Instagram,
   Layers3,
   Link2,
   LoaderCircle,
-  Map,
+  Map as MapIcon,
   MapPinned,
   Menu,
   Search,
-  ShieldCheck,
   Sparkles,
-  TreePine,
   X,
   Youtube,
 } from "lucide-react";
-import { safeExternalHref } from "./url-safety.js";
-import { citationColor, latestSourceUpdates, sourceDateMeta, sourceOrganizationLabel } from "./source-label.js";
-import {
-  REVIEWED_SEARCH_SUGGESTIONS,
-  shouldFetchRemoteSuggestions,
-  suggestionsForValue,
-} from "./search-suggestions.js";
-import { contextualSuggestions } from "./suggestion_context.js";
-import { searchWaitingMessage } from "./search-stream.js";
-import AnswerChart, { chartSourceDiffers } from "./AnswerChart.jsx";
-import { APP_BUILD_MISMATCH_EVENT, noteServerBuild } from "./app-build.js";
-import { DEFAULT_SEARCH_FILTERS, clientSearchFilters, followUpAnswerPayload, followUpRequestPayload, hasNoModelWording, isNoAnswerCard, isSourceOnlyCard, searchRequestPayload } from "./search_request.js";
 import { readSearchJob } from "./search_jobs.js";
-import { answerHeading } from "./answer_title.js";
+import { noteServerBuild } from "./app-build.js";
+import { DEFAULT_SEARCH_FILTERS, clientSearchFilters, searchRequestPayload } from "./search_request.js";
+import { searchHistory } from "./search_history.js";
+import SearchForm from "./SearchForm.jsx";
+import SearchResults from "./SearchResults.jsx";
+import { AnswerNote, Citation, ExternalAnchor, SourceActions, SourceLegend } from "./AnswerSources.jsx";
 import Chatbot from "./Chatbot.jsx";
 
 const SOURCE = "https://keskkonnaportaal.ee";
-const navigationSearches = new globalThis.Map();
-let navigationSearchCounter = 0;
 
 function legacySearchFromLocation(search = window.location.search) {
   const params = new URLSearchParams(search);
@@ -59,23 +45,11 @@ function legacySearchFromLocation(search = window.location.search) {
   };
 }
 
-function rememberNavigationSearch(query, filters) {
-  navigationSearchCounter += 1;
-  const id = `${Date.now().toString(36)}-${navigationSearchCounter.toString(36)}`;
-  navigationSearches.set(id, { query, filters: clientSearchFilters(filters) });
-  if (navigationSearches.size > 50) navigationSearches.delete(navigationSearches.keys().next().value);
-  return id;
-}
-
 function navigationSearch(state = window.history.state, search = window.location.search) {
-  const saved = navigationSearches.get(String(state?.practiceSearchId || ""));
-  if (saved && typeof saved === "object") {
-    return {
-      query: String(saved.query || "").trim(),
-      filters: clientSearchFilters(saved.filters),
-    };
-  }
-  return legacySearchFromLocation(search);
+  const id = String(state?.practiceSearchId || "");
+  const snapshot = id ? searchHistory.restore(id) : null;
+  if (snapshot) return { ...snapshot, id, snapshot };
+  return { ...legacySearchFromLocation(search), id, snapshot: null };
 }
 
 const navItems = [
@@ -302,214 +276,8 @@ function formatDate() {
   }).format(new Date());
 }
 
-function ExternalAnchor({ children, className, href, ...props }) {
-  const safeHref = safeExternalHref(href);
-  return (
-    <a {...props} aria-disabled={safeHref ? undefined : true} className={className} href={safeHref || undefined} target={safeHref ? "_blank" : undefined} rel={safeHref ? "noreferrer" : undefined}>
-      {children}
-    </a>
-  );
-}
 
-// Two spellings of the same question compare equal, so the results page still
-// recognises its own question after the reader retypes it with another case or
-// a missing diacritic.
-function comparableQuestion(value) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLocaleLowerCase("et")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .replace(/\s+/gu, " ")
-    .trim();
-}
 
-function SearchForm({ initialValue = "", onSearch, busy, variant = "hero", autoFocus = false, inputRef: providedInputRef, contextQuery = "" }) {
-  const listboxId = useId();
-  const internalInputRef = useRef(null);
-  const inputRef = providedInputRef || internalInputRef;
-  const [value, setValue] = useState(initialValue);
-  const [focused, setFocused] = useState(false);
-  const [remoteSuggestions, setRemoteSuggestions] = useState({ query: "", items: [] });
-  const [activeIndex, setActiveIndex] = useState(-1);
-  const suggestionRequestRef = useRef({ id: 0, controller: null });
-
-  useEffect(() => setValue(initialValue), [initialValue]);
-
-  useEffect(() => {
-    const query = value.trim();
-    suggestionRequestRef.current.controller?.abort();
-    const requestId = suggestionRequestRef.current.id + 1;
-    if (!shouldFetchRemoteSuggestions(query)) {
-      suggestionRequestRef.current = { id: requestId, controller: null };
-      setRemoteSuggestions({ query: "", items: [] });
-      return undefined;
-    }
-    const controller = new AbortController();
-    suggestionRequestRef.current = { id: requestId, controller };
-    const timer = window.setTimeout(async () => {
-      try {
-        const response = await fetch("/api/suggestions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ q: query }),
-          signal: controller.signal,
-        });
-        const data = await response.json();
-        if (response.ok
-          && Array.isArray(data.suggestions)
-          && suggestionRequestRef.current.id === requestId) {
-          setRemoteSuggestions({ query, items: data.suggestions });
-        }
-      } catch (error) {
-        if (error.name !== "AbortError" && suggestionRequestRef.current.id === requestId) {
-          setRemoteSuggestions({ query, items: [] });
-        }
-      }
-    }, 180);
-    return () => {
-      controller.abort();
-      window.clearTimeout(timer);
-      if (suggestionRequestRef.current.id === requestId) {
-        suggestionRequestRef.current = { id: requestId, controller: null };
-      }
-    };
-  }, [value]);
-
-  // On a results page the field carries the question the reader is looking at,
-  // so an idle or cleared field offers the reviewed questions that relate to
-  // that question instead of the same top-of-list on every page. Typing
-  // something else keeps the reviewed filter this field has always used.
-  const trimmedValue = value.trim();
-  const contextualField = Boolean(contextQuery)
-    && (!trimmedValue || comparableQuestion(trimmedValue) === comparableQuestion(contextQuery));
-  const suggestions = useMemo(() => {
-    if (contextualField) {
-      return contextualSuggestions({
-        candidates: REVIEWED_SEARCH_SUGGESTIONS,
-        query: trimmedValue,
-        rootQuery: contextQuery,
-        limit: 12,
-        allowDefault: false,
-      }).map((suggestion) => ({ value: suggestion, count: null }));
-    }
-    return suggestionsForValue(value, remoteSuggestions, REVIEWED_SEARCH_SUGGESTIONS, 12);
-  }, [contextQuery, contextualField, remoteSuggestions, trimmedValue, value]);
-
-  useEffect(() => setActiveIndex(-1), [value, suggestions.length]);
-
-  const chooseSuggestion = (suggestion) => {
-    setValue(suggestion.value);
-    setFocused(false);
-    setActiveIndex(-1);
-    onSearch(suggestion.value);
-  };
-
-  const submit = (event) => {
-    event.preventDefault();
-    if (activeIndex >= 0 && suggestions[activeIndex]) {
-      chooseSuggestion(suggestions[activeIndex]);
-      return;
-    }
-    if (value.trim()) {
-      suggestionRequestRef.current.controller?.abort();
-      setFocused(false);
-      setActiveIndex(-1);
-      onSearch(value.trim());
-    }
-  };
-
-  const handleKeyDown = (event) => {
-    if (!suggestions.length) return;
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      setFocused(true);
-      setActiveIndex((current) => (current + 1) % suggestions.length);
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      setFocused(true);
-      setActiveIndex((current) => (current <= 0 ? suggestions.length - 1 : current - 1));
-    } else if (event.key === "Escape") {
-      event.preventDefault();
-      setFocused(false);
-      setActiveIndex(-1);
-    }
-  };
-
-  return (
-    <form className={`search-form search-form--${variant}`} onSubmit={submit} role="search">
-      <div className="search-control">
-        <Search aria-hidden="true" className="search-control__leading" size={21} />
-        <input
-          ref={inputRef}
-          aria-activedescendant={activeIndex >= 0 ? `${listboxId}-option-${activeIndex}` : undefined}
-          aria-autocomplete="list"
-          aria-controls={focused && suggestions.length ? listboxId : undefined}
-          aria-expanded={Boolean(focused && suggestions.length)}
-          aria-label="Otsi keskkonnaandmeid"
-          autoComplete="off"
-          autoFocus={autoFocus}
-          onBlur={() => window.setTimeout(() => setFocused(false), 140)}
-          onChange={(event) => {
-            setValue(event.target.value);
-            setFocused(true);
-          }}
-          onFocus={() => setFocused(true)}
-          onKeyDown={handleKeyDown}
-          placeholder="Küsi keskkonnaandmete kohta …"
-          role="combobox"
-          value={value}
-        />
-        {value ? (
-          <button className="icon-button search-control__clear" onClick={() => {
-            setValue("");
-            setRemoteSuggestions({ query: "", items: [] });
-            inputRef.current?.focus();
-          }} type="button" aria-label="Tühjenda otsing">
-            <X size={19} />
-          </button>
-        ) : null}
-        <button
-          aria-label={busy ? "Otsin" : "Küsi"}
-          className="search-submit"
-          disabled={busy || !value.trim()}
-          type="submit"
-        >
-          {busy ? <LoaderCircle className="spin" size={19} /> : <Sparkles size={18} />}
-          <span>{busy ? "Otsin" : "Küsi"}</span>
-        </button>
-        {!busy && focused && suggestions.length ? (
-          <div className="search-suggestions">
-            <div className="search-suggestions__title" id={`${listboxId}-label`}>Soovitatud päringud</div>
-            <div aria-labelledby={`${listboxId}-label`} id={listboxId} role="listbox">
-              {suggestions.map((suggestion, index) => (
-                <button
-                  aria-selected={index === activeIndex}
-                  className={index === activeIndex ? "active" : ""}
-                  id={`${listboxId}-option-${index}`}
-                  key={suggestion.value}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => chooseSuggestion(suggestion)}
-                  role="option"
-                  tabIndex={-1}
-                  type="button"
-                >
-                  <Search size={16} />
-                  <span>{suggestion.value}</span>
-                  {suggestion.count ? <small>{suggestion.count} vastet</small> : null}
-                  <ArrowRight size={15} />
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
-      </div>
-      {variant === "hero" ? (
-        <p className="search-form__hint">Vastus esmalt, kasutatud ametlikud allikad kohe järel</p>
-      ) : null}
-    </form>
-  );
-}
 
 function Header({ compact = false, onRevealSearch }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -612,8 +380,8 @@ function Header({ compact = false, onRevealSearch }) {
               <h2>{megaMenus[megaMenu].title}</h2>
             </div>
             <div className="mega-menu__groups">
-              {megaMenus[megaMenu].groups.map((group, index) => (
-                <div key={index}>
+              {megaMenus[megaMenu].groups.map((group) => (
+                <div key={group[0]}>
                   {group.map((label) => (
                     <a key={label} href={`${SOURCE}/et/search?search_api_fulltext=${encodeURIComponent(label)}`}>
                       {label}<ChevronRight size={16} />
@@ -822,688 +590,8 @@ function Home({ onSearch, busy, searchInputRef }) {
   );
 }
 
-function citationSourceLabel(source) {
-  return sourceOrganizationLabel(source) || "Allikas";
-}
 
-// Shown once the server answers from a newer build than this page: the
-// page keeps working, but new answer parts (such as a chart kind it does not
-// know) only render after a reload.
-function UpdateNotice() {
-  const [available, setAvailable] = useState(false);
-  useEffect(() => {
-    const onMismatch = () => setAvailable(true);
-    window.addEventListener(APP_BUILD_MISMATCH_EVENT, onMismatch);
-    return () => window.removeEventListener(APP_BUILD_MISMATCH_EVENT, onMismatch);
-  }, []);
-  if (!available) return null;
-  return (
-    <div className="app-update" role="status">
-      <p>Otsingust on uus versioon. Laadi leht uuesti, et näha vastuse kõiki osi.</p>
-      <button onClick={() => window.location.reload()} type="button">Laadi uuesti</button>
-    </div>
-  );
-}
 
-function Citation({ number, sources = [] }) {
-  const source = sources.find((candidate) => Number(candidate.citation) === Number(number));
-  const label = citationSourceLabel(source);
-  const sourceTitle = source?.title || label;
-  return (
-    <ExternalAnchor
-      aria-label={`Allikas ${number}: ${sourceTitle}${safeExternalHref(source?.url) ? " (avaneb uuel vahelehel)" : ""}`}
-      className="citation"
-      style={{ "--citation-color": citationColor(number) }}
-      href={source?.url}
-      title={source
-        ? [
-          source.title,
-          sourceDateMeta(source),
-          source.evidenceExcerpt ? `Tõend: ${source.evidenceExcerpt.slice(0, 320)}` : "",
-          source.locator ? `Vaata: ${source.locator}` : "",
-        ].filter(Boolean).join(" — ")
-        : `Allikas ${number}`}
-    >
-      <span>{number}</span><span>{label}</span>
-    </ExternalAnchor>
-  );
-}
-
-export function SourceLegend({ sources = [], answer, chart }) {
-  if (!sources.length) return null;
-  const latest = latestSourceUpdates(sources);
-  return (
-    <>
-    <ul className="source-legend" aria-label="Allikate värvid ja kuupäevad">
-      {sources.map((source) => {
-        const row = (
-          <>
-            <span className="source-legend__number">{source.citation}</span>
-            <span title={source.title}>{citationSourceLabel(source)} <span className="source-legend__date">{sourceDateMeta({ updated: source.updated, published: source.published, dataYear: source.dataYear, dataAsOf: source.dataAsOf })}</span>
-              {latest.includes(source.citation) ? <strong title="Uusim teadaolev lehe muutmise kuupäev nende allikate seas; see ei ole andmeaasta. Teadmata kuupäevaga allikaid ei võrreldud."> · Uusim leheuuendus</strong> : null}
-            </span>
-          </>
-        );
-        const safeHref = safeExternalHref(source.url);
-        return (
-          <li key={source.citation} style={{ "--citation-color": citationColor(source.citation) }}>
-            {safeHref ? (
-              <ExternalAnchor
-                aria-label={`Allikas ${source.citation}: ${source.title || citationSourceLabel(source)} — ${sourceDateMeta(source)} (avaneb uuel vahelehel)`}
-                className="source-legend__link"
-                href={safeHref}
-              >
-                {row}
-                <ExternalLink aria-hidden="true" size={12} />
-              </ExternalAnchor>
-            ) : row}
-          </li>
-        );
-      })}
-    </ul>
-    </>
-  );
-}
-
-function SourceActions({ sources = [] }) {
-  const actions = sources
-    .filter((source) => safeExternalHref(source?.actionUrl) && String(source?.actionLabel || "").trim())
-    .filter((source, index, items) => items.findIndex((item) => item.actionUrl === source.actionUrl) === index);
-  if (!actions.length) return null;
-  return (
-    <div className="answer-actions" aria-label="Ametliku allika toimingud">
-      {actions.map((source) => (
-        <ExternalAnchor href={source.actionUrl} key={source.actionUrl}>
-          {source.actionLabel}<ExternalLink aria-hidden="true" size={15} />
-        </ExternalAnchor>
-      ))}
-    </div>
-  );
-}
-
-function isRedundantAnswerNote(note) {
-  return String(note || "").replace(/\s+/gu, " ").trim()
-    === "Vastuses kasutatakse ainult kuvatud ametlikke allikaid. Õigusliku või asukohapõhise otsuse puhul kontrolli alati algallikat.";
-}
-
-// One note renderer for the search page and the chat panel.
-function AnswerNote({ note }) {
-  if (!note || isRedundantAnswerNote(note)) return null;
-  return (
-    <div className="answer-note"><ShieldCheck size={18} /><p>{note}</p></div>
-  );
-}
-
-function sourceTierLabel(value) {
-  if (value === "reviewed") return "Kontrollitud";
-  if (value === "official") return "Ametlik";
-  if (value === "supplementary") return "Taustallikas";
-  return "Veebiallikas";
-}
-
-function BroadSearchResults({ listing, busy, error, onPage, onFilters, headingRef, interactive = true, onSearch = null, aiUnavailable = false, noAnswer = false, answerCited = false, unavailable = false, query = "" }) {
-  if (!listing && !busy) return null;
-  const total = Number(listing?.total || 0);
-  const distinctTotal = Number(listing?.distinctTotal || total);
-  const current = Number(listing?.page || 1);
-  const pageCount = Number(listing?.pageCount || 0);
-  const pages = [...new Set([1, current - 1, current, current + 1, pageCount])]
-    .filter((page) => page >= 1 && page <= pageCount)
-    .sort((left, right) => left - right);
-  const filters = clientSearchFilters(listing?.appliedFilters);
-  const categories = Array.isArray(listing?.facets?.categories) ? listing.facets.categories : [];
-  const years = Array.isArray(listing?.facets?.years) ? listing.facets.years : [];
-  const hasActiveFilters = filters.source !== "all" || filters.category || filters.year || filters.sort !== "relevance";
-  // A dead end still has somewhere to go, but only where the reader's own
-  // question leads: the reviewed questions that relate to it, and nothing at all
-  // when none of them does.
-  const emptyStateSuggestions = typeof onSearch === "function" && !busy && !error && !unavailable
-    && total === 0 && !hasActiveFilters
-    ? contextualSuggestions({
-      candidates: REVIEWED_SEARCH_SUGGESTIONS,
-      query,
-      rootQuery: query,
-      limit: 3,
-      allowDefault: false,
-    })
-    : [];
-  const changeFilter = (key, value) => onFilters({
-    ...filters,
-    [key]: key === "year" ? (value ? Number(value) : null) : value,
-  });
-  return (
-    <section className="broad-results" aria-labelledby="broad-results-title" aria-busy={busy}>
-      <div className="broad-results__heading">
-        <div>
-          <span className="broad-results__eyebrow">Lai portaaliotsing</span>
-          <h2 id="broad-results-title" ref={headingRef} tabIndex={-1}>Otsingutulemused</h2>
-          <p>{unavailable
-            ? "Tulemuste loendit ei saanud laadida. Vastusekaart jääb alles, kuid allikate loend vajab uut päringut."
-            : aiUnavailable
-            ? total
-              ? answerCited
-                ? "AI-sõnastust ei saanud koostada. Vastusekaart esitab allika enda viidatud väljavõtte."
-                : "AI-sõnastust ei saanud koostada. Leitud tulemused on loetletud siin."
-              : "AI-vastust ei saanud koostada. Laiast indeksist tulemusi ei leitud."
-            : noAnswer
-            ? total
-              ? "Vastust ei leitud. Leitud tulemused on loetletud siin."
-              : "Vastust ei leitud. Laiast indeksist tulemusi ei leitud."
-            : distinctTotal < total
-              ? `Leidsin ${total.toLocaleString("et-EE")} vastet ja ühendasin need ${distinctTotal.toLocaleString("et-EE")} eri leheks. Ülal olev koondvastus kasutab sama filtreeritud tulemuste hulka.`
-              : "Ülal olev koondvastus põhineb sama päringu filtreeritud ja järjestatud tulemustel."}</p>
-        </div>
-        {unavailable ? null : <strong>{total.toLocaleString("et-EE")}</strong>}
-      </div>
-      <div className="search-filters" aria-label="Otsingutulemuste filtrid" role="group">
-        <label>
-          <span>Allikas</span>
-          <select disabled={!interactive || busy} value={filters.source} onChange={(event) => changeFilter("source", event.target.value)}>
-            <option value="all">Kõik allikad</option>
-            <option value="trusted">Ametlikud ja kontrollitud</option>
-            <option value="official">Ametlikud</option>
-            <option value="supplementary">Taustallikad</option>
-            <option value="other">Muud veebiallikad</option>
-          </select>
-        </label>
-        <label>
-          <span>Sisutüüp</span>
-          <select disabled={!interactive || busy} value={filters.category} onChange={(event) => changeFilter("category", event.target.value)}>
-            <option value="">Kõik tüübid</option>
-            {categories.map((item) => <option key={item.value} value={item.value}>{item.value} ({item.count})</option>)}
-          </select>
-        </label>
-        <label>
-          <span>Aasta</span>
-          <select disabled={!interactive || busy} value={filters.year || ""} onChange={(event) => changeFilter("year", event.target.value)}>
-            <option value="">Kõik aastad</option>
-            {years.map((item) => <option key={item.value} value={item.value}>{item.value} ({item.count})</option>)}
-          </select>
-        </label>
-        <label>
-          <span>Järjestus</span>
-          <select disabled={!interactive || busy} value={filters.sort} onChange={(event) => changeFilter("sort", event.target.value)}>
-            <option value="relevance">Asjakohasemad enne</option>
-            <option value="newest">Uuemad asjakohased enne</option>
-          </select>
-        </label>
-        {hasActiveFilters ? <button className="filters-reset" disabled={!interactive || busy} onClick={() => onFilters(DEFAULT_SEARCH_FILTERS)} type="button">Lähtesta</button> : null}
-      </div>
-      {error ? <div className="broad-results__error" role="alert"><span>{error}</span><button className="error-retry" disabled={!interactive || busy} onClick={() => onPage(current)} type="button">Proovi uuesti</button></div> : null}
-      {busy ? <div className="broad-results__loading" role="status"><LoaderCircle className="spin" size={20} /> Laadin tulemusi …</div> : null}
-      {!busy && !error && listing?.items?.length ? (
-        <div className="broad-results__list">
-          {listing.items.map((item) => (
-            <ExternalAnchor className="broad-result" href={item.url} key={item.id}>
-              <div className="broad-result__meta">
-                <span className={`source-tier source-tier--${item.sourceTier || "other"}`}>{sourceTierLabel(item.sourceTier)}</span>
-                {sourceDateMeta(item) ? <span>{sourceDateMeta(item)}</span> : null}
-              </div>
-              <h3>{item.title}<ExternalLink size={15} /></h3>
-              {item.summary ? <p>{item.summary}</p> : null}
-              {item.locator ? <p className="broad-result__locator"><strong>Vaata allikast:</strong> {item.locator}</p> : null}
-              {item.topics?.length ? <div className="broad-result__topics">{item.topics.slice(0, 3).map((topic) => <span key={topic}>{topic}</span>)}</div> : null}
-            </ExternalAnchor>
-          ))}
-        </div>
-      ) : null}
-      {!busy && !error && unavailable ? (
-        <p className="broad-results__empty">Tulemuste loend jäi laadimata. Proovi otsingut uuesti, et allikad uuesti järjestada.</p>
-      ) : null}
-      {!busy && !error && !unavailable && total === 0 ? <><p className="broad-results__empty">{hasActiveFilters
-        ? `Laiast indeksist nende filtritega vasteid ei leitud (${[
-          filters.source !== "all" ? `allikas: ${filters.source}` : null,
-          filters.category ? `tüüp: ${filters.category}` : null,
-          filters.year ? `aasta: ${filters.year}` : null,
-        ].filter(Boolean).join(", ") || "filtrid"}). Proovi filtreid muuta või lähtestada.`
-        : "Laiast indeksist vasteid ei leitud."}</p>{emptyStateSuggestions.length ? <p className="broad-results__suggest">Proovi näiteks: {emptyStateSuggestions.map((example) => <button disabled={!interactive || busy} key={example} onClick={() => onSearch(example)} type="button">{example}</button>)}</p> : null}</> : null}
-      {pageCount > 1 ? (
-        <nav className="results-pagination" aria-label="Otsingutulemuste lehed">
-          <button disabled={!interactive || busy || current <= 1} onClick={() => onPage(current - 1)} type="button"><ArrowLeft size={15} /> Eelmine</button>
-          <div>
-            {pages.map((page, index) => (
-              <span key={page}>
-                {index > 0 && page - pages[index - 1] > 1 ? <i aria-hidden="true">…</i> : null}
-                <button aria-current={page === current ? "page" : undefined} disabled={!interactive || busy || page === current} onClick={() => onPage(page)} type="button">{page}</button>
-              </span>
-            ))}
-          </div>
-          <button disabled={!interactive || busy || current >= pageCount} onClick={() => onPage(current + 1)} type="button">Järgmine <ArrowRight size={15} /></button>
-        </nav>
-      ) : null}
-    </section>
-  );
-}
-
-function SearchLoadingSkeleton({ resultsReady = false, elapsedMs = 0 }) {
-  return (
-    <section aria-hidden="true" className="search-skeleton">
-      <div className="search-skeleton__status"><LoaderCircle className="spin" size={18} /><span>{searchWaitingMessage({ elapsedMs, listingReady: resultsReady })}</span></div>
-      <div aria-hidden="true" className="search-skeleton__answer">
-        <span className="skeleton-line skeleton-line--label" />
-        <span className="skeleton-line skeleton-line--title" />
-        <span className="skeleton-line skeleton-line--wide" />
-        <span className="skeleton-line skeleton-line--medium" />
-        <div className="search-skeleton__citations"><span /><span /><span /></div>
-      </div>
-    </section>
-  );
-}
-
-function SearchResults({ result, query, busy, error, onSearch, onHome, previewListing, listingUnavailable = false }) {
-  const hasResult = Boolean(result?.answer);
-  const [listing, setListing] = useState(result?.searchResults || previewListing || null);
-  const [listingBusy, setListingBusy] = useState(false);
-  const [listingError, setListingError] = useState("");
-  const [followUps, setFollowUps] = useState([]);
-  const [followUpValue, setFollowUpValue] = useState("");
-  const [followUpBusy, setFollowUpBusy] = useState(false);
-  const [pendingFollowUpQuestion, setPendingFollowUpQuestion] = useState("");
-  const [followUpError, setFollowUpError] = useState("");
-  const [pendingFollowUpListing, setPendingFollowUpListing] = useState(null);
-  const [waitingMs, setWaitingMs] = useState(0);
-  const [followUpWaitingMs, setFollowUpWaitingMs] = useState(0);
-  const headingRef = useRef(null);
-  const listingHeadingRef = useRef(null);
-  const followUpInputRef = useRef(null);
-  const listingRequestRef = useRef({ id: 0, controller: null });
-  const followUpRequestRef = useRef({ id: 0, controller: null });
-  useEffect(() => {
-    listingRequestRef.current.controller?.abort();
-    listingRequestRef.current = { id: listingRequestRef.current.id + 1, controller: null };
-    setListing(result?.searchResults || previewListing || null);
-    setListingBusy(false);
-    setListingError("");
-    return () => listingRequestRef.current.controller?.abort();
-  }, [previewListing, result?.query, result?.searchResults]);
-  useEffect(() => {
-    followUpRequestRef.current.controller?.abort();
-    followUpRequestRef.current = { id: followUpRequestRef.current.id + 1, controller: null };
-    setFollowUps([]);
-    setFollowUpValue("");
-    setFollowUpBusy(false);
-    setPendingFollowUpQuestion("");
-    setFollowUpError("");
-    return () => followUpRequestRef.current.controller?.abort();
-  }, [result?.generatedAt, result?.query]);
-  useEffect(() => {
-    if (!busy) {
-      setWaitingMs(0);
-      return undefined;
-    }
-    const startedAt = Date.now();
-    setWaitingMs(0);
-    const timer = window.setInterval(() => setWaitingMs(Date.now() - startedAt), 5_000);
-    return () => window.clearInterval(timer);
-  }, [busy]);
-  useEffect(() => {
-    if (!followUpBusy) {
-      setFollowUpWaitingMs(0);
-      return undefined;
-    }
-    const startedAt = Date.now();
-    setFollowUpWaitingMs(0);
-    const timer = window.setInterval(() => setFollowUpWaitingMs(Date.now() - startedAt), 5_000);
-    return () => window.clearInterval(timer);
-  }, [followUpBusy]);
-  useEffect(() => {
-    if (!busy && hasResult) {
-      document.title = "Otsingutulemused | Keskkonnaportaali praktika";
-      headingRef.current?.focus({ preventScroll: true });
-    }
-  }, [busy, hasResult, result?.answer?.title, result?.query]);
-  useEffect(() => {
-    if (followUpBusy || !followUps.length) return;
-    const latestHeading = document.getElementById(`followup-${followUps.length}-title`);
-    latestHeading?.focus({ preventScroll: true });
-    // The follow-up answer renders above the "Küsi veel" section: bring it
-    // into view so a related-question click visibly leads to its answer.
-    latestHeading?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-  }, [followUpBusy, followUps.length]);
-  const appliedFilters = clientSearchFilters(listing?.appliedFilters || result?.searchResults?.appliedFilters);
-  // "Küsi veel" belongs to the question the reader is on: the latest follow-up
-  // decides the ranking, the answer's own question and the follow-ups already
-  // asked are excluded, and a question that fits neither topic is dropped
-  // instead of padding the row.
-  const relatedQuestions = contextualSuggestions({
-    candidates: Array.isArray(result?.related) ? result.related : [],
-    query: followUps.length ? followUps[followUps.length - 1].question : result?.query || query || "",
-    rootQuery: result?.query || query || "",
-    priorQuestions: followUps.map((turn) => turn.question),
-    filters: appliedFilters,
-    limit: 12,
-    allowDefault: false,
-  });
-  const aiUnavailable = Boolean(result?.answer?.aiUnavailable);
-  const noAnswer = !aiUnavailable && isNoAnswerCard(result?.answer);
-  // A card that carries no model summary: the wording failed, or the server
-  // published the source records without a summary. Neither leads the results.
-  const noSummary = aiUnavailable || isSourceOnlyCard(result?.answer);
-  const listingLeads = (noSummary || noAnswer) && Number((listing || result?.searchResults || previewListing)?.items?.length || 0) > 0;
-  // A stream that ended without an answer card leaves no wording to show, so
-  // the listing header must not claim a summary sits above it either.
-  const wordingMissing = noSummary || Boolean(error && !hasResult);
-  const visibleListing = listing || result?.searchResults || previewListing;
-  // A fallback card is a status, not the answer. When the model wording is
-  // missing the ranked list leads, because that list is the product the reader
-  // came for and it already survived the failure.
-  const loadListingPage = async (page) => {
-    listingRequestRef.current.controller?.abort();
-    const id = listingRequestRef.current.id + 1;
-    const controller = new AbortController();
-    listingRequestRef.current = { id, controller };
-    setListingBusy(true);
-    setListingError("");
-    try {
-      const response = await fetch("/api/search/results", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(searchRequestPayload(query, appliedFilters, page, listing?.pageSize || 12)),
-        signal: controller.signal,
-      });
-      noteServerBuild(response);
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Tulemusi ei saanud laadida.");
-      if (listingRequestRef.current.id !== id) return;
-      setListing(data);
-      window.requestAnimationFrame(() => {
-        listingHeadingRef.current?.focus({ preventScroll: true });
-        listingHeadingRef.current?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-      });
-    } catch (listingLoadError) {
-      if (listingLoadError.name === "AbortError" || listingRequestRef.current.id !== id) return;
-      setListingError(listingLoadError.message || "Tulemusi ei saanud laadida.");
-    } finally {
-      if (listingRequestRef.current.id === id) {
-        listingRequestRef.current = { id, controller: null };
-        setListingBusy(false);
-      }
-    }
-  };
-  const applyFilters = (nextFilters) => {
-    listingRequestRef.current.controller?.abort();
-    onSearch(query, { filters: clientSearchFilters(nextFilters) });
-  };
-
-  const broadResults = (
-    <BroadSearchResults
-      busy={listingBusy}
-      error={listingError}
-      headingRef={listingHeadingRef}
-      // Filters and pagination belong to the listing's own request, not to the
-      // model answer: they stay usable while a slow answer is still running.
-      interactive={!listingBusy}
-      listing={visibleListing}
-      onFilters={applyFilters}
-      onPage={loadListingPage}
-      onSearch={onSearch}
-      aiUnavailable={wordingMissing}
-      noAnswer={noAnswer}
-      answerCited={Boolean(result?.answer?.introCitations?.length)}
-      unavailable={listingUnavailable}
-      query={query}
-    />
-  );
-  const askFollowUp = async (questionValue) => {
-    const cleanQuestion = String(questionValue || followUpValue).replace(/\s+/gu, " ").trim();
-    if (!cleanQuestion || busy || followUpBusy || followUps.length >= 4) return;
-    followUpRequestRef.current.controller?.abort();
-    const id = followUpRequestRef.current.id + 1;
-    const controller = new AbortController();
-    followUpRequestRef.current = { id, controller };
-    setFollowUpBusy(true);
-    setPendingFollowUpQuestion(cleanQuestion);
-    setPendingFollowUpListing(null);
-    setFollowUpError("");
-    setFollowUpValue("");
-    // Related questions live below the answer: scroll up at once so the
-    // pending state and the arriving answer are visible without hunting.
-    window.requestAnimationFrame(() => {
-      headingRef.current?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-    });
-    let latestListing = null;
-    let latestResult = null;
-    try {
-      // The follow-up runs as an asynchronous job too: its own listing arrives
-      // before the answer, so a slow model never hides the sources it already
-      // found and a search longer than one connection outlives it. The previous
-      // answers travel as comparison context only.
-      await readSearchJob({
-        kind: "follow-up",
-        payload: followUpRequestPayload({
-          rootQuery: result.query || query,
-          question: cleanQuestion,
-          previousQuestions: followUps.map((turn) => turn.question),
-          previousAnswers: [result, ...followUps.map((turn) => turn.result)].map(answerTextOf).filter(Boolean),
-          filters: appliedFilters,
-        }),
-        signal: controller.signal,
-        onResponse: (response) => noteServerBuild(response),
-        onEvent: (event) => {
-          if (followUpRequestRef.current.id !== id) return;
-          if (event.type === "results") {
-            latestListing = event.searchResults || null;
-            setPendingFollowUpListing(latestListing);
-            return;
-          }
-          latestResult = event.result;
-        },
-      });
-      if (followUpRequestRef.current.id !== id) return;
-      if (!latestResult) throw new Error("Jätkuküsimusele ei saanud vastata.");
-      const answer = followUpAnswerPayload(latestResult);
-      setFollowUps((current) => [...current, {
-        question: cleanQuestion,
-        result: answer,
-        listing: latestListing,
-      }].slice(0, 4));
-    } catch (followUpLoadError) {
-      if (followUpLoadError.name === "AbortError" || followUpRequestRef.current.id !== id) return;
-      setFollowUpValue(cleanQuestion);
-      const found = Number(latestListing?.items?.length || 0);
-      setFollowUpError(followUpLoadError.name === "Error" && latestResult
-        ? followUpLoadError.message
-        : found
-          ? `Koondvastust ei saanud koostada. Jätkuküsimusele leiti ${found} allikat, need on allpool loetletud.`
-          : followUpLoadError.message || "Jätkuküsimusele ei saanud vastata.");
-      if (latestListing?.items?.length) {
-        setFollowUps((current) => [...current, { question: cleanQuestion, result: null, listing: latestListing }].slice(0, 4));
-        setPendingFollowUpQuestion("");
-      }
-      window.requestAnimationFrame(() => followUpInputRef.current?.focus());
-    } finally {
-      if (followUpRequestRef.current.id === id) {
-        followUpRequestRef.current = { id, controller: null };
-        setFollowUpBusy(false);
-        setPendingFollowUpQuestion("");
-        setPendingFollowUpListing(null);
-      }
-    }
-  };
-  return (
-    <main className="search-page" id="main-content">
-      <div aria-atomic="true" aria-live="polite" className="sr-only">
-        {busy ? searchWaitingMessage({ elapsedMs: waitingMs, listingReady: Boolean(previewListing) }) : ""}
-      </div>
-      <div className="search-page__header">
-        <div className="shell search-results-shell">
-          <button className="back-link" onClick={onHome} type="button"><ArrowLeft size={17} /> Avalehele</button>
-          <SearchForm busy={busy} contextQuery={query} initialValue={query} onSearch={onSearch} variant="results" />
-          <UpdateNotice />
-        </div>
-      </div>
-      <div className="shell search-results-shell search-page__content">
-        {busy && !hasResult ? <SearchLoadingSkeleton elapsedMs={waitingMs} resultsReady={Boolean(previewListing)} /> : null}
-        {/* The listing that already reached the client leads: a failed stream
-            cannot withdraw it, so it renders before the notice that says what
-            is missing. */}
-        {!hasResult && previewListing ? (
-          <BroadSearchResults
-            busy={false}
-            error=""
-            headingRef={listingHeadingRef}
-            interactive={!listingBusy}
-            listing={listing || previewListing}
-            onFilters={applyFilters}
-            onPage={loadListingPage}
-            onSearch={onSearch}
-            aiUnavailable={wordingMissing}
-            noAnswer={noAnswer}
-            unavailable={listingUnavailable}
-            query={query}
-          />
-        ) : null}
-        {error ? <div className="search-error" role="alert"><CircleHelp size={22} /><div><strong>Otsingut ei saanud lõpetada</strong><p>{error}</p><button className="error-retry" disabled={busy} onClick={() => onSearch(query, { filters: appliedFilters })} type="button">Proovi uuesti</button></div></div> : null}
-        {hasResult ? (
-          <>
-            {listingLeads ? broadResults : null}
-            <article className="answer-card">
-              {busy ? <div className="answer-progress"><LoaderCircle className="spin" size={16} /> Kontrollin veel AI-sõnastust …</div> : null}
-              <div className="answer-label"><Sparkles size={17} /><span>{result.answer.eyebrow || "AI koondvastus"}</span></div>
-              <h1 ref={headingRef} tabIndex={-1}>{answerHeading(result, query)}</h1>
-              <p className="answer-intro">
-                {result.answer.intro}{" "}
-                {(result.answer.introCitations || []).map((citation) => <Citation key={citation} number={citation} sources={result.sources} />)}
-              </p>
-              {result.chart ? <AnswerChart chart={result.chart} citation={<Citation number={result.chart.citation} sources={result.sources} />} sourceDiffers={chartSourceDiffers(result.answer, result.chart, result.sources)} key={`${result.chart.title}-${result.chart.series.map((series) => series.id).join("|")}`} /> : null}
-              <div className="answer-parts">
-                {(result.answer.parts || []).map((part, index) => (
-                  <section key={index}>
-                    {part.title ? <h2>{part.title}</h2> : null}
-                    <p>{part.text} {(part.citations || []).map((citation) => <Citation key={citation} number={citation} sources={result.sources} />)}</p>
-                  </section>
-                ))}
-              </div>
-              <SourceActions sources={result.sources} />
-              <SourceLegend sources={result.sources} answer={result.answer} chart={result.chart} />
-              <AnswerNote note={result.answer.note} />
-              {result.clarification ? (
-                <div className="answer-clarification">
-                  <strong>Täpsusta soovi korral</strong>
-                  <p>{result.clarification}</p>
-                </div>
-              ) : null}
-              <div className="answer-followup">
-                {followUps.length || pendingFollowUpQuestion ? <div className="followup-thread">
-                  {followUps.map((turn, turnIndex) => {
-                    const turnAnswer = turn.result?.answer;
-                    // A card without model wording is a status, not the answer:
-                    // the follow-up's own listing leads it, and everything the
-                    // card does carry (its own label, cited wording, parts,
-                    // chart, legend, note) stays readable. Only a stream that
-                    // ended without any card falls back to a plain status.
-                    const noWording = hasNoModelWording(turnAnswer);
-                    const turnSources = noWording ? (turn.listing?.items || []).slice(0, 5) : [];
-                    const turnListing = turnSources.length ? (
-                      <div className="followup-answer">
-                        <span>Leitud allikad</span>
-                        <ul className="followup-sources">
-                          {turnSources.map((item) => (
-                            <li key={item.id || item.url}><ExternalAnchor href={item.url}>{item.title || item.url}</ExternalAnchor></li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null;
-                    if (!turnAnswer) {
-                      return (
-                        <section className="followup-turn" key={`${turn.question}-${turnIndex}`}>
-                          <div className="followup-question"><span>Teie</span><p>{turn.question}</p></div>
-                          {turnListing}
-                          <div className="followup-answer">
-                            <p className="followup-status" role="status">Koondvastust ei saanud koostada. Proovi sama küsimust uuesti.</p>
-                          </div>
-                        </section>
-                      );
-                    }
-                    return (
-                      <section className="followup-turn" key={`${turn.question}-${turnIndex}`}>
-                        <div className="followup-question"><span>Teie</span><p>{turn.question}</p></div>
-                        {noWording ? turnListing : null}
-                        <div className="followup-answer">
-                          <span>{noWording ? turnAnswer.eyebrow || "AI koondvastus" : "Koondvastus"}</span>
-                          <h2 id={`followup-${turnIndex + 1}-title`} tabIndex={-1}>{answerHeading(turn.result, turn.question)}</h2>
-                          <p>{turnAnswer.intro}{" "}{(turnAnswer.introCitations || []).map((citation) => <Citation key={citation} number={citation} sources={turn.result.sources} />)}</p>
-                          {turn.result.chart ? <AnswerChart chart={turn.result.chart} citation={<Citation number={turn.result.chart.citation} sources={turn.result.sources} />} sourceDiffers={chartSourceDiffers(turnAnswer, turn.result.chart, turn.result.sources)} key={`${turn.result.chart.title}-${turn.result.chart.series.map((series) => series.id).join("|")}`} /> : null}
-                          {(turnAnswer.parts || []).map((part, partIndex) => (
-                            <p key={partIndex}>{part.text}{" "}{(part.citations || []).map((citation) => <Citation key={citation} number={citation} sources={turn.result.sources} />)}</p>
-                          ))}
-                          <SourceActions sources={turn.result.sources} />
-                          <SourceLegend sources={turn.result.sources} answer={turnAnswer} chart={turn.result.chart} />
-                          {noWording ? <AnswerNote note={turnAnswer.note} /> : null}
-                        </div>
-                      </section>
-                    );
-                  })}
-                  {pendingFollowUpQuestion ? (
-                    <section aria-busy="true" className="followup-turn followup-turn--pending">
-                      <div className="followup-question"><span>Teie</span><p>{pendingFollowUpQuestion}</p></div>
-                      {pendingFollowUpListing?.items?.length ? (
-                        <div className="followup-answer">
-                          <span>Leitud allikad</span>
-                          <ul className="followup-sources">
-                            {pendingFollowUpListing.items.slice(0, 5).map((item) => (
-                              <li key={item.id || item.url}><ExternalAnchor href={item.url}>{item.title || item.url}</ExternalAnchor></li>
-                            ))}
-                          </ul>
-                        </div>
-                      ) : (
-                        <div aria-hidden="true" className="followup-answer followup-answer--skeleton">
-                          <span>Koondvastus</span>
-                          <i className="skeleton-line skeleton-line--medium" />
-                          <i className="skeleton-line skeleton-line--wide" />
-                          <i className="skeleton-line skeleton-line--short" />
-                        </div>
-                      )}
-                    </section>
-                  ) : null}
-                </div> : null}
-                <form className="followup-form" onSubmit={(event) => { event.preventDefault(); askFollowUp(); }}>
-                  <label htmlFor="answer-followup-input">Küsi selle vastuse kohta</label>
-                  <div>
-                    <input
-                      autoComplete="off"
-                      disabled={busy || followUpBusy || followUps.length >= 4}
-                      id="answer-followup-input"
-                      maxLength={180}
-                      onChange={(event) => setFollowUpValue(event.target.value)}
-                      placeholder={followUps.length >= 4 ? "Alusta uue otsinguga, et teemat jätkata" : "Näiteks: mida see viimase viie aasta jooksul tähendab?"}
-                      type="text"
-                      ref={followUpInputRef}
-                      value={followUpValue}
-                    />
-                    <button aria-label="Saada jätkuküsimus" disabled={busy || followUpBusy || !followUpValue.trim() || followUps.length >= 4} type="submit">
-                      {followUpBusy ? <LoaderCircle className="spin" size={18} /> : <ArrowRight size={18} />}
-                    </button>
-                  </div>
-                  {followUpError ? <p className="followup-error" role="alert">{followUpError}</p> : null}
-                  {followUpBusy ? (
-                    <p className="followup-status" role="status">
-                      {searchWaitingMessage({
-                        elapsedMs: followUpWaitingMs,
-                        listingReady: Boolean(pendingFollowUpListing?.items?.length),
-                        followUp: true,
-                      })}
-                    </p>
-                  ) : null}
-                </form>
-              </div>
-            </article>
-
-            {listingLeads ? null : broadResults}
-
-            {relatedQuestions.length ? (
-              <section className="related-section">
-                <h2>Küsi veel</h2>
-                <p>Vali küsimus—otsin sellele uued allikad ja seon vastuse praeguse teemaga.</p>
-                <div>{relatedQuestions.map((item) => <button disabled={busy || followUpBusy || followUps.length >= 4} key={item} onClick={() => askFollowUp(item)} type="button">{item}<ArrowRight size={16} /></button>)}</div>
-              </section>
-            ) : null}
-          </>
-        ) : null}
-      </div>
-    </main>
-  );
-}
 
 // This site is a practice project. It may not present another organisation's
 // accessibility statement or contact channel as its own, and it must not claim
@@ -1633,7 +721,7 @@ function TerrapointEmbed() {
         </form>
 
         {stage === "idle" ? (
-          <div className="tp-empty"><Map size={42} /><h1>Leia kinnistu andmed</h1><p>Alusta aadressist, vali sobiv katastriüksus ja vaata Terrapointi koondandmeid.</p></div>
+          <div className="tp-empty"><MapIcon size={42} /><h1>Leia kinnistu andmed</h1><p>Alusta aadressist, vali sobiv katastriüksus ja vaata Terrapointi koondandmeid.</p></div>
         ) : null}
 
         {stage.endsWith("loading") ? <div className="tp-loading"><LoaderCircle className="spin" /><span>{stage === "address-loading" ? "Otsin aadresse …" : "Laadin kinnistu andmeid …"}</span></div> : null}
@@ -1649,7 +737,7 @@ function TerrapointEmbed() {
         {stage === "parcel" && cadastro ? (
           <section className="tp-parcel">
             <div className="tp-parcel__top"><button onClick={() => { setParcel(null); setStage("addresses"); }} type="button"><ArrowLeft size={16} /> Tagasi</button><span><CheckCircle2 size={16} /> Andmed laaditud</span></div>
-            <div className="tp-map">{mapUrl ? <iframe src={mapUrl} title="Kinnistu asukoht OpenStreetMapis" loading="lazy" referrerPolicy="strict-origin-when-cross-origin" sandbox="allow-same-origin allow-scripts" /> : <Map size={38} />}</div>
+            <div className="tp-map">{mapUrl ? <iframe src={mapUrl} title="Kinnistu asukoht OpenStreetMapis" loading="lazy" referrerPolicy="strict-origin-when-cross-origin" sandbox="allow-same-origin allow-scripts" /> : <MapIcon size={38} />}</div>
             <div className="tp-parcel__title"><span className="eyebrow">Katastriüksus</span><h1>{cadastro.l_aadress || cadastro.number}</h1><code>{cadastro.number}</code></div>
             <div className="tp-stats">
               <div><span>Pindala</span><strong>{cadastro.pindala_ha ?? "–"} ha</strong></div>
@@ -1672,22 +760,66 @@ function answerTextOf(item) {
   return [item?.answer?.title, item?.answer?.intro, ...(item?.answer?.parts || []).map((part) => part?.text)].filter(Boolean).join(" ");
 }
 
-// The chat panel renders its answers with the search page's own parts, passed
-// in so the two renderings cannot drift apart and App stays their single owner.
 const CHAT_ANSWER_PARTS = Object.freeze({ AnswerNote, Citation, SourceActions, SourceLegend, ExternalAnchor });
 
 export function App() {
   const isEmbed = window.location.pathname.startsWith("/embed/terrapoint");
   const initialNavigation = navigationSearch();
+  const initialSnapshot = initialNavigation.snapshot;
+  const initialHistoryId = initialNavigation.id;
   const [view, setView] = useState(window.location.pathname.startsWith("/otsi") && initialNavigation.query ? "search" : "home");
   const [query, setQuery] = useState(initialNavigation.query);
-  const [result, setResult] = useState(null);
-  const [previewListing, setPreviewListing] = useState(null);
-  const [listingUnavailable, setListingUnavailable] = useState(false);
+  const [result, setResult] = useState(initialSnapshot?.result || null);
+  const [previewListing, setPreviewListing] = useState(initialSnapshot?.listing || null);
+  const [listingUnavailable, setListingUnavailable] = useState(initialSnapshot?.listingUnavailable === true);
+  const [searchFilters, setSearchFilters] = useState(initialNavigation.filters || DEFAULT_SEARCH_FILTERS);
+  const [listingNotice, setListingNotice] = useState(initialSnapshot?.listingNotice || "");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(initialSnapshot?.error || "");
+  const [historyId, setHistoryId] = useState(initialHistoryId);
   const searchRequestRef = useRef({ id: 0, controller: null });
+  const historyIdRef = useRef(initialHistoryId);
   const homeSearchInputRef = useRef(null);
+  const searchStateRef = useRef(null);
+
+  const snapshotFor = (values = {}) => {
+    const current = searchStateRef.current || {};
+    const id = values.id || historyIdRef.current;
+    const queryValue = values.queryValue ?? current.query ?? "";
+    const listingValue = values.listingValue === undefined ? current.previewListing || null : values.listingValue;
+    const resultValue = values.resultValue === undefined ? current.result || null : values.resultValue;
+    const filtersValue = values.filtersValue ?? current.filters;
+    const listingUnavailableValue = values.listingUnavailableValue === undefined
+      ? current.listingUnavailable === true
+      : values.listingUnavailableValue === true;
+    const errorValue = values.errorValue === undefined ? current.error || "" : values.errorValue;
+    const listingNoticeValue = values.listingNoticeValue ?? current.listingNotice ?? "";
+    const filters = clientSearchFilters(filtersValue || listingValue?.appliedFilters || resultValue?.searchResults?.appliedFilters);
+    const savedResult = resultValue && listingValue
+      ? { ...resultValue, searchResults: listingValue }
+      : resultValue;
+    const snapshot = {
+      query: queryValue,
+      filters,
+      listing: listingValue,
+      result: savedResult,
+      listingUnavailable: listingUnavailableValue,
+      error: errorValue,
+      listingNotice: listingNoticeValue,
+    };
+    if (values.scrollY !== undefined) snapshot.scrollY = values.scrollY;
+    else if (id === historyIdRef.current) snapshot.scrollY = window.scrollY;
+    return { id, snapshot };
+  };
+  const saveSnapshot = (values = {}) => {
+    const { id, snapshot } = snapshotFor(values);
+    if (id) searchHistory.update(id, snapshot);
+  };
+  const createSnapshot = (values = {}) => {
+    const { id, snapshot } = snapshotFor(values);
+    if (id) searchHistory.create(id, snapshot);
+  };
+  const saveSnapshotRef = useRef(saveSnapshot);
 
   const performSearch = async (nextQuery, control = {}) => {
     const clean = String(nextQuery || "").trim();
@@ -1696,23 +828,77 @@ export function App() {
     const pushState = options.pushState !== false;
     const filters = clientSearchFilters(options.filters || DEFAULT_SEARCH_FILTERS);
     const requestPayload = searchRequestPayload(clean, filters);
+    if (pushState && view === "search") saveSnapshot();
+    const activeHistoryId = pushState
+      ? searchHistory.createId()
+      : String(options.historyId || window.history.state?.practiceSearchId || historyIdRef.current || searchHistory.createId());
     searchRequestRef.current.controller?.abort();
     const requestId = searchRequestRef.current.id + 1;
     const controller = new AbortController();
     searchRequestRef.current = { id: requestId, controller };
+    historyIdRef.current = activeHistoryId;
+    setHistoryId(activeHistoryId);
     setQuery(clean);
+    setSearchFilters(filters);
     setView("search");
     setResult(null);
     setPreviewListing(null);
     setListingUnavailable(false);
     setBusy(true);
     setError("");
+    setListingNotice("");
     if (pushState) {
-      window.history.pushState({ practiceSearchId: rememberNavigationSearch(clean, filters) }, "", "/otsi");
+      window.history.pushState({ practiceSearchId: activeHistoryId }, "", "/otsi");
+    } else if (window.history.state?.practiceSearchId !== activeHistoryId) {
+      window.history.replaceState({ ...(window.history.state || {}), practiceSearchId: activeHistoryId }, "", "/otsi");
     }
+    createSnapshot({
+      id: activeHistoryId,
+      queryValue: clean,
+      filtersValue: filters,
+      listingValue: null,
+      resultValue: null,
+      listingUnavailableValue: false,
+      errorValue: "",
+      listingNoticeValue: "",
+      scrollY: 0,
+    });
     window.scrollTo({ top: 0, behavior: pushState ? "smooth" : "auto" });
     let latestListing = null;
     let latestSafeResult = null;
+    const persistStreamState = ({ listingValue, resultValue, listingUnavailableValue = false, errorValue = "" }) => {
+      const currentId = historyIdRef.current || activeHistoryId;
+      const currentState = searchStateRef.current || {};
+      const activeListing = currentId !== activeHistoryId
+        ? currentState.previewListing || listingValue
+        : listingValue;
+      const activeResult = resultValue && activeListing
+        ? { ...resultValue, searchResults: activeListing }
+        : resultValue;
+      saveSnapshot({
+        id: activeHistoryId,
+        queryValue: clean,
+        filtersValue: filters,
+        listingValue,
+        resultValue,
+        listingUnavailableValue,
+        errorValue,
+        listingNoticeValue: "",
+      });
+      if (currentId !== activeHistoryId) {
+        saveSnapshot({
+          id: currentId,
+          queryValue: clean,
+          filtersValue: filters,
+          listingValue: activeListing,
+          resultValue: activeResult,
+          listingUnavailableValue,
+          errorValue,
+          listingNoticeValue: "",
+        });
+      }
+      return { listing: activeListing, result: activeResult };
+    };
     try {
       // The search runs as an asynchronous job: the listing, then the answer,
       // arrive through short polls, so one slow model call no longer ends the
@@ -1726,27 +912,42 @@ export function App() {
           if (searchRequestRef.current.id !== requestId) return;
           if (event.type === "results") {
             latestListing = event.searchResults;
-            setPreviewListing(event.searchResults);
-            // A failed listing is reported as such, never as "no results".
+            const saved = persistStreamState({
+              listingValue: latestListing,
+              resultValue: latestSafeResult,
+              listingUnavailableValue: event.listingUnavailable === true,
+            });
+            setPreviewListing(saved.listing || null);
             setListingUnavailable(event.listingUnavailable === true);
             return;
           }
           const nextResult = event.result;
           latestSafeResult = nextResult;
           latestListing = nextResult.searchResults || latestListing;
-          setPreviewListing(latestListing || null);
-          setResult(nextResult);
+          const saved = persistStreamState({
+            listingValue: latestListing,
+            resultValue: nextResult,
+          });
+          setPreviewListing(saved.listing || null);
+          setResult(saved.result);
+          setListingUnavailable(false);
         },
       });
     } catch (searchError) {
       if (searchError.name === "AbortError" || searchRequestRef.current.id !== requestId) return;
-      if (latestSafeResult) setResult(latestSafeResult);
-      if (latestListing) setPreviewListing(latestListing);
-      setError(latestSafeResult
+      const message = latestSafeResult
         ? "Lõpliku sõnastuse voog katkes. Kuvan kontrollitud esialgset vastust ja juba leitud allikaid."
         : latestListing
           ? "Koondvastuse voog katkes. Juba leitud otsingutulemused on endiselt saadaval."
-          : searchError.message || "Serveriga ei saanud ühendust.");
+          : searchError.message || "Serveriga ei saanud ühendust.";
+      const saved = persistStreamState({
+        listingValue: latestListing,
+        resultValue: latestSafeResult,
+        errorValue: message,
+      });
+      setResult(saved.result);
+      setPreviewListing(saved.listing || null);
+      setError(message);
     } finally {
       if (searchRequestRef.current.id === requestId) {
         searchRequestRef.current = { id: requestId, controller: null };
@@ -1754,52 +955,146 @@ export function App() {
       }
     }
   };
+  const performSearchRef = useRef(performSearch);
+  useLayoutEffect(() => {
+    searchStateRef.current = { query, result, previewListing, listingUnavailable, busy, error, filters: searchFilters, listingNotice };
+    saveSnapshotRef.current = saveSnapshot;
+    performSearchRef.current = performSearch;
+  });
+
+  const selectResultPage = (listing, notice = "", previousScrollY = window.scrollY) => {
+    saveSnapshot({ scrollY: previousScrollY });
+    const filters = clientSearchFilters(listing?.appliedFilters || previewListing?.appliedFilters || searchFilters);
+    const nextNotice = typeof notice === "string" ? notice : "";
+    const nextId = searchHistory.createId();
+    const currentResult = searchStateRef.current.result;
+    const nextResult = currentResult ? { ...currentResult, searchResults: listing } : null;
+    historyIdRef.current = nextId;
+    setHistoryId(nextId);
+    setSearchFilters(filters);
+    setListingNotice(nextNotice);
+    setPreviewListing(listing);
+    if (nextResult) setResult(nextResult);
+    createSnapshot({
+      id: nextId,
+      queryValue: query,
+      filtersValue: filters,
+      listingValue: listing,
+      resultValue: nextResult,
+      listingUnavailableValue: listingUnavailable,
+      errorValue: error,
+      listingNoticeValue: nextNotice,
+      scrollY: window.scrollY,
+    });
+    window.history.pushState({ practiceSearchId: nextId }, "", "/otsi");
+  };
 
   useEffect(() => {
-    if (isEmbed) return undefined;
+    if (window.location.pathname.startsWith("/embed/terrapoint")) return undefined;
+    const previousRestoration = window.history.scrollRestoration;
+    if (previousRestoration) window.history.scrollRestoration = "manual";
+    let scrollFrame = 0;
+    const onScroll = () => {
+      if (scrollFrame) return;
+      scrollFrame = window.requestAnimationFrame(() => {
+        scrollFrame = 0;
+        if (historyIdRef.current) searchHistory.updateScroll(historyIdRef.current, window.scrollY);
+      });
+    };
     const initial = navigationSearch();
     if (window.location.pathname.startsWith("/otsi") && initial.query) {
-      window.history.replaceState({ practiceSearchId: rememberNavigationSearch(initial.query, initial.filters) }, "", "/otsi");
-      performSearch(initial.query, { pushState: false, filters: initial.filters });
+      historyIdRef.current = initial.id || historyIdRef.current;
+      if (initial.snapshot) {
+        setHistoryId(initial.id);
+        setQuery(initial.query);
+        setSearchFilters(initial.snapshot.filters || initial.filters || DEFAULT_SEARCH_FILTERS);
+        setListingNotice(initial.snapshot.listingNotice || "");
+        setResult(initial.snapshot.result || null);
+        setPreviewListing(initial.snapshot.listing || null);
+        setListingUnavailable(initial.snapshot.listingUnavailable === true);
+        setError(initial.snapshot.error || "");
+        document.title = "Otsingutulemused | Keskkonnaportaali praktika";
+        window.requestAnimationFrame(() => window.scrollTo({ top: initial.snapshot.scrollY || 0, behavior: "instant" }));
+      } else {
+        performSearchRef.current(initial.query, {
+          pushState: false,
+          filters: initial.filters,
+          historyId: initial.id,
+        });
+      }
     } else if (window.location.pathname.startsWith("/otsi")) {
       window.history.replaceState({}, "", "/");
     }
 
     const onPopState = (event) => {
+      const current = searchStateRef.current || {};
+      saveSnapshotRef.current({
+        errorValue: current.busy ? "Otsing katkestati lehelt lahkumisel. Varem saadud tulemused on alles." : current.error,
+      });
+      searchRequestRef.current.controller?.abort();
+      searchRequestRef.current = { id: searchRequestRef.current.id + 1, controller: null };
       const searchView = window.location.pathname.startsWith("/otsi");
-      setView(searchView ? "search" : "home");
       const next = navigationSearch(event.state);
+      setView(searchView && next.query ? "search" : "home");
       setQuery(next.query);
-      if (searchView && next.query) performSearch(next.query, { pushState: false, filters: next.filters });
-      else {
-        searchRequestRef.current.controller?.abort();
-        searchRequestRef.current = { id: searchRequestRef.current.id + 1, controller: null };
+      setSearchFilters(next.snapshot?.filters || next.filters || DEFAULT_SEARCH_FILTERS);
+      historyIdRef.current = next.id;
+      setHistoryId(next.id);
+      if (searchView && next.query && next.snapshot) {
+        setResult(next.snapshot.result || null);
+        setPreviewListing(next.snapshot.listing || null);
+        setListingUnavailable(next.snapshot.listingUnavailable === true);
+        setError(next.snapshot.error || "");
+        setListingNotice(next.snapshot.listingNotice || "");
         setBusy(false);
+        document.title = "Otsingutulemused | Keskkonnaportaali praktika";
+        window.requestAnimationFrame(() => window.scrollTo({ top: next.snapshot.scrollY || 0, behavior: "instant" }));
+      } else if (searchView && next.query) {
+        performSearchRef.current(next.query, { pushState: false, filters: next.filters, historyId: next.id });
+      } else {
+        if (searchView && !next.query) window.history.replaceState({}, "", "/");
+        setResult(null);
         setPreviewListing(null);
+        setListingUnavailable(false);
+        setError("");
+        setSearchFilters(DEFAULT_SEARCH_FILTERS);
+        setListingNotice("");
+        setBusy(false);
         document.title = "Keskkonnaportaali praktika";
+        window.scrollTo({ top: 0, behavior: "instant" });
       }
     };
+    window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("popstate", onPopState);
     return () => {
       searchRequestRef.current.controller?.abort();
+      window.removeEventListener("scroll", onScroll);
       window.removeEventListener("popstate", onPopState);
+      if (scrollFrame) window.cancelAnimationFrame(scrollFrame);
+      if (previousRestoration) window.history.scrollRestoration = previousRestoration;
     };
     // Initial routing intentionally runs once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (isEmbed) return <TerrapointEmbed />;
 
   const goHome = () => {
+    saveSnapshot({
+      errorValue: busy ? "Otsing katkestati lehelt lahkumisel. Varem saadud tulemused on alles." : error,
+    });
     searchRequestRef.current.controller?.abort();
     searchRequestRef.current = { id: searchRequestRef.current.id + 1, controller: null };
     window.history.pushState({}, "", "/");
+    historyIdRef.current = "";
+    setHistoryId("");
     setView("home");
     setQuery("");
+    setSearchFilters(DEFAULT_SEARCH_FILTERS);
     setResult(null);
     setPreviewListing(null);
     setListingUnavailable(false);
     setError("");
+    setListingNotice("");
     setBusy(false);
     document.title = "Keskkonnaportaali praktika";
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1819,7 +1114,23 @@ export function App() {
     <>
       <Header compact={view === "search"} onRevealSearch={revealHomeSearch} />
       {view === "search" ? (
-        <SearchResults busy={busy} error={error} listingUnavailable={listingUnavailable} onHome={goHome} onSearch={performSearch} previewListing={previewListing} query={query} result={result} />
+        <SearchResults
+          answerTextOf={answerTextOf}
+          busy={busy}
+          error={error}
+          historyId={historyId}
+          key={historyId || "search"}
+          listingUnavailable={listingUnavailable}
+          filters={searchFilters}
+          listingNotice={listingNotice}
+          onHome={goHome}
+          onPageSelect={selectResultPage}
+          onListingNotice={setListingNotice}
+          onSearch={performSearch}
+          previewListing={previewListing}
+          query={query}
+          result={result}
+        />
       ) : (
         <Home busy={busy} onSearch={performSearch} searchInputRef={homeSearchInputRef} />
       )}
@@ -1830,9 +1141,7 @@ export function App() {
         pageContext={view === "search"
           ? {
             query,
-            // The year filter means something to a suggestion only when it is
-            // one the reader is actually looking at.
-            filters: clientSearchFilters(result?.searchResults?.appliedFilters || previewListing?.appliedFilters),
+            filters: clientSearchFilters(result?.searchResults?.appliedFilters || previewListing?.appliedFilters || searchFilters),
           }
           : null}
       />

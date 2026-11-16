@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { publicSourceWitnessKey } from "../server/source-identity.mjs";
-import { hasCompleteSentenceEnding } from "../server/search.mjs";
+import { hasCompleteSentenceEnding } from "../server/search_evidence.mjs";
 import { rankOneSearchResultId, requestBoundedAuditText, SEARCH_AUDIT_TIMEOUT_MS } from "./audit-http.mjs";
 
 const argumentsMap = Object.fromEntries(process.argv.slice(2).map((argument) => {

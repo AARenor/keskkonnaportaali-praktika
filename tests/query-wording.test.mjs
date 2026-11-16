@@ -1,16 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  SEARCH_DOCUMENTS,
-  assessEvidence,
-  buildDiscoveryQueries,
-  buildDiscoveryQuery,
-  queryTerms,
-} from "../server/search.mjs";
+import { buildDiscoveryQueries, buildDiscoveryQuery } from "../server/search.mjs";
+import { SEARCH_DOCUMENTS } from "../server/search_catalogue.mjs";
+import { assessEvidence } from "../server/search_evidence.mjs";
+import { queryTerms } from "../server/search_query_terms.mjs";
 import {
   buildPrefixTsQuery,
   corpusRankingTerms,
-} from "../server/corpus.mjs";
+} from "../server/corpus_query.mjs";
 
 // Generic polite question framing ("palun selgita", "sooviksin teada",
 // "mind huvitab") must not change retrieval: the framing words carry no

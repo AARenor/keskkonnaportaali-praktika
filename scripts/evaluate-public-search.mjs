@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { rankSearchCandidates } from "../server/retrieval.mjs";
-import { assessSearchQuery, officialServiceCatalogueDocuments } from "../server/search.mjs";
+import { rankSearchCandidates } from "../server/retrieval_ranking.mjs";
+import { assessSearchQuery } from "../server/search_query_assessment.mjs";
+import { officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
 import { OFFICIAL_ROUTE_CLASSES, sourceSupportsRouteClass } from "../server/source-registry.mjs";
 
 const datasetUrl = new URL("../evaluation/public_search_development_v3.json", import.meta.url);

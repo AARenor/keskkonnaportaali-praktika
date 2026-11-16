@@ -1,33 +1,22 @@
-// Regression: public source discovery settles robots.txt for the URL it was
-// given, then hands the read to the HTTPS transport, which may follow a redirect
-// to the publisher's www host. server/corpus.mjs installs the redirect robots gate
-// for page hydration only (hydrateUrls passes assertRedirectAllowed into
-// fetchCorpusText), so the discovery readers (fetchPortalSearchPage at
-// server/corpus.mjs:1983, crawlPortalSitemap at :2097, crawlOfficialSitemap at
-// :2060) request a redirect destination before that destination's own robots.txt
-// has been read. A destination the destination origin disallows is therefore
-// fetched, parsed and offered as a portal search result.
+// Regression: live portal discovery may redirect to another approved publisher.
+// Its robots.txt must be read before the redirect is followed, and a disallowed
+// destination must not be fetched or exposed as a result.
 //
-// Harness. No database, no container, no network: node:https.request is replaced
-// by a synthetic transport before server/corpus.mjs is imported, so every robots
-// read, search read and redirect hop runs through the real
-// requestApprovedPublicHttpsText redirect loop, the real origin allowlist and the
-// real fetchCorpusText retry, byte and robots-cache policy. Routes are matched by
-// predicate, so no test depends on the exact query parameters production builds.
-// The consumer under test is livePortalSearchResults, the exported portal search
-// reader that shares fetchPortalSearchPage with catalog discovery
-// (crawlPortalSearch). The sibling sitemap readers carry the same missing gate at
-// their own fetchCorpusText calls, but they are reachable only through
-// syncPortalCorpus, which needs the database, so this file pins the shared portal
-// search reader and the gate contract every discovery read has to satisfy.
+// Harness. No database, container or network: node:https.request is replaced
+// before the canonical fetch and runtime modules are imported, so every robots
+// read, search read and redirect hop uses the real transport, origin allowlist,
+// retry, byte and robots-cache policy. Predicate-matched routes keep the test
+// independent of the query parameters production builds.
 //
-// Phase one: the search endpoint answers 302 to a www page that the www origin's
-// own robots.txt disallows. The discovery reader must read that policy and refuse
-// before the transport connects to the disallowed destination.
+// The consumer under test is livePortalSearchResults from corpus_runtime.mjs.
+// It shares its portal search reader with catalog discovery.
 //
-// Phase two: the same 302 shape to a page the very same policy allows is still
-// read and still yields its card, so the fix may not replace the missing gate
-// with a blanket refusal of every redirect.
+// Phase one: the search endpoint redirects to a www page that the www origin's
+// own robots.txt disallows. Discovery must refuse before connecting.
+//
+// Phase two: an approved redirect to a page the same policy allows is still read
+// and yields its card, so the test rejects blanket redirect refusal.
+//
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
@@ -50,7 +39,7 @@ const PORTAL_ROBOTS_BODY = "User-agent: *\nAllow: /\n";
 // (tests/public-search.test.mjs asserts that identity), so this file never
 // depends on the provider minimizer accepting a query of its own invention.
 const DISCOVERY_QUERY = "Metsamaa pindala Eestis omanike kaupa";
-const CORPUS_MODULE_URL = new URL("../server/corpus.mjs", import.meta.url).href;
+const CORPUS_RUNTIME_MODULE_URL = new URL("../server/corpus_runtime.mjs", import.meta.url).href;
 
 function portalSearchPage({ total, cardUrl, title, summary }) {
   return "<!doctype html><html lang=\"et\"><head><title>Otsing</title></head><body><main>"
@@ -132,7 +121,7 @@ function installSyntheticPortalTransport() {
 test("portal search discovery reads the redirect destination's own robots.txt before the destination is requested", { timeout: 60_000 }, async (t) => {
   const transport = installSyntheticPortalTransport();
   try {
-    const corpus = await import(CORPUS_MODULE_URL);
+    const corpusRuntime = await import(CORPUS_RUNTIME_MODULE_URL);
 
     // Phase one: a disallowed redirect destination.
     transport.route((href) => href === PORTAL_ROBOTS_URL, {
@@ -160,7 +149,7 @@ test("portal search discovery reads the redirect destination's own robots.txt be
       }),
     });
 
-    const denied = await corpus.livePortalSearchResults(DISCOVERY_QUERY);
+    const denied = await corpusRuntime.livePortalSearchResults(DISCOVERY_QUERY);
     const firstPass = [...transport.requestedUrls];
     t.diagnostic(`phase one requests: ${firstPass.join(" | ")}`);
 
@@ -219,7 +208,7 @@ test("portal search discovery reads the redirect destination's own robots.txt be
       }),
     });
 
-    const allowed = await corpus.livePortalSearchResults(DISCOVERY_QUERY);
+    const allowed = await corpusRuntime.livePortalSearchResults(DISCOVERY_QUERY);
     const secondPass = [...transport.requestedUrls];
     t.diagnostic(`phase two requests: ${secondPass.join(" | ")}`);
 

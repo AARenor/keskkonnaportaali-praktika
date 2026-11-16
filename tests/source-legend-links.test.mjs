@@ -5,7 +5,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { load } from "cheerio";
 import { createServer } from "vite";
-import { officialServiceCatalogueDocuments } from "../server/search.mjs";
+import { officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
 
 test("every visible source legend row opens its official HTTPS source, even without an inline citation", async () => {
   const vite = await createServer({
@@ -17,7 +17,7 @@ test("every visible source legend row opens its official HTTPS source, even with
     appType: "custom",
   });
   try {
-    const { SourceLegend } = await vite.ssrLoadModule("/src/App.jsx");
+    const { SourceLegend } = await vite.ssrLoadModule("/src/AnswerSources.jsx");
     const catalogue = officialServiceCatalogueDocuments();
     const https = catalogue.find((item) => item.id === "protected-forest-share");
     const insecure = {
@@ -32,6 +32,9 @@ test("every visible source legend row opens its official HTTPS source, even with
       sources: [{ ...https, citation: 1 }, insecure],
     })));
     const links = $("ul.source-legend li a.source-legend__link");
+    const rows = $("ul.source-legend li");
+    assert.equal(rows.eq(0).find(".source-legend__number").text(), "1");
+    assert.equal(rows.eq(1).find(".source-legend__number").text(), "2");
     assert.equal(links.length, 1, "only the HTTPS source becomes a link");
     assert.equal(links.first().attr("href"), https.url);
     assert.equal(links.first().attr("target"), "_blank");

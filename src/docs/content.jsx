@@ -78,7 +78,7 @@ export const userGuide = {
           <li><strong>Järjestus:</strong> „Asjakohasemad enne” või „Uuemad asjakohased enne”. Mõlemal juhul peab allikas küsimusega sobima.</li>
         </ul>
         <p>Filtri muutmine teeb uue otsingu, koostab vastuse uuesti valitud allikatest ja alustab uut jätkuküsimuste lõime. Väga kitsas filter võib jätta vastuse või tulemused tühjaks. Sel juhul kasuta „Lähtesta” või täpsusta küsimust.</p>
-        <p>Kui tulemusi on mitu lehekülge, kasuta „Eelmine”, leheküljenumbrit või „Järgmine”. Lehekülje vahetamine muudab tulemuste loendit, mitte algset vastust. Tulemuste arv võib allikate uuenedes muutuda.</p>
+        <p>Näidatakse kuni kahte tulemuste lehekülge. Liikumiseks kasuta „Eelmine”, leheküljenumbrit või „Järgmine”. Lehekülje vahetamine muudab tulemuste loendit, mitte algset vastust. Tulemuste arv võib allikate uuenedes muutuda.</p>
       </>,
     },
     {
@@ -220,7 +220,7 @@ export const developerGuide = {
             </tbody>
           </table>
         </div>
-        <p>POST-päringud peavad kasutama <code>Content-Type: application/json</code>. JSON-keha ülempiir on 32 KiB, tihendatud keha ei toetata. Küsimus <code>q</code> on nõutav ning pärast normaliseerimist kuni 180 märki. Kasuta <code>page</code> vahemikus 1–500 ja <code>page_size</code> vahemikus 1–50; vaikimisi 1 ja 12.</p>
+        <p>POST-päringud peavad kasutama <code>Content-Type: application/json</code>. JSON-keha ülempiir on 32 KiB, tihendatud keha ei toetata. Küsimus <code>q</code> on nõutav ning pärast normaliseerimist kuni 180 märki. Kasuta <code>page</code> väärtust 1 või 2 ja <code>page_size</code> vahemikus 1 kuni 50; vaikimisi 1 ja 12.</p>
         <p>Otsingu ja soovituste GET-alias'e ei ole. Küsimus tuleb JSON-kehast; lehekülge ja filtreid saab anda ka päringuparameetrites, kuid lihtsama ja üheselt mõistetava integratsiooni jaoks hoia need kõik kehas.</p>
         <Code>{`curl --fail-with-body --max-time 20 \\
   -X POST 'https://praktika.arle.top/api/search' \\

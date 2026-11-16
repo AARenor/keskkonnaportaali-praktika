@@ -23,6 +23,7 @@ import {
   llmBudgetDenial,
   settleLlmReservation,
 } from "../server/llm-budget.mjs";
+import { createUsageAccumulator } from "../server/llm_usage.mjs";
 
 function response(output, outputTokens) {
   return {
@@ -223,7 +224,7 @@ test("an abort after completed manager and specialist responses still charges th
   });
   const reviewInput = "KÜSIMUS: test\nEVIDENCE [1]: ametlik tõend";
   const { manager } = createGroundedSearchAgents({ runner, reviewInput });
-  const budget = createRollingLlmBudget({ requestBudget: 5, tokenBudget: 30_000 });
+  const budget = createRollingLlmBudget({ requestBudget: 6, tokenBudget: 30_000 });
   const reservation = budget.reserve(estimatedLlmBudgetUsage({ orchestrated: true }));
   let observed;
 
@@ -299,6 +300,7 @@ test("Agents transport rejects redirects, bounds bodies and charges total provid
   const budget = createRollingLlmBudget({ requestBudget: 10, tokenBudget: 100_000 });
   let calls = 0;
   let observedInit;
+  let observedProviderUsage;
   const boundedFetch = createBoundedOpenAiFetch({
     baseUrl: "https://terrapoint.arle.top/v1",
     fetchImpl: async (_url, init) => {
@@ -306,11 +308,20 @@ test("Agents transport rejects redirects, bounds bodies and charges total provid
       observedInit = init;
       return new Response(JSON.stringify({
         id: "response-1",
-        usage: { input_tokens: 90, output_tokens: 10, total_tokens: 100 },
+        usage: {
+          input_tokens: 90,
+          input_tokens_details: { cached_tokens: 20 },
+          output_tokens: 10,
+          output_tokens_details: { reasoning_tokens: 4 },
+          total_tokens: 100,
+        },
       }), {
         status: 200,
         headers: { "content-type": "application/json", "x-request-id": "req-safe" },
       });
+    },
+    onProviderUsage: (usage) => {
+      observedProviderUsage = usage;
     },
     reserveProviderRequest: (usage) => budget.reserve(usage),
     settleProviderRequest: (reservation, usage, options) => settleLlmReservation(reservation, usage, options),
@@ -325,6 +336,15 @@ test("Agents transport rejects redirects, bounds bodies and charges total provid
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("x-request-id"), "req-safe");
   assert.equal((await response.json()).id, "response-1");
+  assert.deepEqual(observedProviderUsage, {
+    requests: 1,
+    tokens: 100,
+    totalTokens: 100,
+    inputTokens: 90,
+    cachedInputTokens: 20,
+    outputTokens: 10,
+    reasoningTokens: 4,
+  });
   assert.equal(budget.snapshot().requests, 1);
   assert.equal(budget.snapshot().tokens, 100);
   for (const destination of [
@@ -357,6 +377,63 @@ test("Agents transport rejects redirects, bounds bodies and charges total provid
   });
   assert.equal(client.maxRetries, 0);
   assert.equal(client.baseURL, "https://terrapoint.arle.top/v1");
+});
+test("aborted dispatched transport remains unknown until its response settles", async () => {
+  const usage = createUsageAccumulator();
+  let dispatchCount = 0;
+  let finishSecond;
+  const boundedFetch = createBoundedOpenAiFetch({
+    baseUrl: "https://terrapoint.arle.top/v1",
+    fetchImpl: async () => {
+      dispatchCount += 1;
+      if (dispatchCount === 2) {
+        return new Promise((resolve) => {
+          finishSecond = resolve;
+        });
+      }
+      return new Response(JSON.stringify({
+        usage: { input_tokens: 40, output_tokens: 10, total_tokens: 50 },
+      }), { status: 200 });
+    },
+    onDispatch: () => usage.markDispatched(),
+    onProviderUsage: (sample) => usage.add(sample),
+  });
+  const endpoint = "https://terrapoint.arle.top/v1/responses";
+  const first = await boundedFetch(endpoint, { method: "POST", body: "{}" });
+  await first.json();
+  assert.equal(usage.status(), "actual");
+  assert.deepEqual(usage.snapshot(), {
+    requests: 1,
+    tokens: 50,
+    totalTokens: 50,
+    inputTokens: 40,
+    outputTokens: 10,
+  });
+
+  const controller = new AbortController();
+  const pending = boundedFetch(endpoint, {
+    method: "POST",
+    body: "{}",
+    signal: controller.signal,
+  });
+  assert.equal(typeof finishSecond, "function");
+  controller.abort();
+  assert.equal(usage.status(), "unknown");
+  assert.deepEqual(usage.snapshot(), { requests: 2 });
+
+  finishSecond(new Response(JSON.stringify({
+    usage: { input_tokens: 40, output_tokens: 10, total_tokens: 50 },
+  }), { status: 200 }));
+  const second = await pending;
+  await second.json();
+  assert.equal(usage.status(), "actual");
+  assert.deepEqual(usage.snapshot(), {
+    requests: 2,
+    tokens: 100,
+    totalTokens: 100,
+    inputTokens: 80,
+    outputTokens: 20,
+  });
 });
 
 test("Agents default transport pins provider origin, credentials and byte limits", async () => {
@@ -641,8 +718,6 @@ test("an empty model response is retried once and a repeated empty response surf
     specialist("Allikas [1] on kooskõlaline."),
     [assistantMessage("{}")],
     reviewCall(),
-    specialist("Allikas [1] on otsene tõend."),
-    specialist("Allikas [1] on kooskõlaline."),
     [assistantMessage(JSON.stringify(expected))],
   ]);
   const runner = new Runner({
@@ -662,24 +737,20 @@ test("an empty model response is retried once and a repeated empty response surf
     },
   });
   assert.deepEqual(recovered.output, expected);
-  assert.ok(observed.requests >= 2);
+  assert.equal(observed.requests, 6);
   recovering.assertComplete();
 
   // Empty output remains a generation failure; the caller maps it to bounded
   // private attempt metadata and serves the deterministic evidence draft.
   // The provider's raw error is neither public prose nor persisted telemetry.
-  // One scripted block per attempt: a fresh RunContext retries the full
-  // review-evidence flow, so each attempt consumes review + 2 specialists
-  // + 1 empty manager turn = 4 scripted steps. The second attempt's script
-  // needs its own review call ID via the shared reviewCall() counter.
+  // The first attempt uses both specialists. The retry repeats manager turns
+  // but reuses that review result, so it adds no specialist requests.
   const failing = new ScriptedModel([
     reviewCall(),
     specialist("Allikas [1] on otsene tõend."),
     specialist("Allikas [1] on kooskõlaline."),
     [assistantMessage("{}")],
     reviewCall(),
-    specialist("Allikas [1] on otsene tõend."),
-    specialist("Allikas [1] on kooskõlaline."),
     [assistantMessage("{}")],
   ]);
   const failingRunner = new Runner({
@@ -697,6 +768,7 @@ test("an empty model response is retried once and a repeated empty response surf
     userInput: reviewInput,
   }), /failed to generate a response/u);
   failing.assertComplete();
+  assert.equal(failing.calls.length, 6);
 });
 
 test("the real SDK Responses transport preserves the Codex selector, tool review and strict output", async () => {

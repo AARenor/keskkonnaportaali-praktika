@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { splitTextPassages } from "../server/search.mjs";
+import { splitTextPassages } from "../server/search_evidence.mjs";
 import {
   composeCurrentWeatherObservationResponse,
   composeForestHarvestBalanceAnswer,
@@ -148,6 +148,36 @@ test("current-weather XML adapter binds a fresh measurement to station, time and
   assert.equal(response.sources[0].url, CURRENT_WEATHER_OBSERVATIONS_XML_URL);
   assert.match(response.sources[0].evidenceExcerpt, /nimetatud ilmajaama/u);
   assert.equal(response.evidence.kind, "structured-current-weather");
+});
+test("current-weather composer rejects non-current periods with a valid current source", () => {
+  const now = Date.parse("2026-08-21T22:30:00Z");
+  const fresh = Math.floor((now - 60_000) / 1_000);
+  const currentQuery = "Mis on praegune temperatuur Tallinnas?";
+  const [source] = currentWeatherObservationFromXml(currentQuery, weatherFixture(fresh), { now });
+
+  assert.equal(composeCurrentWeatherObservationResponse(currentQuery, [source], { now }).answer.title, "Tallinn: õhutemperatuur 14,2 °C");
+
+  for (const excludedQuery of [
+    "Mis oli temperatuur Tallinnas eelmisel nädalal?",
+    "Mis oli temperatuur Tallinnas varasemal perioodil?",
+    "Mis oli temperatuur Tallinnas varem?",
+    "What was the temperature in Tallinn earlier?",
+    "What was the temperature in Tallinn last week?",
+    "What was the temperature in Tallinn last month?",
+    "What was the temperature in Tallinn last year?",
+    "What is the temperature in Tallinn tomorrow?",
+    "What is the weather forecast in Tallinn?",
+    "What will the temperature in Tallinn be next week?",
+    "What will the temperature in Tallinn be next month?",
+    "What will the temperature in Tallinn be next year?",
+  ]) {
+    assert.equal(isCurrentWeatherObservationQuery(excludedQuery), false, excludedQuery);
+    assert.deepEqual(currentWeatherObservationFromXml(excludedQuery, weatherFixture(fresh), { now }), [], excludedQuery);
+    assert.equal(composeCurrentWeatherObservationResponse(excludedQuery, [source], { now }), null, excludedQuery);
+  }
+
+  assert.equal(composeCurrentWeatherObservationResponse("Mis on õhutemperatuur Tartus?", [source], { now }), null);
+  assert.equal(composeCurrentWeatherObservationResponse("Mis on tuulekiirus Tallinnas?", [source], { now }), null);
 });
 
 test("current-weather adapter preserves missing values and fails closed on ambiguous or stale XML", () => {

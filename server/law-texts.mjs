@@ -1,3 +1,6 @@
+import { analyzeQueryIntent, supportsIntentConcept } from "./query_intent.mjs";
+import { REVIEWED_QUERY_WORD_FORMS } from "./query-word-forms.mjs";
+
 // Full text of the forest laws, read from Riigi Teataja's own data feed.
 //
 // There is no stored copy, because a stored law goes out of date. The feed names
@@ -179,12 +182,69 @@ function plainWord(value) {
   return String(value || "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("et");
 }
 
-// Search shortens compounds ("valgustusraie" to "raie"), which is too broad for
-// asking what one legal term means, so these questions look for the whole term.
 const GENERIC_TERM_WORDS = new Set(["mets", "metsa", "metsad", "raie", "raied", "seadus", "eeskiri", "metsamaa", "puit", "puud"]);
+const LAW_QUERY_CONTEXT_WORDS = new Set(["seaduse", "seaduses", "metsaseaduse", "jargi", "mottes", "oiguslik", "definitsiooni", "moiste"]);
+const REVIEWED_FORMS_BY_ROOT = new Map(
+  Object.entries(REVIEWED_QUERY_WORD_FORMS)
+    .map(([root, forms]) => [plainWord(root), new Set(forms.map(plainWord))]),
+);
+
+function stemOf(word) {
+  const normalized = plainWord(word);
+  return normalized.length < 7 ? normalized : normalized.slice(0, -2);
+}
+
+function termPattern(word) {
+  const normalized = plainWord(word);
+  const forms = REVIEWED_FORMS_BY_ROOT.get(normalized);
+  const alternatives = forms
+    ? [...forms].sort((left, right) => right.length - left.length).map(escapePattern)
+    : [`${escapePattern(stemOf(normalized))}\\p{L}*`];
+  return `(?:${alternatives.join("|")})`;
+}
+
+function escapePattern(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
+function termMatches(words, text) {
+  const tokens = plainWord(text).match(/\p{L}+/gu) || [];
+  return words.every((word) => {
+    const forms = REVIEWED_FORMS_BY_ROOT.get(plainWord(word));
+    if (forms) return tokens.some((token) => forms.has(token));
+    const stem = stemOf(word);
+    return tokens.some((token) => token.startsWith(stem));
+  });
+}
+
+function definitionPattern(words) {
+  const orders = words.length === 2 ? [words, [...words].reverse()] : [words];
+  const phrases = orders.map((order) => order.map(termPattern).join(" (?:on )?"));
+  const phrase = `(?:${phrases.join("|")})`;
+  const nonDefinition = "(?:lubatud|lubatav\\p{L}*|keelatud|keelatuks|lubatuks|esitat\\p{L}*|tehtud|toimunud|vajalik\\p{L}*|kohustuslik\\p{L}*|voimalik\\p{L}*)";
+  const copula = `(?:^|[.;:] )${phrase} on\\s+(?!${nonDefinition}\\b)`;
+  const classified = `\\bloetakse\\s+${phrase}(?!\\s+${nonDefinition}\\b)`;
+  const clearcutActivity = words.length === 1 && plainWord(words[0]) === "lageraie"
+    ? `(?:^|[.;:] )${termPattern("lageraie")} korral\\b`
+    : "";
+  return new RegExp(`${copula}|${classified}${clearcutActivity ? `|${clearcutActivity}` : ""}`, "u");
+}
+
+function isStatisticalContext(query) {
+  return /\b(?:smi|fao|fra|statistik\w*|statistil\w*)\b/iu.test(String(query || ""));
+}
 
 export function askedLawTerm(query) {
   const text = plainWord(query).replace(/[?!.,]+/gu, " ").replace(/\s+/gu, " ").trim();
+  const intent = analyzeQueryIntent(query);
+  if (["definition", "criteria"].includes(intent.intent)
+    && ["forest", "clearcut"].includes(intent.topic)
+    && !isStatisticalContext(query)) {
+    const relevant = intent.terms
+      .map(plainWord)
+      .filter((word) => !LAW_QUERY_CONTEXT_WORDS.has(word));
+    if (relevant.some((word) => ["mets", "metsamaa", "lageraie"].includes(word))) return relevant;
+  }
   const asked = text.match(/^mis on (\p{L}+(?: \p{L}+)?)$/u)?.[1]
     || text.match(/^(\p{L}+(?: \p{L}+)?) (?:mis|mida) see tahendab$/u)?.[1]
     || text.match(/^(\p{L}+(?: \p{L}+)?) (?:moiste|tahendus|definitsioon)$/u)?.[1]
@@ -195,39 +255,129 @@ export function askedLawTerm(query) {
   return words;
 }
 
-// A definition opens the sentence: "Raadamine on raie", "Mets on hukkunud, kui".
-// "Kui metsateatis on esitatud" only mentions the term, so it does not count.
-function definitionPattern(stems) {
-  const orders = stems.length === 2 ? [stems, [...stems].reverse()] : [stems];
-  const forms = orders.map((order) => order.map((stem) => `${stem}\\p{L}*`).join(stems.length === 2 ? " (?:on )?" : " "));
-  const term = `\\p{L}{0,12}(?:${forms.join("|")})`;
-  return new RegExp(`(?:^|[.;:] )${term} on\\b|\\bloetakse ${term}`, "u");
+function lawSectionByAnchor(documents, anchor) {
+  return documents.find((document) => document?._lawSection
+    && new RegExp(`#${anchor}(?:$|[?#])`, "u").test(String(document.url || ""))
+    && /metsaseadus/iu.test(String(document.title || "")));
 }
 
-function stemOf(word) {
-  return word.slice(0, Math.max(5, word.length - 3));
+function sectionSubsections(value) {
+  const content = String(value || "");
+  const markers = [...content.matchAll(/\((\d+)\)\s*/gu)];
+  return new Map(markers.map((marker, index) => [
+    marker[1],
+    content.slice(marker.index, markers[index + 1]?.index ?? content.length).trim(),
+  ]));
 }
 
-const textForLookup = (text) => plainWord(text);
+function focusSection(document, content, words, includeDefinition) {
+  if (!document || content.length < MINIMUM_SECTION_LENGTH || !termMatches(words, content)) return null;
+  const definition = definitionPattern(words).test(plainWord(content.replace(/^\(\d+[^)]*\)\s*/u, "")))
+    ? content.replace(/^\(\d+[^)]*\)\s*/u, "").trim()
+    : "";
+  return {
+    ...document,
+    content,
+    _focusedLawTerm: words.join(" "),
+    _lawDefinition: includeDefinition ? definition : "",
+  };
+}
 
-// Picks the sentences of one section that speak about the asked term, with a
-// definition first. The narrowed text is still the law's own words, and the
-// model then cannot answer "what is raadamine" from the section's fee rule.
+function focusedClearcutSection(documents, subsectionNumber) {
+  const section = lawSectionByAnchor(documents, "para29");
+  if (!section) return null;
+  const content = sectionSubsections(section.content).get(String(subsectionNumber)) || "";
+  if (!termMatches(["lageraie"], content)) return null;
+  if (subsectionNumber === 1
+    && !definitionPattern(["lageraie"]).test(plainWord(content.replace(/^\(\d+[^)]*\)\s*/u, "")))) return null;
+  return focusSection(section, content, ["lageraie"], subsectionNumber === 1);
+}
+
+function focusedForestSection(documents, words, intent) {
+  const section = lawSectionByAnchor(documents, "para3");
+  if (!section) return null;
+  const paragraphs = sectionSubsections(section.content);
+  const landDefinition = intent === "definition" && words.length === 1 && words[0] === "metsamaa";
+  const selected = intent === "criteria"
+    ? ["1", "2", "3"].map((number) => paragraphs.get(number)).filter(Boolean)
+    : [paragraphs.get(landDefinition ? "2" : "1")].filter(Boolean);
+  if (selected.length < (intent === "criteria" ? 3 : 1)
+    || !definitionPattern(words).test(plainWord(selected[0].replace(/^\(\d+[^)]*\)\s*/u, "")))) return null;
+  return focusSection(section, selected.join(" "), words, intent === "definition");
+}
+
+function focusedAuthoritySection(documents, subjectTerms) {
+  const words = subjectTerms.map((term) => String(term || "").trim()).filter(Boolean);
+  if (!words.length) return null;
+  const matches = new Map();
+  for (const document of documents) {
+    if (!document?._lawSection
+      || document.organization !== "Riigi Teataja"
+      || !/^Metsaseadus\b/u.test(String(document.title || ""))) continue;
+    let url;
+    try {
+      url = new URL(document.url);
+    } catch {
+      continue;
+    }
+    if (url.protocol !== "https:"
+      || !["riigiteataja.ee", "www.riigiteataja.ee"].includes(url.hostname)
+      || url.pathname !== "/akt/MS"
+      || !/^#para[\p{L}\p{N}]+$/u.test(url.hash)) continue;
+    for (const rawStatement of String(document.content || "").split(/(?<=[.!?])\s+/u)) {
+      const statement = rawStatement.trim();
+      const normalized = plainWord(statement);
+      if (!statement
+        || !/\bkehtest(?:ab|avad)\b/u.test(normalized)
+        || !termMatches(words, statement)) continue;
+      matches.set(`${url.href}\n${normalized}`, { document, statement });
+    }
+  }
+  if (matches.size !== 1) return null;
+  const { document, statement } = matches.values().next().value;
+  return focusSection(document, statement, words, false);
+}
+
 export function focusedLawSection(query, documents = []) {
+  const intent = analyzeQueryIntent(query);
+  if (intent.authoritySubjectTerms.length) {
+    return focusedAuthoritySection(documents, intent.authoritySubjectTerms);
+  }
+  const supportsSpecializedConcept = supportsIntentConcept(intent);
+  if (intent.topic === "clearcut") {
+    if (intent.intent === "conditions") {
+      return supportsSpecializedConcept ? focusedClearcutSection(documents, 4) : null;
+    }
+    if (supportsSpecializedConcept
+      && (intent.intent === "definition" || intent.intent === "criteria")) {
+      return focusedClearcutSection(documents, 1);
+    }
+  }
+  if (intent.topic === "forest" && !isStatisticalContext(query)
+    && (intent.intent === "definition" || intent.intent === "criteria")) {
+    const words = askedLawTerm(query);
+    if (!words) return null;
+    if (supportsSpecializedConcept && words.length === 1 && ["mets", "metsamaa"].includes(words[0])) {
+      return focusedForestSection(documents, words, intent.intent);
+    }
+  }
   const words = askedLawTerm(query);
   if (!words) return null;
-  const stems = words.map(stemOf);
-  const mentions = (text) => stems.every((stem) => new RegExp(`(?:^|[^\\p{L}])\\p{L}{0,12}${stem}`, "u").test(text));
-  const defines = (text) => definitionPattern(stems).test(text);
+  const mentions = (text) => termMatches(words, text);
+  const defines = (text) => definitionPattern(words).test(plainWord(text));
+  const beginsWithAskedTerm = (text) => {
+    const normalized = plainWord(text).replace(/^\(\d+[^)]*\)\s*/u, "");
+    return words.some((word) => new RegExp(`^(?:${termPattern(word)})\\b`, "u").test(normalized));
+  };
   const ranked = [];
   for (const document of documents) {
     if (!document?._lawSection) continue;
     const sentences = String(document.content || "").split(/(?<=[.;:])\s+(?=\(?\d*[¹²³⁴⁵⁶⁷⁸⁹]*\)?\s*\p{Lu}|\(\d)/u);
-    const matching = sentences.filter((sentence) => mentions(textForLookup(sentence)));
+    const matching = sentences.filter((sentence) => mentions(sentence));
     if (!matching.length) continue;
-    const defining = matching.filter((sentence) => defines(textForLookup(sentence).replace(/^\(\d+[^)]*\)\s*/u, "")));
-    const opening = matching.filter((sentence) => new RegExp(`^(?:\\(\\d+[^)]*\\)\\s*)?${stems[0]}`, "u").test(textForLookup(sentence)));
-    const inHeading = mentions(textForLookup(document.summary));
+    const defining = matching.filter((sentence) => defines(sentence.replace(/^\(\d+[^)]*\)\s*/u, "")));
+    const opening = matching.filter(beginsWithAskedTerm);
+    const inHeading = mentions(document.summary);
     const score = (defining.length ? 4 : 0) + (inHeading ? 2 : 0) + (opening.length ? 1 : 0);
     if (!score) continue;
     const lead = [...new Set([...defining, ...opening, ...matching])].slice(0, 5);
@@ -242,69 +392,97 @@ export function focusedLawSection(query, documents = []) {
     _lawDefinition: best.definition ? best.definition.replace(/^\(\d+[^)]*\)\s*/u, "").trim() : "",
   };
 }
-
-// A rule question ("kui laiad tohivad kokkuveoteed olla") names the topic of
-// one law section in that section's heading ("§ 8. Metsa kokkuveoteed"). Search
-// ranks such a section below news that repeat the question's common words, so
-// the section is put first, but only when the named word is rare among the
-// headings (one or two sections), the section also speaks of another word of the
-// question, and no other section fits as well. The answer is still checked.
-const TOPIC_WORD = /\p{L}{5,}/gu;
-// Asking words, units and owner words say nothing about which rule is asked.
-const NOT_A_TOPIC = /^(?:hektar|aasta|tohi|peab|peav|voib|voiv|voiks|kuidas|millal|palju|kaua|olla|teha|kehti|lubat|vaja|ilma|kohta|mille|mida|milli|siis|nuud|minu|oma|kelle|kuhu|kust|seadus|eeskir|(?:mets|puu|puid|puit)\p{L}{0,5}$)/u;
-
-function topicStem(word) {
-  return word.slice(0, Math.max(6, word.length - 2));
+const LAW_TOPIC_UNIT_WORDS = new Set(["ha", "hektar", "aasta", "protsent", "osakaal", "pindala", "ruutmeeter", "kuupmeeter", "tihumeeter"]);
+const LAW_TOPIC_OWNER_WORDS = new Set(["eramets", "eraomanik", "eraomand", "eramaa", "riigimaa", "riigimets"]);
+const LAW_TOPIC_STATISTIC_PATTERN = /\b(?:19|20)\d{2}\b|protsent|osakaal|\bkui\s+(?:palju|suur\p{L}*)\s+(?:on\s+)?eesti\b/u;
+function topicExcludedWord(word, roots) {
+  return [...roots].some((root) => word === root || (root.length > 2 && word.startsWith(root)));
 }
 
-function topicStems(text) {
-  return [...new Set((plainWord(text).match(TOPIC_WORD) || []).filter((word) => !NOT_A_TOPIC.test(word)).map(topicStem))];
+function topicalBodyMatches(word, text) {
+  if (termMatches([word], text)) return true;
+  const forms = REVIEWED_FORMS_BY_ROOT.get(plainWord(word));
+  const alternatives = forms
+    ? [...forms].map(escapePattern)
+    : [escapePattern(stemOf(word))];
+  return new RegExp(`(?:^|[^\\p{L}])\\p{L}{0,12}(?:${alternatives.join("|")})`, "u")
+    .test(plainWord(text));
 }
-
-function speaksOf(stem, text) {
-  return new RegExp(`(?:^|[^\\p{L}])\\p{L}{0,12}${stem}`, "u").test(text);
-}
-
-const LONG_SECTION = 2_500;
-
-// A count for a year or a share of Estonia's forest is a statistic, not a rule.
-const ASKS_A_STATISTIC = /\b(?:19|20)\d{2}\b|protsent|osakaal|\bkui (?:palju|suur\p{L}*) (?:on )?eesti/u;
 
 export function topicalLawSection(query, documents = []) {
-  if (askedLawTerm(query) || ASKS_A_STATISTIC.test(plainWord(query))) return null;
-  const sections = [...new Map(documents.filter((document) => document?._lawSection).map((document) => [document.id, document])).values()];
+  const intent = analyzeQueryIntent(query);
+
+  if (askedLawTerm(query)
+    || isStatisticalContext(query)
+    || LAW_TOPIC_STATISTIC_PATTERN.test(plainWord(query))) return null;
+  const words = [...new Set(intent.terms.map(plainWord).filter((word) => (
+    word.length >= 5
+    && !LAW_QUERY_CONTEXT_WORDS.has(word)
+    && !GENERIC_TERM_WORDS.has(word)
+    && !topicExcludedWord(word, LAW_TOPIC_UNIT_WORDS)
+    && !topicExcludedWord(word, LAW_TOPIC_OWNER_WORDS)
+    && !/^\d+$/u.test(word)
+  )))];
+  if (words.length < 2) return null;
+
+  const sections = [];
+  const seen = new Set();
+  for (const document of documents.slice(0, 512)) {
+    if (!document?._lawSection) continue;
+    const key = String(document.id || document.url || "");
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    sections.push(document);
+  }
   if (!sections.length) return null;
-  const asked = topicStems(query);
-  const headingWords = (document) => plainWord(document.summary).match(TOPIC_WORD) || [];
-  const namesTopic = (stem, document) => stem.length >= 6 && headingWords(document).some((word) => word.startsWith(stem));
-  const rareTopics = asked.filter((stem) => {
-    const named = sections.filter((document) => namesTopic(stem, document)).length;
-    return named >= 1 && named <= 2;
+
+  const headingFrequency = new Map(words.map((word) => [
+    word,
+    sections.filter((document) => termMatches([word], document.summary || document.title || "")).length,
+  ]));
+  const rareWords = words.filter((word) => {
+    const frequency = headingFrequency.get(word);
+    return frequency >= 1 && frequency <= 2;
   });
-  if (!rareTopics.length) return null;
-  const candidates = sections.flatMap((document) => {
-    const topics = rareTopics.filter((stem) => namesTopic(stem, document));
-    if (!topics.length) return [];
-    const body = plainWord(document.content);
-    const rest = asked.filter((stem) => !topics.includes(stem));
-    const others = rest.filter((stem) => speaksOf(stem, body));
-    if (!others.length || (rest.length >= 3 && others.length < 2)) return [];
-    return [{ document, score: topics.length * 10 + others.length }];
-  }).sort((left, right) => right.score - left.score);
+  if (!rareWords.length) return null;
+
+  const candidates = [];
+  for (const document of sections) {
+    const heading = document.summary || document.title || "";
+    const topics = rareWords.filter((word) => termMatches([word], heading));
+    if (!topics.length) continue;
+    const body = String(document.content || "").slice(0, 12_000);
+    const otherWords = words.filter((word) => !topics.includes(word) && topicalBodyMatches(word, body));
+    const remainingWords = words.filter((word) => !topics.includes(word));
+    if (!otherWords.length || (remainingWords.length >= 3 && otherWords.length < 2)) continue;
+    let content = String(document.content || "");
+    if (content.length > 2_500) {
+      const statements = content.slice(0, 12_000)
+        .split(/(?<=[.;:])\s+(?=\(?\d*[¹²³⁴⁵⁶⁷⁸⁹]*\)?\s*\p{Lu}|\(\d)/u);
+      content = statements
+        .filter((statement) => words.some((word) => topicalBodyMatches(word, statement)))
+        .slice(0, 6)
+        .join(" ");
+      if (content.length < MINIMUM_SECTION_LENGTH) continue;
+    }
+    candidates.push({ document, content, score: topics.length * 10 + otherWords.length });
+  }
+  candidates.sort((left, right) => right.score - left.score);
   const [best, next] = candidates;
   if (!best || (next && next.score === best.score)) return null;
-  const content = String(best.document.content || "");
-  if (content.length <= LONG_SECTION) return { ...best.document, _focusedLawTopic: true };
-  const sentences = content.split(/(?<=[.;:])\s+(?=\(?\d*[¹²³⁴⁵⁶⁷⁸⁹]*\)?\s*\p{Lu}|\(\d)/u);
-  const lead = sentences.filter((sentence) => asked.some((stem) => speaksOf(stem, plainWord(sentence)))).slice(0, 6).join(" ");
-  if (lead.length < MINIMUM_SECTION_LENGTH) return null;
-  return { ...best.document, content: lead, _focusedLawTopic: true };
+  return { ...best.document, content: best.content, _focusedLawTopic: true };
 }
 
 export function definesLawTerm(query, text) {
   const words = askedLawTerm(query);
   if (!words) return false;
-  return definitionPattern(words.map(stemOf)).test(plainWord(text));
+  const intent = analyzeQueryIntent(query);
+  if (intent.topic === "forest" && intent.intent === "definition"
+    && supportsIntentConcept(intent) && !isStatisticalContext(query)
+    && words.length === 1 && words[0] === "mets") {
+    return /(?:^|[.;:]\s+)mets\s+on\s+okosusteem\b/u.test(plainWord(text));
+  }
+  return definitionPattern(words).test(plainWord(text));
 }
 
 export function forestLawVersionStamp({ now = Date.now() } = {}) {

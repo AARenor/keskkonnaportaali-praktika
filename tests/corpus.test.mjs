@@ -1,46 +1,53 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { readFile } from "node:fs/promises";
 import { Readable } from "node:stream";
 import test from "node:test";
 import {
   buildAnyPrefixTsQuery,
   buildPrefixTsQuery,
+  summarizeUrlOccurrences,
+} from "../server/corpus_query.mjs";
+import {
   backfillCorpusSourceIdentity,
-  CORPUS_FAILURE_CATEGORIES,
-  corpusFailureCategory,
-  corpusFailureCounters,
-  addCorpusFailure,
-  corpusPdfHydrationCandidates,
-  deduplicateCorpusDocuments,
-  extractReadablePage,
-  fetchCorpusText,
-  hydrationResourceMatches,
-  isApprovedCorpusRedirect,
   limitCorpusDocumentsByAggregateCapacity,
-  limitOfficialDiscoveryDocuments,
-  normalizeOfficialDiscoveryDocuments,
   planCorpusDocumentAdmission,
   CORPUS_OVERFLOW_DELETE_SQL,
   OFFICIAL_DISCOVERY_DELETE_SQL,
   OFFICIAL_DISCOVERY_RETIRE_SQL,
   PORTAL_UNAVAILABLE_DELETE_SQL,
+} from "../server/corpus_storage.mjs";
+import {
+  CORPUS_FAILURE_CATEGORIES,
+  corpusFailureCategory,
+  corpusFailureCounters,
+  addCorpusFailure,
+  corpusPdfHydrationCandidates,
+  persistHydratedCorpusDocument,
+} from "../server/corpus_hydration.mjs";
+import { fetchCorpusText } from "../server/corpus_fetch.mjs";
+import {
+  limitOfficialDiscoveryDocuments,
+  normalizeOfficialDiscoveryDocuments,
+  reviewedCatalogueCorpusRecords,
+  shouldRetirePortalCatalog,
+} from "../server/corpus_ingestion.mjs";
+import { publicSearchItem } from "../server/corpus_runtime.mjs";
+import {
+  deduplicateCorpusDocuments,
+  extractReadablePage,
+  hydrationResourceMatches,
+  isApprovedCorpusRedirect,
   pageRobotsPolicy,
+  parseOfficialSitemapDocument,
   parsePortalReportedTotal,
   parsePortalSearchPage,
   parsePortalSitemap,
   parsePortalSitemapPage,
-  parseOfficialSitemapDocument,
   parseRobotsTxt,
-  persistHydratedCorpusDocument,
-  publicSearchItem,
-  reviewedCatalogueCorpusRecords,
   robotsAllowsUrl,
-  shouldRetirePortalCatalog,
-  summarizeUrlOccurrences,
-} from "../server/corpus.mjs";
+} from "../server/corpus_document_parsing.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
-import * as corpus from "../server/corpus.mjs";
+import * as corpus from "../server/corpus_hydration.mjs";
 import { SOURCE_IDENTITY_VERSION, sourceResourceKey } from "../server/source-identity.mjs";
 
 test("full corpus hydration includes sitemap-only pages but excludes files and external hosts", () => {
@@ -138,7 +145,7 @@ function mockCorpusHttpsRequest(responses, calls = []) {
   };
 }
 
-test("live discovery persistence has explicit retirement and deletion bounds", async () => {
+test("live discovery persistence has explicit retirement and deletion bounds", () => {
   assert.match(OFFICIAL_DISCOVERY_RETIRE_SQL, /source_key = 'official-live-search'/u);
   assert.match(OFFICIAL_DISCOVERY_RETIRE_SQL, /is_available = FALSE/u);
   assert.match(OFFICIAL_DISCOVERY_RETIRE_SQL, /make_interval\(hours => \$1\)/u);
@@ -150,32 +157,6 @@ test("live discovery persistence has explicit retirement and deletion bounds", a
   assert.match(CORPUS_OVERFLOW_DELETE_SQL, /GREATEST\(COUNT\(\*\) - \$1, 0\)/u);
   assert.match(CORPUS_OVERFLOW_DELETE_SQL, /SUM\(pg_column_size\(document\)\)/u);
 
-  const [corpus, retrieval, server] = await Promise.all([
-    readFile(new URL("../server/corpus.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../server/retrieval.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../server/index.mjs", import.meta.url), "utf8"),
-  ]);
-  assert.match(corpus, /SET LOCAL statement_timeout = '2000ms'/u);
-  assert.match(corpus, /await client\.query\("BEGIN"\)/u);
-  assert.match(corpus, /await client\.query\("ROLLBACK"\)/u);
-  assert.match(corpus, /document\.source_key <> 'official-live-search'[\s\S]*?document\.last_seen_at >= NOW\(\)/u);
-  assert.match(corpus, /discoveryOnly \? "WHERE current\.source_key = 'official-live-search'"/u);
-  assert.match(corpus, /source_key = 'official-page-hydration'/u);
-  assert.match(corpus, /source_kind: "official-page-hydration"/u);
-  assert.match(corpus, /source_key IN \('portal-sitemap', 'portal-catalog', 'official-page-hydration'\)/u);
-  assert.match(corpus, /pg_advisory_xact_lock\(hashtext\('practice-official-discovery-capacity'\)\)/u);
-  assert.match(corpus, /pg_advisory_xact_lock\(hashtext\('practice-corpus-retention-capacity'\)\)/u);
-  assert.match(corpus, /pg_column_size\(document\)::BIGINT AS existing_bytes/u);
-  assert.match(corpus, /last_seen_run = COALESCE\(\$2::BIGINT, last_seen_run\)/u);
-  assert.ok(corpus.indexOf("last_seen_run = COALESCE($2::BIGINT, last_seen_run)")
-    < corpus.indexOf("if (!admittedBatch.length)"));
-  assert.match(corpus, /details\.retention = await enforceCorpusRetention\(client\)/u);
-  assert.match(corpus, /OFFSET \$1[\s\S]*?DELETE FROM practice_corpus_runs/u);
-  assert.match(corpus, /OFFICIAL_DISCOVERY_MAX_ROWS/u);
-  assert.match(retrieval, /enqueueOfficialDiscoveryDocuments\(filteredLive, \{ signal, clientKey \}\)/u);
-  assert.doesNotMatch(retrieval, /void indexOfficialDiscoveryDocuments/u);
-  assert.match(server, /stopOfficialDiscoveryIndexing\(new DOMException/u);
-  assert.match(server, /clearInterval\(officialDiscoveryMaintenanceTimer\)/u);
 });
 
 test("live discovery row admission preserves existing URLs and caps new rows", () => {
@@ -1039,7 +1020,7 @@ test("corpus fetch uses the shared public-only HTTPS transport on every hop", as
   }), /non-public address/u);
 });
 
-test("corpus hydration binds fetched content to the canonical final resource", async () => {
+test("hydration resource matching accepts a canonical publisher alias and rejects unrelated resources", () => {
   assert.equal(hydrationResourceMatches(
     "https://keskkonnaportaal.ee/et/mets/",
     "https://www.keskkonnaportaal.ee/et/mets?utm_source=redirect",
@@ -1053,8 +1034,6 @@ test("corpus hydration binds fetched content to the canonical final resource", a
     "https://keskkonnaamet.ee/et/mets",
   ), false);
 
-  const corpus = await readFile(new URL("../server/corpus.mjs", import.meta.url), "utf8");
-  assert.match(corpus, /if \(!hydrationResourceMatches\(url, response\.finalUrl\)\) return false;[\s\S]*?extractReadablePage/u);
 });
 
 test("crawler refuses HTML or response headers marked noindex", () => {

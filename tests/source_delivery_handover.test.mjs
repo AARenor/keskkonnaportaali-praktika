@@ -14,17 +14,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { observeSourcePolicy, sourcePolicyBinding, sourcePolicyWitness } from "../server/source_policy.mjs";
-import { publicSearchItem } from "../server/corpus.mjs";
+import { publicSearchItem } from "../server/corpus_runtime.mjs";
+import { searchEnvironmentLive, searchTimeoutFallback } from "../server/pipeline.mjs";
 import {
   ANSWER_SOURCE_EXPIRY,
   publicResponse,
   publicationCopyExpiry,
-  searchEnvironmentLive,
-  searchTimeoutFallback,
   withholdPublicationCopy,
-} from "../server/pipeline.mjs";
-import { validateGroundedAnswer } from "../server/llm.mjs";
-import { deduplicateResults, evidenceDocumentsFromListing, publicSearchListing } from "../server/retrieval.mjs";
+} from "../server/search_public_response.mjs";
+import { validateGroundedAnswer } from "../server/llm_answer_validation.mjs";
+import { deduplicateResults } from "../server/retrieval_deduplication.mjs";
+import {
+  evidenceDocumentsFromListing,
+  publicSearchListing,
+} from "../server/retrieval_listing.mjs";
 import { buildEvidencePack, evidencePackMatchesSources, isEvidencePack } from "../server/evidence-pack.mjs";
 import { sourceCanSupportPublicCitation } from "../server/source-registry.mjs";
 import {

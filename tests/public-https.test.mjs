@@ -13,7 +13,7 @@ import {
 import { hydrateOfficialDocuments } from "../server/integrations.mjs";
 import { sourceCanSupportPublicCitation } from "../server/source-registry.mjs";
 import { AUDIT_CITATION_ORIGINS } from "../scripts/audit-citation-policy.mjs";
-import { officialServiceCatalogueDocuments } from "../server/search.mjs";
+import { officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
 import { REVIEWED_NAVIGATION_CITATION_URL_VALUES } from "../server/citation-policy.mjs";
 
 function mockHttpsRequest(responses, calls) {

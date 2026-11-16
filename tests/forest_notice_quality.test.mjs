@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { citedEvidenceAnswersQuestion, extractAnswersQuery, officialServiceCatalogueDocuments, withRepeatedAnswerNote } from "../server/search.mjs";
-import { rankPublicSearchCandidates } from "../server/retrieval.mjs";
+import { officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
+import { citedEvidenceAnswersQuestion, extractAnswersQuery, withRepeatedAnswerNote } from "../server/answer_coverage.mjs";
+import { rankPublicSearchCandidates } from "../server/retrieval_ranking.mjs";
 import { createPortalDraft, searchEnvironmentLive } from "../server/pipeline.mjs";
 
 const NOW = Date.parse("2026-11-10T12:00:00Z");
@@ -45,12 +46,38 @@ for (const query of [
   });
 }
 
+test("raieteatise esitamine returns a cited ordered procedure without parcel permission", async () => {
+  const draft = await search("raieteatise esitamine");
+  const steps = draft.answer.parts.filter((part) => part.role === "step");
+  assert.deepEqual(steps.map((part) => part.step), [1, 2, 3, 4]);
+  assert.ok(steps.every((part) => part.citations.length > 0));
+  assert.equal(draft.answer.parts.some((part) => part.role === "context"), false);
+  assert.match(draft.answer.note, /üldjuhis[\s\S]*ei kinnita konkreetse kinnistu raieluba/iu);
+});
+
+test("a property specific filing question retains cited registry lookup guidance", async () => {
+  const draft = await search("Kuidas esitada metsateatist oma kinnistule?");
+  const propertyContext = draft.answer.parts.find((part) => part.role === "context");
+  assert.equal(propertyContext?.title, "Konkreetse kinnistu andmed");
+  assert.match(propertyContext?.text || "", /kasutada riiklikku Metsaregistrit ehk Metsaportaali/u);
+  assert.ok(propertyContext?.citations.length > 0);
+  assert.deepEqual(draft.answer.parts.filter((part) => part.role === "step").map((part) => part.step), [1, 2, 3, 4]);
+});
+
 test("forest notice exemptions do not answer an unasked fee question", async () => {
   const draft = await search("Millal ei pea metsateatist esitama?");
   const text = answerText(draft);
   assert.match(text, /valgustusraie/iu);
   assert.match(text, /20\s+tihumeetrit[\s\S]*kinnisasja[\s\S]*aastas/iu);
   assert.doesNotMatch(text, /30\s+eurot/iu);
+});
+test("notice fee answers do not apply the current amount to a requested past year", async () => {
+  const historical = await search("Mis oli metsateatise riigilõiv 2023. aastal?");
+  assert.doesNotMatch(answerText(historical), /30\s+eurot|2024/iu);
+
+  const current = await search("Metsateatise riigilõiv?");
+  assert.match(answerText(current), /30\s+eurot/iu);
+  assert.ok(current.answer.introCitations.length > 0);
 });
 
 for (const query of [
@@ -85,6 +112,30 @@ test("notice filing guidance does not answer questions about processing or expir
   assert.equal(extractAnswersQuery("Kui kaua metsateatist menetletakse?", filingGuidance), false);
   assert.equal(extractAnswersQuery("Millal lõpeb metsateatise kehtivus?", filingGuidance), false);
   assert.equal(extractAnswersQuery("Mitu metsateatist esitati?", filingGuidance), false);
+});
+
+test("review duration requires a cited processing period, not filing or validity", () => {
+  const timing = "Keskkonnaamet vaatab teatise läbi 15 tööpäeva jooksul; kui vaja kooskõlastust või ekspertiisi, võib menetlus kesta kuni 30 tööpäeva.";
+  const validity = "Raiet lubav metsateatis kehtib 24 kuud metsaregistris registreerimisest.";
+  const filing = "Metsateatis esitatakse Metsaregistri kaudu enne raiet.";
+  const answer = { introCitations: [1], parts: [] };
+  for (const query of ["Kui kaua metsateatist menetletakse?", "Kui kaua menetlus kestab? Kuidas esitada metsateatist?"]) {
+    assert.equal(citedEvidenceAnswersQuestion(query, answer, [{ citation: 1, evidenceExcerpt: timing }]), true, query);
+    for (const evidenceExcerpt of [filing, validity]) {
+      assert.equal(citedEvidenceAnswersQuestion(query, answer, [{ citation: 1, evidenceExcerpt }]), false, query);
+    }
+  }
+  assert.equal(citedEvidenceAnswersQuestion("Kui kaua kestab metsateatise menetlus 2023. aastal?", answer, [
+    { citation: 1, evidenceExcerpt: timing },
+  ]), false);
+  assert.equal(citedEvidenceAnswersQuestion("Kui kaua kestab metsateatise menetlus ja mis on riigilõiv?", answer, [
+    { citation: 1, evidenceExcerpt: timing },
+  ]), false);
+  for (const qualifier of ["menetlustasu", "läbivaatamistasu", "kestlikkus"]) {
+    assert.equal(citedEvidenceAnswersQuestion(`Kui kaua kestab metsateatise menetlus ja mis on ${qualifier}?`, answer, [
+      { citation: 1, evidenceExcerpt: timing },
+    ]), false, qualifier);
+  }
 });
 
 test("repeated follow-ups require relevant evidence from one currently cited source", () => {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { publicSearchItem } from "../server/corpus.mjs";
+import { publicSearchItem } from "../server/corpus_runtime.mjs";
 import { observeSourcePolicy } from "../server/source_policy.mjs";
 
 // Source use policy at the corpus boundary. A hydrated row may publish copied

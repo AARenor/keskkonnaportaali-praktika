@@ -1,11 +1,8 @@
 // Contextual follow-up suggestions.
 //
-// The picker chooses only among reviewed questions the caller already holds in
-// memory: the current page query and the turns of the open conversation decide
-// which of them still fit. Nothing here writes a question, calls a model or
-// touches the network, so a person's own words, a name or any free-text detail
-// can never travel back out as a suggestion.
-import { REVIEWED_FORESTRY_SEARCH_SUGGESTIONS } from "./search-suggestions.js";
+// The picker ranks only candidate questions the caller already holds in
+// memory. The current query and any open conversation decide which candidates
+// fit. Nothing here writes a question, calls a model or touches the network.
 
 export const CONTEXTUAL_SUGGESTION_MAX = 12;
 
@@ -164,9 +161,6 @@ function cleanSuggestion(value) {
   return text;
 }
 
-const DEFAULT_SUGGESTIONS = Object.freeze(
-  REVIEWED_FORESTRY_SEARCH_SUGGESTIONS.map(cleanSuggestion).filter(Boolean),
-);
 
 function boundedText(value) {
   if (typeof value !== "string") return "";
@@ -412,7 +406,7 @@ export function contextualSuggestions(options = {}) {
   if (!hasContext) {
     const reviewed = pool.filter((item) => item.reviewedRelated).map((item) => item.value);
     if (reviewed.length) return reviewed.slice(0, limit);
-    return allowDefault ? DEFAULT_SUGGESTIONS.slice(0, limit) : [];
+    return allowDefault ? pool.slice(0, limit).map((item) => item.value) : [];
   }
 
   const scored = [];

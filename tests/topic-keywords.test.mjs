@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { analyzePublicSearchQuery, assessSearchQuery, canonicalizePublicSearchQuery, containsPrivatePersonLookup, forestEvidenceIntent, officialServiceCatalogueDocuments, queryTerms, textHasQueryRoot } from "../server/search.mjs";
-import { rankSearchCandidates, selectAnswerEvidence } from "../server/retrieval.mjs";
-import { buildLlmRequest } from "../server/llm.mjs";
+import { rankSearchCandidates, selectAnswerEvidence } from "../server/retrieval_ranking.mjs";
+import { forestEvidenceIntent, queryTerms, textHasQueryRoot } from "../server/search_query_terms.mjs";
+import { analyzePublicSearchQuery, assessSearchQuery } from "../server/search_query_assessment.mjs";
+import { canonicalizePublicSearchQuery } from "../server/search_query_canonicalization.mjs";
+import { containsPrivatePersonLookup } from "../server/search_query_privacy.mjs";
+import { officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
+import { buildLlmRequest } from "../server/llm_prompt.mjs";
 import { forestrySourceClass } from "../server/forestry-source-policy.mjs";
-import { buildPrefixTsQuery, corpusRankingTerms } from "../server/corpus.mjs";
-import { createPortalDraft, directEvidenceExtract } from "../server/pipeline.mjs";
+import { buildPrefixTsQuery, corpusRankingTerms } from "../server/corpus_query.mjs";
+import { createPortalDraft } from "../server/pipeline.mjs";
+import { directEvidenceExtract } from "../server/search_answer_evidence.mjs";
 
 test("bark-beetle forms preserve the subject instead of rejecting it or searching generic monitoring", () => {
   for (const q of ["ürask", "üraski", "üraskid", "üraskite", "kooreürask", "kuuse-kooreürask", "kuusekooreüraski"]) {
@@ -133,7 +138,7 @@ test("subject aliases never authorize private, foreign-language, or made-up requ
 });
 
 test("answer instructions retain primary-source terminology and source-close wording without inventing evidence", () => {
-  const request = buildLlmRequest({ selectedModel: "gpt-5.6-luna", query: "Mis on SMI?", evidence: [], singleSource: true });
+  const request = buildLlmRequest({ selectedModel: "gpt-5.6-luna", query: "Mis on SMI?", evidence: [] });
   const text = JSON.stringify(request.body);
   assert.match(text, /algallikate.*sõnastus/u);
   assert.match(text, /SMI.*puidubilans.*aastaraamat/u);
@@ -195,7 +200,7 @@ test("short beetle aliases cannot borrow national monitoring evidence for anothe
 
 test("every case and verb form of a listed word is left as written", async () => {
   const { REVIEWED_QUERY_WORD_FORMS } = await import("../server/query-word-forms.mjs");
-  const { correctReviewedQueryTypos } = await import("../server/search.mjs");
+  const { correctReviewedQueryTypos } = await import("../server/search_query_canonicalization.mjs");
   for (const [lemma, forms] of Object.entries(REVIEWED_QUERY_WORD_FORMS)) {
     for (const form of forms) assert.equal(correctReviewedQueryTypos(form), form, `${lemma}: ${form}`);
   }

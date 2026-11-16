@@ -81,83 +81,6 @@ export const REVIEWED_SEARCH_SUGGESTIONS = Object.freeze([
   ...REVIEWED_ENVIRONMENT_SEARCH_SUGGESTIONS,
 ]);
 
-const REVIEWED_SOURCE_CODE_ALIASES = new Map([
-  ["dta08", ["Mis oli Jõgeva 15. jaanuari 2024 ööpäeva keskmine õhutemperatuur?"]],
-  ["kk048", ["Kui suur oli Eesti veevõtt 2024. aastal?"]],
-  ["kk25", ["Kui suur oli BHT7 heitveekoormus Eestis 2024. aastal?"]],
-  ["kk068", ["Kui palju tekkis Eestis 2024. aastal ohtlikke jäätmeid?"]],
-  ["kk610", ["Kui palju jäätmeid taaskasutati Eestis 2024. aastal?"]],
-  ["eelis", ["Kas Emajõgi on avalik veekogu?", "Kas Lahemaa loodusala on Natura ala?"]],
-  ["f rahvalad", ["Kas Lahemaa loodusala on Natura ala?"]],
-  ["lahemaa", ["Kas Lahemaa loodusala on Natura ala?"]],
-  ["ringmajandus", ["Kuidas aitab ringmajandus jäätmeid taaskasutada?"]],
-  ["elurikkus", ["Milline on Eesti elurikkuse seisund?"]],
-  ["voru temperatuur", ["Mis oli Võru ööpäeva keskmine õhutemperatuur 21. augustil 2025?"]],
-  ["ohtlikud jaatmed", ["Kui palju tekkis Eestis 2024. aastal ohtlikke jäätmeid?"]],
-  ["kotkas", ["Kuidas kontrollida KOTKAS keskkonnaloa menetluse staatust?"]],
-  ["kese", ["Kust leida KESE keskkonnaseire mõõtmistulemusi?"]],
-  ["ringlussevott", ["Mis on Eesti jäätmete ringlussevõtu määr?"]],
-  ["rehvid", ["Kas Eestis tohib vanu rehve põletada?"]],
-  ["puurkaev", ["Kuidas saada puurkaevu andmeid?"]],
-  ["susinikujalajalg", ["Kuidas arvutada ettevõtte süsinikujalajälge?"]],
-  ["susinikujalajalge", ["Kuidas arvutada ettevõtte süsinikujalajälge?"]],
-  ["murakaart", ["Kust näeb Tallinna mürakaarti?"]],
-  ["mura", ["Kust näeb Tallinna mürakaarti?"]],
-  ["mura tase", ["Kust näeb Tallinna mürakaarti?"]],
-  ["kliima", ["Mis oli 2024. aasta keskmine õhutemperatuur Eestis?"]],
-  ["uputus", ["Kust leida üleujutusohu prognoosid?"]],
-  ["uleujutus", ["Kust leida üleujutusohu prognoosid?"]],
-  ["ohukvaliteet", ["Milline on õhukvaliteet Tallinnas praegu?"]],
-  ["meri", ["Kust leida merevee taseme mõõtmisandmeid?"]],
-  ["mereveetase", ["Kust leida merevee taseme mõõtmisandmeid?"]],
-  ["merevee tase", ["Kust leida merevee taseme mõõtmisandmeid?"]],
-  ["tiik", ["Kas väikese tiigi rajamiseks on luba vaja?"]],
-  ["parnu rand", ["Kas Pärnu rannas võib ujuda?"]],
-  ["vesi", [
-    "Kui suur oli Eesti veevõtt 2024. aastal?",
-    "Kas Emajõgi on avalik veekogu?",
-    "Mis oli Tartu Emajõe viimati avaldatud veetase?",
-    "Kust leida põhjavee seireandmeid?",
-    "Kust leida joogivee kvaliteedi andmeid?",
-    "Kust leida suplusvee andmeid?",
-    "Kust leida üleujutusohu prognoosid?",
-    "Kust leida merevee taseme mõõtmisandmeid?",
-  ]],
-  ["jaatmed", [
-    "Kui palju tekkis Eestis 2024. aastal ohtlikke jäätmeid?",
-    "Kui palju jäätmeid taaskasutati Eestis 2024. aastal?",
-      "Kuhu viia vana elektroonika?",
-    "Mida teha vanade ravimitega?",
-    "Kuidas kompostida biojäätmeid?",
-    "Kuidas sorteerida pakendeid?",
-    "Kust leida jäätmekäitluskohti?",
-    "Mis on Eesti jäätmete ringlussevõtu määr?",
-  ]],
-  ["luba", [
-    "Kuidas taotleda keskkonnaluba?",
-      "Kuidas taotleda välisõhu saasteluba?",
-    "Kuidas taotleda kaevuluba?",
-    "Kuidas taotleda metsateatist?",
-    "Kas väikese tiigi rajamiseks on luba vaja?",
-    "Kuidas kontrollida KOTKAS keskkonnaloa menetluse staatust?",
-  ]],
-  ["mets", [
-    "Kui palju metsa on Eestis?",
-    "Kui suur osa Eestist on kaetud metsaga?",
-    "Kas Eestis raiutakse rohkem kui metsa juurde kasvab?",
-    "Mis vahe on SMI-l ja metsaregistril?",
-    "Kui suur osa metsadest on kaitse all?",
-    "Kuidas mõjutab kliimamuutus metsi?",
-    "Mis on metsateatis?",
-    "Kuidas taotleda metsateatist?",
-    "Kas kaitsealadel raiutakse?",
-    "Kuidas arvutatakse juurdekasvu?",
-    "Kui palju lageraiet on viimase 10 aasta jooksul tehtud?",
-    "Kust leida konkreetse kinnistu metsaandmeid?",
-  ]],
-]);
-
-const REVIEWED_ALIAS_SURFACE_PATTERN = /^[a-z0-9õäöüšž]+(?:[ _-][a-z0-9õäöüšž]+)*$/iu;
 
 export function shouldFetchRemoteSuggestions(value) {
   const query = String(value || "").trim();
@@ -171,114 +94,22 @@ function normalizeSuggestion(value) {
     .toLocaleLowerCase("et");
 }
 
-function normalizeSuggestionAlias(value) {
-  const surface = String(value ?? "")
-    .normalize("NFKC")
-    .trim()
-    .toLocaleLowerCase("et");
-  if (!surface || surface.length > REMOTE_SUGGESTION_MAX_LENGTH
-    || !REVIEWED_ALIAS_SURFACE_PATTERN.test(surface)) return null;
-  return normalizeSuggestion(surface)
-    .replace(/[^0-9a-z]+/giu, " ")
-    .replace(/\s+/gu, " ")
-    .trim();
-}
-
-function editDistanceAtMostOne(left, right) {
-  if (left === right) return true;
-  if (Math.abs(left.length - right.length) > 1) return false;
-  let leftIndex = 0;
-  let rightIndex = 0;
-  let edits = 0;
-  while (leftIndex < left.length && rightIndex < right.length) {
-    if (left[leftIndex] === right[rightIndex]) {
-      leftIndex += 1;
-      rightIndex += 1;
-      continue;
-    }
-    edits += 1;
-    if (edits > 1) return false;
-    if (left.length > right.length) leftIndex += 1;
-    else if (right.length > left.length) rightIndex += 1;
-    else {
-      leftIndex += 1;
-      rightIndex += 1;
-    }
-  }
-  return edits + Number(leftIndex < left.length || rightIndex < right.length) <= 1;
-}
-
-function reviewedTokenMatches(queryToken, token) {
-  if (token.length < 3) return token === queryToken;
-  if (token.startsWith(queryToken) || queryToken.startsWith(token)) return true;
-  if (queryToken.length < 3) return false;
-  return [queryToken.length - 1, queryToken.length, queryToken.length + 1]
-    .filter((length) => length > 0)
-    .some((length) => editDistanceAtMostOne(queryToken, token.slice(0, length)));
-}
-
-export function suggestionsForValue(value, remote = {}, local = [], limit = 12) {
-  const originalQuery = String(value || "").trim();
-  if (originalQuery.length > REMOTE_SUGGESTION_MAX_LENGTH) return [];
-  const canonicalQuery = originalQuery.normalize("NFKC");
-  if (canonicalQuery.length > REMOTE_SUGGESTION_MAX_LENGTH) return [];
-  const query = normalizeSuggestion(canonicalQuery);
-  const localItems = local
-    .map((item, index) => ({
-      value: String(item || "").replace(/\s+/gu, " ").trim(),
-      index,
-    }))
-    .filter((item) => item.value);
-  const localValueKeys = new Set(localItems.map((item) => normalizeSuggestion(item.value)));
-  const aliasKey = normalizeSuggestionAlias(originalQuery);
-  const scoredAliases = (aliasKey === null ? [] : REVIEWED_SOURCE_CODE_ALIASES.get(aliasKey) || [])
-    .filter((suggestion) => localValueKeys.has(normalizeSuggestion(suggestion)))
-    .map((suggestion, index) => ({
-      value: suggestion,
-      count: null,
-      index: -100 + index,
-      relevance: 110,
-      question: /[?]$/u.test(suggestion),
-    }));
-  const queryTokens = query.match(/[0-9a-z]+/giu) || [];
-  const scoredLocal = localItems
-    .map((item) => {
-      const normalized = normalizeSuggestion(item.value);
-      const tokens = normalized.match(/[0-9a-z]+/giu) || [];
-      const prefixMatches = queryTokens.filter((queryToken) => (
-        tokens.some((token) => reviewedTokenMatches(queryToken, token))
-      )).length;
-      const relevance = !query ? 50 - item.index * 0.001
-        : normalized.startsWith(query) ? 100
-        : queryTokens.length && prefixMatches === queryTokens.length ? 60 + prefixMatches
-          : 0;
-      return { value: item.value, count: null, index: item.index, relevance, question: /[?]$/u.test(item.value) };
-    })
-    .filter((item) => item.relevance > 0);
-  const scoredRemote = String(remote.query || "") === originalQuery && Array.isArray(remote.items)
-    ? remote.items.map((item, index) => {
-      const clean = String(item?.value || "").replace(/\s+/gu, " ").trim();
-      const normalized = normalizeSuggestion(clean);
-      return {
-        value: clean,
-        count: item?.count ?? null,
-        index: localItems.length + index,
-        relevance: normalized === query ? 105 : normalized.startsWith(query) ? 95 : 70,
-        question: /[?]$/u.test(clean),
-      };
-    }).filter((item) => item.value)
-    : [];
+export function suggestionsForValue(value, remote = {}, limit = 12) {
+  const query = String(value || "").trim();
+  if (!shouldFetchRemoteSuggestions(query) || remote.query !== query || !Array.isArray(remote.items)) return [];
+  const maximum = Number.isInteger(limit) ? Math.max(0, Math.min(12, limit)) : 12;
   const seen = new Set();
-  return [...(scoredAliases.length ? scoredAliases : scoredLocal), ...scoredRemote]
-    .sort((left, right) => Number(right.question) - Number(left.question)
-      || right.relevance - left.relevance
-      || left.index - right.index)
+  return remote.items
+    .map((item) => ({
+      value: String(item?.value || "").replace(/\s+/gu, " ").trim(),
+      count: item?.count ?? null,
+    }))
+    .filter((item) => item.value && item.value.length <= 200)
     .filter((item) => {
       const key = normalizeSuggestion(item.value);
-      if (seen.has(key)) return false;
+      if (!key || seen.has(key)) return false;
       seen.add(key);
       return true;
     })
-    .slice(0, limit)
-    .map(({ value: suggestion, count }) => ({ value: suggestion, count }));
+    .slice(0, maximum);
 }

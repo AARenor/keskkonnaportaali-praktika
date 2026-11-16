@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { officialServiceCatalogueDocuments } from "../server/search.mjs";
-import { rankPublicSearchCandidates } from "../server/retrieval.mjs";
+import { officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
+import { rankPublicSearchCandidates } from "../server/retrieval_ranking.mjs";
 
 const NOW = Date.parse("2026-11-10T12:00:00Z");
 const cases = [

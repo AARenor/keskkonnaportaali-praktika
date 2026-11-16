@@ -1,3 +1,4 @@
+import { normalizedProviderUsage } from "./llm_usage.mjs";
 function boundedInteger(value, fallback, minimum, maximum) {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed)) return fallback;
@@ -19,14 +20,18 @@ function budgetLimit(value, fallback, minimum, maximum) {
 }
 
 export const AGENT_MANAGER_MAX_TURNS = 2;
+export const AGENT_MANAGER_MAX_ATTEMPTS = 2;
 export const AGENT_SPECIALIST_MAX_TURNS = 1;
 export const AGENT_SPECIALIST_MAX_TOKENS = 700;
-// The answer itself has no output-token ceiling; only the rolling budget
-// reservation needs an estimate, and the answer shape needs a sanity bound wide
-// enough that a complete explanation is never cut inside a sentence.
+// This estimates the rolling budget reservation only. It is not sent to the
+// provider as an output cap. The assembled answer is rejected as a whole above
+// its character limit so a sentence is never cut mid-thought.
+
 export const AGENT_MANAGER_ANSWER_TOKENS = 4_000;
+
 export const MAX_ANSWER_INTRO_CHARS = 6_000;
 export const MAX_ANSWER_PART_CHARS = 4_000;
+export const MAX_ANSWER_TOTAL_CHARS = 3_200;
 
 export function estimatedInputTokensFromBytes(inputBytes = 0) {
   const boundedInputBytes = nonnegativeInteger(inputBytes) ?? 0;
@@ -69,13 +74,16 @@ export function estimatedLlmBudgetUsage({ orchestrated = false, inputBytes = 0 }
   const inputReservation = estimatedInputTokens > 0 ? estimatedInputTokens + 512 : 0;
   if (!orchestrated) return { requests: 1, tokens: managerTokens + inputReservation };
 
-  // The manager has two bounded turns: one mandatory composite review tool and
-  // one final answer. The composite runs both one-turn specialists exactly once.
+  // Each manager attempt can use both bounded turns. The mandatory evidence
+  // review runs both specialists once, then reuses their result on retry.
+  const managerRequests = AGENT_MANAGER_MAX_TURNS * AGENT_MANAGER_MAX_ATTEMPTS;
+  const specialistRequests = 2 * AGENT_SPECIALIST_MAX_TURNS;
+  const requests = managerRequests + specialistRequests;
   return {
-    requests: AGENT_MANAGER_MAX_TURNS + 2 * AGENT_SPECIALIST_MAX_TURNS,
-    tokens: AGENT_MANAGER_MAX_TURNS * managerTokens
-      + 2 * AGENT_SPECIALIST_MAX_TOKENS * AGENT_SPECIALIST_MAX_TURNS
-      + inputReservation,
+    requests,
+    tokens: managerRequests * managerTokens
+      + specialistRequests * AGENT_SPECIALIST_MAX_TOKENS
+      + requests * inputReservation,
   };
 }
 
@@ -84,24 +92,6 @@ function nonnegativeInteger(value) {
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
 }
 
-export function normalizedProviderUsage(value, { defaultRequests = 0 } = {}) {
-  const usage = value?.usage && typeof value.usage === "object" ? value.usage : value || {};
-  const tokenCandidates = [usage.tokens, usage.totalTokens, usage.total_tokens]
-    .map(nonnegativeInteger)
-    .filter((candidate) => candidate !== null);
-  const input = [usage.inputTokens, usage.input_tokens, usage.prompt_tokens]
-    .map(nonnegativeInteger)
-    .find((candidate) => candidate !== null);
-  const output = [usage.outputTokens, usage.output_tokens, usage.completion_tokens]
-    .map(nonnegativeInteger)
-    .find((candidate) => candidate !== null);
-  if (input !== undefined && output !== undefined) tokenCandidates.push(input + output);
-  const requests = nonnegativeInteger(usage.requests);
-  return {
-    requests: requests ?? Math.max(0, Number(defaultRequests) || 0),
-    ...(tokenCandidates.length ? { tokens: Math.max(...tokenCandidates) } : {}),
-  };
-}
 
 export function llmBudgetDenial(error, maximumDepth = 4) {
   const seen = new Set();

@@ -3,7 +3,8 @@ import test from "node:test";
 import https from "node:https";
 import { syncBuiltinESMExports } from "node:module";
 import { EventEmitter } from "node:events";
-import { searchEnvironmentLive, draftMatchesListingAndFilters } from "../server/pipeline.mjs";
+import { searchEnvironmentLive } from "../server/pipeline.mjs";
+import { draftMatchesListingAndFilters } from "../server/search_listing_stage.mjs";
 import { buildEvidencePack, isEvidencePack } from "../server/evidence-pack.mjs";
 import { sourceIsLinkedToVisibleService } from "../server/source-identity.mjs";
 import {

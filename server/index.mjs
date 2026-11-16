@@ -6,14 +6,18 @@ import { fileURLToPath } from "node:url";
 import { readAppBuild } from "./app-build.mjs";
 import { purgeExpiredSearchData } from "./database.mjs";
 import {
-  closeCorpusStatsBackendAdmission,
-  corpusStats,
-  scheduleOfficialDiscoveryMaintenance,
-  refreshReviewedCatalogue,
   startContinuousCorpusBackfill,
   startCorpusSyncIfStale,
-  stopOfficialDiscoveryIndexing,
 } from "./corpus.mjs";
+import {
+  closeCorpusStatsBackendAdmission,
+  corpusStats,
+} from "./corpus_statistics.mjs";
+import {
+  refreshReviewedCatalogue,
+  scheduleOfficialDiscoveryMaintenance,
+  stopOfficialDiscoveryIndexing,
+} from "./corpus_ingestion.mjs";
 import { createGracefulShutdown } from "./graceful-shutdown.mjs";
 import {
   DEFAULT_HEARTBEAT_INTERVAL_MS,
@@ -30,15 +34,17 @@ import {
   searchTimeoutFallback,
   settleWithinDeadline,
 } from "./pipeline.mjs";
+import { parseSearchPagination } from "./search_route_input.mjs";
 import {
   blockedFollowUpAssessment,
   contextualRetrievalQuery,
   conversationContext,
+} from "./retrieval_context.mjs";
+import {
   parsePublicSearchFilters,
-  parseBoundedSearchInteger,
-  prepareRankedSearchResults,
   publicSearchListing,
-} from "./retrieval.mjs";
+} from "./retrieval_listing.mjs";
+import { prepareRankedSearchResults } from "./retrieval.mjs";
 import {
   assessSameOriginBrowserRequest,
   assessSameOriginJsonRequest,
@@ -82,17 +88,14 @@ import {
   getReviewedSearchSuggestions,
   isReviewedSearchSuggestionAlias,
 } from "./suggestions.mjs";
+import { finalizeFollowUpResult } from "./search_followup_result.mjs";
+import { canonicalizePublicSearchQuery } from "./search_query_canonicalization.mjs";
 import {
   assessSearchQuery,
-  canonicalizePublicSearchQuery,
-  citedEvidenceAnswersQuestion,
-  composeNoAnswerResponse,
-  composeScopeResponse,
-  repeatsEarlierAnswer,
-  withRepeatedAnswerNote,
-  isAllEnvironmentSearchEnabled,
   isForestRelatedQuery,
-} from "./search.mjs";
+} from "./search_query_assessment.mjs";
+import { composeScopeResponse } from "./search_response.mjs";
+import { isAllEnvironmentSearchEnabled } from "./search_query_terms.mjs";
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -452,14 +455,6 @@ function searchQuery(request, maximumLength = 180) {
   );
 }
 
-function searchPage(request, name, fallback, maximum) {
-  return parseBoundedSearchInteger(
-    request.body?.[name] ?? request.query?.[name],
-    fallback,
-    maximum,
-    { rejectInvalid: true },
-  );
-}
 
 function emptySearchListing(filters, page = 1, pageSize = 12) {
   return publicSearchListing({
@@ -538,9 +533,9 @@ async function handleSearch(request, response) {
   });
   if (queryInput.reason === "empty") return response.status(400).json({ error: "Sisesta otsingusõna." });
   if (!queryInput.ok) return response.status(400).json({ error: "Otsing on liiga pikk." });
-  const page = searchPage(request, "page", 1, 500);
-  const pageSize = searchPage(request, "page_size", 12, 50);
-  if (page === null || pageSize === null) return response.status(400).json({ error: "Lehekülg ja lehe suurus peavad olema lubatud täisarvud." });
+  const pagination = parseSearchPagination(request);
+  if (!pagination.ok) return response.status(400).json({ error: pagination.error });
+  const { page, pageSize } = pagination;
   const parsedFilters = searchFilters(request);
   if (!parsedFilters.ok) return response.status(400).json({ error: parsedFilters.error });
   const filters = parsedFilters.filters;
@@ -662,9 +657,9 @@ app.post("/api/search/stream", async (request, response) => {
   });
   if (queryInput.reason === "empty") return response.status(400).json({ error: "Sisesta otsingusõna." });
   if (!queryInput.ok) return response.status(400).json({ error: "Otsing on liiga pikk." });
-  const page = searchPage(request, "page", 1, 500);
-  const pageSize = searchPage(request, "page_size", 12, 50);
-  if (page === null || pageSize === null) return response.status(400).json({ error: "Lehekülg ja lehe suurus peavad olema lubatud täisarvud." });
+  const pagination = parseSearchPagination(request);
+  if (!pagination.ok) return response.status(400).json({ error: pagination.error });
+  const { page, pageSize } = pagination;
   const parsedFilters = searchFilters(request);
   if (!parsedFilters.ok) return response.status(400).json({ error: parsedFilters.error });
   const filters = parsedFilters.filters;
@@ -805,9 +800,9 @@ async function handleSearchResults(request, response) {
   });
   if (queryInput.reason === "empty") return response.status(400).json({ error: "Sisesta otsingusõna." });
   if (!queryInput.ok) return response.status(400).json({ error: "Otsing on liiga pikk." });
-  const page = searchPage(request, "page", 1, 500);
-  const pageSize = searchPage(request, "page_size", 12, 50);
-  if (page === null || pageSize === null) return response.status(400).json({ error: "Lehekülg ja lehe suurus peavad olema lubatud täisarvud." });
+  const pagination = parseSearchPagination(request, { includeWindowId: true });
+  if (!pagination.ok) return response.status(400).json({ error: pagination.error });
+  const { page, pageSize, windowId } = pagination;
   const parsedFilters = searchFilters(request);
   if (!parsedFilters.ok) return response.status(400).json({ error: parsedFilters.error });
   const filters = parsedFilters.filters;
@@ -838,6 +833,7 @@ async function handleSearchResults(request, response) {
       });
     }
     const results = await settleWithinDeadline(prepareRankedSearchResults(query, {
+      windowId,
       page,
       pageSize,
       filters,
@@ -1151,11 +1147,11 @@ function parseSearchJobPayload(payload) {
   const queryInput = searchQuery(parsed);
   if (queryInput.reason === "empty") return { error: { status: 400, payload: { error: "Sisesta otsingusõna." } } };
   if (!queryInput.ok) return { error: { status: 400, payload: { error: "Otsing on liiga pikk." } } };
-  const page = searchPage(parsed, "page", 1, 500);
-  const pageSize = searchPage(parsed, "page_size", 12, 50);
-  if (page === null || pageSize === null) {
-    return { error: { status: 400, payload: { error: "Lehekülg ja lehe suurus peavad olema lubatud täisarvud." } } };
+  const pagination = parseSearchPagination(parsed);
+  if (!pagination.ok) {
+    return { error: { status: 400, payload: { error: pagination.error } } };
   }
+  const { page, pageSize } = pagination;
   const parsedFilters = searchFilters(parsed);
   if (!parsedFilters.ok) return { error: { status: 400, payload: { error: parsedFilters.error } } };
   return {
@@ -1184,16 +1180,6 @@ function parseFollowUpJobPayload(payload) {
   };
 }
 
-// The job's event sink is the store, not a socket, so the only writer call the
-// shared flow needs is the event write. `emit` throws when the job's byte or
-// time budget is spent, and that must stop the run instead of being swallowed.
-function jobStreamWriter(emit) {
-  return {
-    write: async (type, payload) => {
-      emit(type, payload);
-    },
-  };
-}
 
 // The job run itself lives in its own module so its ordering contract can be
 // exercised with injected collaborators; this is only the wiring to the real
@@ -1368,21 +1354,12 @@ async function composeFollowUpResult({
     onBackgroundCleanup,
   });
   const listing = publicSearchListing(searchResults);
-  const answerText = [result.answer?.intro, ...(result.answer?.parts || []).map((part) => part?.text)].filter(Boolean).join(" ");
-  if (repeatsEarlierAnswer(answerText, previousAnswers, { title: result.answer?.title, question })) {
-    // The thread already said this. Keep the no-answer only as long as the
-    // current answer's own cited source text cannot be shown to answer the
-    // current question; earlier answers are a comparison, never evidence.
-    if (!citedEvidenceAnswersQuestion(question, result.answer, result.sources)) {
-      return { ...composeNoAnswerResponse(question), searchResults: listing };
-    }
-    return {
-      ...result,
-      answer: withRepeatedAnswerNote(result.answer),
-      searchResults: listing,
-    };
-  }
-  return { ...result, searchResults: listing };
+  return finalizeFollowUpResult({
+    question,
+    result,
+    previousAnswers,
+    listing,
+  });
 }
 
 app.get("/api/corpus", async (request, response) => {

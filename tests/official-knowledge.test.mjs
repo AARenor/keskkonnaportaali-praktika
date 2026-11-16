@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  forestEvidenceIntent,
-  officialServiceCatalogueDocuments,
-} from "../server/search.mjs";
+import { officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
+import { forestEvidenceIntent } from "../server/search_query_terms.mjs";
 import {
   forestrySourceClass,
   FORESTRY_SOURCE_HIERARCHY,
@@ -13,10 +11,14 @@ import {
   rankPublicSearchCandidates,
   scoreSearchCandidate,
   selectAnswerEvidence,
-} from "../server/retrieval.mjs";
-import { createPortalDraft, directEvidenceExtract, publicResponse } from "../server/pipeline.mjs";
-import { assessEvidence, assessSearchQuery, composeScopeResponse } from "../server/search.mjs";
-import { resultMatchesFilters } from "../server/retrieval.mjs";
+} from "../server/retrieval_ranking.mjs";
+import { createPortalDraft } from "../server/pipeline.mjs";
+import { directEvidenceExtract } from "../server/search_answer_evidence.mjs";
+import { publicResponse } from "../server/search_public_response.mjs";
+import { assessEvidence } from "../server/search_evidence.mjs";
+import { assessSearchQuery } from "../server/search_query_assessment.mjs";
+import { composeScopeResponse } from "../server/search_response.mjs";
+import { resultMatchesFilters } from "../server/retrieval_listing.mjs";
 import { smiSeriesPoints, smiSeriesWorksheet } from "../server/smi-tables.mjs";
 import { smiForestSeriesDocument } from "../server/forest-series.mjs";
 import * as harvest from "../server/harvest-share.mjs";

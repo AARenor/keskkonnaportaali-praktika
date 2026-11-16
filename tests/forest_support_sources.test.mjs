@@ -3,8 +3,8 @@ import test from "node:test";
 
 import { officialCitationUrlEligibility } from "../server/citation-policy.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
-import { officialServiceCatalogueDocuments } from "../server/search.mjs";
-import { rankPublicSearchCandidates } from "../server/retrieval.mjs";
+import { officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
+import { rankPublicSearchCandidates } from "../server/retrieval_ranking.mjs";
 
 const resources = [
   ["Kust leida erametsatoetusi?", "https://www.eramets.ee/toetused/"],

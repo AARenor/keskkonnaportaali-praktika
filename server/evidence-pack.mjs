@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
-import { containsUnsafeInstruction, forestEvidenceIntent, normalize, queryTerms, sanitizeLlmEvidenceText, splitTextPassages, textHasQueryRoot } from "./search.mjs";
+import { containsUnsafeInstruction } from "./search_query_safety.mjs";
+import { sanitizeLlmEvidenceText } from "./search_evidence_sanitization.mjs";
+import { forestEvidenceIntent, normalize, queryTerms, textHasQueryRoot } from "./search_query_terms.mjs";
+import { splitTextPassages } from "./search_evidence.mjs";
 import { projectSourceCopy, SOURCE_EVIDENCE_BODY_CHARS, SOURCE_EVIDENCE_COPY_CHARS, sourceCanSupportPublicCitation, sourceCopyPermission } from "./source-registry.mjs";
 import { sourceEvidenceBinding, sourceWitnessKey } from "./source-identity.mjs";
 

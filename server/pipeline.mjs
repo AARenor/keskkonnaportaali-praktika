@@ -1,21 +1,17 @@
 import { forestLawVersionStamp } from "./law-texts.mjs";
-import { createHash } from "node:crypto";
-import { specialistSubjectVariants } from "./topic-keywords.mjs";
-import { boundedChart, validPublicChart } from "./answer-chart.mjs";
 import { asksOnlyForestAmount, withForestContextChart } from "./forest-series.mjs";
 import { composeHarvestShareResponse } from "./harvest-share.mjs";
 import { withLandUseShareChart } from "./land-use-share.mjs";
-import { officialCitationUrlEligibility, publicSourceAllowed } from "./citation-policy.mjs";
 import { readSearchCache, recordSearch } from "./database.mjs";
 import { answerCadastreQuestion } from "./cadastre.mjs";
 import { composeClimateDailyMeanResponse } from "./climate.mjs";
 import {
   hydrateOfficialDocuments,
 } from "./integrations.mjs";
-import { assertAnswerAddressesQuery, claimTokens, generateGroundedAnswer, safeSemanticInference, tokensShareStem } from "./llm.mjs";
+import { generateGroundedAnswer } from "./llm.mjs";
 import { buildEvidencePack } from "./evidence-pack.mjs";
 import { deliveredOutcome } from "./delivered-outcome.mjs";
-import { publicSourceWitnessKey, sameSourceResource, sourceEvidenceBinding, sourceIsLinkedToVisibleService, sourceResourceKey, sourceWitnessKey } from "./source-identity.mjs";
+import { sameSourceResource, sourceEvidenceBinding, sourceWitnessKey } from "./source-identity.mjs";
 import { composeEelisEmajogiPublicWatercourseResponse, composeEelisNaturaSiteResponse } from "./eelis.mjs";
 import {
   composeStatisticsHazardousWasteResponse,
@@ -32,32 +28,36 @@ import {
   composeMetsandusteatmikResponse,
   composeNationalWeatherForecastResponse,
   composeSmiIncrementResponse,
+  isCurrentWeatherObservationQuery,
 } from "./indicators.mjs";
 import {
-  evidenceDocumentsFromListing,
-  currentListingEvidencePlan,
   isContextAnchoredFollowUp,
   isContinuationFollowUp,
   isSafeEllipticalFollowUp,
-  prepareRankedSearchResults,
-  rankPublicSearchCandidates,
-  resultMatchesFilters,
-  resultPublishedAt,
-  selectAnswerEvidence,
-  selectSmiDefinitionEvidence,
-  stablePublicResultId,
-} from "./retrieval.mjs";
+} from "./retrieval_context.mjs";
 import {
-  assessEvidence,
+  evidenceDocumentsFromListing,
+  resultMatchesFilters,
+  stablePublicResultId,
+} from "./retrieval_listing.mjs";
+import {
+  currentListingEvidencePlan,
+  selectSmiDefinitionEvidence,
+} from "./retrieval_evidence.mjs";
+import {
+  rankPublicSearchCandidates,
+  selectAnswerEvidence,
+} from "./retrieval_ranking.mjs";
+import { resultPublishedAt } from "./retrieval_deduplication.mjs";
+import { prepareRankedSearchResults } from "./retrieval.mjs";
+import { answersAskedConcept, extractAnswersQuery, isNonAnswerText, namesDefinitionTerm, rawLawLeadAnswersQuery } from "./answer_coverage.mjs";
+import { canonicalizePublicSearchQuery } from "./search_query_canonicalization.mjs";
+import {
   assessSearchQuery,
-  canonicalizePublicSearchQuery,
-  composeNoAnswerResponse,
-  answersAskedConcept,
-  extractAnswersQuery,
-  namesDefinitionTerm,
-  isAllEnvironmentSearchEnabled,
   isForestRelatedQuery,
-  isNonAnswerText,
+} from "./search_query_assessment.mjs";
+import {
+  composeNoAnswerResponse,
   NO_ANSWER_EYEBROW,
   NO_ANSWER_INTRO,
   composeOfficialServiceNavigationResponse,
@@ -66,29 +66,82 @@ import {
   composeSearchResponse,
   composeTopicDataOverviewResponse,
   composeWasteFacilitiesNavigationResponse,
+} from "./search_response.mjs";
+import {
   directPortalOverviewSource,
   directPortalReportSource,
   forestryIntentServiceDocumentIds,
-  rankedSetCoversSubject,
-  forestEvidenceIntent,
-  hasCompleteSentenceEnding,
+} from "./search_selectors.mjs";
+import {
+  isAllEnvironmentSearchEnabled,
   normalize,
-  passageDisclaimsEvidence,
   queryTerms,
-  rootIsDomain,
-  sanitizeLlmEvidenceText,
-  splitTextPassages,
-  textHasActionRoot,
   textHasQueryRoot,
-} from "./search.mjs";
-import { projectSourceCopy, SOURCE_EVIDENCE_COPY_CHARS, sourceCanSupportPublicCitation, sourceCopyPermission } from "./source-registry.mjs";
-import { queryNeedsFreshness } from "./corpus.mjs";
-import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs";
+} from "./search_query_terms.mjs";
+import { assessEvidence, rankedSetCoversSubject } from "./search_evidence.mjs";
+import { projectSourceCopy, SOURCE_EVIDENCE_COPY_CHARS, sourceCanSupportPublicCitation } from "./source-registry.mjs";
+import { queryNeedsFreshness } from "./corpus_query.mjs";
 import { configuredAnswerBudgetMs } from "./request-budget.mjs";
+import { analyzeQueryIntent, isNoticeReviewDurationQuestion } from "./query_intent.mjs";
+import { buildIntentAnswer } from "./answer_templates.mjs";
+import { readSearchAnswerCache, createSearchAnswerCacheRevision, prepareSearchAnswerCacheResponse, writeSearchAnswerCache } from "./search_cache_stage.mjs";
+import { searchUsageTelemetry } from "./search_usage_projection.mjs";
+import {
+  answerClaimsHaveVisibleWitnesses,
+  answerEvidenceDocuments,
+  attachEvidenceExcerpts,
+  cardAnswersQueryWords,
+  comparisonAnswersQuery,
+  claimHasVisibleWitness,
+  composeForestDataSourcesFallback,
+  composeForestDepletionFallback,
+  composeGenericForestOverviewFallback,
+  composeOfficialForestryEvidenceFallback,
+  composeSourceClaimPairs,
+  directEvidenceExtract,
+  finalizeVisibleAnswerWitnesses,
+  modelStartingDraft,
+  rebindAnswerCitationsToVisibleWitnesses,
+  repeatsOffTargetLead,
+  sourceCitation,
+  withNoticeScopeCaveat,
+  withoutOffTargetFallback,
+} from "./search_answer_evidence.mjs";
+import {
+  ANSWER_SOURCE_EXPIRY,
+  attemptCheckCode,
+  publicationCopyExpiry,
+  publicResponse,
+} from "./search_public_response.mjs";
+import {
+  cachedSourcesBelongToListing,
+  draftMatchesListingAndFilters,
+  draftSourcesBelongToListing,
+  searchListingRevision,
+} from "./search_listing_stage.mjs";
+
+const CONCEPT_INTENTS = new Set(["definition", "criteria"]);
+const TEMPLATE_INTENTS = new Set(["definition", "criteria", "conditions", "procedure"]);
+const PERMISSION_ONLY_DEFINITION = /(?:^|[^\p{L}])(?:lubat\p{L}*|tohib|võib|võivad|võin|võid|võime|võite|võiks\p{L}*|tingimus\p{L}*)(?=$|[^\p{L}])/iu;
+
+
+function hasDefaultSearchFilters(filters = {}) {
+  const category = typeof filters.category === "string" ? filters.category.trim() : "";
+  const year = filters.year === undefined || filters.year === null || String(filters.year).trim() === "";
+  return String(filters.source || "all") === "all"
+    && !category
+    && year
+    && String(filters.sort || "relevance") === "relevance";
+}
+function isPermissionFocusedLawCandidate(source, intent) {
+  return CONCEPT_INTENTS.has(intent)
+    && Boolean(source?._focusedLawTerm)
+    && PERMISSION_ONLY_DEFINITION.test(String(source._lawDefinition || ""));
+}
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v108-rule-law-section";
+export const SEARCH_RESPONSE_REVISION = "answer-v109-intent-bounded-evidence";
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
@@ -133,1269 +186,7 @@ export function reassociateHydratedDocuments(candidates = [], hydratedDocuments 
   });
 }
 
-function passageQueryCoverage(query, passage) {
-  const roots = queryTerms(query);
-  if (!roots.length) return 0;
-  return roots.filter((root) => textHasQueryRoot(passage, root)).length / roots.length;
-}
 
-function passageDirectness(query, passage) {
-  const roots = queryTerms(query);
-  const text = normalize(passage);
-  const cleanQuery = normalize(query);
-  const years = cleanQuery.match(/\b(?:19|20)\d{2}\b/gu) || [];
-  // Describing what a page covers is navigation, not an explanation of the
-  // subject. Prefer its actual factual passage even with fewer exact words.
-  const pageDescription = /\b(?:juhend|leht|artikkel|ulevaade|andmestik)\w*\s+(?:selgita|kirjelda|tutvusta|sisalda|kasitle)\w*/u.test(text);
-  const unrelatedEvent = /\b(?:seminar|konverents|koolitus|registreeru)\w*/u.test(text)
-    && !/\b(?:seminar|konverents|koolitus|uritus)\w*/u.test(cleanQuery);
-  const yearScore = (years.length ? (years.every((year) => text.includes(year)) ? 20 : -20) : 0)
-    - (pageDescription || unrelatedEvent ? 24 : 0);
-  if (/\b(?:ohtlik|kahjulik|terviserisk|tervisemoju|risk)\w*/u.test(cleanQuery)) {
-    const consequence = /\b(?:haigestu|kopsuvah|vahki|vahk|kahjusta|murgi|surma|suremu|hingamis|tervisehaire)\w*/u.test(text);
-    return yearScore + (consequence ? 20 : 0);
-  }
-  if (/\b(?:paritolu|parineb|tekib|tekkimise|pohjustab)\b/u.test(cleanQuery)) {
-    const origin = /\b(?:allikas|allikaks|parineb|tekib|tekivad|pohjustab|pohjustavad)\b/u.test(text);
-    return yearScore + (origin ? 20 : 0);
-  }
-  if (roots.includes("keskkonnamoju")) {
-    const subjectRoots = roots.filter((root) => !["keskkonnamoju", "ida", "virumaa"].includes(root));
-    const hasSubject = subjectRoots.some((root) => textHasQueryRoot(text, root));
-    const hasImpact = textHasQueryRoot(text, "keskkonnamoju");
-    const concreteImpact = /\b(?:pohjave|pinnave|joogive|mura|lohket|tolm|hairing|leevend|enneta|taaskasut|aherain|eluslood|maastik|kahju)\w*/u.test(text);
-    const procedureOnly = /\b(?:nousolek|komisjon|vallavalits|ministeerium|avalik rahvakoosolek)\w*/u.test(text)
-      && !concreteImpact;
-    return yearScore
-      + (hasSubject && hasImpact ? 20 : 0)
-      + (concreteImpact ? 12 : 0)
-      - (procedureOnly ? 18 : 0);
-  }
-  if (roots.some((root) => ["muutus", "kasv"].includes(root))
-    && roots.some((root) => ["noor", "vanus"].includes(root))) {
-    const hasForestAge = text.includes("mets") && /\b(?:noor|vanus|vana)\w*/u.test(text);
-    const hasDirection = /\b(?:suuren|vahen|lang|kahan|pusi)\w*/u.test(text);
-    return yearScore + (hasForestAge && hasDirection ? 20 : 0);
-  }
-  // Guidance questions need an instruction, not a description of the page.
-  const guidanceQuestion = /\b(?:kuidas|mida\s+teha|mida\s+peab|kuhu|kus\s+saab|millised\s+on\s+nouded|kuidas\s+valtida|kuidas\s+taotleda)\b/u.test(normalize(query))
-    && !/\b(?:kui\s+palju|kui\s+suur|pindala|osakaal|muutunud|muutus|trend|aastatel|arv|kogus|protsent)\b/u.test(normalize(query));
-  if (guidanceQuestion) {
-    const adviceText = /\b(?:tuleb|peab|soovita\w*|valdi\w*|valtida|eemalda\w*|kuivata\w*|tuuluta\w*|puhasta\w*|kontrolli\w*|taotle\w*|esita\w*|hoia\w*|vaheta\w*|paranda\w*|koguge|vii\b|viia\b|registreeri\w*)\b/u.test(text);
-    // An imperative sentence is only an answer when it is about the question's
-    // own action. Otherwise a disposal sentence on a sorting page could answer
-    // "how do I sort bio-waste" merely because it contains "viia".
-    const terms = queryTerms(query);
-    const actions = terms.filter((term) => term.length >= 5 && /(?:da|ma|mine|takse|tud|nud)$/u.test(term) && !term.endsWith("maa"));
-    const advice = adviceText && (actions.length === 0 || actions.some((term) => textHasActionRoot(passage, term)));
-    const meta = /\b(?:kasitleb|sisaldab|annab\s+ulevaate|on\s+puhendatud|tutvustab|leiad|naed)\b/u.test(text);
-    const chrome = /\b(?:avakuva|infosusteem|menuu|otsing|avaandmed|juhatus)\b/u.test(text);
-    return yearScore + (advice ? 14 : 0) - (meta ? 16 : 0) - (chrome ? 10 : 0);
-  }
-  return yearScore;
-}
-
-const CONDENSER_STOP_WORDS = new Set([
-  "ehk", "ning", "oli", "olid", "on", "see", "seda", "kui", "mis", "et",
-  "eesti", "aasta", "aastal", "aastatel", "andmed", "andmetel", "järgi", "põhjal",
-]);
-
-function condenserWords(value = "") {
-  return String(value || "")
-    .normalize("NFKC")
-    .toLocaleLowerCase("et")
-    .replace(/[^0-9a-zõäöüšž]+/giu, " ")
-    .split(/\s+/u)
-    .filter((word) => word.length >= 4 && !CONDENSER_STOP_WORDS.has(word));
-}
-
-function condenserNumbers(value = "") {
-  return [...String(value || "").normalize("NFKC").matchAll(/\d+(?:[.,]\d+)?/gu)]
-    .map((match) => match[0].replace(",", "."));
-}
-
-function condenserOverlap(left, right) {
-  const a = new Set(condenserWords(left));
-  const b = new Set(condenserWords(right));
-  if (!a.size || !b.size) return 0;
-  let shared = 0;
-  for (const word of a) if (b.has(word)) shared += 1;
-  return shared / (a.size + b.size - shared);
-}
-
-// Remove a sentence that repeats another one's facts with slightly different
-// framing. This is intentionally conservative: the later sentence must carry
-// every number of the earlier one, and the wording must overlap substantially.
-// Definition sentences such as "Statistiline metsainventuur ehk SMI on ..."
-// are merged with a following acronym sentence instead of dropped.
-export function condenseRedundantSentences(value = "", { mergeDefinitions = false } = {}) {
-  const text = String(value || "").replace(/\s+/gu, " ").trim();
-  if (!text) return text;
-  const sentences = text
-    .split(/(?<=[.!?])\s+(?=[A-ZÕÄÖÜŠŽ0-9„“"'])/u)
-    .map((sentence) => sentence.trim())
-    .filter(Boolean);
-  if (sentences.length < 2) return text;
-  const condensed = [];
-  for (const sentence of sentences) {
-    const previous = condensed.at(-1);
-    if (previous) {
-      const aNumbers = condenserNumbers(previous);
-      const bNumbers = condenserNumbers(sentence);
-      const numbersCovered = aNumbers.length > 0
-        && aNumbers.every((number) => bNumbers.includes(number));
-      const overlap = condenserOverlap(previous, sentence);
-      if (numbersCovered && overlap >= 0.38) {
-        // Keep the sentence that also carries the additional fact.
-        condensed[condensed.length - 1] = sentence;
-        continue;
-      }
-      if (overlap >= 0.82) {
-        const aCovered = bNumbers.length > 0
-          && bNumbers.every((number) => aNumbers.includes(number));
-        if (aCovered || condenserWords(sentence).length <= condenserWords(previous).length) continue;
-        condensed[condensed.length - 1] = sentence;
-        continue;
-      }
-      if (mergeDefinitions) {
-        const definition = previous.match(/^(.+?)\s+ehk\s+([A-ZÕÄÖÜŠŽ][\w-]{1,})\s+on\s+(.+)$/u);
-        if (definition) {
-          const [, fullName, acronym, predicate] = definition;
-          const prefix = `${acronym} on `;
-          if (sentence.startsWith(prefix)) {
-            const rest = sentence.slice(prefix.length);
-            if (condenserOverlap(predicate, rest) >= 0.2) {
-              condensed[condensed.length - 1] = `${fullName} ehk ${acronym} on ${rest}`;
-              continue;
-            }
-          }
-        }
-      }
-    }
-    condensed.push(sentence);
-  }
-  return condensed.join(" ");
-}
-
-export function directEvidenceExtract(query, document, plannedEvidence = null, { requireSubject = false } = {}) {
-  const subjects = queryTerms(query).filter((root) => specialistSubjectVariants(root));
-  // The generic extract must answer the same subject the broad evidence gate
-  // accepted. Without this, an advice-heavy sentence about a different object
-  // on the same page ("vana külmik") could become the answer to "biojäätmed".
-  const terms = queryTerms(query);
-  const genericContext = new Set(["andmed", "keskkond", "seire"]);
-  const actionTerms = terms.filter((term) => term.length >= 5 && /(?:da|ma|mine|takse|tud|nud)$/u.test(term)
-    && !term.endsWith("maa")
-    && !genericContext.has(term));
-  const stateTerms = terms.filter((term) => /^(?:haig|vigast|surnud|hukkunud)/u.test(term));
-  const itemTerms = terms.filter((term) => ["arvuti", "kulmkapp", "kulmik", "telefon", "patarei", "moobel", "diivan", "ravim", "rehv"].includes(term));
-  const organizationTerms = terms.filter((term) => ["keskkonnaamet", "keskkonnaagentuur", "kliimaministeerium", "rmk"].includes(term));
-  const primarySubject = [...terms]
-    .filter((term) => !genericContext.has(term))
-    .sort((left, right) => (Number(rootIsDomain(right)) - Number(rootIsDomain(left))) || right.length - left.length)[0] || null;
-  const passageAnswersSubject = (passage) => (!primarySubject || textHasQueryRoot(passage, primarySubject))
-    && actionTerms.every((term) => textHasActionRoot(passage, term))
-    && stateTerms.every((term) => textHasQueryRoot(passage, term))
-    && itemTerms.every((term) => textHasQueryRoot(passage, term))
-    && organizationTerms.every((term) => textHasQueryRoot(passage, term));
-  const stablePublicationText = (value) => {
-    const published = /^\d{2}\.\d{2}\.\d{4}$/u.test(String(document?.published || "").trim())
-      ? String(document.published).trim()
-      : "";
-    return String(value || "")
-      .replace(/\btäna\s+avaldatud\b/giu, published ? `${published} avaldatud` : "avaldatud")
-      .replace(/\bm\s*3\b/giu, "m³");
-  };
-  const plannedPassages = plannedEvidence?.directDocumentId === document?.id
-    ? plannedEvidence?.passages || []
-    : [];
-  const plannedExtract = plannedPassages
-    .map(sanitizeLlmEvidenceText)
-    .map(stablePublicationText)
-    .map((value) => plannedEvidence?.kind === "forest-area"
-      ? value.replace(/,\s*millel\s+kasv\w*[\s\S]*$/iu, ".")
-      : value)
-    .map((value) => value.replace(/\s+/gu, " ").trim())
-    .map((value) => plannedEvidence?.kind === "forest-area" && !hasCompleteSentenceEnding(value)
-      ? `${value}.` : value)
-    .filter((value) => value.length >= 20 && hasCompleteSentenceEnding(value))
-    .reduce((extract, passage) => {
-      const joined = [extract, passage].filter(Boolean).join(" ");
-      return joined.length <= 520 ? joined : extract;
-    }, "");
-  const condensedPlannedExtract = condenseRedundantSentences(plannedExtract);
-  if (condensedPlannedExtract && hasCompleteSentenceEnding(condensedPlannedExtract)
-    && subjects.every((root) => textHasQueryRoot(condensedPlannedExtract, root))) return condensedPlannedExtract;
-  const preferred = new Set(plannedPassages.map((value) => normalize(value)));
-  const passages = [document?.summary, document?.content]
-    .filter(Boolean)
-    .flatMap(splitTextPassages)
-    .map(sanitizeLlmEvidenceText)
-    .map(stablePublicationText)
-    .map((value) => value.replace(/\s+/gu, " ").trim())
-    .filter((value) => subjects.every((root) => textHasQueryRoot(value, root)))
-    .filter((value) => !requireSubject || passageAnswersSubject(value))
-    // Semicolon windows can start mid-sentence. Do not attach a dependent
-    // lowercase clause to a different lead sentence and change its subject.
-    .filter((value) => !requireSubject || /^[„“"'([]*[\p{Lu}\d]/u.test(value))
-    .filter((value) => value.length >= 35 && value.length <= 520 && hasCompleteSentenceEnding(value));
-  // The source's own data year is stated for every sentence on it, so a
-  // sentence is not preferred just because it happens to repeat that year.
-  const dataYear = /^(?:19|20)\d{2}$/u.test(String(document?.dataYear || "")) ? String(document.dataYear) : "";
-  const scoringQuery = dataYear ? query.replace(new RegExp(`\\b${dataYear}\\b`, "gu"), " ").trim() || query : query;
-  const rankedPassages = passages
-    .map((passage, index) => ({
-      passage: passage.replace(/^[„“”"']+|[„“”"']+$/gu, "").trim(),
-      score: passageQueryCoverage(scoringQuery, passage) * 20
-        + passageDirectness(scoringQuery, passage)
-        + (preferred.has(normalize(passage)) ? 80 : 0)
-        - index * 0.001,
-    }))
-    .sort((left, right) => right.score - left.score);
-  const lead = rankedPassages[0]?.passage || "";
-  if (!requireSubject || !lead) return lead;
-  // Each retained sentence already passed the same subject/action boundary.
-  // Lead with the direct answer, then retain bounded factual context from
-  // that source; navigation and page descriptions must not fill the space.
-  const selected = distinctPassages(rankedPassages
-    .map(({ passage }) => passage)
-    // A sentence about what the page or map does not prove is navigation
-    // meta, not the answer ("Piirkonna kaart ega üldjuhend ei tõenda …").
-    .filter((passage) => !passageDisclaimsEvidence(passage))
-    .filter((passage) => passageQueryCoverage(scoringQuery, passage) > 0
-      && passageDirectness(scoringQuery, passage) >= 0));
-  let extract = "";
-  let retained = 0;
-  for (const passage of selected) {
-    const candidate = [extract, passage].filter(Boolean).join(" ");
-    if (candidate.length > 900) continue;
-    extract = candidate;
-    if (++retained === 3) break;
-  }
-  return condenseRedundantSentences(extract);
-}
-
-
-function sourceCitation(source) {
-  const citation = Number(source?.citation);
-  return Number.isInteger(citation) && citation > 0 ? citation : 0;
-}
-
-function uniqueCitations(sources = []) {
-  return [...new Set(sources.map(sourceCitation).filter(Boolean))];
-}
-
-function safeSourcePassages(source = {}) {
-  return [source.evidenceExcerpt, source.summary, source.answer, source.content]
-    .filter(Boolean)
-    .flatMap((value) => splitTextPassages(sanitizeLlmEvidenceText(value)))
-    .map((value) => value.replace(/\s+/gu, " ").trim())
-    .filter((value) => value.length >= 20)
-    .map((value) => hasCompleteSentenceEnding(value) ? value : `${value}.`);
-}
-
-function forestAreaMeasurementPassage(source) {
-  return safeSourcePassages(source).find((passage) => {
-    const text = normalize(passage);
-    const measuredText = passage.normalize("NFKC").toLocaleLowerCase("et");
-    const hasYear = /\b(?:19|20)\d{2}\b/u.test(text);
-    const hasArea = /\bmetsamaa\w*[\s\S]{0,80}\bpindala\w*/u.test(text)
-      || /\bmetsamaa\s+oli\b/u.test(text);
-    const hasMeasuredArea = /\b\d+(?:[.,]\d+)?\s*(?:(?:miljon\w*|tuhat)\s+)?(?:ha\b|hektar\w*)/u.test(measuredText);
-    return hasYear && hasArea && hasMeasuredArea;
-  }) || "";
-}
-
-function stableForestStockPassage(source) {
-  const passages = safeSourcePassages(source);
-  const stable = passages.find((passage) => {
-    const text = normalize(passage);
-    return /\b(?:kasvava\s+metsa\s+tagavara|metsa\s+(?:kogu)?tagavara|metsatagavara|metsavaru)\w*/u.test(text)
-      && /\b(?:stabiil\w*|pusi\w*|muutumat\w*)/u.test(text)
-      && !/\bei\s+(?:ole|pusi)\s+stabiil\w*/u.test(text);
-  });
-  if (!stable) return "";
-  const measured = passages.find((passage) => {
-    const text = normalize(passage);
-    const measuredText = passage.normalize("NFKC").toLocaleLowerCase("et");
-    const hasYear = /\b(?:19|20)\d{2}\b/u.test(text);
-    const hasStock = /\b(?:kasvava\s+metsa\s+tagavara|metsa\s+(?:kogu)?tagavara|metsatagavara|metsavaru)\w*/u.test(text)
-      || (/\bmetsamaa\s+pindala\b/u.test(text) && /\bkasvas\b[\s\S]{0,80}\bpuitu\b/u.test(text));
-    const hasMeasuredVolume = /\b\d+(?:[.,]\d+)?\s*(?:miljon\w*\s+)?(?:tm\b|tihumeet\w*|m[³3]\b|kuupmeet\w*)/u.test(measuredText);
-    return hasYear && hasStock && hasMeasuredVolume;
-  });
-  return measured ? (measured === stable ? measured : `${measured} ${stable}`) : "";
-}
-
-
-// This is a constrained degraded-mode answer, not a hidden knowledge-base
-// answer. It is composed only when the visible official result set contains a
-// strong direct comparison plus independent SMI-method and registry-role
-// evidence. Luna can still replace it after its normal grounding checks.
-function composeForestDataSourcesFallback(query, plannedEvidence, sources = [], previousAnswer = {}) {
-  if (plannedEvidence?.kind !== "forest-data-sources" || !plannedEvidence?.strong) return null;
-  const visibleOfficial = sources.filter((source) => source?.sourceTier === "official" && sourceCitation(source));
-  const roles = plannedEvidence.evidenceRoles;
-  const comparison = visibleOfficial.find((source) => source.id === roles?.comparison);
-  const smiMethod = visibleOfficial.find((source) => source.id === roles?.method);
-  const registry = visibleOfficial.find((source) => source.id === roles?.registry);
-  if (!comparison || !smiMethod || !registry) return null;
-
-  const comparisonCitations = uniqueCitations([comparison]);
-  const smiCitations = uniqueCitations([smiMethod]);
-  // The comparison source contains the intact subject/object sentence for the
-  // summarized registry role; the registry catalogue independently identifies
-  // the live datasets. Cite both instead of assembling the claim from separate
-  // passages under a single catalogue citation.
-  const registryCitations = uniqueCitations([comparison, registry]);
-  const introCitations = uniqueCitations([comparison, smiMethod, registry]);
-  return {
-    eyebrow: "Allikapõhine kokkuvõte",
-    title: String(previousAnswer.title || query).trim().slice(0, 180),
-    intro: "Metsandusandmeid kogutakse mitmel viisil. Statistiline metsainventuur (SMI) on valikuuring, mille raames mõõdetakse üleriigiliselt proovitükke. Saadud andmete ja statistiliste meetodite alusel koostatakse metsaressursi üldistatud hinnangud kogu Eesti kohta. Riigi ja teiste metsomanike poolt tellitud kinnistute metsainventeerimiseandmed on registreeritud metsaressursi arvestuse riiklikus registris (Metsaregister). Metsaregistrisse koondatakse lisaks andmed metsateatiste, metsakaitseekspertiiside ja metsauuendusekspertiiside kohta.",
-    introCitations,
-    parts: [
-      {
-        title: "Metsaandmed",
-        text: "Eestis kogutakse metsandusandmeid mitmel viisil, tagamaks andmete täpsus, ajas võrreldavus, kvaliteet ja usaldusväärsus.",
-        citations: comparisonCitations,
-      },
-      {
-        title: "SMI roll",
-        text: "Statistiline metsainventuur (SMI) on valikuuring, mille raames mõõdetakse üleriigiliselt proovitükke. Saadud andmete ja statistiliste meetodite alusel koostatakse metsaressursi üldistatud hinnangud kogu Eesti kohta.",
-        citations: smiCitations,
-      },
-      {
-        title: "Metsaregistri roll",
-        text: "Riigi ja teiste metsomanike poolt tellitud kinnistute metsainventeerimiseandmed on registreeritud metsaressursi arvestuse riiklikus registris (Metsaregister). Register sisaldab metsainventeerimise, metsateatiste, metsauuenduse, metsakaitseekspertiiside ja välitööde andmeid.",
-        citations: registryCitations,
-      },
-    ],
-    note: String(previousAnswer.note || "").trim().slice(0, 700),
-  };
-}
-
-// A broad "will forest run out" question needs a short synthesis, not a
-// literal hit for the word "otsa". This degraded answer is unlocked only by
-// visible official evidence with three roles: present stock direction,
-// current forest-area measurement and the multi-indicator condition context.
-function composeForestDepletionFallback(query, plannedEvidence, sources = [], previousAnswer = {}) {
-  if (plannedEvidence?.kind !== "forest-depletion" || !plannedEvidence?.strong) return null;
-  const visibleOfficial = sources.filter((source) => source?.sourceTier === "official" && sourceCitation(source));
-  const byId = new Map(visibleOfficial.map((source) => [source.id, source]));
-  const status = byId.get(plannedEvidence.evidenceRoles?.status);
-  const area = byId.get(plannedEvidence.evidenceRoles?.area);
-  const context = byId.get(plannedEvidence.evidenceRoles?.context);
-  if (!status || !area || !context || new Set([status.id, area.id, context.id]).size < 2) return null;
-
-  const areaPassage = forestAreaMeasurementPassage(area);
-  const stockPassage = stableForestStockPassage(status);
-  const contextPassage = (plannedEvidence.passagesByDocument?.[context.id] || []).join(" ");
-  if (!areaPassage || !stockPassage || !contextPassage) return null;
-  const measurementPassages = distinctPassages([areaPassage, stockPassage].flatMap(splitTextPassages));
-  const measurementText = measurementPassages.join(" ");
-  const contextCitations = uniqueCitations([context]);
-  return {
-    eyebrow: "Allikapõhine kokkuvõte",
-    title: String(previousAnswer.title || query).trim().slice(0, 180),
-    intro: `Praegused ametlikud näitajad ei viita sellele, et Eesti mets oleks otsa saamas. ${measurementText} Need mõõtmised kirjeldavad konkreetset andmeaastat, mitte kindlat tulevikuprognoosi. Ökoloogiline seisund näitab looduslikkust, mis ei pruugi tähendada puistu kõrget majanduslikku väärtust.`,
-    introCitations: uniqueCitations([status, area, context]),
-    parts: [
-      {
-        title: "Praegune seis",
-        text: "Metsamaa pindala ja puidu tagavara on eri mõõdikud. Need kirjeldavad mõõdetud hetkeseisu ega anna üksinda kindlat prognoosi metsa tuleviku või ökoloogilise seisundi kohta.",
-        citations: uniqueCitations([area, status, context]),
-      },
-      {
-        title: "Seisundi tervikpilt",
-        text: contextPassage,
-        citations: contextCitations,
-      },
-    ],
-    note: String(previousAnswer.note || "").trim().slice(0, 700),
-  };
-}
-
-function distinctPassages(passages = []) {
-  const distinct = [];
-  const seen = new Set();
-  for (const passage of passages) {
-    const key = normalize(passage);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    distinct.push(passage);
-  }
-  return distinct;
-}
-
-function composeSourceClaimPairs(query, plannedEvidence, sources = []) {
-  if (plannedEvidence?.kind !== "forest-fact-check" || !plannedEvidence.strong) return null;
-  const source = sources.find((candidate) => candidate.id === plannedEvidence.directDocumentId);
-  const citation = sourceCitation(source);
-  const witness = plannedEvidence.roleWitnesses?.claims;
-  if (!source || source.sourceTier !== "official" || !citation || witness?.documentId !== source.id) return null;
-  const admitted = new Set(witness.passages || []);
-  const pairs = (plannedEvidence.claimPairs || []).flatMap((pair) => {
-    if (!admitted.has(pair.claim) || !pair.corrections?.length
-      || pair.corrections.some((passage) => !admitted.has(passage))) return [];
-    const claim = sanitizeLlmEvidenceText(pair.claim).replace(/^\d+\.\s*/u, "").trim();
-    const corrections = pair.corrections.map((passage) => sanitizeLlmEvidenceText(passage).trim());
-    if (corrections.some((passage) => !passage || !hasCompleteSentenceEnding(passage))) return [];
-    const text = corrections.join(" ");
-    // Dropping a trailing correction can turn its preceding context into an
-    // uncorrected allegation. Admit the complete bounded pair or omit it.
-    if (`„${claim}” ${text}`.length > 900) return [];
-    return [{ title: `Väide: „${claim}”`, claim, text, citations: [citation] }];
-  }).slice(0, 4);
-  if (!pairs.length) return null;
-  const published = String(source.published || "").trim();
-  return {
-    eyebrow: "Allika väited ja selgitused",
-    title: query,
-    // Keep the first allegation visibly labeled and separate from its response:
-    // merging opposed propositions into one paragraph loses their attribution.
-    intro: pairs[0].title,
-    introCitations: pairs[0].citations,
-    parts: pairs.map(({ title, text, citations }, index) => ({
-      title: index === 0 ? "Allika selgitus" : title,
-      text,
-      citations,
-    })),
-    note: [
-      published ? `Allikas avaldati ${published}.` : "",
-      "Need on allika avaldamisaegsed selgitused, mitte väidete praeguse levimuse või tänase metsaseisu hinnang.",
-    ].filter(Boolean).join(" "),
-  };
-}
-
-// Generic forestry intents use only passages that were selected from the
-// same visible official result set. This keeps a useful deterministic answer
-// when Luna is unavailable without importing the legacy prewritten forestry
-// corpus or turning manually assigned tags into factual evidence.
-const NARROW_FALLBACK_KINDS = new Set(["forest-notice-exception", "bark-beetle-guidance"]);
-
-// A method or share topic is resolved by the asking word itself ("kuidas
-// mõõdetakse", "kui suur osa"), so that word need not repeat in the card.
-// Every other question word still has to: "mis puuliigil on kõige suurem
-// tagavara" is not answered by area shares.
-const TOPIC_ASK_ROOT_PATTERN = /^(?:moot|mõõt|arvut|hinda|hinnang|osa$|osakaal|levinu|protsent|measur|calculat|estimat|share|percent|proportion|area$|much$|many$)/u;
-
-// "rohkem metsa" is answered by "kõige metsarikkamad": a comparison word is
-// covered when the card itself states a comparison. A card that only lists
-// shares ("kask 30%, mänd 29%") does not.
-const COMPARISON_ROOT_PATTERN = /^(?:rohkem|enam|vahem|vähem|suurem|vaiksem|väiksem|parem|halvem)$/u;
-const STATED_COMPARISON_PATTERN = /\b(?:koige|enim|vahim|suurim|vaikseim|parim|halvim)\b|\p{L}{3,}(?:mad|maid|imad|eimad)\b/u;
-
-function cardAnswersQueryWords(query, text) {
-  if (extractAnswersQuery(query, text)) return true;
-  // A stated comparison answers only when the same sentence compares what was
-  // asked: "kõige metsarikkamad maakonnad" (metsasus) does not answer which
-  // county has the largest hektaritagavara, said in another sentence.
-  return splitTextPassages(text).some((sentence) => STATED_COMPARISON_PATTERN.test(normalize(sentence))
-    && queryTerms(query).every((term) => textHasQueryRoot(sentence, term)
-      || COMPARISON_ROOT_PATTERN.test(term)
-      || extractAnswersQuery(term, sentence)));
-}
-
-function offTargetFallback(query, kind, fallback) {
-  if (NARROW_FALLBACK_KINDS.has(kind)) return false;
-  const text = [fallback.intro, ...(fallback.parts || []).map((part) => part.text)].join(" ");
-  if (cardAnswersQueryWords(query, text)) return false;
-  if (!/-(?:method|share)$/u.test(kind || "")) return true;
-  return queryTerms(query).some((term) => !textHasQueryRoot(text, term)
-    && !TOPIC_ASK_ROOT_PATTERN.test(term)
-    && extractAnswersQuery(term, text) === false);
-}
-
-// The first sentence of a fallback card that does not answer the question.
-// Kept as text, not a flag: a later step may replace the card with a good one,
-// and only the off-target text itself is withheld.
-function offTargetLead(draft) {
-  const lead = normalize(splitTextPassages(draft?.evidence?.offTargetIntro || "")[0] || "");
-  return lead.length >= 40 ? lead : "";
-}
-
-function repeatsOffTargetLead(draft, text) {
-  const lead = offTargetLead(draft);
-  return Boolean(lead) && normalize(text || "").includes(lead);
-}
-
-// The model is told to keep the card's lead. A lead already known not to answer
-// would only be repeated and then withdrawn, so the model starts without it and
-// must write its own cited lead, which is reviewed like any other.
-function modelStartingDraft(draft) {
-  const copy = structuredClone(draft);
-  if (!repeatsOffTargetLead(draft, draft?.answer?.intro)) return copy;
-  copy.answer = { ...copy.answer, intro: "", introCitations: [] };
-  return copy;
-}
-
-function withoutOffTargetFallback(draft) {
-  if (!repeatsOffTargetLead(draft, draft?.answer?.intro)) return draft;
-  // The blanked card shows no excerpt and no parts, so a note that scoped or
-  // qualified the withdrawn excerpt would describe text the reader cannot see.
-  return {
-    ...draft,
-    answer: {
-      ...draft.answer,
-      eyebrow: NO_ANSWER_EYEBROW,
-      intro: NO_ANSWER_INTRO,
-      introCitations: [],
-      parts: [],
-      note: "",
-    },
-  };
-}
-
-function composeOfficialForestryEvidenceFallback(query, plannedEvidence, sources = [], previousAnswer = {}) {
-  if (!plannedEvidence?.strong
-    || !plannedEvidence?.passagesByDocument
-    || ["forest-area", "forest-depletion", "forest-data-sources", "forest-fact-check"].includes(plannedEvidence.kind)) return null;
-  const byId = new Map((sources || []).map((source) => [source.id, source]));
-  const bundles = (plannedEvidence.supportingDocumentIds || []).flatMap((documentId) => {
-    const source = byId.get(documentId);
-    const citation = sourceCitation(source);
-    if (!source || source.sourceTier !== "official" || !citation) return [];
-    const selectedPassages = (plannedEvidence.passagesByDocument[documentId] || [])
-      .map(sanitizeLlmEvidenceText)
-      .map((value) => value.replace(/\s+/gu, " ").trim())
-      .filter((value) => value.length >= 25)
-      .map((value) => {
-        const complete = hasCompleteSentenceEnding(value) ? value : `${value}.`;
-        return `${complete.charAt(0).toLocaleUpperCase("et")}${complete.slice(1)}`;
-      });
-    // Once the evidence planner has satisfied the intent contract, render
-    // exactly those passages. Adding merely similar text from the same page
-    // can silently change the subject (for example harvest volume to clearcut
-    // area) even though the citation number remains unchanged.
-    const unique = distinctPassages(selectedPassages);
-    const directAnswerIntents = new Set([
-      "forest-stock-overview",
-      "forest-increment-overview",
-      "protected-forest-overview",
-    ]);
-    const ordered = directAnswerIntents.has(plannedEvidence.kind)
-      ? [...unique].sort((left, right) => passageQueryCoverage(query, right) - passageQueryCoverage(query, left))
-      : unique;
-    const text = condenseRedundantSentences(ordered.reduce((result, passage) => {
-      const joined = [result, passage].filter(Boolean).join(" ");
-      return joined.length <= 680 ? joined : result;
-    }, ""));
-    return text ? [{ source, citation, text }] : [];
-  });
-  if (!bundles.length) return null;
-  const [lead, ...supporting] = bundles;
-  if (plannedEvidence.kind === "why-forest-numbers-differ") {
-    const sentences = splitTextPassages(lead.text).filter((sentence) => sentence.length >= 25);
-    if (sentences.length >= 3) {
-      const parts = [];
-      if (supporting[0]) {
-        parts.push({
-          title: "Mõõtmismeetod ja katvus",
-          text: supporting[0].text,
-          citations: [supporting[0].citation],
-        });
-      }
-      parts.push({
-        title: "Aeg, definitsioon ja arvutusviis",
-        text: sentences.slice(2).join(" "),
-        citations: [lead.citation],
-      });
-      return {
-        eyebrow: "Allikapõhine kokkuvõte",
-        title: String(previousAnswer.title || query).trim().slice(0, 180),
-        intro: sentences.slice(0, 2).join(" "),
-        introCitations: [lead.citation],
-        parts: parts.slice(0, 3),
-        note: String(previousAnswer.note || "").trim().slice(0, 700),
-      };
-    }
-  }
-  return {
-    eyebrow: "Allikapõhine kokkuvõte",
-    title: String(previousAnswer.title || query).trim().slice(0, 180),
-    intro: lead.text,
-    introCitations: [lead.citation],
-    parts: supporting.slice(0, 3).map((bundle) => ({
-      title: String(bundle.source.title || "Täiendav ametlik selgitus").trim().slice(0, 140),
-      text: bundle.text,
-      citations: [bundle.citation],
-    })),
-    note: noticeAnswerNote(plannedEvidence.kind)
-      || (plannedEvidence.kind === "clearcut-value-judgement"
-        ? "Need väljavõtted kirjeldavad metsamajandamise mõju ja selle tingimusi; need ei tõenda üldist väärtushinnangut iga lageraie kohta."
-        : String(previousAnswer.note || "").trim().slice(0, 700)),
-  };
-}
-
-// The notice guidance lists the two ordinary cases in everyday practice. It
-// is not the whole of the law, and this excerpt is not freshly verified law
-// text, so the card must not imply that its list is exhaustive or that it
-// states extra statutory exceptions such as the national defence case.
-const NOTICE_ANSWER_KINDS = new Set(["forest-notice", "forest-notice-exception", "forest-notice-exception-fee"]);
-
-function noticeAnswerNote(kind) {
-  if (!NOTICE_ANSWER_KINDS.has(kind)) return "";
-  return "See on Keskkonnaameti üldjuhise väljavõte, mitte seaduse terviktekst: seadusest võivad tuleneda ka muud erandid ja lisanõuded, mida see väljavõte ei loetle.";
-}
-
-// A model answer replaces the deterministic answer object, so the same scope
-// caveat has to be re-applied on the accepted card. The answer's own plan kind
-// is not carried on every composer, so the query's notice intent decides when
-// it is missing. It is a statement about the extract's coverage, not a claim
-// about the law, and it never replaces a note the answer already carries.
-function withNoticeScopeCaveat(note, query, kind) {
-  const effectiveKind = NOTICE_ANSWER_KINDS.has(kind)
-    ? kind
-    : /metsateat|raieteat/iu.test(String(query || "")) ? forestEvidenceIntent(query)?.kind : "";
-  const caveat = noticeAnswerNote(effectiveKind);
-  if (!caveat) return note;
-  const current = String(note || "").trim();
-  if (current.includes("üldjuhise väljavõte")) return current;
-  return [current, caveat].filter(Boolean).join(" ").slice(0, 700);
-}
-
-// Bare generic forest overview (nt "mets"): mitme ametliku allika süntees
-// loobumise asemel. Koostatud ainult nähtavast ametlikust tulemusehulgast
-// täpsete väljavõtetega, et väited säilitaksid nähtava tunnistaja.
-function composeGenericForestOverviewFallback(query, plannedEvidence, sources = [], previousAnswer = {}) {
-  if (plannedEvidence?.kind !== "forest-overview" || !plannedEvidence.strong) return null;
-  const roles = plannedEvidence.roleWitnesses;
-  const byId = new Map(sources.map((source) => [source.id, source]));
-  const roleClaim = (role) => {
-    const witness = roles?.[role];
-    const source = byId.get(witness?.documentId);
-    if (!source || !sourceCitation(source)) return null;
-    const text = witness.passages.map(sanitizeLlmEvidenceText)
-      .map((passage) => passage.replace(/\s+/gu, " ").trim())
-      .filter(Boolean)
-      .map((passage) => hasCompleteSentenceEnding(passage) ? passage : `${passage}.`)
-      .join(" ");
-    return text ? { text, citations: [sourceCitation(source)] } : null;
-  };
-  const measurement = roleClaim(plannedEvidence.numericSourceRole);
-  const method = roleClaim("method");
-  const condition = roleClaim("condition");
-  const registry = roleClaim("registry");
-  if (!measurement || !method || !condition || !registry) return null;
-  return {
-    eyebrow: "Allikapõhine kokkuvõte",
-    title: "Eesti metsa ei kirjelda üksainus number",
-    intro: measurement.text,
-    introCitations: measurement.citations,
-    parts: [
-      { title: "Kuidas mõõdetakse", ...method },
-      { title: "Seisundi tervikpilt", ...condition },
-      { title: "Andmete erinevus", ...registry },
-    ],
-    note: String(previousAnswer.note || "").trim().slice(0, 700),
-  };
-}
-
-function answerEvidenceDocuments(documents = [], plannedEvidence, forestBalance) {
-  if (forestBalance || !plannedEvidence?.strong) return documents;
-  const ids = [...new Set([
-    plannedEvidence.directDocumentId,
-    ...(plannedEvidence.supportingDocumentIds || []),
-  ].filter(Boolean))];
-  const byId = new Map((documents || []).map((document) => [document.id, document]));
-  const selected = ids.map((id) => byId.get(id)).filter(Boolean);
-  const chosen = selected.length ? selected : documents;
-  return chosen;
-}
-
-
-function answerCitationNumbers(answer = {}) {
-  return new Set([
-    ...(answer.introCitations || []),
-    ...(answer.parts || []).flatMap((part) => part.citations || []),
-  ].map(Number).filter(Number.isFinite));
-}
-
-
-function answerClaims(answer = {}) {
-  return [
-    {
-      text: String(answer.intro || "").trim(),
-      relationshipText: String(answer.intro || "").trim(),
-      citations: (answer.introCitations || []).map(Number).filter(Number.isFinite),
-    },
-    ...(answer.parts || []).map((part) => {
-      const partText = String(part.text || "").trim();
-      return {
-        text: [part.title, partText].filter(Boolean).join(" ").trim(),
-        // A display heading helps lexical excerpt selection but is not part of
-        // the factual proposition whose entity relationship must be bound.
-        relationshipText: partText,
-        citations: (part.citations || []).map(Number).filter(Number.isFinite),
-      };
-    }),
-  ].filter((claim) => claim.text);
-}
-
-function canonicalClaimNumbers(value) {
-  return [...String(value || "").normalize("NFKC").matchAll(/(?<![\p{L}\p{N}])(\d+(?:[.,]\d+)?)(?:\s*%)?(?![\p{L}\p{N}])/gu)]
-    .map((match) => match[1].replace(",", ".").replace(/^0+(?=\d)/u, ""));
-}
-
-function claimWitnessCoverage(claim, witness) {
-  const roots = [...new Set(claimTokens(claim))];
-  const witnessTokens = claimTokens(witness);
-  const matchedRoots = roots.filter((root) => witnessTokens.some((token) => tokensShareStem(root, token)));
-  const expectedNumbers = canonicalClaimNumbers(claim);
-  const witnessedNumbers = new Set(canonicalClaimNumbers(witness));
-  const matchedNumbers = expectedNumbers.filter((number) => witnessedNumbers.has(number));
-  return {
-    roots,
-    matchedRoots,
-    expectedNumbers,
-    matchedNumbers,
-  };
-}
-
-function claimHasVisibleWitness(claim, witness, relationshipClaim = claim, query = "", minimumRootCoverage = 0.4) {
-
-  const passages = (Array.isArray(witness) ? witness : [witness])
-    .flatMap(splitTextPassages)
-    .filter(Boolean);
-  const joinedWitness = passages.join(" ");
-  const coverage = claimWitnessCoverage(claim, joinedWitness);
-  if (coverage.matchedNumbers.length !== coverage.expectedNumbers.length) return false;
-  if (safeSemanticInference(relationshipClaim, joinedWitness, query)) return true;
-  const relationshipWitness = relationshipClaimHasPassageWitness(relationshipClaim, passages);
-  if (relationshipWitness === false) return false;
-  if (!coverage.roots.length) return true;
-  const requiredRoots = coverage.roots.length <= 2
-    ? coverage.roots.length
-    : Math.max(2, Math.ceil(coverage.roots.length * minimumRootCoverage));
-  return coverage.matchedRoots.length >= requiredRoots;
-}
-
-function rebindSupportedCitations(citations, supports, propositionUnits = []) {
-  let retained = [...new Set((citations || []).map(Number).filter((citation) => (
-    Number.isInteger(citation) && citation > 0
-  )))].slice(0, 10);
-  if (!retained.length || !supports(retained)) return [];
-  for (const citation of [...retained]) {
-    if (supports([citation])) continue;
-    const without = retained.filter((candidate) => candidate !== citation);
-    // Dropping a citation is optional. Require near-complete factual concept
-    // coverage without it; generic shared topic words cannot replace its
-    // definition (for example subtraction of natural mortality).
-    if (!without.length || !supports(without, undefined, 0.8)) continue;
-    const uniquelySupportsProposition = propositionUnits.some((unit) => (
-      supports([citation], unit) && !supports(without, unit)
-    ));
-    if (!uniquelySupportsProposition) retained = without;
-  }
-  return retained.length && supports(retained) ? retained : [];
-}
-
-function visibleClaimCitations(claim, sourcesByCitation, query) {
-  const supportCache = new Map();
-  const supports = (citations, proposition = claim, minimumRootCoverage = 0.4) => {
-    const cacheKey = `${citations.join(",")}:${proposition.text}:${proposition.relationshipText}:${minimumRootCoverage}`;
-    if (supportCache.has(cacheKey)) return supportCache.get(cacheKey);
-    const witnesses = citations
-      .map((citation) => sourcesByCitation.get(citation)?.evidenceExcerpt || "")
-      .filter(Boolean);
-    const supported = witnesses.length > 0
-      && claimHasVisibleWitness(proposition.text, witnesses, proposition.relationshipText, query, minimumRootCoverage)
-      && (proposition !== claim || propositionUnits.every((unit) => (
-        claimHasVisibleWitness(unit.text, witnesses, unit.relationshipText, query, minimumRootCoverage)
-      )));
-    supportCache.set(cacheKey, supported);
-    return supported;
-  };
-  const propositionUnits = splitTextPassages(claim.propositionText || claim.relationshipText || claim.text)
-    .filter((text) => text.trim() && !/^(?:jah|ei|yes|no)[.!?]$/iu.test(text.trim()))
-    .map((text) => ({ text, relationshipText: text }));
-  return rebindSupportedCitations(claim.citations, supports, propositionUnits);
-}
-
-function rebindAnswerCitationsToVisibleWitnesses(draft = {}) {
-  const sourcesByCitation = new Map((draft.sources || []).map((source) => [Number(source.citation), source]));
-  const introText = String(draft.answer?.intro || "").trim();
-  const introCitations = visibleClaimCitations({
-    text: introText,
-    relationshipText: introText,
-    propositionText: introText,
-    citations: (draft.answer?.introCitations || []).map(Number).filter(Number.isFinite),
-  }, sourcesByCitation, draft.query);
-  const parts = (draft.answer?.parts || []).map((part) => {
-    const partText = String(part.text || "").trim();
-    const citations = visibleClaimCitations({
-      text: [part.title, partText].filter(Boolean).join(" ").trim(),
-      relationshipText: partText,
-      propositionText: partText,
-      citations: (part.citations || []).map(Number).filter(Number.isFinite),
-    }, sourcesByCitation, draft.query);
-    return { ...part, citations };
-  });
-  return {
-    ...draft,
-    answer: {
-      ...draft.answer,
-      introCitations,
-      parts,
-    },
-  };
-}
-
-
-function answerClaimsHaveVisibleWitnesses(draft = {}) {
-  const sourcesByCitation = new Map((draft.sources || []).map((source) => [Number(source.citation), source]));
-  return answerClaims(draft.answer).every((claim) => {
-    const witnesses = claim.citations
-      .map((citation) => sourcesByCitation.get(citation)?.evidenceExcerpt || "")
-      .filter(Boolean);
-    return witnesses.length > 0
-      && claimHasVisibleWitness(claim.text, witnesses, claim.relationshipText, draft.query);
-  });
-}
-
-function claimHasVisibleWitnessInDraft(draft, claim) {
-  if (!claim?.text || !claim.citations?.length) return false;
-  const wanted = new Set(claim.citations.map(Number));
-  const witnesses = (draft.sources || [])
-    .filter((source) => wanted.has(Number(source.citation)))
-    .map((source) => source.evidenceExcerpt || "")
-    .filter(Boolean);
-  return witnesses.length > 0
-    && claimHasVisibleWitness(claim.text, witnesses, claim.relationshipText || claim.text, draft.query);
-}
-
-function finalizeVisibleAnswerWitnesses(draft, query, evidencePack) {
-  const attached = rebindAnswerCitationsToVisibleWitnesses(
-    attachEvidenceExcerpts(draft, query, evidencePack),
-  );
-  if (answerClaimsHaveVisibleWitnesses(attached)) return attached;
-
-  const introClaim = {
-    text: String(attached.answer?.intro || "").trim(),
-    relationshipText: String(attached.answer?.intro || "").trim(),
-    citations: (attached.answer?.introCitations || []).map(Number).filter(Number.isFinite),
-  };
-  if (!claimHasVisibleWitnessInDraft(attached, introClaim)) {
-    return {
-      ...attached,
-      clarification: null,
-      answer: {
-        ...attached.answer,
-        eyebrow: NO_ANSWER_EYEBROW,
-        intro: NO_ANSWER_INTRO,
-        introCitations: [],
-        parts: [],
-        note: "",
-      },
-      evidence: {
-        ...attached.evidence,
-        // An uncited placeholder ("Leidsin seotud allikad, kuid …") claims
-        // nothing, so it shows as a no-answer while the model may still answer
-        // from the same sources. Only a cited claim without a witness is unanswerable.
-        // A planned intent (a figure that needs its method source, …) keeps its
-        // own stricter rule: its missing evidence never goes to the model.
-        answerable: introClaim.citations.length === 0 && !attached.evidence?.quality?.answerIntent,
-      },
-    };
-  }
-
-  const parts = (attached.answer?.parts || []).filter((part) => claimHasVisibleWitnessInDraft(attached, {
-    text: [part.title, part.text].filter(Boolean).join(" ").trim(),
-    relationshipText: String(part.text || "").trim(),
-    citations: (part.citations || []).map(Number).filter(Number.isFinite),
-  }));
-  const reduced = {
-    ...attached,
-    answer: {
-      ...attached.answer,
-      parts,
-    },
-  };
-  return attachEvidenceExcerpts(reduced, query, evidencePack);
-}
-
-function attachEvidenceExcerpts(draft, _query, evidencePack) {
-  const usedCitations = answerCitationNumbers(draft?.answer);
-  return {
-    ...draft,
-    sources: (draft.sources || []).map((source) => {
-      if (!usedCitations.has(Number(source.citation))) return source;
-      const packed = evidencePack?.entries.find((entry) => entry.citation === Number(source.citation));
-      const { evidenceExcerpt: _previousExcerpt, ...snapshot } = source;
-      // The immutable pack has already reserved complete required witnesses
-      // within its per-source and whole-pack bounds. Public proof must expose
-      // those same bytes, not select or clip a second evidence window.
-      return packed?.content ? { ...snapshot, evidenceExcerpt: packed.content } : snapshot;
-    }),
-  };
-}
-
-// A copied field was legal when the evidence pack was built, but the response
-// can be written much later: a slow model call, a streamed listing, a replayed
-// timeout snapshot, a job poll. These helpers decide, on the clock that writes
-// the response, whether the publisher decision behind each source still
-// releases its copy, and what the response looks like when it no longer does.
-// Link metadata is never part of the question.
-//
-// The bound travels as an enumerable own symbol on the internal result: a
-// `{ ...result }` spread keeps it for an emitter, while JSON.stringify and
-// every serialized body drop it, so an instant can never leak into a payload.
-export const ANSWER_SOURCE_EXPIRY = Symbol.for("keskkonnaportaal.answer-source-expiry");
-export const WITHHELD_COPY_EYEBROW = "Allikas ei ole enam avaldatav";
-export const WITHHELD_COPY_TITLE = "Sisu ei ole enam avaldatav";
-export const WITHHELD_COPY_INTRO = "Selle allika sisu ei ole enam avaldatav, seega ei esita ma selle põhjal vastust. Allikate lingid on alles.";
-export const WITHHELD_COPY_CLARIFICATION = "Ava allikas uuesti, et näha selle praegust sisu.";
-
-function citationSetOf(response = {}) {
-  const cited = new Set();
-  const collect = (citations) => {
-    if (!Array.isArray(citations)) return;
-    citations.forEach((citation) => {
-      if (Number.isInteger(Number(citation))) cited.add(Number(citation));
-    });
-  };
-  collect(response?.answer?.introCitations);
-  if (Array.isArray(response?.answer?.parts)) {
-    response.answer.parts.forEach((part) => collect(part?.citations));
-  }
-  if (Number.isInteger(Number(response?.chart?.citation))) cited.add(Number(response.chart.citation));
-  return cited;
-}
-
-// The finite copied-text window of one source: the publisher's own
-// `unavailable-after`, and the freshness bound the row itself declares. This is
-// a hint for the emitters that need a bound, so it reads the stored decision
-// directly; the authoritative question is the copy permission, which is asked
-// separately on the clock that writes the response.
-function sourceCopyExpiryAt(source = {}) {
-  const windows = [];
-  const stored = source?._sourcePolicy ?? source?.metadata?.source_policy ?? null;
-  const unavailableAfter = Date.parse(String(stored?.directives?.unavailableAfter || ""));
-  if (Number.isFinite(unavailableAfter)) windows.push(unavailableAfter);
-  const maxAgeMs = Number(source?.freshness?.maxAgeMs);
-  const basis = Date.parse(source?._evidenceStatusAt || source?.fetched_at || "");
-  if (Number.isFinite(maxAgeMs) && maxAgeMs > 0 && Number.isFinite(basis)) windows.push(basis + maxAgeMs);
-  return windows.length ? Math.min(...windows) : null;
-}
-
-/**
- * The earliest copied-text window among the sources this response actually
- * shows or cites, or null when nothing it shows is windowed. A final response
- * already carries the answer, a draft carries its own prose and chart, so both
- * are accepted; a response that was already projected answers from its own
- * symbol so downstream emitters cannot drift from the request that produced it.
- */
-export function publicationCopyExpiry(response = {}) {
-  const attached = response?.[ANSWER_SOURCE_EXPIRY];
-  if (typeof attached === "number" && Number.isFinite(attached)) return attached;
-  const sources = Array.isArray(response?.sources) ? response.sources : [];
-  const cited = citationSetOf(response);
-  let earliest = null;
-  for (const source of sources) {
-    const contributes = Boolean(source?.evidenceExcerpt || source?.summary)
-      || cited.has(Number(source?.citation));
-    if (!contributes) continue;
-    const expiryAt = sourceCopyExpiryAt(source);
-    if (expiryAt === null) continue;
-    earliest = earliest === null ? expiryAt : Math.min(earliest, expiryAt);
-  }
-  return earliest;
-}
-
-// The response being written is projected from private sources, while the
-// public source list it carries no longer holds a policy. The bound is therefore
-// computed from the private list, and an already projected response keeps the
-// bound it inherited so a second projection cannot drop it.
-function attachPublicationCopyExpiry(value, sources = [], cited = new Set()) {
-  const inherited = value?.[ANSWER_SOURCE_EXPIRY];
-  let earliest = typeof inherited === "number" && Number.isFinite(inherited) ? inherited : null;
-  for (const source of sources) {
-    const contributes = Boolean(source?.evidenceExcerpt || source?.summary)
-      || cited.has(Number(source?.citation));
-    if (!contributes) continue;
-    const expiryAt = sourceCopyExpiryAt(source);
-    if (expiryAt === null) continue;
-    earliest = earliest === null ? expiryAt : Math.min(earliest, expiryAt);
-  }
-  Object.defineProperty(value, ANSWER_SOURCE_EXPIRY, {
-    value: earliest,
-    enumerable: true,
-    configurable: true,
-    writable: true,
-  });
-  return value;
-}
-
-// One public link field set for both projections below and for the withheld
-// replacement: navigation only, never a copied field, a witness, a policy, a
-// digest, a metadata bag or an internal pack.
-const PUBLIC_LINK_FIELDS = Object.freeze([
-  "id", "citation", "title", "organization", "type", "published", "updated",
-  "dataYear", "dataAsOf", "url", "locator", "actionUrl", "actionLabel", "tags", "sourceTier",
-]);
-
-function publicLinkOnly(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const link = {};
-  for (const key of PUBLIC_LINK_FIELDS) {
-    const field = value[key];
-    if (key === "citation") {
-      if (Number.isInteger(field) && field > 0) link.citation = field;
-      continue;
-    }
-    if (key === "tags") {
-      if (Array.isArray(field)) link.tags = field.filter((tag) => typeof tag === "string").slice(0, 5);
-      continue;
-    }
-    if (typeof field === "string" || (typeof field === "number" && Number.isFinite(field))) link[key] = field;
-  }
-  return link;
-}
-
-function publicListingLinks(listing) {
-  const items = (Array.isArray(listing?.items) ? listing.items : [])
-    .map(publicLinkOnly)
-    .filter(Boolean);
-  const total = Number(listing?.total);
-  return { ...(Number.isFinite(total) ? { total } : {}), items };
-}
-
-function withheldAnswerCard() {
-  return {
-    eyebrow: WITHHELD_COPY_EYEBROW,
-    title: WITHHELD_COPY_TITLE,
-    intro: WITHHELD_COPY_INTRO,
-    introCitations: [],
-    parts: [],
-    note: "",
-  };
-}
-
-/**
- * The links-only replacement for a response whose copied text may no longer be
- * shown. It is built from an explicit allowlist rather than by deleting fields
- * from the original, so a raw draft that still holds bodies, witnesses, digests
- * or metadata cannot leak any of them, and an embedded listing is reprojected
- * to links the same way. The card becomes the blanked no-answer card every
- * consumer already renders, and the chart is withdrawn with the claim it drew.
- * It accepts a final response or a draft, because a draft carries prose and a
- * chart of its own.
- */
-// Names which check turned the model answer down, as a short code built from
-// the check's own fixed message, so a test round can be counted by cause. The
-// private detail's claim and source text never reach it: everything after the
-// first "|" or "(" is dropped and only lowercase letters and hyphens remain.
-export function attemptCheckCode(visibleCheck, attempt) {
-  if (visibleCheck) return visibleCheck;
-  const message = String(attempt?.detail || "").split("|")[0].replace(/\s*\(.*$/su, "");
-  return normalize(message).replace(/^llm\s+/u, "").replace(/[^a-z]+/gu, "-").replace(/^-+|-+$/gu, "").slice(0, 80);
-}
-
-export function withholdPublicationCopy(response = {}) {
-  const safe = response && typeof response === "object" && !Array.isArray(response) ? response : {};
-  const attempt = safe.answerAttempt && typeof safe.answerAttempt === "object"
-    ? {
-      status: typeof safe.answerAttempt.status === "string" ? safe.answerAttempt.status : "",
-      reason: typeof safe.answerAttempt.reason === "string" ? safe.answerAttempt.reason : "",
-      ...(typeof safe.answerAttempt.check === "string" && /^[a-z-]{1,80}$/u.test(safe.answerAttempt.check) ? { check: safe.answerAttempt.check } : {}),
-    }
-    : undefined;
-  return {
-    ...(typeof safe.query === "string" ? { query: safe.query } : {}),
-    ...(Number.isFinite(Number(safe.total)) ? { total: Number(safe.total) } : {}),
-    ...(typeof safe.generatedAt === "string" ? { generatedAt: safe.generatedAt } : {}),
-    ...(attempt ? { answerAttempt: attempt } : {}),
-    ...(safe.searchResults !== undefined ? { searchResults: publicListingLinks(safe.searchResults) } : {}),
-    related: (Array.isArray(safe.related) ? safe.related : [])
-      .filter((item) => typeof item === "string")
-      .slice(0, 6),
-    answer: safe.answer ? withheldAnswerCard() : safe.answer,
-    chart: undefined,
-    sources: (Array.isArray(safe.sources) ? safe.sources : []).map(publicLinkOnly).filter(Boolean),
-    clarification: WITHHELD_COPY_CLARIFICATION,
-  };
-}
-
-export function publicResponse(draft, { now = Date.now(), copyNow = Date.now() } = {}) {
-  // `now` is the eligibility clock the caller started the request with. The
-  // copy decision has its own clock, because the response can be written long
-  // after the request began; a caller may pin it to keep a test deterministic.
-  const copyClock = typeof copyNow === "number" && Number.isFinite(copyNow) ? copyNow : Date.now();
-  const { evidence: _evidence, ...response } = draft;
-  const sources = (Array.isArray(response.sources) ? response.sources : [])
-    .filter((source) => publicSourceAllowed(source) && officialCitationUrlEligibility(source?.url).eligible)
-    .map((source) => {
-      if (source.actionUrl === undefined || (publicSourceAllowed({url: source.actionUrl}) && officialCitationUrlEligibility(source.actionUrl).eligible)) return source;
-      const { actionUrl: _actionUrl, actionLabel: _actionLabel, ...safeSource } = source;
-      return safeSource;
-    });
-  // A card that says it has no answer never shows a figure next to that.
-  const chartCandidate = response.answer?.eyebrow !== NO_ANSWER_EYEBROW && validPublicChart(response.chart, sources) ? boundedChart(response.chart) : null;
-  const chart = chartCandidate
-    && sourceCanSupportPublicCitation(
-      sources.find((source) => Number(source?.citation) === chartCandidate.citation) || {},
-      { now },
-    ).eligible
-    ? chartCandidate
-    : null;
-  const answer = response.answer && typeof response.answer === "object" && !Array.isArray(response.answer)
-    ? response.answer
-    : null;
-  const rawCitations = [];
-  let validCitationShape = Boolean(answer || response.answer == null);
-  const collectCitations = (citations) => {
-    if (citations === undefined) return;
-    if (!Array.isArray(citations)) {
-      validCitationShape = false;
-      return;
-    }
-    rawCitations.push(...citations);
-  };
-  collectCitations(answer?.introCitations);
-  if (chart) rawCitations.push(chart.citation);
-  const answerParts = answer?.parts === undefined ? [] : answer.parts;
-  if (!Array.isArray(answerParts)) validCitationShape = false;
-  else answerParts.forEach((part) => {
-    if (!part || typeof part !== "object" || Array.isArray(part)) {
-      validCitationShape = false;
-      return;
-    }
-    collectCitations(part.citations);
-  });
-
-  const validAnswerCitations = rawCitations.every((citation) => (
-    typeof citation === "number" && Number.isInteger(citation) && citation > 0
-  ));
-  const sourceCitationCounts = new Map();
-  for (const source of sources) {
-    const citation = source?.citation;
-    if (typeof citation !== "number" || !Number.isInteger(citation) || citation <= 0) continue;
-    sourceCitationCounts.set(citation, (sourceCitationCounts.get(citation) || 0) + 1);
-  }
-  const usedCitations = new Set(rawCitations);
-  const citationsResolveExactlyOnce = [...usedCitations].every((citation) => (
-    sourceCitationCounts.get(citation) === 1
-  ));
-  const citedSourcesSupportPublicClaims = [...usedCitations].every((citation) => {
-    const source = sources.find((candidate) => Number(candidate?.citation) === citation);
-    return sourceCanSupportPublicCitation(source || {}, { now }).eligible;
-  });
-  let validMeasureScope = true;
-  if (answer && forestEvidenceIntent(response.query)?.kind === "protected-forest-share") {
-    try {
-      assertAnswerAddressesQuery([answer.intro, ...(Array.isArray(answerParts) ? answerParts.map((part) => part.text) : [])].join(" "), response.query);
-    } catch {
-      validMeasureScope = false;
-    }
-  }
-  // The copy decision belongs to the clock that writes this response, not to
-  // the clock that built the pack. A slow model call, a replayed timeout
-  // snapshot or a job poll can all arrive after a publisher's window closed,
-  // so each source is asked again here. A source whose copy is withheld keeps
-  // its link metadata and loses anything a reader would read as copied text,
-  // and any claim or chart drawn from it goes with the copy.
-  //
-  // The decision is keyed by the source object itself: a producer emits its
-  // rows before any citation is assigned, so a key derived from the citation
-  // would let one uncited source answer for every other one.
-  const copyDecisions = new WeakMap();
-  const copyPermittedFor = (source, purpose) => {
-    if (!source || typeof source !== "object") return true;
-    let decided = copyDecisions.get(source);
-    if (!decided) {
-      decided = {};
-      copyDecisions.set(source, decided);
-    }
-    if (!Object.hasOwn(decided, purpose)) {
-      decided[purpose] = sourceCopyPermission(source, { purpose, now: copyClock }).permitted;
-    }
-    return decided[purpose];
-  };
-  // A claim and a chart are evidence, so they need the evidence permission
-  // specifically. A policy may release the snippet and withhold the model
-  // evidence: that source still shows its link and its snippet, but it cannot
-  // support a claim or a figure.
-  const evidenceWithheld = (source) => !copyPermittedFor(source, "evidence");
-  const withheldCitations = new Set(sources.filter(evidenceWithheld).map((source) => Number(source?.citation)));
-  const citesWithheldCopy = (citations) => (Array.isArray(citations) ? citations : [])
-    .some((citation) => withheldCitations.has(Number(citation)));
-  const withheldAnswer = Boolean(answer) && citesWithheldCopy(answer?.introCitations);
-  // One projection for both returns: link metadata always survives, and a
-  // copied field is emitted only while the publisher decision still releases it
-  // on this clock.
-  const publicSourceList = (list, { copiedText = true } = {}) => list.map((source, index) => {
-    const publicKeys = [...PUBLIC_LINK_FIELDS];
-    if (copiedText) {
-      if (source.evidenceExcerpt && copyPermittedFor(source, "evidence")) publicKeys.push("evidenceExcerpt");
-      else if (source.summary && copyPermittedFor(source, "snippet")) publicKeys.push("summary");
-    }
-    return {
-      ...Object.fromEntries(publicKeys
-        .filter((key) => source[key] !== undefined)
-        .map((key) => [key, source[key]])),
-      id: stablePublicResultId(source),
-      citation: index + 1,
-    };
-  });
-  if (!validCitationShape
-    || !validAnswerCitations
-    || !citationsResolveExactlyOnce
-    || !validMeasureScope
-    || !citedSourcesSupportPublicClaims) {
-    // A cited source that can no longer be verified normally leaves the card
-    // with no results at all. When the reason is a copied-text window that has
-    // closed, the reader still gets the navigation: the links stay, without any
-    // copied text, instead of the source disappearing with its excerpt.
-    const withheldProxy = withheldCitations.size > 0;
-    return attachPublicationCopyExpiry({
-      ...response,
-      chart: undefined,
-      clarification: "Vastuse allikaviiteid ei saanud üheselt kontrollida.",
-      answer: {
-        eyebrow: "Täpsustust on vaja",
-        title: "Allikaviiteid ei saanud kontrollida",
-        intro: "Leitud ametlike allikate põhjal ei saanud koostada üheselt kontrollitava viitega faktivastust. Täpsusta näitajat, aastat või asukohta ja proovi uuesti.",
-        introCitations: [],
-        parts: [],
-        note: "Otsingutulemused on kuvatud allpool, kuid neist ei koostatud faktivastust.",
-      },
-      sources: withheldProxy ? publicSourceList(sources, { copiedText: false }) : [],
-    }, withheldProxy ? sources : [], new Set());
-  }
-  const visibleSources = usedCitations.size
-    ? sources.filter((source) => usedCitations.has(source.citation))
-    : sources;
-  const citationMap = new Map(visibleSources.map((source, index) => [
-    source.citation,
-    index + 1,
-  ]));
-  const compactCitations = (citations = []) => [...new Set(citations
-    .map((citation) => citationMap.get(citation))
-    .filter(Number.isInteger))];
-  return attachPublicationCopyExpiry({
-    ...response,
-    clarification: withheldAnswer ? WITHHELD_COPY_CLARIFICATION : response.clarification,
-    chart: chart && !withheldCitations.has(Number(chart.citation))
-      ? { ...chart, citation: citationMap.get(chart.citation) }
-      : undefined,
-    answer: answer ? (withheldAnswer
-      ? withheldAnswerCard()
-      : {
-        ...answer,
-        intro: condenseRedundantSentences(answer.intro, { mergeDefinitions: true }),
-        introCitations: compactCitations(answer.introCitations),
-        parts: answerParts
-          .filter((part) => !citesWithheldCopy(part?.citations))
-          .map((part) => ({
-            ...part,
-            text: condenseRedundantSentences(part.text, { mergeDefinitions: true }),
-            citations: compactCitations(part.citations),
-          })),
-      }) : answer,
-    sources: publicSourceList(visibleSources),
-  }, visibleSources, usedCitations);
-}
 
 function remainingBudget(deadlineAt, reserveMs = 0) {
   return Math.max(0, deadlineAt - Date.now() - reserveMs);
@@ -1435,7 +226,8 @@ export function retainSearchPersistence(operation, onBackgroundCleanup) {
 
 export function shouldGenerateGroundedAnswer(draft) {
   return Boolean(
-    draft?.sources?.length
+    draft?.evidence?.intentTemplate !== true
+    && draft?.sources?.length
     && ["ranked-search-results", "reviewed-official-source", "broad-grounded-answer"].includes(draft?.evidence?.kind)
     && draft?.evidence?.answerable === true,
   );
@@ -1453,7 +245,26 @@ function reviewedRelatedQuestions(reviewed = [], limit = 6) {
     })
     .slice(0, Math.max(1, Math.min(Number(limit) || 6, 6)));
 }
+// A retrieval plan can omit a source required by a reviewed template. Admit only candidates that template cites.
+function selectIntentTemplateDocuments(query, classification, documents = []) {
+  if (!TEMPLATE_INTENTS.has(classification?.intent)) return [];
+  const previewSources = documents.map((source, index) => ({ ...source, citation: index + 1 }));
+  const preview = buildIntentAnswer({
+    query,
+    intent: classification.intent,
+    topic: classification.topic,
+    sources: previewSources,
+  });
+  if (!preview) return [];
+  const citations = new Set([
+    ...(Array.isArray(preview.introCitations) ? preview.introCitations : []),
+    ...(Array.isArray(preview.parts) ? preview.parts.flatMap((part) => part?.citations || []) : []),
+  ].filter((citation) => Number.isInteger(citation) && citation > 0));
+  return documents.filter((_, index) => citations.has(index + 1));
+}
 
+
+/** Internal draft builder. Its source admission metadata remains private. */
 export async function createPortalDraft(query, {
   deadlineAt,
   signal,
@@ -1471,7 +282,9 @@ export async function createPortalDraft(query, {
     clientKey,
     filters: { sort },
   });
-  const candidates = conventionalEvidenceDocumentsFromListing(listing);
+  const intentClassification = analyzeQueryIntent(query);
+  const candidates = conventionalEvidenceDocumentsFromListing(listing)
+    .filter((document) => !isPermissionFocusedLawCandidate(document, intentClassification.intent));
   // Route-only federated cards stay visible as discovery results but cannot
   // become answer evidence. Hydrate only independently eligible sources so a
   // search never spends six page requests on cards discarded immediately.
@@ -1480,15 +293,16 @@ export async function createPortalDraft(query, {
   const focusedLawCandidate = candidates.find((document) => document._focusedLawTerm);
   const topicalLawCandidate = focusedLawCandidate ? null : candidates.find((document) => document._focusedLawTopic);
   const portalRanked = retainedPlan ? candidates : rankPortalDocuments(retrievalQuery, candidates, rankingOptions);
-  // The asked term's law section stays in the running whatever else ranks above it.
-  // The section a rule question names stays among the read sources, after the
-  // page that leads.
+  // Keep the named rule section beside its reviewed lead instead of letting
+  // ranking bury the only paragraph that answers the rule question.
   const topicalLawAt = Math.max(0, Math.min(1, portalRanked.indexOf(topicalLawCandidate)));
-  const withoutTopical = topicalLawCandidate ? portalRanked.filter((document) => document.id !== topicalLawCandidate.id) : portalRanked;
+  const withoutTopicalLaw = topicalLawCandidate
+    ? portalRanked.filter((document) => document.id !== topicalLawCandidate.id)
+    : portalRanked;
   const ranked = focusedLawCandidate
     ? [focusedLawCandidate, ...portalRanked.filter((document) => document.id !== focusedLawCandidate.id)]
     : topicalLawCandidate
-      ? [...withoutTopical.slice(0, topicalLawAt), topicalLawCandidate, ...withoutTopical.slice(topicalLawAt)]
+      ? [...withoutTopicalLaw.slice(0, topicalLawAt), topicalLawCandidate, ...withoutTopicalLaw.slice(topicalLawAt)]
       : portalRanked;
   const hydrationBudget = remainingBudget(deadlineAt, 7_000);
   const answerCandidates = retainedPlan
@@ -1579,6 +393,7 @@ export async function createPortalDraft(query, {
       ...reranked,
       ...conventionalEvidenceDocumentsFromListing(listing),
     ]);
+  const intentTemplateDocuments = selectIntentTemplateDocuments(query, intentClassification, reranked);
   const allPlannedAnswerDocuments = answerEvidenceDocuments(reranked, plannedEvidence, forestBalance);
   const compositeRequiredIds = plannedEvidence?.kind === "forest-area-method"
     && !plannedEvidence.strong
@@ -1594,7 +409,7 @@ export async function createPortalDraft(query, {
     ? (listing?.items || []).filter((document) => document?.id === "forest-overview").slice(0, 1)
     : [];
   const seenAnswerDocuments = new Set();
-  const answerDocuments = [...compositeNavigationDocuments, ...plannedAnswerDocuments]
+  const answerDocuments = [...compositeNavigationDocuments, ...plannedAnswerDocuments, ...intentTemplateDocuments]
     .filter((document) => {
       const key = sourceWitnessKey(document) || document?.id;
       if (!key || seenAnswerDocuments.has(key)) return false;
@@ -1720,15 +535,9 @@ export async function createPortalDraft(query, {
   } else if (officialForestryFallback) {
     draft.answer = officialForestryFallback;
     draft.evidence.syntheticFallback = "official-forestry-evidence";
-    // The planned passages of a broad topic ("metsateatis", climate impact,
-    // stock overview) cover the topic, not necessarily what was asked about it
-    // (processing time, a "no" decision, an unpaid fee). The model still gets
-    // them, but shown as the answer without every content word of the
-    // question they would be a wrong answer, so the card the reader sees
-    // without the model says there is no answer. A narrow topic is resolved
-    // only by the question its passages answer ("ilma loata" → 20 tm without a
-    // notice), so its words need not repeat the question's.
-    if (offTargetFallback(retrievalQuery, plannedEvidence?.kind, officialForestryFallback)) {
+    // Keep this marker aligned with final card validation. A narrower lexical
+    // check can withdraw an answer the final gate already accepts.
+    if (!answerCardAnswersQuery(draft, retrievalQuery)) {
       draft.evidence.offTargetIntro = officialForestryFallback.intro;
     }
   } else if (directExtract && !plannedEvidence?.strong && !REVIEWED_RETRIEVAL_PATTERN.test(direct.retrieval || "")
@@ -1745,11 +554,7 @@ export async function createPortalDraft(query, {
   }
   // Every route above can fill the card, so this rule check runs after all of
   // them. The model may still answer from the same sources.
-  // A raw law paragraph ("(4) Kokkuleppehinda …") shown as the lead must carry
-  // the question's words like any other excerpt, whichever route chose it.
-  const rawLawLead = /^\(?\d+\p{L}?\)\s/u.test(draft.answer?.intro || "")
-    && !extractAnswersQuery(retrievalQuery, draft.answer.intro);
-  if (!forestBalance && (rawLawLead || !answersAskedConcept(retrievalQuery, draft.answer?.intro || ""))) {
+  if (!answerCardAnswersQuery(draft, retrievalQuery)) {
     draft.answer = { ...draft.answer, eyebrow: NO_ANSWER_EYEBROW, intro: NO_ANSWER_INTRO, introCitations: [], parts: [] };
     draft.clarification = null;
   }
@@ -1803,11 +608,43 @@ export async function createPortalDraft(query, {
     draft.clarification = "Täpsusta tegevust või objekti; praegused allikad kirjeldavad teist teemat.";
     draft.evidence.answerable = false;
   }
+  const intentTemplateAnswer = buildIntentAnswer({
+    query,
+    intent: intentClassification.intent,
+    topic: intentClassification.topic,
+    sources: draft.sources,
+  });
+  if (intentTemplateAnswer) {
+    // A supported template replaces the answer that set this marker.
+    delete draft.evidence.offTargetIntro;
+    draft.answer = intentTemplateAnswer;
+    draft.evidence = {
+      ...draft.evidence,
+      answerable: true,
+      answerIntent: intentClassification.intent,
+      intentTemplate: true,
+    };
+    draft.clarification = null;
+  }
   const evidencePack = buildEvidencePack({ sources: draft.sources, query: retrievalQuery, plan: packPlan });
   draft.evidence.sourceEvidencePack = evidencePack;
-  return draft.evidence?.answerable === true
+  const finalized = draft.evidence?.answerable === true
     ? finalizeVisibleAnswerWitnesses(draft, retrievalQuery, evidencePack)
     : attachEvidenceExcerpts(draft, retrievalQuery, evidencePack);
+  // A verified official timing excerpt does not need another model pass.
+  if (isNoticeReviewDurationQuestion(retrievalQuery)
+      && finalized.evidence?.answerable === true
+      && evidencePack.complete === true
+      && finalized.answer?.intro
+      && finalized.answer.eyebrow !== NO_ANSWER_EYEBROW
+      && finalized.answer.introCitations?.length === 1
+      && !finalized.answer.parts?.length
+      && finalized.sources?.[finalized.answer.introCitations[0] - 1]?.id === "forest-notice-guidance"
+      && !citesRawLawSection(finalized)
+      && answerCardAnswersQuery(finalized, retrievalQuery)) {
+    finalized.evidence.intentTemplate = true;
+  }
+  return finalized;
 }
 
 const SMI_FIGURE_PATTERN = /Eesti metsamaa pindala \d/u;
@@ -1815,18 +652,48 @@ const SMI_FIGURE_PATTERN = /Eesti metsamaa pindala \d/u;
 function answerCardText(draft) {
   return [draft.answer?.intro, ...(draft.answer?.parts || []).map((part) => part?.text)].filter(Boolean).join(" ");
 }
+function answerCardAnswersQuery(draft, query, { deterministicEvidence = true } = {}) {
+  if (!draft.answer?.intro || draft.answer.eyebrow === NO_ANSWER_EYEBROW) return true;
+  const intro = String(draft.answer.intro);
+  const text = answerCardText(draft);
+  const eurostatLead = draft.evidence?.kind === "structured-forest-balance"
+    && draft.answer.introCitations?.some((citation) => draft.sources?.[citation - 1]?.id === "forest-balance-eurostat");
+  const comparisonEvidenceKind = deterministicEvidence
+    ? eurostatLead
+      ? "structured-forest-balance-net"
+      : ["structured-forest-balance", "structured-source-fact-check"].includes(draft.evidence?.kind)
+        ? draft.evidence.kind
+        : String(draft.evidence?.quality?.answerIntent || "")
+    : "";
+  // Revalidate the original tuple and its exact visible statement, rather than
+  // treating the evidence label as proof that a geographic comparison exists.
+  const municipal = deterministicEvidence && draft.evidence?.kind === "structured-municipal-waste-recycling"
+    ? composeMunicipalWasteRecyclingResponse(query, draft.sources, { now: Date.parse(draft.generatedAt) })
+    : null;
+  const municipalComparison = municipal
+    && municipal.sources[0]._municipalWasteRecycling.euRate !== null
+    && intro === municipal.answer.intro
+    && draft.answer.introCitations?.length === 1
+    && draft.answer.introCitations[0] === 1;
+  return answersAskedConcept(query, text)
+    && namesDefinitionTerm(query, intro)
+    && rawLawLeadAnswersQuery(query, intro)
+    && (municipalComparison || comparisonAnswersQuery(query, text, comparisonEvidenceKind));
+}
 
-// Every route can fill the card, including the forestry summaries, so this runs
-// after all of them. The forest balance is exempt because it states its own
-// scope. The model may still answer from the same sources and passes the same
-// check.
+
 function withoutOffTargetAnswer(draft, query) {
   if (!draft.answer?.intro || draft.answer.eyebrow === NO_ANSWER_EYEBROW) return draft;
-  if (draft.evidence?.kind === "structured-forest-balance") return draft;
+  const isValidatedWeatherAnswer = draft.evidence?.kind === "structured-current-weather"
+    && draft.evidence.answerable === true
+    && draft.evidence.documentIds?.includes("current-weather-observations")
+    && draft.sources?.some((source) => source?.id === "current-weather-observations");
+  if (isValidatedWeatherAnswer) return draft;
   const statesSmiFigure = SMI_FIGURE_PATTERN.test(draft.answer.intro);
   // An area figure does not answer a question about the growing stock.
   const wrongSmiFigure = statesSmiFigure && /tagavara|üldvaru/iu.test(query) && !/tagavara|üldvaru|\bm3\b|m³|tihumeet/iu.test(answerCardText(draft));
-  if (answersAskedConcept(query, answerCardText(draft)) && !wrongSmiFigure && (!statesSmiFigure || asksOnlyForestAmount(query))) return draft;
+  if (answerCardAnswersQuery(draft, query) && !wrongSmiFigure
+    && (!statesSmiFigure || asksOnlyForestAmount(query))) return draft;
   return {
     ...draft,
     answer: { ...draft.answer, eyebrow: NO_ANSWER_EYEBROW, intro: NO_ANSWER_INTRO, introCitations: [], parts: [] },
@@ -1834,9 +701,11 @@ function withoutOffTargetAnswer(draft, query) {
   };
 }
 
-// Law text is precise and easy to misread out of context, so a section is only
-// shown after the model has answered from it and passed the checks. Without
-// that, the card says there is no answer instead of pasting a fragment.
+
+
+// Raw statutory sections are shown through an admitted local intent template
+// or an answer that exactly matches a verified definition passage. Model text
+// that only cites a law section stays blank unless it passes the answer checks.
 const LAW_SECTION_URL = /riigiteataja\.ee\/.*#para/u;
 
 function citesRawLawSection(draft) {
@@ -1847,6 +716,7 @@ function citesRawLawSection(draft) {
 
 function withoutRawLawSection(draft) {
   if (!draft.answer?.intro || !citesRawLawSection(draft)) return draft;
+  if (draft.evidence?.intentTemplate === true) return draft;
   if (draft.evidence?.lawDefinitionIntro && draft.answer.intro === draft.evidence.lawDefinitionIntro) return draft;
   return {
     ...draft,
@@ -1855,93 +725,6 @@ function withoutRawLawSection(draft) {
   };
 }
 
-function stableRevisionValue(value) {
-  if (Array.isArray(value)) return value.map(stableRevisionValue);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(Object.keys(value).sort().map((key) => [
-      key,
-      stableRevisionValue(value[key]),
-    ]));
-  }
-  if (value === undefined || value === null) return null;
-  if (["string", "number", "boolean"].includes(typeof value)) return value;
-  return String(value);
-}
-
-export function searchListingRevision(listing = {}) {
-  const records = (listing.items || []).map((item) => {
-    const currentEvidence = sourceCanSupportPublicCitation(item);
-    return stableRevisionValue({
-      id: item.id,
-      resourceKey: sourceResourceKey(item.url),
-      witnessKey: sourceWitnessKey(item),
-      title: item.title,
-      organization: item.organization,
-      type: item.type,
-      summary: item.summary,
-      answer: item.answer,
-      content: item._contentHash || item.content,
-      locator: item.locator,
-      actionUrl: item.actionUrl ? sourceResourceKey(item.actionUrl) : null,
-      actionLabel: item.actionLabel,
-      published: item.published,
-      updated: item.updated,
-      dataYear: item.dataYear,
-      dataAsOf: item.dataAsOf,
-      publishedAt: item._publishedAt,
-      sourceTier: item.sourceTier,
-      routeClasses: item.routeClasses,
-      topics: item.topics,
-      tags: item.tags,
-      retrieval: item.retrieval,
-      delivery: item.delivery,
-      evidencePolicy: item.evidencePolicy,
-      answerEvidenceEligible: item._answerEvidenceEligible,
-      evidenceVersion: item._evidenceVersion,
-      evidenceStatusAt: item._evidenceStatusAt,
-      evidenceObservedAt: item._evidenceObservedAt,
-      evidenceValidFrom: item._evidenceValidFrom,
-      evidenceValidUntil: item._evidenceValidUntil,
-      freshness: item.freshness,
-      currentEvidence: {
-        eligible: currentEvidence.eligible,
-        policy: currentEvidence.policy,
-        reason: currentEvidence.reason,
-      },
-    });
-  });
-  return createHash("sha256").update(JSON.stringify(records)).digest("hex");
-}
-
-export function cachedSourcesBelongToListing(cached, listing) {
-  if ((cached?.sources || []).some((source) => (
-    !publicSourceAllowed(source) || !officialCitationUrlEligibility(source?.url).eligible
-    || (source?.actionUrl !== undefined && (!publicSourceAllowed({url: source.actionUrl}) || !officialCitationUrlEligibility(source.actionUrl).eligible))
-  ))) return false;
-  if (!listing?.items?.length || !cached?.sources?.length) return true;
-  const witnesses = new Set(listing.items.map(publicSourceWitnessKey).filter(Boolean));
-  return cached.sources.every((source) => {
-    const key = publicSourceWitnessKey(source);
-    return key !== null && witnesses.has(key);
-  });
-}
-
-function draftSourcesBelongToListing(draft, listing) {
-  if (!draft?.sources?.length) return true;
-  const visibleItems = listing?.items || [];
-  const answerItems = listing?.evidenceCandidates || visibleItems;
-  const witnesses = new Set(answerItems.map(publicSourceWitnessKey).filter(Boolean));
-  return draft.sources.every((source) => {
-    const key = publicSourceWitnessKey(source);
-    return (key !== null && witnesses.has(key)) || sourceIsLinkedToVisibleService(source, visibleItems);
-  });
-}
-
-export function draftMatchesListingAndFilters(draft, listing, filters = {}) {
-  return Boolean(draft)
-    && draft.sources.every((source) => resultMatchesFilters(source, filters))
-    && (!listing || draftSourcesBelongToListing(draft, listing));
-}
 
 async function searchWithinBudget(cleanQuery, {
   startedAt,
@@ -1956,9 +739,12 @@ async function searchWithinBudget(cleanQuery, {
   useCache = true,
   onDraft,
   onPrivateDraft,
+  onModelStart,
+  onModelUsage,
   onBackgroundCleanup,
   generateAnswer = generateGroundedAnswer,
   persistSearch = recordSearch,
+  readCache = readSearchCache,
 }) {
   throwIfRequestAborted(signal);
   const assessment = assessSearchQuery(assessmentQuery);
@@ -1968,19 +754,36 @@ async function searchWithinBudget(cleanQuery, {
   if (assessment.kind === "out-of-scope") {
     return publicResponse(composeScopeResponse(cleanQuery, assessment), { now: startedAt });
   }
-  const defaultFilters = !filters?.category && !filters?.year
-    && [undefined, "", "all"].includes(filters?.source)
-    && [undefined, "", "relevance"].includes(filters?.sort);
-  const cacheEnabled = useCache && defaultFilters && isSearchCacheEnabled();
-  // A saved answer may rest on a law, so it ends when that law's version changes.
-  const cacheRevision = `${SEARCH_RESPONSE_REVISION}:${forestLawVersionStamp()}:${searchListingRevision(searchResults)}`;
+  const cacheFilters = {
+    ...(searchResults?.appliedFilters || {}),
+    ...(filters || {}),
+  };
+  const cacheEnabled = useCache && !String(conversationContext || "").trim()
+    && isSearchCacheEnabled() && !isCurrentWeatherObservationQuery(cleanQuery);
+  const cacheRevision = createSearchAnswerCacheRevision({
+    responseRevision: SEARCH_RESPONSE_REVISION,
+    lawRevision: forestLawVersionStamp(),
+    listingRevision: searchListingRevision(searchResults),
+    queryRevision: searchResults?.queryRevision,
+    windowId: searchResults?.windowId,
+    filters: cacheFilters,
+  });
   const listingBackedCache = cacheEnabled && Boolean(searchResults?.items?.length);
   if (listingBackedCache) {
-    const cached = await readSearchCache(cleanQuery, cacheRevision, { signal, deadlineAt });
+    const cached = await readSearchAnswerCache({
+      query: cleanQuery,
+      revision: cacheRevision,
+      listing: searchResults,
+      filters: cacheFilters,
+      enabled: listingBackedCache,
+      readCache,
+      validate: cachedSourcesBelongToListing,
+      signal,
+      deadlineAt,
+    });
     throwIfRequestAborted(signal);
-    if (cached && cachedSourcesBelongToListing(cached, searchResults)) {
-      // Defence in depth: persisted responses still cross the current public
-      // serializer even when their revision and listing witness are valid.
+    if (cached) {
+      // Cache hits cross the public serializer with explicit zero new usage.
       return publicResponse(cached, { now: startedAt });
     }
   }
@@ -2053,7 +856,7 @@ async function searchWithinBudget(cleanQuery, {
       draft = composeSearchResponse(cleanQuery, filteredDocuments, {
         answerable: false,
         hasRelevantResults: Boolean(searchResults?.items?.length),
-        clarification: defaultFilters
+        clarification: hasDefaultSearchFilters(filters)
           ? "Selle küsimuse jaoks vajalikku reaalaja- või registriallikat ei leitud nähtavast tulemusehulgast. Täpsusta päringut või proovi uuesti."
           : "Valitud filtrid välistavad selle küsimuse jaoks vajaliku reaalaja- või registriallika. Lähtesta filter või vali sobiv ametlik sisutüüp.",
         evidenceKind: "filtered-scope-exclusion",
@@ -2141,7 +944,11 @@ async function searchWithinBudget(cleanQuery, {
   // does not fit.
   const LLM_TAIL_MARGIN_MS = 1_500;
   const llmAttemptCeilingMs = llmBudget - LLM_TAIL_MARGIN_MS;
-  const llmResult = canGenerate && llmAttemptCeilingMs >= 500
+  const modelStarted = canGenerate
+    && llmAttemptCeilingMs >= 500
+    && !citesRawLawSection(draft);
+  if (modelStarted && typeof onModelStart === "function") onModelStart();
+  const llmResult = modelStarted
     ? await generateAnswer(cleanQuery, modelStartingDraft(draft), {
       timeoutMs: llmAttemptCeilingMs,
       signal,
@@ -2155,10 +962,13 @@ async function searchWithinBudget(cleanQuery, {
       reason: !shouldGenerateGroundedAnswer(draft) ? "not-applicable"
         : !evidencePack?.complete ? "evidence-insufficient" : "budget",
     } };
+  if (modelStarted && typeof onModelUsage === "function") {
+    onModelUsage(searchUsageTelemetry(llmResult, { modelStarted: true }));
+  }
   throwIfRequestAborted(signal);
 
-  let visibleRejected = false;
   let visibleCheck = "";
+  let visibleRejected = false;
   if (llmResult.answer) {
     const modelDraft = rebindAnswerCitationsToVisibleWitnesses(attachEvidenceExcerpts({
       ...structuredClone(deterministicDraft),
@@ -2170,16 +980,14 @@ async function searchWithinBudget(cleanQuery, {
     // evidence pack. This second boundary proves that the same claim is also
     // supported by the bounded excerpt a reader can actually inspect.
     visibleCheck = !answerClaimsHaveVisibleWitnesses(modelDraft) ? "visible-witness-missing"
-      : !answersAskedConcept(retrievalQuery, answerCardText(modelDraft)) ? "asked-concept-missing"
-        // "Mida X tähendab" is answered by a lead that names X, not by a
-        // scope paragraph with the definition further down.
-        : !namesDefinitionTerm(retrievalQuery, modelDraft.answer?.intro || "") ? "definition-lead-missing"
+      : !answerCardAnswersQuery(modelDraft, retrievalQuery, { deterministicEvidence: false }) ? "asked-concept-missing"
         : repeatsOffTargetLead(draft, answerCardText(modelDraft)) ? "repeats-off-target-lead" : "";
     visibleRejected = Boolean(visibleCheck);
     draft = visibleRejected ? withoutRawLawSection(deterministicDraft) : modelDraft;
   } else {
     draft = withoutRawLawSection(deterministicDraft);
   }
+  draft.usage_telemetry = searchUsageTelemetry(llmResult, { modelStarted });
   // The caveat scopes an excerpt the card shows. A no-answer card shows none,
   // so it never gains the note, whether the blanking happened above or the
   // model itself returned the no-answer card.
@@ -2249,6 +1057,29 @@ async function searchWithinBudget(cleanQuery, {
       },
     }
     : outcome.response;
+  const acceptedModelAnswer = outcome.answerProvider !== "deterministic-current-evidence"
+    && outcome.answerStatus === "ready"
+    && !visibleRejected
+    && Array.isArray(llmResult.acceptedClaims)
+    && llmResult.acceptedClaims.length > 0;
+  const cacheableResponse = listingBackedCache
+    && Boolean(response.answer)
+    && (outcome.cacheResponse || acceptedModelAnswer || draft.evidence?.intentTemplate === true);
+  if (cacheableResponse && requestCanStillPersist({ signal, deadlineAt })) {
+    const cacheResponse = prepareSearchAnswerCacheResponse(response, draft.sources, { now: Date.now() });
+    if (cacheResponse) {
+      const copyExpiry = publicationCopyExpiry(publishedResponse);
+      writeSearchAnswerCache({
+        query: cleanQuery,
+        revision: cacheRevision,
+        response: cacheResponse,
+        expiresAt: Math.min(
+          Date.now() + ttlMinutes * 60_000,
+          copyExpiry ?? Number.POSITIVE_INFINITY,
+        ),
+      });
+    }
+  }
 
   if (requestCanStillPersist({ signal, deadlineAt })) {
     await retainSearchPersistence(persistSearch({
@@ -2332,7 +1163,7 @@ export function searchTimeoutFallback(cleanQuery, {
     searchResults,
     filters,
   ) ? structuredCandidate : null;
-  if (structuredIndicator) return publicResponse(structuredIndicator, { now: startedAt });
+  if (structuredIndicator) return publicResponse(withoutOffTargetAnswer(structuredIndicator, cleanQuery), { now: startedAt });
   if (assessment.kind !== "answerable") {
     const scopeDraft = composeScopeResponse(cleanQuery, assessment);
     if (draftMatchesListingAndFilters(scopeDraft, searchResults, filters)) {
@@ -2440,7 +1271,8 @@ export function searchTimeoutFallback(cleanQuery, {
       draft.answer.aiUnavailable = true;
       draft.answer.note = `Allika enda sõnastus, mitte mudeli koondvastus.${capacityLimited ? " Otsing teenindas samal ajal mitut päringut." : sourceUnavailable ? " Osa värskeid allikaid ei vastanud." : ""}`;
       draft.answer.aiUnavailableExtract = true;
-      return publicResponse(draft, { now: startedAt });
+      const admittedExtract = withoutOffTargetAnswer(draft, cleanQuery);
+      if (admittedExtract.answer?.eyebrow !== NO_ANSWER_EYEBROW) return publicResponse(admittedExtract, { now: startedAt });
     }
   }
   draft.answer.eyebrow = capacityLimited
@@ -2536,6 +1368,10 @@ export async function settleWithinDeadline(
   }
 }
 
+/**
+ * Returns the finalized public envelope. Do not call publicResponse again:
+ * public source projection removes the private admission metadata it validates.
+ */
 export async function searchEnvironmentLive(query, options = {}) {
   const startedAt = Number(options.startedAt) || Date.now();
   const queryInput = canonicalizePublicSearchQuery(query);
@@ -2587,6 +1423,8 @@ export async function searchEnvironmentLive(query, options = {}) {
   };
   let acceptedGroundedDraft = null;
   let admittedGroundedDraft = null;
+  let modelAttemptStarted = false;
+  let modelUsageTelemetry = null;
   // A clone drops every symbol, and this one decides when the copied text may
   // still be shown, so it is re-attached after the clone and never serialized.
   const carryCopyBound = (copy, bound) => {
@@ -2618,10 +1456,19 @@ export async function searchEnvironmentLive(query, options = {}) {
     // project it when the fallback is actually written.
     admittedGroundedDraft = draft;
   };
-  const bestAvailableFallback = (reason) => (admittedGroundedDraft
-    ? publicResponse(admittedGroundedDraft, { now: Date.now() })
-    : acceptedGroundedDraft)
-    || searchTimeoutFallback(cleanQuery, { ...canonicalFallbackOptions, reason });
+  const bestAvailableFallback = (reason) => {
+    const fallback = (admittedGroundedDraft
+      ? publicResponse(admittedGroundedDraft, { now: Date.now() })
+      : acceptedGroundedDraft)
+      || searchTimeoutFallback(cleanQuery, { ...canonicalFallbackOptions, reason });
+    return fallback
+      ? {
+        ...fallback,
+        usage_telemetry: modelUsageTelemetry
+          || searchUsageTelemetry(null, { modelStarted: modelAttemptStarted }),
+      }
+      : fallback;
+  };
 
   // The answer clock is its own contract: the listing no longer shares this
   // window, so a slow retrieval cannot shorten the model phase and a long
@@ -2650,6 +1497,13 @@ export async function searchEnvironmentLive(query, options = {}) {
     useCache: options.useCache !== false,
     onDraft: captureGroundedDraft,
     onPrivateDraft: capturePrivateDraft,
+    onModelStart: () => {
+      modelAttemptStarted = true;
+    },
+    onModelUsage: (usage) => {
+      modelUsageTelemetry = usage;
+    },
+    readCache: typeof options.readCache === "function" ? options.readCache : readSearchCache,
     onBackgroundCleanup: options.onBackgroundCleanup,
     generateAnswer: typeof options.generateAnswer === "function"
       ? options.generateAnswer

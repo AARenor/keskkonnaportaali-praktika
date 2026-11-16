@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, LoaderCircle, MessageCircle, Search, Sparkles, X } from "lucide-react";
 import AnswerChart, { chartSourceDiffers } from "./AnswerChart.jsx";
+import AnswerParts from "./AnswerParts.jsx";
 import { noteServerBuild } from "./app-build.js";
 import { DEFAULT_SEARCH_FILTERS, followUpAnswerPayload, followUpRequestPayload, hasNoModelWording, searchRequestPayload } from "./search_request.js";
-import { REVIEWED_FORESTRY_SEARCH_SUGGESTIONS } from "./search-suggestions.js";
 import { contextualSuggestions } from "./suggestion_context.js";
+import { shouldFetchRemoteSuggestions } from "./search-suggestions.js";
 import { searchWaitingMessage } from "./search-stream.js";
 import { readSearchJob } from "./search_jobs.js";
 import { answerHeading } from "./answer_title.js";
@@ -63,16 +64,7 @@ function ChatAnswer({ result, question, onAsk, busy, atFollowUpLimit, parts, rel
           key={`${result.chart.title}-${result.chart.series.map((series) => series.id).join("|")}`}
         />
       ) : null}
-      {answer.parts?.length ? (
-        <div className="answer-parts">
-          {answer.parts.map((part, index) => (
-            <section key={index}>
-              {part.title ? <h4 className="chatbot__part-title">{part.title}</h4> : null}
-              <p><CitedText Citation={Citation} citations={part.citations} sources={sources} text={part.text} /></p>
-            </section>
-          ))}
-        </div>
-      ) : null}
+      <AnswerParts Citation={Citation} answer={answer} headingLevel="h4" sources={sources} />
       <SourceActions sources={sources} />
       <SourceLegend sources={sources} answer={answer} chart={result.chart} />
       <AnswerNote note={answer.note} />
@@ -102,12 +94,16 @@ function ChatListing({ listing, ExternalAnchor }) {
   const items = Array.isArray(listing?.items) ? listing.items.slice(0, 5) : [];
   if (!items.length) return null;
   const Link = typeof ExternalAnchor === "function" ? ExternalAnchor : "a";
-  const total = Number(listing.total || items.length);
-  const more = Number.isFinite(total) && total > items.length;
+  const total = Math.max(items.length, Number(listing.total) || items.length);
+  const incomplete = listing.truncated === true || listing.totalRelation === "gte";
+  const more = incomplete || total > items.length;
+  const count = incomplete
+    ? `${items.length} kuvatud, vähemalt ${total.toLocaleString("et-EE")}`
+    : `${items.length}/${total.toLocaleString("et-EE")}`;
   return (
     <div className="chatbot__results">
       <p className="chatbot__answer-label">
-        <Search aria-hidden="true" size={15} />Leitud allikad{more ? ` (${items.length}/${total.toLocaleString("et-EE")})` : ""}
+        <Search aria-hidden="true" size={15} />Leitud allikad{more ? ` (${count})` : ""}
       </p>
       <ul aria-label="Leitud allikad" className="chatbot__sources">
         {items.map((item) => (
@@ -127,7 +123,9 @@ export default function Chatbot({ answerParts, answerTextOf, pageContext = null 
   const [notice, setNotice] = useState("");
   const [pendingMs, setPendingMs] = useState(0);
   const [searchFieldFocused, setSearchFieldFocused] = useState(false);
+  const [remoteExamples, setRemoteExamples] = useState({ query: "", items: [], loading: false });
   const requestRef = useRef({ id: 0, controller: null });
+  const exampleRequestRef = useRef({ id: 0, controller: null });
   const launcherRef = useRef(null);
   const launcherLiftRef = useRef(0);
   const launcherNodeRef = useRef(null);
@@ -142,18 +140,11 @@ export default function Chatbot({ answerParts, answerTextOf, pageContext = null 
   const pageQuestion = cleanQuestion(pageContext?.query);
   const threadQuestions = turns.map((turn) => turn.question);
   const rootQuestion = threadQuestions[0] || "";
-  // The panel answers forestry questions, so its starting points come from the
-  // reviewed forestry list only. The question already on the page decides which
-  // of them fit; when none of them does the group shows fewer or disappears
-  // rather than offering a question this assistant cannot answer.
-  const exampleQuestions = contextualSuggestions({
-    candidates: REVIEWED_FORESTRY_SEARCH_SUGGESTIONS,
-    query: pageQuestion,
-    rootQuery: pageQuestion,
-    filters: pageContext?.filters,
-    limit: 3,
-    allowDefault: !pageQuestion,
-  });
+  const exampleQuery = pageQuestion || "mets";
+  const exampleCandidates = remoteExamples.query === exampleQuery
+    ? remoteExamples.items.map((item) => item?.value).filter((item) => typeof item === "string")
+    : [];
+  const exampleQuestions = exampleCandidates.slice(0, 3);
   // Chips belong to one thread: an answer is ranked for its own question and
   // the thread's root, so a follow-up made only of pronouns keeps the topic the
   // reader started with, and a question already asked is never offered twice.
@@ -326,6 +317,47 @@ export default function Chatbot({ answerParts, answerTextOf, pageContext = null 
   }, []);
 
   useEffect(() => () => requestRef.current.controller?.abort(), []);
+  useEffect(() => () => exampleRequestRef.current.controller?.abort(), []);
+  useEffect(() => {
+    exampleRequestRef.current.controller?.abort();
+    const id = exampleRequestRef.current.id + 1;
+    if (!open || turns.length || busy || !shouldFetchRemoteSuggestions(exampleQuery)) {
+      exampleRequestRef.current = { id, controller: null };
+      setRemoteExamples({ query: "", items: [], loading: false });
+      return undefined;
+    }
+    const controller = new AbortController();
+    exampleRequestRef.current = { id, controller };
+    setRemoteExamples({ query: exampleQuery, items: [], loading: true });
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch("/api/suggestions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ q: exampleQuery }),
+          signal: controller.signal,
+        });
+        const data = await response.json();
+        if (exampleRequestRef.current.id !== id) return;
+        setRemoteExamples({
+          query: exampleQuery,
+          items: response.ok && Array.isArray(data.suggestions) ? data.suggestions : [],
+          loading: false,
+        });
+      } catch (suggestionError) {
+        if (suggestionError.name !== "AbortError" && exampleRequestRef.current.id === id) {
+          setRemoteExamples({ query: exampleQuery, items: [], loading: false });
+        }
+      }
+    }, 100);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+      if (exampleRequestRef.current.id === id) {
+        exampleRequestRef.current = { id, controller: null };
+      }
+    };
+  }, [open, turns.length, busy, exampleQuery]);
 
   // Elapsed time for the slow-wait copy. Keyed to the question, not to the
   // pending object, so a listing update does not restart the count.
@@ -499,6 +531,7 @@ export default function Chatbot({ answerParts, answerTextOf, pageContext = null 
               <div className="chatbot__empty">
                 <p>Küsi metsaandmete kohta. Vastus põhineb samadel kontrollitud allikatel kui portaali otsing.</p>
                 <p className="chatbot__empty-note">Vastan praegu ainult Eesti metsaandmete küsimustele ja eesti keeles.</p>
+                {remoteExamples.loading && remoteExamples.query === exampleQuery ? <p role="status">Laadin soovitusi …</p> : null}
                 {exampleQuestions.length ? (
                   <div className="chatbot__examples" role="group" aria-label="Näidisküsimused">
                     {exampleQuestions.map((question) => (

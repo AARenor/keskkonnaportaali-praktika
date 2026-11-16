@@ -1,0 +1,3999 @@
+{
+  "schemaVersion": 1,
+  "measurement": {
+    "target": "https://praktika.arle.top",
+    "startedAt": "2026-11-15T23:21:45.770Z",
+    "completedAt": "2026-11-15T23:23:58.468Z",
+    "baselinePath": "evaluation/search_improvements_before_20261113.json",
+    "baselineRevision": "bd49abab88d98b152b879b431f34bb39ad1f6adc",
+    "healthBefore": {
+      "httpStatus": 200,
+      "elapsedMs": 235,
+      "responseBytesUtf8": 147,
+      "body": {
+        "status": "ok",
+        "service": "keskkonnaportaali-praktika",
+        "revision": "2dcb61d9883f3a25a3e2a247ce0d06e80af6fa01",
+        "timestamp": "2026-11-15T23:21:45.741Z"
+      },
+      "failure": null
+    },
+    "healthAfter": {
+      "httpStatus": 200,
+      "elapsedMs": 65,
+      "responseBytesUtf8": 147,
+      "body": {
+        "status": "ok",
+        "service": "keskkonnaportaali-praktika",
+        "revision": "2dcb61d9883f3a25a3e2a247ce0d06e80af6fa01",
+        "timestamp": "2026-11-15T23:23:58.445Z"
+      },
+      "failure": null
+    },
+    "revisionStability": {
+      "status": "stable",
+      "beforeRevision": "2dcb61d9883f3a25a3e2a247ce0d06e80af6fa01",
+      "afterRevision": "2dcb61d9883f3a25a3e2a247ce0d06e80af6fa01"
+    },
+    "healthTimeoutMs": 10000,
+    "cancellationTimeoutMs": 5000,
+    "baselineDeclaredCaseCount": 10,
+    "baselineObservedCaseCount": 10,
+    "baselineSearchRequestCount": 11,
+    "caseCount": 10,
+    "concurrency": 1,
+    "minimumIntervalMs": 3200,
+    "maxResponseBytes": 1000000,
+    "requestTimeoutMs": 300000,
+    "retries": 0,
+    "credentials": "omitted",
+    "transport": "single_post_api_search",
+    "httpRequestCount": 13
+  },
+  "baselineWarnings": [],
+  "cases": [
+    {
+      "caseIndex": 1,
+      "intent": {
+        "intent": "definition",
+        "topic": "clearcut",
+        "normalizedQuery": "mis on lageraie",
+        "terms": [
+          "lageraie"
+        ],
+        "authoritySubjectTerms": []
+      },
+      "request": {
+        "q": "mis on lageraie",
+        "filters": {
+          "source": "all",
+          "category": "",
+          "year": null,
+          "sort": "relevance"
+        },
+        "page": 1,
+        "page_size": 12
+      },
+      "transport": "single_post_api_search",
+      "http": {
+        "status": 200,
+        "elapsedMs": 4316,
+        "responseBytesUtf8": 14796,
+        "transportRequests": 1
+      },
+      "cache": {
+        "answerCacheHit": null,
+        "responseHeaders": {
+          "cacheControl": "no-store",
+          "cdnCacheStatus": "DYNAMIC",
+          "ageSeconds": null,
+          "appBuild": "mwib9n3z"
+        }
+      },
+      "usageTelemetry": {
+        "status": "missing",
+        "requests": null,
+        "input_tokens": null,
+        "cached_input_tokens": null,
+        "reasoning_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null,
+        "cost_estimate": {
+          "amount": null,
+          "currency": null,
+          "rate_provenance": null,
+          "status": "missing"
+        }
+      },
+      "answer": {
+        "eyebrow": "Allikapõhine vastus",
+        "title": "Mis on lageraie",
+        "intro": "Lageraie on lubatud puistus, mis vastab vähemalt ühele järgmistest tingimustest: 1) puistu koosseisu põhjal kaalutud esimese rinde keskmine vanus on võrdne puistu koosseisu põhjal kaalutud esimese rinde raievanusega või sellest suurem; 2) puistu on saavutanud käesoleva paragrahvi lõike 6 punkti 1 alusel kehtestatud keskmise rinnasdiameetri; 3) puistu rinnaspindala või täius on väiksem käesoleva paragrahvi lõike 6 punkti 2 alusel kehtestatust.",
+        "introCitations": [
+          1
+        ],
+        "parts": [],
+        "note": ""
+      },
+      "citations": [
+        {
+          "location": "intro",
+          "refs": [
+            1
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "id": "law-metsaseadus-para29",
+          "citation": 1,
+          "title": "Metsaseadus § 29. Lageraie",
+          "organization": "Riigi Teataja",
+          "type": "Kehtiv õigusakt",
+          "url": "https://www.riigiteataja.ee/akt/MS#para29",
+          "locator": "Metsaseadus § 29. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+          "published": "jooksev",
+          "sourceTier": "official"
+        }
+      ],
+      "resultPage": {
+        "page": 1,
+        "pageSize": 12,
+        "total": 215,
+        "totalRelation": null,
+        "truncated": null,
+        "hasMore": true,
+        "windowId": null,
+        "windowExpired": false,
+        "items": [
+          {
+            "id": "law-metsaseadus-para29",
+            "citation": null,
+            "title": "Metsaseadus § 29. Lageraie",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/MS#para29",
+            "locator": "Metsaseadus § 29. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-365eefcbafedc0be",
+            "citation": null,
+            "title": "Keskkonnaagentuur astus suure sammu edasi, et edaspidi teha raieinfo veelgi operatiivsemalt kättesaadavaks",
+            "organization": "Keskkonnaagentuur",
+            "type": "news",
+            "url": "https://keskkonnaagentuur.ee/uudised/keskkonnaagentuur-astus-suure-sammu-edasi-et-edaspidi-teha-raieinfo-veelgi-operatiivsemalt",
+            "locator": null,
+            "published": "25.04.2024",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-eec28ae6aaeb9cbc",
+            "citation": null,
+            "title": "RMK peatab lageraied Nursipalu aladel » Uudis » Riigimetsa Majandamise Keskus (RMK)",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://rmk.ee/uudised/uudis/rmk-peatab-lageraied-nursipalu-aladel",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-0e9e9874a90e8167",
+            "citation": null,
+            "title": "RMK lükkas linnurohketes metsades lageraiete tegemise edasi » Uudis » Riigimetsa Majandamise Keskus (RMK)",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://rmk.ee/uudised/uudis/rmk-lukkas-linnurohketes-metsades-lageraiete-tegemise-edasi",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-e0c577520ab5b6b3",
+            "citation": null,
+            "title": "RMK vastulause EOÜ pressiteatele „RMK kahjustas Kurgjal lageraiega kanakulli pesametsa“ » Uudis » Riigimetsa Majandamise Keskus (RMK)",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://rmk.ee/uudised/uudis/rmk-vastulause-eou-pressiteatele-rmk-kahjustas-kurgjal-lageraiega-kanakulli-pesametsa",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "corpus-10024108",
+            "citation": null,
+            "title": "Lageraie mõju pesitsevate metsalindude tervislikule seisundile | Keskkonnainvesteeringute Keskus",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://kik.ee/et/projektid/lageraie-moju-pesitsevate-metsalindude-tervislikule-seisundile",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-961239b32d7cb32d",
+            "citation": null,
+            "title": "Ei ole halba heata: metsatulekahjude ja lageraiete alade seened » Blogi » Riigimetsa Majandamise Keskus (RMK)",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://rmk.ee/uudised/blogi/ei-ole-halba-heata-metsatulekahjude-ja-lageraiete-alade-seened",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-afd36e9e84fca7fb",
+            "citation": null,
+            "title": "RMK jõudis Otepääl Apteekrimäe esimeste raiete osas kohalikega kokkuleppele » Blogi » Riigimetsa Majandamise Keskus (RMK)",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://rmk.ee/uudised/blogi/rmk-joudis-otepaal-apteekrimae-esimeste-raiete-osas-kohalikega-kokkuleppele",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-bfb136f7fa49c1c8",
+            "citation": null,
+            "title": "RMK teadusvideo: kuidas raiuda metsa? » Uudis » Riigimetsa Majandamise Keskus (RMK)",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://rmk.ee/uudised/uudis/rmk-teadusvideo-kuidas-raiuda-metsa",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-f4c4e2114c7a293c",
+            "citation": null,
+            "title": "Raiete suurenemisest teadusajakirjas Nature ilmunud artikli valguses",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://keskkonnaagentuur.ee/uudised/raiete-suurenemisest-teadusajakirjas-nature-ilmunud-artikli-valguses",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-7ace2bee05a17a6d",
+            "citation": null,
+            "title": "Keskkonnaministeerium tahab kehtestada kaitsealadel linnurahu ja vähendada lageraielankide suurust",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://kliimaministeerium.ee/uudised/keskkonnaministeerium-tahab-kehtestada-kaitsealadel-linnurahu-ja-vahendada-lageraielankide",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-434e2c99c84e1559",
+            "citation": null,
+            "title": "Keskkonnaamet otsustas mitte lubada Harku järve äärsetel kinnistutel lageraiet",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://keskkonnaamet.ee/uudised/keskkonnaamet-otsustas-mitte-lubada-harku-jarve-aarsetel-kinnistutel-lageraiet",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          }
+        ]
+      },
+      "presentation": {
+        "chart": null,
+        "table": null
+      },
+      "failure": null,
+      "baselineComparison": {
+        "before": {
+          "status": 200,
+          "elapsedMs": 4484,
+          "responseBytesUtf8": 14796,
+          "answerPartCount": 0,
+          "sourceCount": 1,
+          "firstResultId": "law-metsaseadus-para29",
+          "usageTelemetry": {
+            "status": "missing",
+            "requests": null,
+            "input_tokens": null,
+            "cached_input_tokens": null,
+            "reasoning_tokens": null,
+            "output_tokens": null,
+            "total_tokens": null,
+            "cost_estimate": {
+              "amount": null,
+              "currency": null,
+              "rate_provenance": null,
+              "status": "missing"
+            }
+          }
+        },
+        "changes": {
+          "elapsedMs": -168,
+          "responseBytesUtf8": 0,
+          "answerPartCount": 0,
+          "firstResultIdChanged": false
+        }
+      }
+    },
+    {
+      "caseIndex": 2,
+      "intent": {
+        "intent": "criteria",
+        "topic": "clearcut",
+        "normalizedQuery": "mida loetakse lageraiks",
+        "terms": [
+          "lageraie"
+        ],
+        "authoritySubjectTerms": []
+      },
+      "request": {
+        "q": "mida loetakse lageraiks",
+        "filters": {
+          "source": "all",
+          "category": "",
+          "year": null,
+          "sort": "relevance"
+        },
+        "page": 1,
+        "page_size": 12
+      },
+      "transport": "single_post_api_search",
+      "http": {
+        "status": 200,
+        "elapsedMs": 3845,
+        "responseBytesUtf8": 7630,
+        "transportRequests": 1
+      },
+      "cache": {
+        "answerCacheHit": null,
+        "responseHeaders": {
+          "cacheControl": "no-store",
+          "cdnCacheStatus": "DYNAMIC",
+          "ageSeconds": null,
+          "appBuild": "mwib9n3z"
+        }
+      },
+      "usageTelemetry": {
+        "status": "missing",
+        "requests": null,
+        "input_tokens": null,
+        "cached_input_tokens": null,
+        "reasoning_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null,
+        "cost_estimate": {
+          "amount": null,
+          "currency": null,
+          "rate_provenance": null,
+          "status": "missing"
+        }
+      },
+      "answer": {
+        "eyebrow": "Vastust ei leitud",
+        "title": "Mida loetakse lageraiks",
+        "intro": "Meil ei ole sellele küsimusele vastust. Meie allikatest ei leidnud me selget ja usaldusväärset vastust.",
+        "introCitations": [],
+        "parts": [],
+        "note": ""
+      },
+      "citations": [
+        {
+          "location": "intro",
+          "refs": []
+        }
+      ],
+      "sources": [],
+      "resultPage": {
+        "page": 1,
+        "pageSize": 12,
+        "total": 338,
+        "totalRelation": null,
+        "truncated": null,
+        "hasMore": true,
+        "windowId": null,
+        "windowExpired": false,
+        "items": [
+          {
+            "id": "law-metsaseadus-para29",
+            "citation": null,
+            "title": "Metsaseadus § 29. Lageraie",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/MS#para29",
+            "locator": "Metsaseadus § 29. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsa-majandamise-eeskiri-para7",
+            "citation": null,
+            "title": "Metsa majandamise eeskiri § 7. Sanitaarraie korras raiuda lubatud puud",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/12771900?leiaKehtiv#para7",
+            "locator": "Metsa majandamise eeskiri § 7. Kehtiv redaktsioon: RT I, 13.06.2025, 14, kehtiv alates 16.06.2025. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsa-majandamise-eeskiri-para9",
+            "citation": null,
+            "title": "Metsa majandamise eeskiri § 9. Raielankide raidmetest puhastamise viisid ja kord",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/12771900?leiaKehtiv#para9",
+            "locator": "Metsa majandamise eeskiri § 9. Kehtiv redaktsioon: RT I, 13.06.2025, 14, kehtiv alates 16.06.2025. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsaseadus-para28",
+            "citation": null,
+            "title": "Metsaseadus § 28. Raied",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/MS#para28",
+            "locator": "Metsaseadus § 28. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-386c7432ad849257",
+            "citation": null,
+            "title": "Metsateatise riigilõivust",
+            "organization": "Keskkonnaamet",
+            "type": "article",
+            "url": "https://keskkonnaamet.ee/metsateatise-riigiloivust",
+            "locator": null,
+            "published": "28.06.2024",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-7215bc51332f89ed",
+            "citation": null,
+            "title": "Metsauuendus",
+            "organization": "Keskkonnaamet",
+            "type": "article",
+            "url": "https://keskkonnaamet.ee/elusloodus-looduskaitse/metsandus/metsauuendus",
+            "locator": null,
+            "published": "20.05.2021",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-3d3d2303a258cf06",
+            "citation": null,
+            "title": "Uuenenud metsaseadus toob sügisest mitmed muudatused",
+            "organization": "Kliimaministeerium",
+            "type": "news",
+            "url": "https://kliimaministeerium.ee/uudised/uuenenud-metsaseadus-toob-sugisest-mitmed-muudatused",
+            "locator": null,
+            "published": "16.06.2017",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-042709ba60f11d46",
+            "citation": null,
+            "title": "Erametsanduse toetused aitavad tõhustada üraskitõrjet ja tugevdada metsaühistuid",
+            "organization": "Kliimaministeerium",
+            "type": "news",
+            "url": "https://kliimaministeerium.ee/uudised/erametsanduse-toetused-aitavad-tohustada-uraskitorjet-ja-tugevdada-metsauhistuid",
+            "locator": null,
+            "published": "28.01.2021",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-ecc87b8b7b201837",
+            "citation": null,
+            "title": "Eestisse lubatakse üksnes Tartu Ülikoolis omandatud arstiõppe kvalifikatsioonile vastavaid välisarste",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://terviseamet.ee/uudised/eestisse-lubatakse-uksnes-tartu-ulikoolis-omandatud-arstioppe-kvalifikatsioonile-vastavaid",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-9ca89692b0b7c411",
+            "citation": null,
+            "title": "Tänavu arvestatakse riigimetsas uuenenuks ligi 10 000 hektarit metsa » Uudis » Riigimetsa Majandamise Keskus (RMK)",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://rmk.ee/uudised/uudis/tanavu-arvestatakse-riigimetsas-uuenenuks-ligi-10-000-hektarit-metsa",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsaseadus-para24",
+            "citation": null,
+            "title": "Metsaseadus § 24. Metsa uuendamine",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/MS#para24",
+            "locator": "Metsaseadus § 24. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-6479a332c5c3050a",
+            "citation": null,
+            "title": "Kaevandamisjäätmed ja -jäätmehoidlad",
+            "organization": "Kliimaministeerium",
+            "type": "article",
+            "url": "https://kliimaministeerium.ee/energeetika-maavarad/maavarad/kaevandamisjaatmed-ja-hoidlad",
+            "locator": null,
+            "published": "05.07.2021",
+            "sourceTier": "official"
+          }
+        ]
+      },
+      "presentation": {
+        "chart": null,
+        "table": null
+      },
+      "failure": null,
+      "baselineComparison": {
+        "before": {
+          "status": 200,
+          "elapsedMs": 3992,
+          "responseBytesUtf8": 7534,
+          "answerPartCount": 0,
+          "sourceCount": 0,
+          "firstResultId": "law-metsa-majandamise-eeskiri-para7",
+          "usageTelemetry": {
+            "status": "missing",
+            "requests": null,
+            "input_tokens": null,
+            "cached_input_tokens": null,
+            "reasoning_tokens": null,
+            "output_tokens": null,
+            "total_tokens": null,
+            "cost_estimate": {
+              "amount": null,
+              "currency": null,
+              "rate_provenance": null,
+              "status": "missing"
+            }
+          }
+        },
+        "changes": {
+          "elapsedMs": -147,
+          "responseBytesUtf8": 96,
+          "answerPartCount": 0,
+          "firstResultIdChanged": true
+        }
+      }
+    },
+    {
+      "caseIndex": 3,
+      "intent": {
+        "intent": "conditions",
+        "topic": "clearcut",
+        "normalizedQuery": "millal on lageraie lubatud",
+        "terms": [
+          "lageraie"
+        ],
+        "authoritySubjectTerms": []
+      },
+      "request": {
+        "q": "millal on lageraie lubatud",
+        "filters": {
+          "source": "all",
+          "category": "",
+          "year": null,
+          "sort": "relevance"
+        },
+        "page": 1,
+        "page_size": 12
+      },
+      "transport": "single_post_api_search",
+      "http": {
+        "status": 200,
+        "elapsedMs": 15674,
+        "responseBytesUtf8": 18942,
+        "transportRequests": 1
+      },
+      "cache": {
+        "answerCacheHit": null,
+        "responseHeaders": {
+          "cacheControl": "no-store",
+          "cdnCacheStatus": "DYNAMIC",
+          "ageSeconds": null,
+          "appBuild": "mwib9n3z"
+        }
+      },
+      "usageTelemetry": {
+        "status": "missing",
+        "requests": null,
+        "input_tokens": null,
+        "cached_input_tokens": null,
+        "reasoning_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null,
+        "cost_estimate": {
+          "amount": null,
+          "currency": null,
+          "rate_provenance": null,
+          "status": "missing"
+        }
+      },
+      "answer": {
+        "eyebrow": "Vastust ei leitud",
+        "title": "Millal on lageraie lubatud",
+        "intro": "Meil ei ole sellele küsimusele vastust. Meie allikatest ei leidnud me selget ja usaldusväärset vastust.",
+        "introCitations": [],
+        "parts": [],
+        "note": ""
+      },
+      "citations": [
+        {
+          "location": "intro",
+          "refs": []
+        }
+      ],
+      "sources": [
+        {
+          "id": "official-0bb6bf2255b350eb",
+          "citation": 1,
+          "title": "Valitsus kinnitas 2008.a riigimetsast raiuda lubatud puidu kogused » Uudis » Riigimetsa Majandamise Keskus (RMK)",
+          "organization": "Keskkonnaportaal",
+          "type": "Veebileht",
+          "url": "https://rmk.ee/uudised/uudis/14022008-valitsus-kinnitas-2008a-riigimetsast-raiuda-lubatud-puidu-kogused",
+          "locator": null,
+          "published": "",
+          "sourceTier": "official"
+        },
+        {
+          "id": "law-metsa-majandamise-eeskiri-para7",
+          "citation": 2,
+          "title": "Metsa majandamise eeskiri § 7. Sanitaarraie korras raiuda lubatud puud",
+          "organization": "Riigi Teataja",
+          "type": "Kehtiv õigusakt",
+          "url": "https://www.riigiteataja.ee/akt/12771900?leiaKehtiv#para7",
+          "locator": "Metsa majandamise eeskiri § 7. Kehtiv redaktsioon: RT I, 13.06.2025, 14, kehtiv alates 16.06.2025. Kontrollitud Riigi Teatajast 15.11.2026.",
+          "published": "jooksev",
+          "sourceTier": "official"
+        },
+        {
+          "id": "law-metsa-majandamise-eeskiri-para7b1",
+          "citation": 3,
+          "title": "Metsa majandamise eeskiri § 7¹. Puistud, milles võib teha valikraiet",
+          "organization": "Riigi Teataja",
+          "type": "Kehtiv õigusakt",
+          "url": "https://www.riigiteataja.ee/akt/12771900?leiaKehtiv#para7b1",
+          "locator": "Metsa majandamise eeskiri § 7¹. Kehtiv redaktsioon: RT I, 13.06.2025, 14, kehtiv alates 16.06.2025. Kontrollitud Riigi Teatajast 15.11.2026.",
+          "published": "jooksev",
+          "sourceTier": "official"
+        },
+        {
+          "id": "official-550075b89322cc7d",
+          "citation": 4,
+          "title": "Metsakorraldaja ei spekuleeri, vaid mõõdab, hindab ja analüüsib » Blogi » Riigimetsa Majandamise Keskus (RMK)",
+          "organization": "Keskkonnaportaal",
+          "type": "Veebileht",
+          "url": "https://rmk.ee/uudised/blogi/metsakorraldaja-ei-spekuleeri-vaid-moodab-hindab-ja-analuusib",
+          "locator": null,
+          "published": "",
+          "sourceTier": "official"
+        },
+        {
+          "id": "official-7ace2bee05a17a6d",
+          "citation": 5,
+          "title": "Keskkonnaministeerium tahab kehtestada kaitsealadel linnurahu ja vähendada lageraielankide suurust",
+          "organization": "Keskkonnaportaal",
+          "type": "Veebileht",
+          "url": "https://kliimaministeerium.ee/uudised/keskkonnaministeerium-tahab-kehtestada-kaitsealadel-linnurahu-ja-vahendada-lageraielankide",
+          "locator": null,
+          "published": "",
+          "sourceTier": "official"
+        },
+        {
+          "id": "official-fef6f50fd047f1ca",
+          "citation": 6,
+          "title": "Kaitstavaid metsi on rohkem ja raiemaht veidi väiksem",
+          "organization": "Keskkonnaportaal",
+          "type": "Veebileht",
+          "url": "https://keskkonnaagentuur.ee/uudised/kaitstavaid-metsi-rohkem-ja-raiemaht-veidi-vaiksem",
+          "locator": null,
+          "published": "",
+          "sourceTier": "official"
+        },
+        {
+          "id": "official-aecb30007cc45ff6",
+          "citation": 7,
+          "title": "Keskkonnaamet peatab Harku järve äärsetel kinnistutel lageraiet lubanud metsateatiste kehtivuse Harku vallavalitsusega asjaolude täpsustamiseks",
+          "organization": "Keskkonnaportaal",
+          "type": "Veebileht",
+          "url": "https://keskkonnaamet.ee/uudised/keskkonnaamet-peatab-harku-jarve-aarsetel-kinnistutel-lageraiet-lubanud-metsateatiste",
+          "locator": null,
+          "published": "",
+          "sourceTier": "official"
+        },
+        {
+          "id": "official-434e2c99c84e1559",
+          "citation": 8,
+          "title": "Keskkonnaamet otsustas mitte lubada Harku järve äärsetel kinnistutel lageraiet",
+          "organization": "Keskkonnaportaal",
+          "type": "Veebileht",
+          "url": "https://keskkonnaamet.ee/uudised/keskkonnaamet-otsustas-mitte-lubada-harku-jarve-aarsetel-kinnistutel-lageraiet",
+          "locator": null,
+          "published": "",
+          "sourceTier": "official"
+        },
+        {
+          "id": "official-e0c577520ab5b6b3",
+          "citation": 9,
+          "title": "RMK vastulause EOÜ pressiteatele „RMK kahjustas Kurgjal lageraiega kanakulli pesametsa“ » Uudis » Riigimetsa Majandamise Keskus (RMK)",
+          "organization": "Keskkonnaportaal",
+          "type": "Veebileht",
+          "url": "https://rmk.ee/uudised/uudis/rmk-vastulause-eou-pressiteatele-rmk-kahjustas-kurgjal-lageraiega-kanakulli-pesametsa",
+          "locator": null,
+          "published": "",
+          "sourceTier": "official"
+        },
+        {
+          "id": "law-looduskaitseseadus-para45",
+          "citation": 10,
+          "title": "Looduskaitseseadus § 45. Puude raie tiheasustusalal",
+          "organization": "Riigi Teataja",
+          "type": "Kehtiv õigusakt",
+          "url": "https://www.riigiteataja.ee/akt/LKS#para45",
+          "locator": "Looduskaitseseadus § 45. Kehtiv redaktsioon: RT I, 09.07.2026, 47, kehtiv alates 01.09.2026. Kontrollitud Riigi Teatajast 15.11.2026.",
+          "published": "jooksev",
+          "sourceTier": "official"
+        }
+      ],
+      "resultPage": {
+        "page": 1,
+        "pageSize": 12,
+        "total": 984,
+        "totalRelation": null,
+        "truncated": null,
+        "hasMore": true,
+        "windowId": null,
+        "windowExpired": false,
+        "items": [
+          {
+            "id": "official-0bb6bf2255b350eb",
+            "citation": null,
+            "title": "Valitsus kinnitas 2008.a riigimetsast raiuda lubatud puidu kogused » Uudis » Riigimetsa Majandamise Keskus (RMK)",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://rmk.ee/uudised/uudis/14022008-valitsus-kinnitas-2008a-riigimetsast-raiuda-lubatud-puidu-kogused",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsa-majandamise-eeskiri-para7",
+            "citation": null,
+            "title": "Metsa majandamise eeskiri § 7. Sanitaarraie korras raiuda lubatud puud",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/12771900?leiaKehtiv#para7",
+            "locator": "Metsa majandamise eeskiri § 7. Kehtiv redaktsioon: RT I, 13.06.2025, 14, kehtiv alates 16.06.2025. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsa-majandamise-eeskiri-para7b1",
+            "citation": null,
+            "title": "Metsa majandamise eeskiri § 7¹. Puistud, milles võib teha valikraiet",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/12771900?leiaKehtiv#para7b1",
+            "locator": "Metsa majandamise eeskiri § 7¹. Kehtiv redaktsioon: RT I, 13.06.2025, 14, kehtiv alates 16.06.2025. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-8de0351784cc488a",
+            "citation": null,
+            "title": "Metsaseaduse muudatused said valitsuselt heakskiidu",
+            "organization": "Keskkonnaagentuur",
+            "type": "news",
+            "url": "https://keskkonnaagentuur.ee/uudised/metsaseaduse-muudatused-said-valitsuselt-heakskiidu",
+            "locator": null,
+            "published": "18.07.2013",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-550075b89322cc7d",
+            "citation": null,
+            "title": "Metsakorraldaja ei spekuleeri, vaid mõõdab, hindab ja analüüsib » Blogi » Riigimetsa Majandamise Keskus (RMK)",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://rmk.ee/uudised/blogi/metsakorraldaja-ei-spekuleeri-vaid-moodab-hindab-ja-analuusib",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-7ace2bee05a17a6d",
+            "citation": null,
+            "title": "Keskkonnaministeerium tahab kehtestada kaitsealadel linnurahu ja vähendada lageraielankide suurust",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://kliimaministeerium.ee/uudised/keskkonnaministeerium-tahab-kehtestada-kaitsealadel-linnurahu-ja-vahendada-lageraielankide",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-fef6f50fd047f1ca",
+            "citation": null,
+            "title": "Kaitstavaid metsi on rohkem ja raiemaht veidi väiksem",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://keskkonnaagentuur.ee/uudised/kaitstavaid-metsi-rohkem-ja-raiemaht-veidi-vaiksem",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "corpus-10024108",
+            "citation": null,
+            "title": "Lageraie mõju pesitsevate metsalindude tervislikule seisundile | Keskkonnainvesteeringute Keskus",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://kik.ee/et/projektid/lageraie-moju-pesitsevate-metsalindude-tervislikule-seisundile",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-f4c4e2114c7a293c",
+            "citation": null,
+            "title": "Raiete suurenemisest teadusajakirjas Nature ilmunud artikli valguses",
+            "organization": "Keskkonnaagentuur",
+            "type": "news",
+            "url": "https://keskkonnaagentuur.ee/uudised/raiete-suurenemisest-teadusajakirjas-nature-ilmunud-artikli-valguses",
+            "locator": null,
+            "published": "17.08.2020",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-aecb30007cc45ff6",
+            "citation": null,
+            "title": "Keskkonnaamet peatab Harku järve äärsetel kinnistutel lageraiet lubanud metsateatiste kehtivuse Harku vallavalitsusega asjaolude täpsustamiseks",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://keskkonnaamet.ee/uudised/keskkonnaamet-peatab-harku-jarve-aarsetel-kinnistutel-lageraiet-lubanud-metsateatiste",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-434e2c99c84e1559",
+            "citation": null,
+            "title": "Keskkonnaamet otsustas mitte lubada Harku järve äärsetel kinnistutel lageraiet",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://keskkonnaamet.ee/uudised/keskkonnaamet-otsustas-mitte-lubada-harku-jarve-aarsetel-kinnistutel-lageraiet",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-e0c577520ab5b6b3",
+            "citation": null,
+            "title": "RMK vastulause EOÜ pressiteatele „RMK kahjustas Kurgjal lageraiega kanakulli pesametsa“ » Uudis » Riigimetsa Majandamise Keskus (RMK)",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://rmk.ee/uudised/uudis/rmk-vastulause-eou-pressiteatele-rmk-kahjustas-kurgjal-lageraiega-kanakulli-pesametsa",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          }
+        ]
+      },
+      "presentation": {
+        "chart": null,
+        "table": null
+      },
+      "failure": null,
+      "baselineComparison": {
+        "before": {
+          "status": 200,
+          "elapsedMs": 14904,
+          "responseBytesUtf8": 18932,
+          "answerPartCount": 0,
+          "sourceCount": 10,
+          "firstResultId": "official-0bb6bf2255b350eb",
+          "usageTelemetry": {
+            "status": "missing",
+            "requests": null,
+            "input_tokens": null,
+            "cached_input_tokens": null,
+            "reasoning_tokens": null,
+            "output_tokens": null,
+            "total_tokens": null,
+            "cost_estimate": {
+              "amount": null,
+              "currency": null,
+              "rate_provenance": null,
+              "status": "missing"
+            }
+          }
+        },
+        "changes": {
+          "elapsedMs": 770,
+          "responseBytesUtf8": 10,
+          "answerPartCount": 0,
+          "firstResultIdChanged": false
+        }
+      }
+    },
+    {
+      "caseIndex": 4,
+      "intent": {
+        "intent": "definition",
+        "topic": "forest",
+        "normalizedQuery": "mis on mets",
+        "terms": [
+          "mets"
+        ],
+        "authoritySubjectTerms": []
+      },
+      "request": {
+        "q": "mis on mets",
+        "filters": {
+          "source": "all",
+          "category": "",
+          "year": null,
+          "sort": "relevance"
+        },
+        "page": 1,
+        "page_size": 12
+      },
+      "transport": "single_post_api_search",
+      "http": {
+        "status": 200,
+        "elapsedMs": 9524,
+        "responseBytesUtf8": 10285,
+        "transportRequests": 1
+      },
+      "cache": {
+        "answerCacheHit": null,
+        "responseHeaders": {
+          "cacheControl": "no-store",
+          "cdnCacheStatus": "DYNAMIC",
+          "ageSeconds": null,
+          "appBuild": "mwib9n3z"
+        }
+      },
+      "usageTelemetry": {
+        "status": "missing",
+        "requests": null,
+        "input_tokens": null,
+        "cached_input_tokens": null,
+        "reasoning_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null,
+        "cost_estimate": {
+          "amount": null,
+          "currency": null,
+          "rate_provenance": null,
+          "status": "missing"
+        }
+      },
+      "answer": {
+        "eyebrow": "Ametlik teenus",
+        "title": "Kui palju ja millist metsa Eestis on?",
+        "intro": "Eesti metsa seisundit ja muutusi hinnatakse statistilise metsainventeerimise abil. Ülevaade selgitab, kuidas valimipõhised mõõtmised kirjeldavad metsamaa pindala, puistute koosseisu ja tagavara.",
+        "introCitations": [
+          1
+        ],
+        "parts": [],
+        "note": "Teenusekirjeldus juhatab ametliku vaate juurde, kuid ei kinnita üksikut mõõtetulemust ega registriobjekti hetkeseisu."
+      },
+      "citations": [
+        {
+          "location": "intro",
+          "refs": [
+            1
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "id": "forest-overview",
+          "citation": 1,
+          "title": "Kui palju ja millist metsa Eestis on?",
+          "organization": "Keskkonnaagentuur",
+          "type": "Ülevaade",
+          "url": "https://www.keskkonnaagentuur.ee/uudised/blogis-kui-palju-ja-millist-metsa-eestis",
+          "locator": null,
+          "published": "12.08.2026",
+          "sourceTier": null
+        }
+      ],
+      "resultPage": {
+        "page": 1,
+        "pageSize": 12,
+        "total": 169,
+        "totalRelation": null,
+        "truncated": null,
+        "hasMore": true,
+        "windowId": null,
+        "windowExpired": false,
+        "items": [
+          {
+            "id": "forest-overview",
+            "citation": null,
+            "title": "Kui palju ja millist metsa Eestis on?",
+            "organization": "Keskkonnaagentuur",
+            "type": "Ülevaade",
+            "url": "https://www.keskkonnaagentuur.ee/uudised/blogis-kui-palju-ja-millist-metsa-eestis",
+            "locator": null,
+            "published": "12.08.2026",
+            "sourceTier": "official"
+          },
+          {
+            "id": "forest-catalogue",
+            "citation": null,
+            "title": "Metsa teemakataloog",
+            "organization": "Keskkonnaportaal",
+            "type": "Andmekataloog",
+            "url": "https://keskkonnaportaal.ee/et/kataloog?theme%5B6%5D=6",
+            "locator": null,
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsaseadus-para42",
+            "citation": null,
+            "title": "Metsaseadus § 42. Omaniku kohustused metsa majandamisel",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/MS#para42",
+            "locator": "Metsaseadus § 42. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "forest-stock-stable",
+            "citation": null,
+            "title": "SMI: metsade tagavara on stabiilne",
+            "organization": "Keskkonnaagentuur",
+            "type": "Metsastatistika",
+            "url": "https://keskkonnaagentuur.ee/uudised/smi-metsatagavara-stabiilne",
+            "locator": "SMI 2025 põhinäitajad: metsamaa pindala, tagavara, vanusjaotus, puuliigid, juurdekasv ja raiemahu eksperthinnang.",
+            "published": "18.08.2026",
+            "sourceTier": "official"
+          },
+          {
+            "id": "metsaregister",
+            "citation": null,
+            "title": "Metsaregistri andmestikud",
+            "organization": "Keskkonnaagentuur / Keskkonnaportaal",
+            "type": "Andmekataloog",
+            "url": "https://keskkonnaportaal.ee/et/avaandmed/metsaregistri-andmestikud",
+            "locator": "Kirjeldus; Metsanduslike välitööde andmestiku metsaeraldise asukohakirjeldus; Metsateatise andmestik; Levitused ja andmete allalaadimine.",
+            "published": "25.05.2026",
+            "sourceTier": "official"
+          },
+          {
+            "id": "forest-area",
+            "citation": null,
+            "title": "SMI 2024: Eesti metsamaa pindala",
+            "organization": "Keskkonnaagentuur / Keskkonnaportaal",
+            "type": "Statistika",
+            "url": "https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI2024/SMI_2024.pdf",
+            "locator": "SMI 2024, lk 3, 7, 8, 12, 22 ja 57–59: pindala, tagavara, juurdekasv, puuliigid ning raiete hinnangud koos suhtelise veaga.",
+            "published": "2025",
+            "sourceTier": "official"
+          },
+          {
+            "id": "metsainfo-hetkeseis",
+            "citation": null,
+            "title": "Metsainfo hetkeseis",
+            "organization": "Keskkonnaagentuur / Keskkonnaportaal",
+            "type": "Andmete koondvaade",
+            "url": "https://keskkonnaportaal.ee/et/teemad/mets/metsainfo-hetkeseis",
+            "locator": "Metsateatised ja Metsateatised kaitsealadel: registreeritud kavatsused, puuduvad tööde andmed; RMK metsade olem; Metsainventeerimisandmed: kümneaastane kehtivus ja katvus.",
+            "published": "12.02.2024",
+            "sourceTier": "official"
+          },
+          {
+            "id": "smi",
+            "citation": null,
+            "title": "Metsastatistika, sh statistiline metsainventuur (SMI)",
+            "organization": "Keskkonnaagentuur / Keskkonnaportaal",
+            "type": "Metoodika",
+            "url": "https://keskkonnaportaal.ee/et/teemad/mets/metsastatistika-sh-smi",
+            "locator": "Statistiline metsainventuur ehk SMI: definitsioon, kogu Eesti üldistatud hinnang, statistiline viga; Ülevaade metsastatistikast: lausinventeerimise katvus ja andmete vanus.",
+            "published": "02.06.2022",
+            "sourceTier": "official"
+          },
+          {
+            "id": "forest-owner-support-directory",
+            "citation": null,
+            "title": "Erametsaomaniku toetused",
+            "organization": "SA Keskkonnainvesteeringute Keskus",
+            "type": "Toetuste infoleht",
+            "url": "https://www.eramets.ee/toetused/",
+            "locator": null,
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsa-majandamise-eeskiri-para14",
+            "citation": null,
+            "title": "Metsa majandamise eeskiri § 14. Metsa uuendamine",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/12771900?leiaKehtiv#para14",
+            "locator": "Metsa majandamise eeskiri § 14. Kehtiv redaktsioon: RT I, 13.06.2025, 14, kehtiv alates 16.06.2025. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsa-majandamise-eeskiri-para15",
+            "citation": null,
+            "title": "Metsa majandamise eeskiri § 15. Metsakasvukohatüübile sobivad ja metsauuendamisel kasutada lubatud puuliigid",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/12771900?leiaKehtiv#para15",
+            "locator": "Metsa majandamise eeskiri § 15. Kehtiv redaktsioon: RT I, 13.06.2025, 14, kehtiv alates 16.06.2025. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsa-majandamise-eeskiri-para16",
+            "citation": null,
+            "title": "Metsa majandamise eeskiri § 16. Metsa uuenenuks lugemiseks nõutav puude minimaalne arv hektaril ja arvesse võetavate puude minimaalne kõrgus",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/12771900?leiaKehtiv#para16",
+            "locator": "Metsa majandamise eeskiri § 16. Kehtiv redaktsioon: RT I, 13.06.2025, 14, kehtiv alates 16.06.2025. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          }
+        ]
+      },
+      "presentation": {
+        "chart": null,
+        "table": null
+      },
+      "failure": null,
+      "baselineComparison": {
+        "before": {
+          "status": 200,
+          "elapsedMs": 9570,
+          "responseBytesUtf8": 10299,
+          "answerPartCount": 0,
+          "sourceCount": 1,
+          "firstResultId": "forest-overview",
+          "usageTelemetry": {
+            "status": "missing",
+            "requests": null,
+            "input_tokens": null,
+            "cached_input_tokens": null,
+            "reasoning_tokens": null,
+            "output_tokens": null,
+            "total_tokens": null,
+            "cost_estimate": {
+              "amount": null,
+              "currency": null,
+              "rate_provenance": null,
+              "status": "missing"
+            }
+          }
+        },
+        "changes": {
+          "elapsedMs": -46,
+          "responseBytesUtf8": -14,
+          "answerPartCount": 0,
+          "firstResultIdChanged": false
+        }
+      }
+    },
+    {
+      "caseIndex": 5,
+      "intent": {
+        "intent": "criteria",
+        "topic": "forest",
+        "normalizedQuery": "mida loetakse metsaks",
+        "terms": [
+          "mets"
+        ],
+        "authoritySubjectTerms": []
+      },
+      "request": {
+        "q": "mida loetakse metsaks",
+        "filters": {
+          "source": "all",
+          "category": "",
+          "year": null,
+          "sort": "relevance"
+        },
+        "page": 1,
+        "page_size": 12
+      },
+      "transport": "single_post_api_search",
+      "http": {
+        "status": 200,
+        "elapsedMs": 18688,
+        "responseBytesUtf8": 8912,
+        "transportRequests": 1
+      },
+      "cache": {
+        "answerCacheHit": null,
+        "responseHeaders": {
+          "cacheControl": "no-store",
+          "cdnCacheStatus": "DYNAMIC",
+          "ageSeconds": null,
+          "appBuild": "mwib9n3z"
+        }
+      },
+      "usageTelemetry": {
+        "status": "missing",
+        "requests": null,
+        "input_tokens": null,
+        "cached_input_tokens": null,
+        "reasoning_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null,
+        "cost_estimate": {
+          "amount": null,
+          "currency": null,
+          "rate_provenance": null,
+          "status": "missing"
+        }
+      },
+      "answer": {
+        "eyebrow": "Allikapõhine kokkuvõte",
+        "title": "Mida loetakse metsaks",
+        "intro": "(4) Väiksema algtiheduse korral loetakse metsa külvamine või istutamine looduslikule uuenemisele kaasaaitamiseks.",
+        "introCitations": [
+          1
+        ],
+        "parts": [],
+        "note": ""
+      },
+      "citations": [
+        {
+          "location": "intro",
+          "refs": [
+            1
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "id": "law-metsa-majandamise-eeskiri-para14",
+          "citation": 1,
+          "title": "Metsa majandamise eeskiri § 14. Metsa uuendamine",
+          "organization": "Riigi Teataja",
+          "type": "Kehtiv õigusakt",
+          "url": "https://www.riigiteataja.ee/akt/12771900?leiaKehtiv#para14",
+          "locator": "Metsa majandamise eeskiri § 14. Kehtiv redaktsioon: RT I, 13.06.2025, 14, kehtiv alates 16.06.2025. Kontrollitud Riigi Teatajast 15.11.2026.",
+          "published": "jooksev",
+          "sourceTier": "official"
+        }
+      ],
+      "resultPage": {
+        "page": 1,
+        "pageSize": 12,
+        "total": 140,
+        "totalRelation": null,
+        "truncated": null,
+        "hasMore": true,
+        "windowId": null,
+        "windowExpired": false,
+        "items": [
+          {
+            "id": "official-145f11b3bbd3b6af",
+            "citation": null,
+            "title": "Keskkonnaagentuuri vastus Asko Lõhmusele",
+            "organization": "Keskkonnaagentuur",
+            "type": "news",
+            "url": "https://keskkonnaagentuur.ee/uudised/keskkonnaagentuuri-vastus-asko-lohmusele",
+            "locator": null,
+            "published": "26.10.2017",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-c8959f24d37dfa0c",
+            "citation": null,
+            "title": "Kliimaministeerium uuendab KIKi metsandustoetusi – eesmärk on elurikkam ja kliimakindlam mets",
+            "organization": "Kliimaministeerium",
+            "type": "news",
+            "url": "https://kliimaministeerium.ee/uudised/kliimaministeerium-uuendab-kiki-metsandustoetusi-eesmark-elurikkam-ja-kliimakindlam-mets",
+            "locator": null,
+            "published": "17.10.2025",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-c8b378a6a61db37e",
+            "citation": null,
+            "title": "Metsaandmed on paremini kaitstud",
+            "organization": "Kliimaministeerium",
+            "type": "news",
+            "url": "https://kliimaministeerium.ee/uudised/metsaandmed-paremini-kaitstud",
+            "locator": null,
+            "published": "10.06.2022",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-7215bc51332f89ed",
+            "citation": null,
+            "title": "Metsauuendus",
+            "organization": "Keskkonnaamet",
+            "type": "article",
+            "url": "https://keskkonnaamet.ee/elusloodus-looduskaitse/metsandus/metsauuendus",
+            "locator": null,
+            "published": "20.05.2021",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-3d3d2303a258cf06",
+            "citation": null,
+            "title": "Uuenenud metsaseadus toob sügisest mitmed muudatused",
+            "organization": "Kliimaministeerium",
+            "type": "news",
+            "url": "https://kliimaministeerium.ee/uudised/uuenenud-metsaseadus-toob-sugisest-mitmed-muudatused",
+            "locator": null,
+            "published": "16.06.2017",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-a01a80bea0b125c5",
+            "citation": null,
+            "title": "Analüüs: erametsad vajavad 3 miljonit metsataime rohkem",
+            "organization": "Kliimaministeerium",
+            "type": "news",
+            "url": "https://kliimaministeerium.ee/uudised/analuus-erametsad-vajavad-3-miljonit-metsataime-rohkem",
+            "locator": null,
+            "published": "19.06.2017",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsa-majandamise-eeskiri-para14",
+            "citation": null,
+            "title": "Metsa majandamise eeskiri § 14. Metsa uuendamine",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/12771900?leiaKehtiv#para14",
+            "locator": "Metsa majandamise eeskiri § 14. Kehtiv redaktsioon: RT I, 13.06.2025, 14, kehtiv alates 16.06.2025. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsa-majandamise-eeskiri-para16",
+            "citation": null,
+            "title": "Metsa majandamise eeskiri § 16. Metsa uuenenuks lugemiseks nõutav puude minimaalne arv hektaril ja arvesse võetavate puude minimaalne kõrgus",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/12771900?leiaKehtiv#para16",
+            "locator": "Metsa majandamise eeskiri § 16. Kehtiv redaktsioon: RT I, 13.06.2025, 14, kehtiv alates 16.06.2025. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsa-majandamise-eeskiri-para18",
+            "citation": null,
+            "title": "Metsa majandamise eeskiri § 18. Metsa uuendamise ja metsauuendamisvõtete rakendamise tähtaja pikendamise kord",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/12771900?leiaKehtiv#para18",
+            "locator": "Metsa majandamise eeskiri § 18. Kehtiv redaktsioon: RT I, 13.06.2025, 14, kehtiv alates 16.06.2025. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsa-majandamise-eeskiri-para22",
+            "citation": null,
+            "title": "Metsa majandamise eeskiri § 22. Metsauuendus- ja metsakaitseekspertiisi tellimise ja tegemise kord",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/12771900?leiaKehtiv#para22",
+            "locator": "Metsa majandamise eeskiri § 22. Kehtiv redaktsioon: RT I, 13.06.2025, 14, kehtiv alates 16.06.2025. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsaseadus-para24",
+            "citation": null,
+            "title": "Metsaseadus § 24. Metsa uuendamine",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/MS#para24",
+            "locator": "Metsaseadus § 24. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsaseadus-para41",
+            "citation": null,
+            "title": "Metsaseadus § 41. Metsateatis",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/MS#para41",
+            "locator": "Metsaseadus § 41. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          }
+        ]
+      },
+      "presentation": {
+        "chart": null,
+        "table": null
+      },
+      "failure": null,
+      "baselineComparison": {
+        "before": {
+          "status": 200,
+          "elapsedMs": 19243,
+          "responseBytesUtf8": 12313,
+          "answerPartCount": 1,
+          "sourceCount": 2,
+          "firstResultId": "official-145f11b3bbd3b6af",
+          "usageTelemetry": {
+            "status": "missing",
+            "requests": null,
+            "input_tokens": null,
+            "cached_input_tokens": null,
+            "reasoning_tokens": null,
+            "output_tokens": null,
+            "total_tokens": null,
+            "cost_estimate": {
+              "amount": null,
+              "currency": null,
+              "rate_provenance": null,
+              "status": "missing"
+            }
+          }
+        },
+        "changes": {
+          "elapsedMs": -555,
+          "responseBytesUtf8": -3401,
+          "answerPartCount": -1,
+          "firstResultIdChanged": false
+        }
+      }
+    },
+    {
+      "caseIndex": 6,
+      "intent": {
+        "intent": "procedure",
+        "topic": "forest_notice",
+        "normalizedQuery": "kuidas esitada raieteatist",
+        "terms": [
+          "esitamine",
+          "metsateatis"
+        ],
+        "authoritySubjectTerms": []
+      },
+      "request": {
+        "q": "kuidas esitada raieteatist",
+        "filters": {
+          "source": "all",
+          "category": "",
+          "year": null,
+          "sort": "relevance"
+        },
+        "page": 1,
+        "page_size": 12
+      },
+      "transport": "single_post_api_search",
+      "http": {
+        "status": 200,
+        "elapsedMs": 16668,
+        "responseBytesUtf8": 13488,
+        "transportRequests": 1
+      },
+      "cache": {
+        "answerCacheHit": null,
+        "responseHeaders": {
+          "cacheControl": "no-store",
+          "cdnCacheStatus": "DYNAMIC",
+          "ageSeconds": null,
+          "appBuild": "mwib9n3z"
+        }
+      },
+      "usageTelemetry": {
+        "status": "missing",
+        "requests": null,
+        "input_tokens": null,
+        "cached_input_tokens": null,
+        "reasoning_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null,
+        "cost_estimate": {
+          "amount": null,
+          "currency": null,
+          "rate_provenance": null,
+          "status": "missing"
+        }
+      },
+      "answer": {
+        "eyebrow": "Allikapõhine kokkuvõte",
+        "title": "Kuidas esitada raieteatist",
+        "intro": "Metsateatis esitatakse kavandatavate raiete kohta, välja arvatud valgustusraie, ning metsaregistrisse kandmata oluliste metsakahjustuste kohta. Keskkonnaameti kehtiva juhise järgi võib metsaomanik metsateatist esitamata raiuda kuni 20 tihumeetrit puitu kinnisasja kohta aastas. Teatise esitamine, menetlemine või raiet lubav otsus ei tõenda, et raie on looduses juba tehtud.",
+        "introCitations": [
+          1
+        ],
+        "parts": [
+          {
+            "title": "Kuidas töötab metsaregister?",
+            "text": "Metsateatis kirjeldab kavandatavat raiet või olulist metsakahjustust ning Keskkonnaamet kontrollib kavandatud tegevuse vastavust nõuetele. Raiet lubav metsateatis kehtib üldjuhul 24 kuud, kuid teatise registreerimine ei tõenda, et raie on looduses tehtud.",
+            "citations": [
+              2
+            ]
+          }
+        ],
+        "note": "See on Keskkonnaameti üldjuhise väljavõte, mitte seaduse terviktekst: seadusest võivad tuleneda ka muud erandid ja lisanõuded, mida see väljavõte ei loetle."
+      },
+      "citations": [
+        {
+          "location": "intro",
+          "refs": [
+            1
+          ]
+        },
+        {
+          "location": "part",
+          "partIndex": 0,
+          "title": "Kuidas töötab metsaregister?",
+          "refs": [
+            2
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "id": "forest-notice-guidance",
+          "citation": 1,
+          "title": "Metsateatis ja metsaregister",
+          "organization": "Keskkonnaamet",
+          "type": "Ametlik juhis",
+          "url": "https://www.keskkonnaamet.ee/elusloodus-looduskaitse/metsandus/metsateatis-ja-metsaregister",
+          "locator": "Metsateatise esitamise kohustus ja valgustusraie erand; 20 tihumeetri erand kinnisasja kohta aastas; teatise esitamine Metsaregistri kaudu; uuendusraie ja raadamise 30-eurone riigilõiv.",
+          "published": "jooksev",
+          "sourceTier": "official"
+        },
+        {
+          "id": "forest-register-workflow",
+          "citation": 2,
+          "title": "Kuidas töötab metsaregister?",
+          "organization": "Keskkonnaamet",
+          "type": "Ametlik käsiraamat",
+          "url": "https://www.keskkonnaamet.ee/kasiraamat-kohaliku-omavalitsuse-keskkonnaspetsialistile/kuidas-tootab-metsaregister",
+          "locator": "Metsaregistri avalik ja ametkondlik vaade; metsateatise automaat- ja käsitsi kontroll; kaitsepiirangud ning menetluse tulemus.",
+          "published": "15.01.2025",
+          "sourceTier": "official"
+        }
+      ],
+      "resultPage": {
+        "page": 1,
+        "pageSize": 12,
+        "total": 140,
+        "totalRelation": null,
+        "truncated": null,
+        "hasMore": true,
+        "windowId": null,
+        "windowExpired": false,
+        "items": [
+          {
+            "id": "forest-notice-guidance",
+            "citation": null,
+            "title": "Metsateatis ja metsaregister",
+            "organization": "Keskkonnaamet",
+            "type": "Ametlik juhis",
+            "url": "https://www.keskkonnaamet.ee/elusloodus-looduskaitse/metsandus/metsateatis-ja-metsaregister",
+            "locator": "Metsateatise esitamise kohustus ja valgustusraie erand; 20 tihumeetri erand kinnisasja kohta aastas; teatise esitamine Metsaregistri kaudu; uuendusraie ja raadamise 30-eurone riigilõiv.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "forest-register-workflow",
+            "citation": null,
+            "title": "Kuidas töötab metsaregister?",
+            "organization": "Keskkonnaamet",
+            "type": "Ametlik käsiraamat",
+            "url": "https://www.keskkonnaamet.ee/kasiraamat-kohaliku-omavalitsuse-keskkonnaspetsialistile/kuidas-tootab-metsaregister",
+            "locator": "Metsaregistri avalik ja ametkondlik vaade; metsateatise automaat- ja käsitsi kontroll; kaitsepiirangud ning menetluse tulemus.",
+            "published": "15.01.2025",
+            "sourceTier": "official"
+          },
+          {
+            "id": "forest-law",
+            "citation": null,
+            "title": "Metsaseadus",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/et/akt/112052026020?leiaKehtiv",
+            "locator": "§ 2, § 3, § 6, § 9, § 28, § 29 lõige 11 ja § 41. Kontrollitud 01.10.2026: sõnastus jõustunud 01.07.2026, kehtiv kuni 31.12.2032, RT I, 12.05.2026, 20. Konkreetse raie puhul kontrolli alati kehtivat redaktsiooni ja erandeid.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "metsainfo-hetkeseis",
+            "citation": null,
+            "title": "Metsainfo hetkeseis",
+            "organization": "Keskkonnaagentuur / Keskkonnaportaal",
+            "type": "Andmete koondvaade",
+            "url": "https://keskkonnaportaal.ee/et/teemad/mets/metsainfo-hetkeseis",
+            "locator": "Metsateatised ja Metsateatised kaitsealadel: registreeritud kavatsused, puuduvad tööde andmed; RMK metsade olem; Metsainventeerimisandmed: kümneaastane kehtivus ja katvus.",
+            "published": "12.02.2024",
+            "sourceTier": "official"
+          },
+          {
+            "id": "metsaregister",
+            "citation": null,
+            "title": "Metsaregistri andmestikud",
+            "organization": "Keskkonnaagentuur / Keskkonnaportaal",
+            "type": "Andmekataloog",
+            "url": "https://keskkonnaportaal.ee/et/avaandmed/metsaregistri-andmestikud",
+            "locator": "Kirjeldus; Metsanduslike välitööde andmestiku metsaeraldise asukohakirjeldus; Metsateatise andmestik; Levitused ja andmete allalaadimine.",
+            "published": "25.05.2026",
+            "sourceTier": "official"
+          },
+          {
+            "id": "portal-et-andmeallikad-kaardirakenduse-teated-a7a8e7",
+            "citation": null,
+            "title": "Keskkonnaportaali kaardirakendusse on lisandunud uusi kaardikihte ning täienenud on otsinguvõimalused",
+            "organization": "Keskkonnaportaal",
+            "type": "Uudised",
+            "url": "https://keskkonnaportaal.ee/et/andmeallikad/kaardirakenduse-teated",
+            "locator": "Keskkonnaportaal: /et/andmeallikad/kaardirakenduse-teated. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
+            "published": "01.08.2025",
+            "sourceTier": "official"
+          },
+          {
+            "id": "portal-et-teemad-mets-kuuse-kooreurask-3b2882",
+            "citation": null,
+            "title": "Kuuse-kooreürask",
+            "organization": "Keskkonnaagentuur",
+            "type": "Teemalehed > Sisuleht",
+            "url": "https://keskkonnaportaal.ee/et/teemad/mets/kuuse-kooreurask",
+            "locator": "Keskkonnaportaal: /et/teemad/mets/kuuse-kooreurask. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
+            "published": "05.02.2023",
+            "sourceTier": "official"
+          },
+          {
+            "id": "smi-metsaregister",
+            "citation": null,
+            "title": "Metsandus: SMI ja Metsaregister",
+            "organization": "Kliimaministeerium",
+            "type": "Selgitus",
+            "url": "https://kliimaministeerium.ee/elurikkus-keskkonnakaitse/metsandus",
+            "locator": "Eesti metsandusandmed: mitmed kogumisviisid, Keskkonnaagentuuri iga-aastane statistiline kokkuvõte ja SMI, tellitud kinnistute inventeerimisandmed Metsaregistris ning kaugseire.",
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsaseadus-para41",
+            "citation": null,
+            "title": "Metsaseadus § 41. Metsateatis",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/MS#para41",
+            "locator": "Metsaseadus § 41. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsa-majandamise-eeskiri-para22",
+            "citation": null,
+            "title": "Metsa majandamise eeskiri § 22. Metsauuendus- ja metsakaitseekspertiisi tellimise ja tegemise kord",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/12771900?leiaKehtiv#para22",
+            "locator": "Metsa majandamise eeskiri § 22. Kehtiv redaktsioon: RT I, 13.06.2025, 14, kehtiv alates 16.06.2025. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsaseadus-para42",
+            "citation": null,
+            "title": "Metsaseadus § 42. Omaniku kohustused metsa majandamisel",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/MS#para42",
+            "locator": "Metsaseadus § 42. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsaseadus-para80",
+            "citation": null,
+            "title": "Metsaseadus § 80. Seaduse rakendamine",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/MS#para80",
+            "locator": "Metsaseadus § 80. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          }
+        ]
+      },
+      "presentation": {
+        "chart": null,
+        "table": null
+      },
+      "failure": null,
+      "baselineComparison": {
+        "before": {
+          "status": 200,
+          "elapsedMs": 17453,
+          "responseBytesUtf8": 13488,
+          "answerPartCount": 1,
+          "sourceCount": 2,
+          "firstResultId": "forest-notice-guidance",
+          "usageTelemetry": {
+            "status": "missing",
+            "requests": null,
+            "input_tokens": null,
+            "cached_input_tokens": null,
+            "reasoning_tokens": null,
+            "output_tokens": null,
+            "total_tokens": null,
+            "cost_estimate": {
+              "amount": null,
+              "currency": null,
+              "rate_provenance": null,
+              "status": "missing"
+            }
+          }
+        },
+        "changes": {
+          "elapsedMs": -785,
+          "responseBytesUtf8": 0,
+          "answerPartCount": 0,
+          "firstResultIdChanged": false
+        }
+      }
+    },
+    {
+      "caseIndex": 7,
+      "intent": {
+        "intent": "procedure",
+        "topic": "forest_notice",
+        "normalizedQuery": "metsateatise esitamine",
+        "terms": [
+          "metsateatis",
+          "esitamine"
+        ],
+        "authoritySubjectTerms": []
+      },
+      "request": {
+        "q": "metsateatise esitamine",
+        "filters": {
+          "source": "all",
+          "category": "",
+          "year": null,
+          "sort": "relevance"
+        },
+        "page": 1,
+        "page_size": 12
+      },
+      "transport": "single_post_api_search",
+      "http": {
+        "status": 200,
+        "elapsedMs": 15755,
+        "responseBytesUtf8": 13877,
+        "transportRequests": 1
+      },
+      "cache": {
+        "answerCacheHit": null,
+        "responseHeaders": {
+          "cacheControl": "no-store",
+          "cdnCacheStatus": "DYNAMIC",
+          "ageSeconds": null,
+          "appBuild": "mwib9n3z"
+        }
+      },
+      "usageTelemetry": {
+        "status": "missing",
+        "requests": null,
+        "input_tokens": null,
+        "cached_input_tokens": null,
+        "reasoning_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null,
+        "cost_estimate": {
+          "amount": null,
+          "currency": null,
+          "rate_provenance": null,
+          "status": "missing"
+        }
+      },
+      "answer": {
+        "eyebrow": "Allikapõhine kokkuvõte",
+        "title": "Metsateatise esitamine",
+        "intro": "Metsateatis esitatakse kavandatavate raiete kohta, välja arvatud valgustusraie, ning metsaregistrisse kandmata oluliste metsakahjustuste kohta. Keskkonnaameti kehtiva juhise järgi võib metsaomanik metsateatist esitamata raiuda kuni 20 tihumeetrit puitu kinnisasja kohta aastas. Teatise esitamine, menetlemine või raiet lubav otsus ei tõenda, et raie on looduses juba tehtud.",
+        "introCitations": [
+          1
+        ],
+        "parts": [
+          {
+            "title": "Metsaseadus",
+            "text": "Metsateatise kohustus ja erandid on sätestatud §-s 41. § 41 lõike 14 järgi võib metsaomanik metsateatist esitamata raiuda kuni 20 tihumeetrit puitu kinnisasja kohta aastas.",
+            "citations": [
+              2
+            ]
+          }
+        ],
+        "note": "See on Keskkonnaameti üldjuhise väljavõte, mitte seaduse terviktekst: seadusest võivad tuleneda ka muud erandid ja lisanõuded, mida see väljavõte ei loetle."
+      },
+      "citations": [
+        {
+          "location": "intro",
+          "refs": [
+            1
+          ]
+        },
+        {
+          "location": "part",
+          "partIndex": 0,
+          "title": "Metsaseadus",
+          "refs": [
+            2
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "id": "forest-notice-guidance",
+          "citation": 1,
+          "title": "Metsateatis ja metsaregister",
+          "organization": "Keskkonnaamet",
+          "type": "Ametlik juhis",
+          "url": "https://www.keskkonnaamet.ee/elusloodus-looduskaitse/metsandus/metsateatis-ja-metsaregister",
+          "locator": "Metsateatise esitamise kohustus ja valgustusraie erand; 20 tihumeetri erand kinnisasja kohta aastas; teatise esitamine Metsaregistri kaudu; uuendusraie ja raadamise 30-eurone riigilõiv.",
+          "published": "jooksev",
+          "sourceTier": "official"
+        },
+        {
+          "id": "forest-law",
+          "citation": 2,
+          "title": "Metsaseadus",
+          "organization": "Riigi Teataja",
+          "type": "Kehtiv õigusakt",
+          "url": "https://www.riigiteataja.ee/et/akt/112052026020?leiaKehtiv",
+          "locator": "§ 2, § 3, § 6, § 9, § 28, § 29 lõige 11 ja § 41. Kontrollitud 01.10.2026: sõnastus jõustunud 01.07.2026, kehtiv kuni 31.12.2032, RT I, 12.05.2026, 20. Konkreetse raie puhul kontrolli alati kehtivat redaktsiooni ja erandeid.",
+          "published": "jooksev",
+          "sourceTier": "official"
+        }
+      ],
+      "resultPage": {
+        "page": 1,
+        "pageSize": 12,
+        "total": 135,
+        "totalRelation": null,
+        "truncated": null,
+        "hasMore": true,
+        "windowId": null,
+        "windowExpired": false,
+        "items": [
+          {
+            "id": "forest-notice-guidance",
+            "citation": null,
+            "title": "Metsateatis ja metsaregister",
+            "organization": "Keskkonnaamet",
+            "type": "Ametlik juhis",
+            "url": "https://www.keskkonnaamet.ee/elusloodus-looduskaitse/metsandus/metsateatis-ja-metsaregister",
+            "locator": "Metsateatise esitamise kohustus ja valgustusraie erand; 20 tihumeetri erand kinnisasja kohta aastas; teatise esitamine Metsaregistri kaudu; uuendusraie ja raadamise 30-eurone riigilõiv.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "forest-law",
+            "citation": null,
+            "title": "Metsaseadus",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/et/akt/112052026020?leiaKehtiv",
+            "locator": "§ 2, § 3, § 6, § 9, § 28, § 29 lõige 11 ja § 41. Kontrollitud 01.10.2026: sõnastus jõustunud 01.07.2026, kehtiv kuni 31.12.2032, RT I, 12.05.2026, 20. Konkreetse raie puhul kontrolli alati kehtivat redaktsiooni ja erandeid.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "forest-register-workflow",
+            "citation": null,
+            "title": "Kuidas töötab metsaregister?",
+            "organization": "Keskkonnaamet",
+            "type": "Ametlik käsiraamat",
+            "url": "https://www.keskkonnaamet.ee/kasiraamat-kohaliku-omavalitsuse-keskkonnaspetsialistile/kuidas-tootab-metsaregister",
+            "locator": "Metsaregistri avalik ja ametkondlik vaade; metsateatise automaat- ja käsitsi kontroll; kaitsepiirangud ning menetluse tulemus.",
+            "published": "15.01.2025",
+            "sourceTier": "official"
+          },
+          {
+            "id": "metsainfo-hetkeseis",
+            "citation": null,
+            "title": "Metsainfo hetkeseis",
+            "organization": "Keskkonnaagentuur / Keskkonnaportaal",
+            "type": "Andmete koondvaade",
+            "url": "https://keskkonnaportaal.ee/et/teemad/mets/metsainfo-hetkeseis",
+            "locator": "Metsateatised ja Metsateatised kaitsealadel: registreeritud kavatsused, puuduvad tööde andmed; RMK metsade olem; Metsainventeerimisandmed: kümneaastane kehtivus ja katvus.",
+            "published": "12.02.2024",
+            "sourceTier": "official"
+          },
+          {
+            "id": "portal-et-teemad-mets-kuuse-kooreurask-3b2882",
+            "citation": null,
+            "title": "Kuuse-kooreürask",
+            "organization": "Keskkonnaagentuur",
+            "type": "Teemalehed > Sisuleht",
+            "url": "https://keskkonnaportaal.ee/et/teemad/mets/kuuse-kooreurask",
+            "locator": "Keskkonnaportaal: /et/teemad/mets/kuuse-kooreurask. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
+            "published": "05.02.2023",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsaseadus-para41",
+            "citation": null,
+            "title": "Metsaseadus § 41. Metsateatis",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/MS#para41",
+            "locator": "Metsaseadus § 41. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsaseadus-para42",
+            "citation": null,
+            "title": "Metsaseadus § 42. Omaniku kohustused metsa majandamisel",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/MS#para42",
+            "locator": "Metsaseadus § 42. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "metsaregister",
+            "citation": null,
+            "title": "Metsaregistri andmestikud",
+            "organization": "Keskkonnaagentuur / Keskkonnaportaal",
+            "type": "Andmekataloog",
+            "url": "https://keskkonnaportaal.ee/et/avaandmed/metsaregistri-andmestikud",
+            "locator": "Kirjeldus; Metsanduslike välitööde andmestiku metsaeraldise asukohakirjeldus; Metsateatise andmestik; Levitused ja andmete allalaadimine.",
+            "published": "25.05.2026",
+            "sourceTier": "official"
+          },
+          {
+            "id": "smi-metsaregister",
+            "citation": null,
+            "title": "Metsandus: SMI ja Metsaregister",
+            "organization": "Kliimaministeerium",
+            "type": "Selgitus",
+            "url": "https://kliimaministeerium.ee/elurikkus-keskkonnakaitse/metsandus",
+            "locator": "Eesti metsandusandmed: mitmed kogumisviisid, Keskkonnaagentuuri iga-aastane statistiline kokkuvõte ja SMI, tellitud kinnistute inventeerimisandmed Metsaregistris ning kaugseire.",
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsa-majandamise-eeskiri-para22",
+            "citation": null,
+            "title": "Metsa majandamise eeskiri § 22. Metsauuendus- ja metsakaitseekspertiisi tellimise ja tegemise kord",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/12771900?leiaKehtiv#para22",
+            "locator": "Metsa majandamise eeskiri § 22. Kehtiv redaktsioon: RT I, 13.06.2025, 14, kehtiv alates 16.06.2025. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsaseadus-para37",
+            "citation": null,
+            "title": "Metsaseadus § 37. Raieõiguse ja metsamaterjali üleandmise, metsa raieks andmise ja metsamaterjali vedamise seaduslikkuse tõendamise kohustus ning metsamaterjali vedu",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/MS#para37",
+            "locator": "Metsaseadus § 37. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsaseadus-para38",
+            "citation": null,
+            "title": "Metsaseadus § 38. Raieõiguse ning metsamaterjali müügi- ja ostutehingu teatis",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/MS#para38",
+            "locator": "Metsaseadus § 38. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          }
+        ]
+      },
+      "presentation": {
+        "chart": null,
+        "table": null
+      },
+      "failure": null,
+      "baselineComparison": {
+        "before": {
+          "status": 200,
+          "elapsedMs": 17867,
+          "responseBytesUtf8": 11918,
+          "answerPartCount": 1,
+          "sourceCount": 1,
+          "firstResultId": "forest-notice-guidance",
+          "usageTelemetry": {
+            "status": "missing",
+            "requests": null,
+            "input_tokens": null,
+            "cached_input_tokens": null,
+            "reasoning_tokens": null,
+            "output_tokens": null,
+            "total_tokens": null,
+            "cost_estimate": {
+              "amount": null,
+              "currency": null,
+              "rate_provenance": null,
+              "status": "missing"
+            }
+          }
+        },
+        "changes": {
+          "elapsedMs": -2112,
+          "responseBytesUtf8": 1959,
+          "answerPartCount": 0,
+          "firstResultIdChanged": false
+        }
+      }
+    },
+    {
+      "caseIndex": 8,
+      "intent": {
+        "intent": "conditions",
+        "topic": "clearcut",
+        "normalizedQuery": "lageraiete tingimused",
+        "terms": [
+          "lageraie"
+        ],
+        "authoritySubjectTerms": []
+      },
+      "request": {
+        "q": "lageraiete tingimused",
+        "filters": {
+          "source": "all",
+          "category": "",
+          "year": null,
+          "sort": "relevance"
+        },
+        "page": 1,
+        "page_size": 12
+      },
+      "transport": "single_post_api_search",
+      "http": {
+        "status": 200,
+        "elapsedMs": 18258,
+        "responseBytesUtf8": 14364,
+        "transportRequests": 1
+      },
+      "cache": {
+        "answerCacheHit": null,
+        "responseHeaders": {
+          "cacheControl": "no-store",
+          "cdnCacheStatus": "DYNAMIC",
+          "ageSeconds": null,
+          "appBuild": "mwib9n3z"
+        }
+      },
+      "usageTelemetry": {
+        "status": "missing",
+        "requests": null,
+        "input_tokens": null,
+        "cached_input_tokens": null,
+        "reasoning_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null,
+        "cost_estimate": {
+          "amount": null,
+          "currency": null,
+          "rate_provenance": null,
+          "status": "missing"
+        }
+      },
+      "answer": {
+        "eyebrow": "Vastust ei leitud",
+        "title": "Lageraiete tingimused",
+        "intro": "Meil ei ole sellele küsimusele vastust. Meie allikatest ei leidnud me selget ja usaldusväärset vastust.",
+        "introCitations": [],
+        "parts": [],
+        "note": ""
+      },
+      "citations": [
+        {
+          "location": "intro",
+          "refs": []
+        }
+      ],
+      "sources": [
+        {
+          "id": "law-metsaseadus-para29",
+          "citation": 1,
+          "title": "Metsaseadus § 29. Lageraie",
+          "organization": "Riigi Teataja",
+          "type": "Kehtiv õigusakt",
+          "url": "https://www.riigiteataja.ee/akt/MS#para29",
+          "locator": "Metsaseadus § 29. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+          "published": "jooksev",
+          "sourceTier": "official"
+        },
+        {
+          "id": "official-e0c577520ab5b6b3",
+          "citation": 2,
+          "title": "RMK vastulause EOÜ pressiteatele „RMK kahjustas Kurgjal lageraiega kanakulli pesametsa“ » Uudis » Riigimetsa Majandamise Keskus (RMK)",
+          "organization": "Keskkonnaportaal",
+          "type": "Veebileht",
+          "url": "https://rmk.ee/uudised/uudis/rmk-vastulause-eou-pressiteatele-rmk-kahjustas-kurgjal-lageraiega-kanakulli-pesametsa",
+          "locator": null,
+          "published": "",
+          "sourceTier": "official"
+        },
+        {
+          "id": "law-looduskaitseseadus-para45",
+          "citation": 3,
+          "title": "Looduskaitseseadus § 45. Puude raie tiheasustusalal",
+          "organization": "Riigi Teataja",
+          "type": "Kehtiv õigusakt",
+          "url": "https://www.riigiteataja.ee/akt/LKS#para45",
+          "locator": "Looduskaitseseadus § 45. Kehtiv redaktsioon: RT I, 09.07.2026, 47, kehtiv alates 01.09.2026. Kontrollitud Riigi Teatajast 15.11.2026.",
+          "published": "jooksev",
+          "sourceTier": "official"
+        },
+        {
+          "id": "law-metsa-majandamise-eeskiri-para17",
+          "citation": 4,
+          "title": "Metsa majandamise eeskiri § 17. Juuremädaniku tõttu raiutud puistute uuendamisele esitatavad nõuded",
+          "organization": "Riigi Teataja",
+          "type": "Kehtiv õigusakt",
+          "url": "https://www.riigiteataja.ee/akt/12771900?leiaKehtiv#para17",
+          "locator": "Metsa majandamise eeskiri § 17. Kehtiv redaktsioon: RT I, 13.06.2025, 14, kehtiv alates 16.06.2025. Kontrollitud Riigi Teatajast 15.11.2026.",
+          "published": "jooksev",
+          "sourceTier": "official"
+        },
+        {
+          "id": "law-metsa-majandamise-eeskiri-para9",
+          "citation": 5,
+          "title": "Metsa majandamise eeskiri § 9. Raielankide raidmetest puhastamise viisid ja kord",
+          "organization": "Riigi Teataja",
+          "type": "Kehtiv õigusakt",
+          "url": "https://www.riigiteataja.ee/akt/12771900?leiaKehtiv#para9",
+          "locator": "Metsa majandamise eeskiri § 9. Kehtiv redaktsioon: RT I, 13.06.2025, 14, kehtiv alates 16.06.2025. Kontrollitud Riigi Teatajast 15.11.2026.",
+          "published": "jooksev",
+          "sourceTier": "official"
+        },
+        {
+          "id": "law-metsaseadus-para28",
+          "citation": 6,
+          "title": "Metsaseadus § 28. Raied",
+          "organization": "Riigi Teataja",
+          "type": "Kehtiv õigusakt",
+          "url": "https://www.riigiteataja.ee/akt/MS#para28",
+          "locator": "Metsaseadus § 28. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+          "published": "jooksev",
+          "sourceTier": "official"
+        },
+        {
+          "id": "law-metsaseadus-para37",
+          "citation": 7,
+          "title": "Metsaseadus § 37. Raieõiguse ja metsamaterjali üleandmise, metsa raieks andmise ja metsamaterjali vedamise seaduslikkuse tõendamise kohustus ning metsamaterjali vedu",
+          "organization": "Riigi Teataja",
+          "type": "Kehtiv õigusakt",
+          "url": "https://www.riigiteataja.ee/akt/MS#para37",
+          "locator": "Metsaseadus § 37. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+          "published": "jooksev",
+          "sourceTier": "official"
+        },
+        {
+          "id": "official-1d355c0f9c81ccf1",
+          "citation": 8,
+          "title": "Metsa majandamise eeskiri",
+          "organization": "Riigi Teataja",
+          "type": "Kehtiv õigusakt",
+          "url": "https://www.riigiteataja.ee/et/akt/12771900?leiaKehtiv",
+          "locator": null,
+          "published": "jooksev",
+          "sourceTier": "official"
+        },
+        {
+          "id": "official-e6e6aca0a23ee7b5",
+          "citation": 9,
+          "title": "Täienesid 2009. aasta kutselise kalapüügi võimalused",
+          "organization": "Keskkonnaportaal",
+          "type": "Veebileht",
+          "url": "https://kliimaministeerium.ee/uudised/taienesid-2009-aasta-kutselise-kalapuugi-voimalused",
+          "locator": null,
+          "published": "",
+          "sourceTier": "official"
+        },
+        {
+          "id": "official-c3b44527ba127cb8",
+          "citation": 10,
+          "title": "Haapsalu lähedased riigimetsad on ka edaspidi hoitud » Uudis » Riigimetsa Majandamise Keskus (RMK)",
+          "organization": "Keskkonnaportaal",
+          "type": "Veebileht",
+          "url": "https://rmk.ee/uudised/uudis/haapsalu-lahedased-riigimetsad-on-ka-edaspidi-hoitud",
+          "locator": null,
+          "published": "",
+          "sourceTier": "official"
+        }
+      ],
+      "resultPage": {
+        "page": 1,
+        "pageSize": 12,
+        "total": 653,
+        "totalRelation": null,
+        "truncated": null,
+        "hasMore": true,
+        "windowId": null,
+        "windowExpired": false,
+        "items": [
+          {
+            "id": "law-metsaseadus-para29",
+            "citation": null,
+            "title": "Metsaseadus § 29. Lageraie",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/MS#para29",
+            "locator": "Metsaseadus § 29. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-f4c4e2114c7a293c",
+            "citation": null,
+            "title": "Raiete suurenemisest teadusajakirjas Nature ilmunud artikli valguses",
+            "organization": "Keskkonnaagentuur",
+            "type": "news",
+            "url": "https://keskkonnaagentuur.ee/uudised/raiete-suurenemisest-teadusajakirjas-nature-ilmunud-artikli-valguses",
+            "locator": null,
+            "published": "17.08.2020",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-37c6165c9009848b",
+            "citation": null,
+            "title": "Harku vallas tehtud raie ei ohusta värbkakku ega kassikakku",
+            "organization": "Keskkonnaamet",
+            "type": "news",
+            "url": "https://keskkonnaamet.ee/uudised/harku-vallas-tehtud-raie-ei-ohusta-varbkakku-ega-kassikakku",
+            "locator": null,
+            "published": "02.02.2018",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-e0c577520ab5b6b3",
+            "citation": null,
+            "title": "RMK vastulause EOÜ pressiteatele „RMK kahjustas Kurgjal lageraiega kanakulli pesametsa“ » Uudis » Riigimetsa Majandamise Keskus (RMK)",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://rmk.ee/uudised/uudis/rmk-vastulause-eou-pressiteatele-rmk-kahjustas-kurgjal-lageraiega-kanakulli-pesametsa",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-looduskaitseseadus-para45",
+            "citation": null,
+            "title": "Looduskaitseseadus § 45. Puude raie tiheasustusalal",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/LKS#para45",
+            "locator": "Looduskaitseseadus § 45. Kehtiv redaktsioon: RT I, 09.07.2026, 47, kehtiv alates 01.09.2026. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsa-majandamise-eeskiri-para17",
+            "citation": null,
+            "title": "Metsa majandamise eeskiri § 17. Juuremädaniku tõttu raiutud puistute uuendamisele esitatavad nõuded",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/12771900?leiaKehtiv#para17",
+            "locator": "Metsa majandamise eeskiri § 17. Kehtiv redaktsioon: RT I, 13.06.2025, 14, kehtiv alates 16.06.2025. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsa-majandamise-eeskiri-para9",
+            "citation": null,
+            "title": "Metsa majandamise eeskiri § 9. Raielankide raidmetest puhastamise viisid ja kord",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/12771900?leiaKehtiv#para9",
+            "locator": "Metsa majandamise eeskiri § 9. Kehtiv redaktsioon: RT I, 13.06.2025, 14, kehtiv alates 16.06.2025. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsaseadus-para28",
+            "citation": null,
+            "title": "Metsaseadus § 28. Raied",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/MS#para28",
+            "locator": "Metsaseadus § 28. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsaseadus-para37",
+            "citation": null,
+            "title": "Metsaseadus § 37. Raieõiguse ja metsamaterjali üleandmise, metsa raieks andmise ja metsamaterjali vedamise seaduslikkuse tõendamise kohustus ning metsamaterjali vedu",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/MS#para37",
+            "locator": "Metsaseadus § 37. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-1d355c0f9c81ccf1",
+            "citation": null,
+            "title": "Metsa majandamise eeskiri",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/et/akt/12771900?leiaKehtiv",
+            "locator": null,
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-d745a452ead89c9b",
+            "citation": null,
+            "title": "Üldplaneeringuga kitsenduste seadmine metsade majandamisele",
+            "organization": "Keskkonnaamet",
+            "type": "Ametlik veebileht",
+            "url": "https://keskkonnaamet.ee/kasiraamat-kohaliku-omavalitsuse-keskkonnaspetsialistile/uldplaneeringuga-kitsenduste-seadmine-metsade-majandamisele",
+            "locator": null,
+            "published": "15.01.2025",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-578d5940b4b39329",
+            "citation": null,
+            "title": "Matsalu rahvuspargi kaitse-eeskirja muutmine",
+            "organization": "Keskkonnaamet",
+            "type": "article",
+            "url": "https://keskkonnaamet.ee/matsalu-rahvuspargi-kaitse-eeskirja-muutmine",
+            "locator": null,
+            "published": "31.05.2021",
+            "sourceTier": "official"
+          }
+        ]
+      },
+      "presentation": {
+        "chart": null,
+        "table": null
+      },
+      "failure": null,
+      "baselineComparison": {
+        "before": {
+          "status": 200,
+          "elapsedMs": 17326,
+          "responseBytesUtf8": 14373,
+          "answerPartCount": 0,
+          "sourceCount": 10,
+          "firstResultId": "official-f4c4e2114c7a293c",
+          "usageTelemetry": {
+            "status": "missing",
+            "requests": null,
+            "input_tokens": null,
+            "cached_input_tokens": null,
+            "reasoning_tokens": null,
+            "output_tokens": null,
+            "total_tokens": null,
+            "cost_estimate": {
+              "amount": null,
+              "currency": null,
+              "rate_provenance": null,
+              "status": "missing"
+            }
+          }
+        },
+        "changes": {
+          "elapsedMs": 932,
+          "responseBytesUtf8": -9,
+          "answerPartCount": 0,
+          "firstResultIdChanged": true
+        }
+      }
+    },
+    {
+      "caseIndex": 9,
+      "intent": {
+        "intent": "definition",
+        "topic": "forest",
+        "normalizedQuery": "metsa definitsioon",
+        "terms": [
+          "mets"
+        ],
+        "authoritySubjectTerms": []
+      },
+      "request": {
+        "q": "metsa definitsioon",
+        "filters": {
+          "source": "all",
+          "category": "",
+          "year": null,
+          "sort": "relevance"
+        },
+        "page": 1,
+        "page_size": 12
+      },
+      "transport": "single_post_api_search",
+      "http": {
+        "status": 200,
+        "elapsedMs": 16899,
+        "responseBytesUtf8": 12179,
+        "transportRequests": 1
+      },
+      "cache": {
+        "answerCacheHit": null,
+        "responseHeaders": {
+          "cacheControl": "no-store",
+          "cdnCacheStatus": "DYNAMIC",
+          "ageSeconds": null,
+          "appBuild": "mwib9n3z"
+        }
+      },
+      "usageTelemetry": {
+        "status": "missing",
+        "requests": null,
+        "input_tokens": null,
+        "cached_input_tokens": null,
+        "reasoning_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null,
+        "cost_estimate": {
+          "amount": null,
+          "currency": null,
+          "rate_provenance": null,
+          "status": "missing"
+        }
+      },
+      "answer": {
+        "eyebrow": "AI koondvastus",
+        "title": "Metsa definitsioon",
+        "intro": "Metsaseaduse kohaselt on mets ökosüsteem, mis koosneb metsamaast, sellel kasvavast taimestikust ja seal elunevast loomastikust. Seadus ei määratle taimestiku vanust – mets on metsamaa nii seal kasvava saja-aastase puistuga kui ka just seemnest võrsunud puutaimedega. Metsamaa puhul on oluline see, et sinna kasvab alati uus mets.",
+        "introCitations": [
+          1
+        ],
+        "parts": [],
+        "note": ""
+      },
+      "citations": [
+        {
+          "location": "intro",
+          "refs": [
+            1
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "id": "portal-et-teemad-mets-2d9b3a",
+          "citation": 1,
+          "title": "Mets",
+          "organization": "Keskkonnaagentuur",
+          "type": "Teemalehed > Sisuleht",
+          "url": "https://keskkonnaportaal.ee/et/teemad/mets",
+          "locator": "Keskkonnaportaal: /et/teemad/mets. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
+          "published": "22.11.2021",
+          "sourceTier": "official"
+        }
+      ],
+      "resultPage": {
+        "page": 1,
+        "pageSize": 12,
+        "total": 139,
+        "totalRelation": null,
+        "truncated": null,
+        "hasMore": true,
+        "windowId": null,
+        "windowExpired": false,
+        "items": [
+          {
+            "id": "official-31a870576aaa7e28",
+            "citation": null,
+            "title": "Blogis: Arenduse tulemusel valmis Keskkonnaagentuuril metsamaski metoodika",
+            "organization": "Keskkonnaagentuur",
+            "type": "news",
+            "url": "https://keskkonnaagentuur.ee/uudised/blogis-arenduse-tulemusel-valmis-keskkonnaagentuuril-metsamaski-metoodika",
+            "locator": null,
+            "published": "04.03.2026",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-59a929a66cd9a8c2",
+            "citation": null,
+            "title": "Keskkonnaministeerium teeb ettepaneku kaaluda metsanduse praeguse arengukava pikendamist",
+            "organization": "Kliimaministeerium",
+            "type": "news",
+            "url": "https://kliimaministeerium.ee/uudised/keskkonnaministeerium-teeb-ettepaneku-kaaluda-metsanduse-praeguse-arengukava-pikendamist",
+            "locator": null,
+            "published": "17.09.2020",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-5ceb2895ed490222",
+            "citation": null,
+            "title": "Metsanduse uus arengukava valmimas",
+            "organization": "Kliimaministeerium",
+            "type": "news",
+            "url": "https://kliimaministeerium.ee/uudised/metsanduse-uus-arengukava-valmimas",
+            "locator": null,
+            "published": "24.11.2010",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-d3d4240bd13004c0",
+            "citation": null,
+            "title": "Keskkonnaminister metsa eest seisjatele: sügisel esitleme koos RMK-ga KAH-alade kontseptsiooni",
+            "organization": "Kliimaministeerium",
+            "type": "news",
+            "url": "https://kliimaministeerium.ee/uudised/keskkonnaminister-metsa-eest-seisjatele-sugisel-esitleme-koos-rmk-ga-kah-alade",
+            "locator": null,
+            "published": "10.06.2021",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-853b8329047c639a",
+            "citation": null,
+            "title": "Tingimused ehituskeeluvööndis",
+            "organization": "Keskkonnaamet",
+            "type": "Ametlik veebileht",
+            "url": "https://keskkonnaamet.ee/kasiraamat-kohaliku-omavalitsuse-keskkonnaspetsialistile/tingimused-ehituskeeluvoondis",
+            "locator": null,
+            "published": "27.01.2025",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-ea03e01acf2d53f6",
+            "citation": null,
+            "title": "Ühekordse plasti direktiiviga seotud korduma kippuvad küsimused",
+            "organization": "Kliimaministeerium",
+            "type": "article",
+            "url": "https://kliimaministeerium.ee/uhekordse-plasti-direktiiviga-seotud-korduma-kippuvad-kusimused",
+            "locator": null,
+            "published": "17.04.2023",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-3dcb18af146e11ec",
+            "citation": null,
+            "title": "Eesti asub kaaluma raskeveokite süsinikuheite norme",
+            "organization": "Kliimaministeerium",
+            "type": "news",
+            "url": "https://kliimaministeerium.ee/uudised/eesti-asub-kaaluma-raskeveokite-susinikuheite-norme",
+            "locator": null,
+            "published": "24.03.2023",
+            "sourceTier": "official"
+          },
+          {
+            "id": "portal-et-teemad-mets-2d9b3a",
+            "citation": null,
+            "title": "Mets",
+            "organization": "Keskkonnaagentuur",
+            "type": "Teemalehed > Sisuleht",
+            "url": "https://keskkonnaportaal.ee/et/teemad/mets",
+            "locator": "Keskkonnaportaal: /et/teemad/mets. Avaliku portaali teemaleht, andmestiku või keskkonnaülevaate leht.",
+            "published": "22.11.2021",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-107ab5a05324f0f9",
+            "citation": null,
+            "title": "Liigikaitse ja võõrliigid",
+            "organization": "Kliimaministeerium",
+            "type": "article",
+            "url": "https://kliimaministeerium.ee/elurikkus-keskkonnakaitse/looduskaitse/liigikaitse-ja-voorliigid",
+            "locator": null,
+            "published": "08.07.2021",
+            "sourceTier": "official"
+          },
+          {
+            "id": "bogs-overview",
+            "citation": null,
+            "title": "Eesti soode levik, kaitse ja taastamine",
+            "organization": "Keskkonnaagentuur / Keskkonnaportaal",
+            "type": "Ametlik keskkonnanäitaja ülevaade",
+            "url": "https://keskkonnaportaal.ee/et/sood",
+            "locator": "Jaotised „Levik” ning soode kaitse, kuivenduse mõju ja veerežiimi taastamine.",
+            "published": "29.10.2024",
+            "sourceTier": "official"
+          },
+          {
+            "id": "forest-stock-stable",
+            "citation": null,
+            "title": "SMI: metsade tagavara on stabiilne",
+            "organization": "Keskkonnaagentuur",
+            "type": "Metsastatistika",
+            "url": "https://keskkonnaagentuur.ee/uudised/smi-metsatagavara-stabiilne",
+            "locator": "SMI 2025 põhinäitajad: metsamaa pindala, tagavara, vanusjaotus, puuliigid, juurdekasv ja raiemahu eksperthinnang.",
+            "published": "18.08.2026",
+            "sourceTier": "official"
+          },
+          {
+            "id": "metsaregister",
+            "citation": null,
+            "title": "Metsaregistri andmestikud",
+            "organization": "Keskkonnaagentuur / Keskkonnaportaal",
+            "type": "Andmekataloog",
+            "url": "https://keskkonnaportaal.ee/et/avaandmed/metsaregistri-andmestikud",
+            "locator": "Kirjeldus; Metsanduslike välitööde andmestiku metsaeraldise asukohakirjeldus; Metsateatise andmestik; Levitused ja andmete allalaadimine.",
+            "published": "25.05.2026",
+            "sourceTier": "official"
+          }
+        ]
+      },
+      "presentation": {
+        "chart": null,
+        "table": null
+      },
+      "failure": null,
+      "baselineComparison": {
+        "before": {
+          "status": 200,
+          "elapsedMs": 17068,
+          "responseBytesUtf8": 11972,
+          "answerPartCount": 0,
+          "sourceCount": 1,
+          "firstResultId": "official-31a870576aaa7e28",
+          "usageTelemetry": {
+            "status": "missing",
+            "requests": null,
+            "input_tokens": null,
+            "cached_input_tokens": null,
+            "reasoning_tokens": null,
+            "output_tokens": null,
+            "total_tokens": null,
+            "cost_estimate": {
+              "amount": null,
+              "currency": null,
+              "rate_provenance": null,
+              "status": "missing"
+            }
+          }
+        },
+        "changes": {
+          "elapsedMs": -169,
+          "responseBytesUtf8": 207,
+          "answerPartCount": 0,
+          "firstResultIdChanged": false
+        }
+      }
+    },
+    {
+      "caseIndex": 10,
+      "intent": {
+        "intent": "general",
+        "topic": "clearcut",
+        "normalizedQuery": "lageraiete pindalade trend aastatel 2014 2024",
+        "terms": [
+          "lageraie",
+          "pindala",
+          "trend",
+          "aastatel",
+          "2014",
+          "2024"
+        ],
+        "authoritySubjectTerms": []
+      },
+      "request": {
+        "q": "Lageraiete pindalade trend aastatel 2014–2024",
+        "filters": {
+          "source": "all",
+          "category": "",
+          "year": null,
+          "sort": "relevance"
+        },
+        "page": 1,
+        "page_size": 12
+      },
+      "transport": "single_post_api_search",
+      "http": {
+        "status": 200,
+        "elapsedMs": 9739,
+        "responseBytesUtf8": 12509,
+        "transportRequests": 1
+      },
+      "cache": {
+        "answerCacheHit": null,
+        "responseHeaders": {
+          "cacheControl": "no-store",
+          "cdnCacheStatus": "DYNAMIC",
+          "ageSeconds": null,
+          "appBuild": "mwib9n3z"
+        }
+      },
+      "usageTelemetry": {
+        "status": "missing",
+        "requests": null,
+        "input_tokens": null,
+        "cached_input_tokens": null,
+        "reasoning_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null,
+        "cost_estimate": {
+          "amount": null,
+          "currency": null,
+          "rate_provenance": null,
+          "status": "missing"
+        }
+      },
+      "answer": {
+        "eyebrow": "Keskkonnaagentuur, SMI 2025",
+        "title": "Lageraie raiepindala 2014–2024: 29,7 → 34,0 tuhat ha",
+        "intro": "Keskkonnaagentuuri SMI 2025 tulemuste töölehe 33 järgi oli lageraie raiepindala 2014. aastal 29,7 tuhat ha ja 2024. aastal 34,0 tuhat ha. Perioodi 2014–2024 väikseim avaldatud väärtus oli 27,1 tuhat ha (2021) ja suurim 35,6 tuhat ha (2017); avaldatud aastaid on 11. Otspunktide vahe on 4,3 tuhat ha, kuid vahepealsed tõusud ja langused tähendavad, et seda ei saa kirjeldada ühtlase trendina.",
+        "introCitations": [
+          1
+        ],
+        "parts": [
+          {
+            "title": "Mida näitaja tähendab",
+            "text": "Näitaja pärineb riiklikust metsainventeerimisest (SMI) ja on proovitükkidel põhinev statistiline hinnang koos suhtelise veaga; see ei ole raiedokumentide (metsateatiste) alusel koostatud raiestatistika ega konkreetse kinnistu raiemaht.",
+            "citations": [
+              1
+            ]
+          }
+        ],
+        "note": "See on SMI valikuuringu aastahinnangute rida ühe tabeli ja näitaja kohta. See ei ole prognoos, kohaliku omavalitsuse või kinnistu näitaja ega otsus metsamajanduse kestlikkuse kohta."
+      },
+      "citations": [
+        {
+          "location": "intro",
+          "refs": [
+            1
+          ]
+        },
+        {
+          "location": "part",
+          "partIndex": 0,
+          "title": "Mida näitaja tähendab",
+          "refs": [
+            1
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "id": "forest-series-smi2025-3-1-2014-2024",
+          "citation": 1,
+          "title": "SMI 2025: Lageraie: raiepindala 2014–2024",
+          "organization": "Keskkonnaagentuur / Keskkonnaportaal",
+          "type": "Metsastatistika andmetabel",
+          "url": "https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI%20tulemused%202025/SMI%202025%20tulemused.xlsx",
+          "locator": "SMI 2025 tulemuste töövihik, tööleht 33: Lageraie: raiepindala, 2014–2024.",
+          "published": "",
+          "sourceTier": "official"
+        }
+      ],
+      "resultPage": {
+        "page": 1,
+        "pageSize": 12,
+        "total": 5766,
+        "totalRelation": null,
+        "truncated": null,
+        "hasMore": true,
+        "windowId": null,
+        "windowExpired": false,
+        "items": [
+          {
+            "id": "clearcut-over-time",
+            "citation": null,
+            "title": "SMI 2025: lageraie pindala 2014–2024",
+            "organization": "Keskkonnaagentuur / Keskkonnaportaal",
+            "type": "Metsastatistika andmetabel",
+            "url": "https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI%20tulemused%202025/SMI%202025%20tulemused.xlsx",
+            "locator": "Tööleht 33 „Raiete pindala raieliigiti aastail 1999–2024”, rida „Lageraie”, veerud 2014–2024.",
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "forest-yearbook-2023-fellings",
+            "citation": null,
+            "title": "Aastaraamat Mets 2023",
+            "organization": "Keskkonnaagentuur / Keskkonnaportaal",
+            "type": "Statistika aastaraamat",
+            "url": "https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/Mets%202023.pdf",
+            "locator": "Metsavarude allikad ja mõisted, lk 17–18; tabel 3.2.2.1, lk 131: lageraie pindala 2013–2022; raiemahu tabel, lk 133: SMI 2002 ja 2022; metoodikamärkused lk 128.",
+            "published": "2025",
+            "sourceTier": "official"
+          },
+          {
+            "id": "forest-area",
+            "citation": null,
+            "title": "SMI 2024: Eesti metsamaa pindala",
+            "organization": "Keskkonnaagentuur / Keskkonnaportaal",
+            "type": "Statistika",
+            "url": "https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI2024/SMI_2024.pdf",
+            "locator": "SMI 2024, lk 3, 7, 8, 12, 22 ja 57–59: pindala, tagavara, juurdekasv, puuliigid ning raiete hinnangud koos suhtelise veaga.",
+            "published": "2025",
+            "sourceTier": "official"
+          },
+          {
+            "id": "forest-smi-2024-summary",
+            "citation": null,
+            "title": "SMI: segametsade osakaal kasvab",
+            "organization": "Keskkonnaagentuur",
+            "type": "Metsastatistika",
+            "url": "https://keskkonnaagentuur.ee/uudised/smi-segametsade-osakaal-kasvab",
+            "locator": "SMI 2023 põhitulemused: raiemaht, lageraie pindala, liigiline koosseis ja vanad metsad.",
+            "published": "10.06.2024",
+            "sourceTier": "official"
+          },
+          {
+            "id": "forest-series-smi2025-3-1-2014-2024",
+            "citation": null,
+            "title": "SMI 2025: Lageraie: raiepindala 2014–2024",
+            "organization": "Keskkonnaagentuur / Keskkonnaportaal",
+            "type": "Metsastatistika andmetabel",
+            "url": "https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI%20tulemused%202025/SMI%202025%20tulemused.xlsx",
+            "locator": "SMI 2025 tulemuste töövihik, tööleht 33: Lageraie: raiepindala, 2014–2024.",
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "forest-stock-stable",
+            "citation": null,
+            "title": "SMI: metsade tagavara on stabiilne",
+            "organization": "Keskkonnaagentuur",
+            "type": "Metsastatistika",
+            "url": "https://keskkonnaagentuur.ee/uudised/smi-metsatagavara-stabiilne",
+            "locator": "SMI 2025 põhinäitajad: metsamaa pindala, tagavara, vanusjaotus, puuliigid, juurdekasv ja raiemahu eksperthinnang.",
+            "published": "18.08.2026",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-df9a3632517f17b1",
+            "citation": null,
+            "title": "SMI 2024: Eesti metsamaa pindala",
+            "organization": "Keskkonnaagentuur / Keskkonnaportaal",
+            "type": "Statistika",
+            "url": "https://keskkonnaportaal.ee/sites/default/files/Teemad/Mets/SMI2024/SMI_2024.pdf",
+            "locator": null,
+            "published": "2025",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsaseadus-para28",
+            "citation": null,
+            "title": "Metsaseadus § 28. Raied",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/MS#para28",
+            "locator": "Metsaseadus § 28. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-aa07636ec4d7449e",
+            "citation": null,
+            "title": "Suur aastakokkuvõte: milline oli 2024 RMK looduskaitsetöödes » Blogi » Riigimetsa Majandamise Keskus (RMK)",
+            "organization": "RMK",
+            "type": "Uudised",
+            "url": "https://rmk.ee/uudised/blogi/suur-aastakokkuvote-milline-oli-2024-rmk-looduskaitsetoodes",
+            "locator": null,
+            "published": "29.01.2025",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsaseadus-para25",
+            "citation": null,
+            "title": "Metsaseadus § 25. Metsa uuendamise kohustus",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/MS#para25",
+            "locator": "Metsaseadus § 25. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsaseadus-para45",
+            "citation": null,
+            "title": "Metsaseadus § 45. Riigimetsa kasutusõigus",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/MS#para45",
+            "locator": "Metsaseadus § 45. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-metsa-majandamise-eeskiri-para9",
+            "citation": null,
+            "title": "Metsa majandamise eeskiri § 9. Raielankide raidmetest puhastamise viisid ja kord",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/12771900?leiaKehtiv#para9",
+            "locator": "Metsa majandamise eeskiri § 9. Kehtiv redaktsioon: RT I, 13.06.2025, 14, kehtiv alates 16.06.2025. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          }
+        ]
+      },
+      "presentation": {
+        "chart": {
+          "kind": "line",
+          "title": "Lageraie: raiepindala 2014–2024",
+          "unit": "tuhat ha",
+          "xLabel": "Aasta",
+          "series": [
+            {
+              "id": "smi-3-1",
+              "label": "Lageraie: raiepindala",
+              "points": [
+                {
+                  "x": 2014,
+                  "y": 29.7
+                },
+                {
+                  "x": 2015,
+                  "y": 31.6
+                },
+                {
+                  "x": 2016,
+                  "y": 32.4
+                },
+                {
+                  "x": 2017,
+                  "y": 35.6
+                },
+                {
+                  "x": 2018,
+                  "y": 34.6
+                },
+                {
+                  "x": 2019,
+                  "y": 29.7
+                },
+                {
+                  "x": 2020,
+                  "y": 29.7
+                },
+                {
+                  "x": 2021,
+                  "y": 27.1
+                },
+                {
+                  "x": 2022,
+                  "y": 32.6
+                },
+                {
+                  "x": 2023,
+                  "y": 32
+                },
+                {
+                  "x": 2024,
+                  "y": 34
+                }
+              ]
+            }
+          ],
+          "citation": 1,
+          "caption": "Keskkonnaagentuur, SMI 2025 tulemuste tööleht 33: lageraie: raiepindala. SMI valikuuringu aastahinnangud."
+        },
+        "table": null
+      },
+      "failure": null,
+      "baselineComparison": {
+        "before": {
+          "status": 200,
+          "elapsedMs": 10887,
+          "responseBytesUtf8": 11194,
+          "answerPartCount": 1,
+          "sourceCount": 1,
+          "firstResultId": "clearcut-over-time",
+          "usageTelemetry": {
+            "status": "missing",
+            "requests": null,
+            "input_tokens": null,
+            "cached_input_tokens": null,
+            "reasoning_tokens": null,
+            "output_tokens": null,
+            "total_tokens": null,
+            "cost_estimate": {
+              "amount": null,
+              "currency": null,
+              "rate_provenance": null,
+              "status": "missing"
+            }
+          }
+        },
+        "changes": {
+          "elapsedMs": -1148,
+          "responseBytesUtf8": 1315,
+          "answerPartCount": 0,
+          "firstResultIdChanged": false
+        }
+      }
+    }
+  ],
+  "pagination": {
+    "comparisonCase": "mis on lageraie",
+    "firstPage": {
+      "caseIndex": 1,
+      "transport": "single_post_api_search",
+      "http": {
+        "status": 200,
+        "elapsedMs": 4316,
+        "responseBytesUtf8": 14796
+      },
+      "resultPage": {
+        "page": 1,
+        "pageSize": 12,
+        "total": 215,
+        "totalRelation": null,
+        "truncated": null,
+        "hasMore": true,
+        "windowId": null,
+        "windowExpired": false,
+        "items": [
+          {
+            "id": "law-metsaseadus-para29",
+            "citation": null,
+            "title": "Metsaseadus § 29. Lageraie",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/MS#para29",
+            "locator": "Metsaseadus § 29. Kehtiv redaktsioon: RT I, 12.05.2026, 20, kehtiv 01.07.2026–31.12.2032. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-365eefcbafedc0be",
+            "citation": null,
+            "title": "Keskkonnaagentuur astus suure sammu edasi, et edaspidi teha raieinfo veelgi operatiivsemalt kättesaadavaks",
+            "organization": "Keskkonnaagentuur",
+            "type": "news",
+            "url": "https://keskkonnaagentuur.ee/uudised/keskkonnaagentuur-astus-suure-sammu-edasi-et-edaspidi-teha-raieinfo-veelgi-operatiivsemalt",
+            "locator": null,
+            "published": "25.04.2024",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-eec28ae6aaeb9cbc",
+            "citation": null,
+            "title": "RMK peatab lageraied Nursipalu aladel » Uudis » Riigimetsa Majandamise Keskus (RMK)",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://rmk.ee/uudised/uudis/rmk-peatab-lageraied-nursipalu-aladel",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-0e9e9874a90e8167",
+            "citation": null,
+            "title": "RMK lükkas linnurohketes metsades lageraiete tegemise edasi » Uudis » Riigimetsa Majandamise Keskus (RMK)",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://rmk.ee/uudised/uudis/rmk-lukkas-linnurohketes-metsades-lageraiete-tegemise-edasi",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-e0c577520ab5b6b3",
+            "citation": null,
+            "title": "RMK vastulause EOÜ pressiteatele „RMK kahjustas Kurgjal lageraiega kanakulli pesametsa“ » Uudis » Riigimetsa Majandamise Keskus (RMK)",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://rmk.ee/uudised/uudis/rmk-vastulause-eou-pressiteatele-rmk-kahjustas-kurgjal-lageraiega-kanakulli-pesametsa",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "corpus-10024108",
+            "citation": null,
+            "title": "Lageraie mõju pesitsevate metsalindude tervislikule seisundile | Keskkonnainvesteeringute Keskus",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://kik.ee/et/projektid/lageraie-moju-pesitsevate-metsalindude-tervislikule-seisundile",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-961239b32d7cb32d",
+            "citation": null,
+            "title": "Ei ole halba heata: metsatulekahjude ja lageraiete alade seened » Blogi » Riigimetsa Majandamise Keskus (RMK)",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://rmk.ee/uudised/blogi/ei-ole-halba-heata-metsatulekahjude-ja-lageraiete-alade-seened",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-afd36e9e84fca7fb",
+            "citation": null,
+            "title": "RMK jõudis Otepääl Apteekrimäe esimeste raiete osas kohalikega kokkuleppele » Blogi » Riigimetsa Majandamise Keskus (RMK)",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://rmk.ee/uudised/blogi/rmk-joudis-otepaal-apteekrimae-esimeste-raiete-osas-kohalikega-kokkuleppele",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-bfb136f7fa49c1c8",
+            "citation": null,
+            "title": "RMK teadusvideo: kuidas raiuda metsa? » Uudis » Riigimetsa Majandamise Keskus (RMK)",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://rmk.ee/uudised/uudis/rmk-teadusvideo-kuidas-raiuda-metsa",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-f4c4e2114c7a293c",
+            "citation": null,
+            "title": "Raiete suurenemisest teadusajakirjas Nature ilmunud artikli valguses",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://keskkonnaagentuur.ee/uudised/raiete-suurenemisest-teadusajakirjas-nature-ilmunud-artikli-valguses",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-7ace2bee05a17a6d",
+            "citation": null,
+            "title": "Keskkonnaministeerium tahab kehtestada kaitsealadel linnurahu ja vähendada lageraielankide suurust",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://kliimaministeerium.ee/uudised/keskkonnaministeerium-tahab-kehtestada-kaitsealadel-linnurahu-ja-vahendada-lageraielankide",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-434e2c99c84e1559",
+            "citation": null,
+            "title": "Keskkonnaamet otsustas mitte lubada Harku järve äärsetel kinnistutel lageraiet",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://keskkonnaamet.ee/uudised/keskkonnaamet-otsustas-mitte-lubada-harku-jarve-aarsetel-kinnistutel-lageraiet",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          }
+        ]
+      }
+    },
+    "secondPage": {
+      "request": {
+        "q": "mis on lageraie",
+        "filters": {
+          "source": "all",
+          "category": "",
+          "year": null,
+          "sort": "relevance"
+        },
+        "page": 2,
+        "page_size": 12
+      },
+      "transport": "post_api_search_results",
+      "http": {
+        "status": 200,
+        "elapsedMs": 3256,
+        "responseBytesUtf8": 10678,
+        "transportRequests": 1
+      },
+      "responseHeaders": {
+        "cacheControl": "no-store",
+        "cdnCacheStatus": "DYNAMIC",
+        "ageSeconds": null,
+        "appBuild": "mwib9n3z"
+      },
+      "resultPage": {
+        "page": 2,
+        "pageSize": 12,
+        "total": 215,
+        "totalRelation": null,
+        "truncated": null,
+        "windowId": null,
+        "windowExpired": false,
+        "hasMore": true,
+        "items": [
+          {
+            "id": "official-aecb30007cc45ff6",
+            "citation": null,
+            "title": "Keskkonnaamet peatab Harku järve äärsetel kinnistutel lageraiet lubanud metsateatiste kehtivuse Harku vallavalitsusega asjaolude täpsustamiseks",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://keskkonnaamet.ee/uudised/keskkonnaamet-peatab-harku-jarve-aarsetel-kinnistutel-lageraiet-lubanud-metsateatiste",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-71d4e6fbd9169ba4",
+            "citation": null,
+            "title": "Metsateadlane Veiko Uri: Raiesmik on üks ajutisemaid nähtusi metsa eluringis üldse. » Blogi » Riigimetsa Majandamise Keskus (RMK)",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://rmk.ee/uudised/blogi/metsateadlane-veiko-uri-raiesmik-on-uks-ajutisemaid-nahtusi-metsa-eluringis-uldse",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-0bb6bf2255b350eb",
+            "citation": null,
+            "title": "Valitsus kinnitas 2008.a riigimetsast raiuda lubatud puidu kogused » Uudis » Riigimetsa Majandamise Keskus (RMK)",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://rmk.ee/uudised/uudis/14022008-valitsus-kinnitas-2008a-riigimetsast-raiuda-lubatud-puidu-kogused",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-82b518cf887579e4",
+            "citation": null,
+            "title": "Ettepanekud Metsaseaduse (MS) ja Metsa majandamise eeskirja (MME) metsaraieid käsitlevate peatükkide muutmiseks",
+            "organization": "Kliimaministeerium",
+            "type": "Veebileht",
+            "url": "https://keskkonnaportaal.ee/et/ettepanekud-metsaseaduse-ms-ja-metsa-majandamise-eeskirja-mme-metsaraieid-kasitlevate-peatukkide",
+            "locator": null,
+            "published": "31.12.2016",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-c698e7fcbb7a3141",
+            "citation": null,
+            "title": "Eesti kagunurgas said kodumetsade raieplaanid kirja » Blogi » Riigimetsa Majandamise Keskus (RMK)",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://rmk.ee/uudised/blogi/eesti-kagunurgas-said-kodumetsade-raieplaanid-kirja",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-37c6165c9009848b",
+            "citation": null,
+            "title": "Harku vallas tehtud raie ei ohusta värbkakku ega kassikakku",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://keskkonnaamet.ee/uudised/harku-vallas-tehtud-raie-ei-ohusta-varbkakku-ega-kassikakku",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-fef6f50fd047f1ca",
+            "citation": null,
+            "title": "Kaitstavaid metsi on rohkem ja raiemaht veidi väiksem",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://keskkonnaagentuur.ee/uudised/kaitstavaid-metsi-rohkem-ja-raiemaht-veidi-vaiksem",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-d8af425f1ed97bc2",
+            "citation": null,
+            "title": "Raiest Taara tammiku lähistel » Uudis » Riigimetsa Majandamise Keskus (RMK)",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://rmk.ee/uudised/uudis/raiest-taara-tammiku-lahistel",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-4d1313465ae9ae1a",
+            "citation": null,
+            "title": "RMK teadusvideo: kuidas raied mõjutavad metsa süsinikuringet? » Uudis » Riigimetsa Majandamise Keskus (RMK)",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://rmk.ee/uudised/uudis/rmk-teadusvideo-kuidas-raied-mojutavad-metsa-susinikuringet",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "official-55b3a7d59f1422ce",
+            "citation": null,
+            "title": "Metsateatisega kavandatud lageraiete teostamise analüüs 2009-2013 ortofotode põhjal",
+            "organization": "Keskkonnaportaal",
+            "type": "Veebileht",
+            "url": "https://keskkonnaagentuur.ee/uudised/metsateatisega-kavandatud-lageraiete-teostamise-analuus-2009-2013-ortofotode-pohjal",
+            "locator": null,
+            "published": "",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-looduskaitseseadus-para45",
+            "citation": null,
+            "title": "Looduskaitseseadus § 45. Puude raie tiheasustusalal",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/LKS#para45",
+            "locator": "Looduskaitseseadus § 45. Kehtiv redaktsioon: RT I, 09.07.2026, 47, kehtiv alates 01.09.2026. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          },
+          {
+            "id": "law-looduskaitseseadus-para73",
+            "citation": null,
+            "title": "Looduskaitseseadus § 73. Tiheasustusala puude ebaseaduslik raie",
+            "organization": "Riigi Teataja",
+            "type": "Kehtiv õigusakt",
+            "url": "https://www.riigiteataja.ee/akt/LKS#para73",
+            "locator": "Looduskaitseseadus § 73. Kehtiv redaktsioon: RT I, 09.07.2026, 47, kehtiv alates 01.09.2026. Kontrollitud Riigi Teatajast 15.11.2026.",
+            "published": "jooksev",
+            "sourceTier": "official"
+          }
+        ]
+      },
+      "failure": null
+    }
+  },
+  "usageSummary": {
+    "statusCounts": {
+      "actual": 0,
+      "unknown": 0,
+      "deterministic_zero": 0,
+      "cache_hit": 0,
+      "missing": 10,
+      "unrecognized": 0
+    },
+    "actualMeasuredSearches": 0,
+    "actualTokenTotals": {
+      "input_tokens": {
+        "total": null,
+        "knownTotal": 0,
+        "measuredSearches": 0,
+        "complete": false,
+        "meanPerSearch": null
+      },
+      "cached_input_tokens": {
+        "total": null,
+        "knownTotal": 0,
+        "measuredSearches": 0,
+        "complete": false,
+        "meanPerSearch": null
+      },
+      "reasoning_tokens": {
+        "total": null,
+        "knownTotal": 0,
+        "measuredSearches": 0,
+        "complete": false,
+        "meanPerSearch": null
+      },
+      "output_tokens": {
+        "total": null,
+        "knownTotal": 0,
+        "measuredSearches": 0,
+        "complete": false,
+        "meanPerSearch": null
+      },
+      "total_tokens": {
+        "total": null,
+        "knownTotal": 0,
+        "measuredSearches": 0,
+        "complete": false,
+        "meanPerSearch": null
+      }
+    },
+    "actualModelRequestTotals": {
+      "total": null,
+      "knownTotal": 0,
+      "measuredSearches": 0,
+      "complete": false,
+      "meanPerSearch": null
+    },
+    "knownModelRequests": {
+      "total": null,
+      "responsesWithKnownCount": 0
+    },
+    "knownZeroNewWork": {
+      "deterministicSearches": 0,
+      "answerCacheHits": 0
+    },
+    "configuredEstimate": {
+      "amountUsd": null,
+      "measuredSearches": 0,
+      "rateProvenance": [],
+      "actualBillUsd": null,
+      "actualBillStatus": "unknown"
+    },
+    "scenarios": [
+      {
+        "searchCount": 1,
+        "measuredSearches": 0,
+        "basis": null,
+        "modelRequestsPerSearch": null,
+        "totalModelRequests": null,
+        "tokens": {
+          "input_tokens": null,
+          "cached_input_tokens": null,
+          "reasoning_tokens": null,
+          "output_tokens": null,
+          "total_tokens": null
+        },
+        "configuredIllustrativeUsd": null,
+        "costStatus": "unavailable",
+        "currency": null,
+        "rateProvenance": [],
+        "actualBillUsd": null,
+        "actualBillStatus": "unknown"
+      },
+      {
+        "searchCount": 10,
+        "measuredSearches": 0,
+        "basis": null,
+        "modelRequestsPerSearch": null,
+        "totalModelRequests": null,
+        "tokens": {
+          "input_tokens": null,
+          "cached_input_tokens": null,
+          "reasoning_tokens": null,
+          "output_tokens": null,
+          "total_tokens": null
+        },
+        "configuredIllustrativeUsd": null,
+        "costStatus": "unavailable",
+        "currency": null,
+        "rateProvenance": [],
+        "actualBillUsd": null,
+        "actualBillStatus": "unknown"
+      },
+      {
+        "searchCount": 100,
+        "measuredSearches": 0,
+        "basis": null,
+        "modelRequestsPerSearch": null,
+        "totalModelRequests": null,
+        "tokens": {
+          "input_tokens": null,
+          "cached_input_tokens": null,
+          "reasoning_tokens": null,
+          "output_tokens": null,
+          "total_tokens": null
+        },
+        "configuredIllustrativeUsd": null,
+        "costStatus": "unavailable",
+        "currency": null,
+        "rateProvenance": [],
+        "actualBillUsd": null,
+        "actualBillStatus": "unknown"
+      }
+    ]
+  },
+  "graphicComparison": {
+    "purpose": "Compare numeric answers and validated chart or table payloads with definition and procedure answers. No chart is generated by this runner.",
+    "cases": [
+      {
+        "caseIndex": 1,
+        "query": "mis on lageraie",
+        "intent": "definition",
+        "comparisonGroup": "definition",
+        "hasChart": false,
+        "hasTable": false,
+        "usageStatus": "missing",
+        "modelRequests": null,
+        "actualTokens": null,
+        "costEstimate": {
+          "amount": null,
+          "currency": null,
+          "rate_provenance": null,
+          "status": "missing"
+        },
+        "citationGroupCount": 1,
+        "sourceCount": 1,
+        "answerCaptured": true
+      },
+      {
+        "caseIndex": 4,
+        "query": "mis on mets",
+        "intent": "definition",
+        "comparisonGroup": "definition",
+        "hasChart": false,
+        "hasTable": false,
+        "usageStatus": "missing",
+        "modelRequests": null,
+        "actualTokens": null,
+        "costEstimate": {
+          "amount": null,
+          "currency": null,
+          "rate_provenance": null,
+          "status": "missing"
+        },
+        "citationGroupCount": 1,
+        "sourceCount": 1,
+        "answerCaptured": true
+      },
+      {
+        "caseIndex": 6,
+        "query": "kuidas esitada raieteatist",
+        "intent": "procedure",
+        "comparisonGroup": "procedure",
+        "hasChart": false,
+        "hasTable": false,
+        "usageStatus": "missing",
+        "modelRequests": null,
+        "actualTokens": null,
+        "costEstimate": {
+          "amount": null,
+          "currency": null,
+          "rate_provenance": null,
+          "status": "missing"
+        },
+        "citationGroupCount": 2,
+        "sourceCount": 2,
+        "answerCaptured": true
+      },
+      {
+        "caseIndex": 7,
+        "query": "metsateatise esitamine",
+        "intent": "procedure",
+        "comparisonGroup": "procedure",
+        "hasChart": false,
+        "hasTable": false,
+        "usageStatus": "missing",
+        "modelRequests": null,
+        "actualTokens": null,
+        "costEstimate": {
+          "amount": null,
+          "currency": null,
+          "rate_provenance": null,
+          "status": "missing"
+        },
+        "citationGroupCount": 2,
+        "sourceCount": 2,
+        "answerCaptured": true
+      },
+      {
+        "caseIndex": 9,
+        "query": "metsa definitsioon",
+        "intent": "definition",
+        "comparisonGroup": "definition",
+        "hasChart": false,
+        "hasTable": false,
+        "usageStatus": "missing",
+        "modelRequests": null,
+        "actualTokens": null,
+        "costEstimate": {
+          "amount": null,
+          "currency": null,
+          "rate_provenance": null,
+          "status": "missing"
+        },
+        "citationGroupCount": 1,
+        "sourceCount": 1,
+        "answerCaptured": true
+      },
+      {
+        "caseIndex": 10,
+        "query": "Lageraiete pindalade trend aastatel 2014–2024",
+        "intent": "general",
+        "comparisonGroup": "quantitative",
+        "hasChart": true,
+        "hasTable": false,
+        "usageStatus": "missing",
+        "modelRequests": null,
+        "actualTokens": null,
+        "costEstimate": {
+          "amount": null,
+          "currency": null,
+          "rate_provenance": null,
+          "status": "missing"
+        },
+        "citationGroupCount": 2,
+        "sourceCount": 1,
+        "answerCaptured": true
+      }
+    ],
+    "groupedUsage": {
+      "definition": {
+        "statusCounts": {
+          "actual": 0,
+          "unknown": 0,
+          "deterministic_zero": 0,
+          "cache_hit": 0,
+          "missing": 3,
+          "unrecognized": 0
+        },
+        "actualMeasuredSearches": 0,
+        "actualTokenTotals": {
+          "input_tokens": {
+            "total": null,
+            "knownTotal": 0,
+            "measuredSearches": 0,
+            "complete": false,
+            "meanPerSearch": null
+          },
+          "cached_input_tokens": {
+            "total": null,
+            "knownTotal": 0,
+            "measuredSearches": 0,
+            "complete": false,
+            "meanPerSearch": null
+          },
+          "reasoning_tokens": {
+            "total": null,
+            "knownTotal": 0,
+            "measuredSearches": 0,
+            "complete": false,
+            "meanPerSearch": null
+          },
+          "output_tokens": {
+            "total": null,
+            "knownTotal": 0,
+            "measuredSearches": 0,
+            "complete": false,
+            "meanPerSearch": null
+          },
+          "total_tokens": {
+            "total": null,
+            "knownTotal": 0,
+            "measuredSearches": 0,
+            "complete": false,
+            "meanPerSearch": null
+          }
+        },
+        "actualModelRequestTotals": {
+          "total": null,
+          "knownTotal": 0,
+          "measuredSearches": 0,
+          "complete": false,
+          "meanPerSearch": null
+        },
+        "knownModelRequests": {
+          "total": null,
+          "responsesWithKnownCount": 0
+        },
+        "knownZeroNewWork": {
+          "deterministicSearches": 0,
+          "answerCacheHits": 0
+        },
+        "configuredEstimate": {
+          "amountUsd": null,
+          "measuredSearches": 0,
+          "rateProvenance": [],
+          "actualBillUsd": null,
+          "actualBillStatus": "unknown"
+        },
+        "scenarios": [
+          {
+            "searchCount": 1,
+            "measuredSearches": 0,
+            "basis": null,
+            "modelRequestsPerSearch": null,
+            "totalModelRequests": null,
+            "tokens": {
+              "input_tokens": null,
+              "cached_input_tokens": null,
+              "reasoning_tokens": null,
+              "output_tokens": null,
+              "total_tokens": null
+            },
+            "configuredIllustrativeUsd": null,
+            "costStatus": "unavailable",
+            "currency": null,
+            "rateProvenance": [],
+            "actualBillUsd": null,
+            "actualBillStatus": "unknown"
+          },
+          {
+            "searchCount": 10,
+            "measuredSearches": 0,
+            "basis": null,
+            "modelRequestsPerSearch": null,
+            "totalModelRequests": null,
+            "tokens": {
+              "input_tokens": null,
+              "cached_input_tokens": null,
+              "reasoning_tokens": null,
+              "output_tokens": null,
+              "total_tokens": null
+            },
+            "configuredIllustrativeUsd": null,
+            "costStatus": "unavailable",
+            "currency": null,
+            "rateProvenance": [],
+            "actualBillUsd": null,
+            "actualBillStatus": "unknown"
+          },
+          {
+            "searchCount": 100,
+            "measuredSearches": 0,
+            "basis": null,
+            "modelRequestsPerSearch": null,
+            "totalModelRequests": null,
+            "tokens": {
+              "input_tokens": null,
+              "cached_input_tokens": null,
+              "reasoning_tokens": null,
+              "output_tokens": null,
+              "total_tokens": null
+            },
+            "configuredIllustrativeUsd": null,
+            "costStatus": "unavailable",
+            "currency": null,
+            "rateProvenance": [],
+            "actualBillUsd": null,
+            "actualBillStatus": "unknown"
+          }
+        ]
+      },
+      "procedure": {
+        "statusCounts": {
+          "actual": 0,
+          "unknown": 0,
+          "deterministic_zero": 0,
+          "cache_hit": 0,
+          "missing": 2,
+          "unrecognized": 0
+        },
+        "actualMeasuredSearches": 0,
+        "actualTokenTotals": {
+          "input_tokens": {
+            "total": null,
+            "knownTotal": 0,
+            "measuredSearches": 0,
+            "complete": false,
+            "meanPerSearch": null
+          },
+          "cached_input_tokens": {
+            "total": null,
+            "knownTotal": 0,
+            "measuredSearches": 0,
+            "complete": false,
+            "meanPerSearch": null
+          },
+          "reasoning_tokens": {
+            "total": null,
+            "knownTotal": 0,
+            "measuredSearches": 0,
+            "complete": false,
+            "meanPerSearch": null
+          },
+          "output_tokens": {
+            "total": null,
+            "knownTotal": 0,
+            "measuredSearches": 0,
+            "complete": false,
+            "meanPerSearch": null
+          },
+          "total_tokens": {
+            "total": null,
+            "knownTotal": 0,
+            "measuredSearches": 0,
+            "complete": false,
+            "meanPerSearch": null
+          }
+        },
+        "actualModelRequestTotals": {
+          "total": null,
+          "knownTotal": 0,
+          "measuredSearches": 0,
+          "complete": false,
+          "meanPerSearch": null
+        },
+        "knownModelRequests": {
+          "total": null,
+          "responsesWithKnownCount": 0
+        },
+        "knownZeroNewWork": {
+          "deterministicSearches": 0,
+          "answerCacheHits": 0
+        },
+        "configuredEstimate": {
+          "amountUsd": null,
+          "measuredSearches": 0,
+          "rateProvenance": [],
+          "actualBillUsd": null,
+          "actualBillStatus": "unknown"
+        },
+        "scenarios": [
+          {
+            "searchCount": 1,
+            "measuredSearches": 0,
+            "basis": null,
+            "modelRequestsPerSearch": null,
+            "totalModelRequests": null,
+            "tokens": {
+              "input_tokens": null,
+              "cached_input_tokens": null,
+              "reasoning_tokens": null,
+              "output_tokens": null,
+              "total_tokens": null
+            },
+            "configuredIllustrativeUsd": null,
+            "costStatus": "unavailable",
+            "currency": null,
+            "rateProvenance": [],
+            "actualBillUsd": null,
+            "actualBillStatus": "unknown"
+          },
+          {
+            "searchCount": 10,
+            "measuredSearches": 0,
+            "basis": null,
+            "modelRequestsPerSearch": null,
+            "totalModelRequests": null,
+            "tokens": {
+              "input_tokens": null,
+              "cached_input_tokens": null,
+              "reasoning_tokens": null,
+              "output_tokens": null,
+              "total_tokens": null
+            },
+            "configuredIllustrativeUsd": null,
+            "costStatus": "unavailable",
+            "currency": null,
+            "rateProvenance": [],
+            "actualBillUsd": null,
+            "actualBillStatus": "unknown"
+          },
+          {
+            "searchCount": 100,
+            "measuredSearches": 0,
+            "basis": null,
+            "modelRequestsPerSearch": null,
+            "totalModelRequests": null,
+            "tokens": {
+              "input_tokens": null,
+              "cached_input_tokens": null,
+              "reasoning_tokens": null,
+              "output_tokens": null,
+              "total_tokens": null
+            },
+            "configuredIllustrativeUsd": null,
+            "costStatus": "unavailable",
+            "currency": null,
+            "rateProvenance": [],
+            "actualBillUsd": null,
+            "actualBillStatus": "unknown"
+          }
+        ]
+      },
+      "quantitative": {
+        "statusCounts": {
+          "actual": 0,
+          "unknown": 0,
+          "deterministic_zero": 0,
+          "cache_hit": 0,
+          "missing": 1,
+          "unrecognized": 0
+        },
+        "actualMeasuredSearches": 0,
+        "actualTokenTotals": {
+          "input_tokens": {
+            "total": null,
+            "knownTotal": 0,
+            "measuredSearches": 0,
+            "complete": false,
+            "meanPerSearch": null
+          },
+          "cached_input_tokens": {
+            "total": null,
+            "knownTotal": 0,
+            "measuredSearches": 0,
+            "complete": false,
+            "meanPerSearch": null
+          },
+          "reasoning_tokens": {
+            "total": null,
+            "knownTotal": 0,
+            "measuredSearches": 0,
+            "complete": false,
+            "meanPerSearch": null
+          },
+          "output_tokens": {
+            "total": null,
+            "knownTotal": 0,
+            "measuredSearches": 0,
+            "complete": false,
+            "meanPerSearch": null
+          },
+          "total_tokens": {
+            "total": null,
+            "knownTotal": 0,
+            "measuredSearches": 0,
+            "complete": false,
+            "meanPerSearch": null
+          }
+        },
+        "actualModelRequestTotals": {
+          "total": null,
+          "knownTotal": 0,
+          "measuredSearches": 0,
+          "complete": false,
+          "meanPerSearch": null
+        },
+        "knownModelRequests": {
+          "total": null,
+          "responsesWithKnownCount": 0
+        },
+        "knownZeroNewWork": {
+          "deterministicSearches": 0,
+          "answerCacheHits": 0
+        },
+        "configuredEstimate": {
+          "amountUsd": null,
+          "measuredSearches": 0,
+          "rateProvenance": [],
+          "actualBillUsd": null,
+          "actualBillStatus": "unknown"
+        },
+        "scenarios": [
+          {
+            "searchCount": 1,
+            "measuredSearches": 0,
+            "basis": null,
+            "modelRequestsPerSearch": null,
+            "totalModelRequests": null,
+            "tokens": {
+              "input_tokens": null,
+              "cached_input_tokens": null,
+              "reasoning_tokens": null,
+              "output_tokens": null,
+              "total_tokens": null
+            },
+            "configuredIllustrativeUsd": null,
+            "costStatus": "unavailable",
+            "currency": null,
+            "rateProvenance": [],
+            "actualBillUsd": null,
+            "actualBillStatus": "unknown"
+          },
+          {
+            "searchCount": 10,
+            "measuredSearches": 0,
+            "basis": null,
+            "modelRequestsPerSearch": null,
+            "totalModelRequests": null,
+            "tokens": {
+              "input_tokens": null,
+              "cached_input_tokens": null,
+              "reasoning_tokens": null,
+              "output_tokens": null,
+              "total_tokens": null
+            },
+            "configuredIllustrativeUsd": null,
+            "costStatus": "unavailable",
+            "currency": null,
+            "rateProvenance": [],
+            "actualBillUsd": null,
+            "actualBillStatus": "unknown"
+          },
+          {
+            "searchCount": 100,
+            "measuredSearches": 0,
+            "basis": null,
+            "modelRequestsPerSearch": null,
+            "totalModelRequests": null,
+            "tokens": {
+              "input_tokens": null,
+              "cached_input_tokens": null,
+              "reasoning_tokens": null,
+              "output_tokens": null,
+              "total_tokens": null
+            },
+            "configuredIllustrativeUsd": null,
+            "costStatus": "unavailable",
+            "currency": null,
+            "rateProvenance": [],
+            "actualBillUsd": null,
+            "actualBillStatus": "unknown"
+          }
+        ]
+      }
+    }
+  },
+  "failures": []
+}

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { composeForestSeriesResponse, resolveForestSeriesIntent, smiForestSeriesDocument, validatedForestSeriesProjection } from "../server/forest-series.mjs";
-import { rankPublicSearchCandidates, rankSearchCandidates } from "../server/retrieval.mjs";
-import { condenseRedundantSentences, searchEnvironmentLive } from "../server/pipeline.mjs";
+import { rankPublicSearchCandidates, rankSearchCandidates } from "../server/retrieval_ranking.mjs";
+import { searchEnvironmentLive } from "../server/pipeline.mjs";
+import { condenseRedundantSentences } from "../server/search_public_response.mjs";
 import { loadStructuredIndicatorDocuments } from "../server/indicators.mjs";
 
 const WORDINGS = ["raiemaht", "kui palju on raiemaht", "Kui suur on raiemaht?", "Kui palju metsa Eestis raiutakse?"];

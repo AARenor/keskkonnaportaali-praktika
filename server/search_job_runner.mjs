@@ -13,7 +13,7 @@ import {
   ANSWER_SOURCE_EXPIRY,
   publicationCopyExpiry,
   withholdPublicationCopy,
-} from "./pipeline.mjs";
+} from "./search_public_response.mjs";
 
 // A public event that carried permitted copied text can be replayed after the
 // publisher's copy window closed. The one bound per event is the earliest

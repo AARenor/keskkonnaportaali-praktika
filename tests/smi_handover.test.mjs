@@ -22,7 +22,7 @@ import {
   ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS,
   forestryIntentDefinitions,
 } from "../server/forestry-public.mjs";
-import { selectAnswerEvidence } from "../server/retrieval.mjs";
+import { selectAnswerEvidence } from "../server/retrieval_ranking.mjs";
 import * as smiTables from "../server/smi-tables.mjs";
 
 const NOW = Date.parse("2026-11-04T12:00:00.000Z");

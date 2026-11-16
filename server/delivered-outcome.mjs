@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { splitTextPassages } from "./search.mjs";
+import { splitTextPassages } from "./search_evidence.mjs";
 import { isEvidencePack } from "./evidence-pack.mjs";
 
 const acceptedClaimRecords = new WeakSet();

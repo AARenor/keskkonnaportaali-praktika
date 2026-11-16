@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { classifyForestryGeographyScope } from "../server/municipalities.mjs";
 import { resolvePublicForestryIntent } from "../server/forestry-public.mjs";
-import { assessSearchQuery } from "../server/search.mjs";
+import { assessSearchQuery } from "../server/search_query_assessment.mjs";
 
 // Questions from the 2026-09 manual review of forest and wildlife answers.
 
@@ -61,7 +61,7 @@ test("plain forest-area questions keep the forest-area snapshot", () => {
 });
 
 test("the hourly page-body backfill limit defaults to 300 and is capped", async () => {
-  const { corpusBackfillHydrateLimit } = await import("../server/corpus.mjs");
+  const { corpusBackfillHydrateLimit } = await import("../server/corpus_hydration.mjs");
   assert.equal(corpusBackfillHydrateLimit(undefined), 300);
   assert.equal(corpusBackfillHydrateLimit(""), 300);
   assert.equal(corpusBackfillHydrateLimit("0"), 0);
@@ -78,7 +78,8 @@ test("the wildlife report ranks first for a moose question and carries the count
 });
 
 test("a 'how many X live' question is covered by the wildlife report", async () => {
-  const { searchEnvironment, assessEvidence } = await import("../server/search.mjs");
+  const { searchEnvironment } = await import("../server/search.mjs");
+  const { assessEvidence } = await import("../server/search_evidence.mjs");
   for (const query of ["Kui palju põtru elab Eestis?", "Kui palju ilveseid elab Eestis?"]) {
     const response = searchEnvironment(query);
     const evidence = assessEvidence(query, (response.results || response.sources || []).slice(0, 6));
@@ -88,7 +89,7 @@ test("a 'how many X live' question is covered by the wildlife report", async () 
 
 test("a species question leads with that species' count, not the report summary", async () => {
   const { searchEnvironment } = await import("../server/search.mjs");
-  const { directEvidenceExtract } = await import("../server/pipeline.mjs");
+  const { directEvidenceExtract } = await import("../server/search_answer_evidence.mjs");
   for (const [query, expected] of [
     ["Kui palju põtru elab Eestis?", /10 000–11 000/u],
     ["Kui palju ilveseid elab Eestis?", /650–800/u],
@@ -101,9 +102,9 @@ test("a species question leads with that species' count, not the report summary"
 });
 
 test("SMI 2025 answers tree species, conifer trend and 2025 felling from its own sentences", async () => {
-  const { officialServiceCatalogueDocuments } = await import("../server/search.mjs");
-  const { rankPublicSearchCandidates } = await import("../server/retrieval.mjs");
-  const { directEvidenceExtract } = await import("../server/pipeline.mjs");
+  const { officialServiceCatalogueDocuments } = await import("../server/search_catalogue.mjs");
+  const { rankPublicSearchCandidates } = await import("../server/retrieval_ranking.mjs");
+  const { directEvidenceExtract } = await import("../server/search_answer_evidence.mjs");
   const directory = officialServiceCatalogueDocuments();
   for (const [query, expectedDocumentId, expected] of [
     ["Millised on Eesti metsade enamuspuuliigid ja kui suur on nende osakaal?", "forest-smi-2025-tables", /kask 30%[\s\S]*mänd 29%[\s\S]*kuusk 19%/u],

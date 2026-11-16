@@ -23,11 +23,9 @@ import {
   robotsAllowsUrl,
   sourcePolicyBinding,
 } from "./source_policy.mjs";
-import {
-  assessSearchQuery,
-  canonicalizePublicSearchQuery,
-  minimizePublicProviderQuery,
-} from "./search.mjs";
+import { assessSearchQuery } from "./search_query_assessment.mjs";
+import { canonicalizePublicSearchQuery } from "./search_query_canonicalization.mjs";
+import { minimizePublicProviderQuery } from "./search_query_privacy.mjs";
 import { sourceEvidenceEligibility } from "./source-registry.mjs";
 import { sameSourceResource, sourceResourceKey } from "./source-identity.mjs";
 

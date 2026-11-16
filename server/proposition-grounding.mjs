@@ -1,4 +1,4 @@
-import { splitTextPassages } from "./search.mjs";
+import { splitTextPassages } from "./search_evidence.mjs";
 
 const RELATION_FAMILIES = Object.freeze([
   {
@@ -949,12 +949,35 @@ function genericSignatureStatus(signature, evidenceClauses, evidenceEntityLexico
   return null;
 }
 
+function exactIntactProcedurePassage(claim, passages) {
+  const expected = String(claim || "").normalize("NFKC").replace(/\s+/gu, " ").trim();
+  if (!expected) return false;
+  return passages.some((passage) => {
+    const body = String(passage || "").normalize("NFKC")
+      .replace(/^\s*\(\d+\)\s*/u, "")
+      .replace(/\s+/gu, " ")
+      .trim();
+    return body === expected;
+  });
+}
+
+function hasNonExactLoginInstruction(claim, passages) {
+  const loginInstruction = /\blogi\p{L}*\s+sisse\b/iu;
+  if (!loginInstruction.test(String(claim || ""))) return false;
+  return passages.some((passage) => loginInstruction.test(String(passage || "")));
+}
+
+
+// An exact procedure sentence is an intact witness, with numbering removed
+// only at the passage start. The body wording and word order stay exact.
 /**
  * Return null when a clause has no bounded entity/relation proposition. When
  * it does, every proposition must be witnessed by one intact cited passage;
  * words from unrelated sources can never be assembled into a new relation.
  */
 export function relationshipClaimHasPassageWitness(claim, evidencePassages = []) {
+  if (exactIntactProcedurePassage(claim, evidencePassages)) return true;
+  if (hasNonExactLoginInstruction(claim, evidencePassages)) return false;
   const clauses = evidencePassages.flatMap(atomicRelationshipClauses);
   const evidenceEntityLexicon = reliableEvidenceEntityLexicon(clauses);
   // A sentence-initial common noun is capitalized by grammar, not named

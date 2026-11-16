@@ -6,7 +6,6 @@ import { DEFAULT_SEARCH_FILTERS } from "../src/search_request.js";
 import {
   REVIEWED_FORESTRY_SEARCH_SUGGESTIONS,
   REVIEWED_SEARCH_SUGGESTIONS,
-  suggestionsForValue,
 } from "../src/search-suggestions.js";
 
 // Suggested questions must follow the question the reader is looking at, on the
@@ -117,10 +116,10 @@ function installBrowserGlobals() {
   };
 }
 
-// Every autocomplete request goes through one POST. The stub counts them and
-// answers with no remote items, so a test can tell a suggestion list built from
-// page context apart from one built by the network.
-function installFetchCounter() {
+// API suggestions are the only autocomplete and starter-question source. The
+// stub can return a query-specific server list to keep the component tests
+// deterministic without reimplementing server ranking rules.
+function installFetchCounter(suggestions = []) {
   const calls = [];
   globalThis.fetch = async (url, options = {}) => {
     if (options.signal?.aborted) {
@@ -128,13 +127,15 @@ function installFetchCounter() {
       error.name = "AbortError";
       throw error;
     }
-    calls.push({ url: String(url), body: options.body ? JSON.parse(options.body) : null });
+    const body = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url: String(url), body });
     return {
       ok: true,
       status: 200,
       headers: { get: () => null },
       async json() {
-        return { suggestions: [] };
+        const items = typeof suggestions === "function" ? suggestions(body?.q) : suggestions;
+        return { suggestions: items };
       },
     };
   };
@@ -519,64 +520,58 @@ async function searchPageFixture(query, related = [], items = ONE_SOURCE) {
   return { App, SearchResults: element.type, props: element.props, renderer, transport };
 }
 
-test("the chat panel keeps reviewed forestry defaults when the page carries no question", async () => {
-  const selector = await loadSelector();
+test("chat starter examples come from the suggestions API", async () => {
+  const expected = FORESTRY.slice(0, 3);
+  const calls = installFetchCounter(expected.map((value) => ({ value, count: 1 })));
   const { Chatbot } = await loadPages();
   const renderer = createRenderer(reactInternals);
-  const tree = openChat(renderer, Chatbot, chatProps(undefined));
+  const props = chatProps(undefined);
+  openChat(renderer, Chatbot, props);
+  browser.flushTimers();
+  await settle();
+  const tree = renderer.render(Chatbot, props);
   const shown = chatExampleQuestions(tree);
-  const expected = selector({ candidates: FORESTRY, limit: 3, allowDefault: true });
 
-  assert.deepEqual(shown, expected, "the empty page shows the reviewed default questions");
-  assert.equal(shown.length, 3, "the panel still offers three starting questions");
-  assert.ok(shown.every((question) => FORESTRY.includes(question)),
-    "a suggested question is always one of the reviewed forestry questions");
-
+  assert.deepEqual(shown, expected);
+  assert.deepEqual(calls.map((call) => call.body), [{ q: "mets" }]);
+  assert.equal(shown.length, 3);
   const group = chatExampleGroup(tree);
-  assert.equal(group.props.role, "group", "the example buttons keep their grouped announcement");
+  assert.equal(group.props.role, "group");
   assert.equal(group.props["aria-label"], "Näidisküsimused");
 });
 
-test("the chat panel follows the visible search question and stays inside forestry", async () => {
-  const selector = await loadSelector();
+test("chat starter examples use API choices for the visible question", async () => {
+  const expected = FORESTRY.filter((question) => /teatis/iu.test(question)).slice(0, 3);
+  const calls = installFetchCounter(expected.map((value) => ({ value, count: 2 })));
   const { Chatbot } = await loadPages();
   const renderer = createRenderer(reactInternals);
-  const shown = chatExampleQuestions(openChat(renderer, Chatbot, chatProps({ query: "metsateatis" })));
-  const expected = selector({
-    candidates: FORESTRY,
-    query: "metsateatis",
-    rootQuery: "metsateatis",
-    limit: 3,
-    allowDefault: false,
-  });
+  const props = chatProps({ query: "metsateatis" });
+  openChat(renderer, Chatbot, props);
+  browser.flushTimers();
+  await settle();
+  const shown = chatExampleQuestions(renderer.render(Chatbot, props));
 
   assert.deepEqual(shown, expected);
-  assert.ok(shown.length > 0, "a forestry question on screen produces forestry follow-ups");
-  assert.ok(shown.some((question) => /teatis/iu.test(question)),
-    "at least one offered question is about the question on screen");
-  assert.ok(shown.every((question) => FORESTRY.includes(question)),
-    "the chat never offers a question outside the reviewed forestry set");
+  assert.ok(shown.some((question) => /teatis/iu.test(question)));
+  assert.ok(shown.every((question) => FORESTRY.includes(question)));
+  assert.deepEqual(calls.map((call) => call.body), [{ q: "metsateatis" }]);
 });
 
-test("an unrelated page question leaves the chat panel without filler questions", async () => {
-  const selector = await loadSelector();
+test("an unrelated page question gets no starter suggestions from the API", async () => {
+  const calls = installFetchCounter([]);
   const { Chatbot } = await loadPages();
   const renderer = createRenderer(reactInternals);
   const pageQuery = "Kuhu viia vanad patareid?";
-  const tree = openChat(renderer, Chatbot, chatProps({ query: pageQuery }));
+  const props = chatProps({ query: pageQuery });
+  openChat(renderer, Chatbot, props);
+  browser.flushTimers();
+  await settle();
+  const tree = renderer.render(Chatbot, props);
   const shown = chatExampleQuestions(tree);
-  const expected = selector({
-    candidates: FORESTRY,
-    query: pageQuery,
-    rootQuery: pageQuery,
-    limit: 3,
-    allowDefault: false,
-  });
 
-  assert.deepEqual(shown, expected);
-  assert.equal(shown.length, 0, "no reviewed forestry question fits a waste question, so none is suggested");
-  assert.equal(chatExampleGroup(tree), null, "an empty example group is not rendered at all");
-  assert.ok(shown.every((question) => !RETIRED_EMPTY_STATE.includes(question)));
+  assert.deepEqual(shown, []);
+  assert.equal(chatExampleGroup(tree), null);
+  assert.deepEqual(calls.map((call) => call.body), [{ q: pageQuery }]);
 });
 
 test("a chat answer suggests follow-ups for its own question and never repeats an asked one", async () => {
@@ -749,10 +744,13 @@ test("the search page's Küsi veel section follows the latest follow-up and drop
   }
 });
 
-test("the results-page search field suggests what relates to the page instead of the generic list", async () => {
-  const selector = await loadSelector();
-  const fetchCalls = installFetchCounter();
+test("the results search field displays query-matched API suggestions", async () => {
   const query = "metsateatis";
+  const suggestions = {
+    [query]: ["Kuidas taotleda metsateatist?", "Mis on metsateatis?"],
+    mets: ["Kui suur osa Eestist on kaetud metsaga?"],
+  };
+  const fetchCalls = installFetchCounter((value) => (suggestions[value] || []).map((item) => ({ value: item, count: 3 })));
   try {
     const fixture = await searchPageFixture(query, ["Kuidas taotleda metsateatist?"]);
     const { SearchResults, props, renderer } = fixture;
@@ -760,27 +758,14 @@ test("the results-page search field suggests what relates to the page instead of
     const pageTree = renderer.render(SearchResults, props);
     const form = resultsSearchForm(renderer, pageTree);
     comboboxInput(form.tree).props.onFocus();
+    assert.equal(fetchCalls.length, 0, "the API request waits for the debounce");
+    browser.flushTimers();
+    await settle();
     const focused = resultsSearchForm(renderer, renderer.render(SearchResults, props));
-
-    const contextualList = selector({
-      candidates: REVIEWED,
-      query,
-      rootQuery: query,
-      limit: 12,
-      allowDefault: false,
-    });
     const shown = searchOptionLabels(focused.tree);
-    assert.deepEqual(shown, contextualList, "the field ranks the reviewed questions for this page");
-    assert.ok(shown.length > 0);
-    assert.ok(shown.every((question) => REVIEWED.includes(question)));
-    assert.ok(shown.some((question) => /teatis/iu.test(question)));
-    assert.ok(shown.every((question) => !/põhjavee|joogivee|suplusvee/iu.test(question)),
-      "an unrelated water question is not suggested on a metsateatis page");
-    assert.notDeepEqual(shown, suggestionsForValue("", {}, REVIEWED, 12).map((item) => item.value),
-      "the results page no longer falls back to the same unranked list everywhere");
-    assert.equal(fetchCalls.length, 0, "showing suggestions from page context sends nothing");
 
-    // The listbox and its keyboard contract are unchanged.
+    assert.deepEqual(shown, suggestions[query]);
+    assert.ok(shown.some((question) => /teatis/iu.test(question)));
     const input = comboboxInput(focused.tree);
     assert.equal(input.props["aria-autocomplete"], "list");
     assert.equal(input.props["aria-expanded"], true);
@@ -794,99 +779,81 @@ test("the results-page search field suggests what relates to the page instead of
       (element) => element.props?.role === "option" && element.props["aria-selected"] === true);
     assert.equal(selected.props.id, firstOption.props.id);
 
-    // The only request is the one the field already made for its own text.
-    browser.flushTimers();
-    await settle();
-    assert.deepEqual(fetchCalls.map((call) => call.body), [{ q: query }]);
-
-    // Clearing the field keeps the page context; typing falls back to the
-    // reviewed filter the field has always used.
     const clearedTree = resultsSearchForm(renderer, renderer.render(SearchResults, props)).tree;
     find(clearedTree, (element) => element.props?.["aria-label"] === "Tühjenda otsing").props.onClick();
     const cleared = resultsSearchForm(renderer, renderer.render(SearchResults, props));
-    assert.deepEqual(searchOptionLabels(cleared.tree), selector({
-      candidates: REVIEWED,
-      query: "",
-      rootQuery: query,
-      limit: 12,
-      allowDefault: false,
-    }));
+    assert.deepEqual(searchOptionLabels(cleared.tree), suggestions[query]);
 
     comboboxInput(cleared.tree).props.onChange({ target: { value: "mets" } });
-    const typed = resultsSearchForm(renderer, renderer.render(SearchResults, props));
-    assert.deepEqual(searchOptionLabels(typed.tree),
-      suggestionsForValue("mets", {}, REVIEWED, 12).map((item) => item.value),
-      "typing still filters the reviewed questions the same way");
-
+    const typedBeforeResponse = resultsSearchForm(renderer, renderer.render(SearchResults, props));
+    assert.deepEqual(searchOptionLabels(typedBeforeResponse.tree), []);
     browser.flushTimers();
     await settle();
-    assert.deepEqual(fetchCalls.map((call) => call.body), [{ q: query }, { q: "mets" }],
-      "a typed autocomplete keeps its single debounced request");
+    const typed = resultsSearchForm(renderer, renderer.render(SearchResults, props));
+    assert.deepEqual(searchOptionLabels(typed.tree), suggestions.mets);
+    assert.deepEqual(fetchCalls.map((call) => call.body), [{ q: query }, { q: "mets" }]);
   } finally {
     delete globalThis.__praktikaSearchJobs;
   }
 });
 
-test("an empty broad-results page suggests reviewed searches for its own question, never the retired examples", async () => {
-  const selector = await loadSelector();
+test("empty broad results use only suggestions returned for their query", async () => {
+  const cases = new Map([
+    ["Kust leida jäätmekäitluskohti Tartus?", REVIEWED.filter((item) => /jäät/iu.test(item)).slice(0, 3)],
+    ["Kas raiemaht ületab juurdekasvu?", FORESTRY.filter((item) => /juurdekasv|raiutakse/iu.test(item)).slice(0, 3)],
+  ]);
+  installFetchCounter((query) => (cases.get(query) || []).map((value) => ({ value, count: 1 })));
   try {
-    for (const query of ["Kust leida jäätmekäitluskohti Tartus?", "Kas raiemaht ületab juurdekasvu?"]) {
+    for (const [query, expected] of cases) {
       const fixture = await searchPageFixture(query, [], []);
       const { SearchResults, props, renderer } = fixture;
+      renderer.render(SearchResults, props);
+      browser.flushTimers();
+      await settle();
       const empty = broadResultsTree(renderer, renderer.render(SearchResults, props));
-
-      // Both reviewed stores are handed in, so a forestry dead end is served as
-      // well as an environmental one.
-      const expected = selector({
-        candidates: REVIEWED,
-        query,
-        rootQuery: query,
-        limit: 3,
-        allowDefault: false,
-      });
       const paragraph = elementsOf(empty).find((element) => element.props?.className === "broad-results__suggest");
       const shown = paragraph ? buttonsIn(paragraph) : [];
 
       assert.deepEqual(shown, expected, query);
-      assert.ok(shown.length > 0, `a question with reviewed matches still offers them: ${query}`);
-      assert.ok(shown.every((question) => REVIEWED.includes(question)),
-        "every offered search is a reviewed question, not invented copy");
-      assert.ok(shown.every((question) => !RETIRED_EMPTY_STATE.includes(question)),
-        "the retired generic examples are gone");
+      assert.ok(shown.length > 0, `the API returns useful choices for ${query}`);
+      assert.ok(shown.every((question) => REVIEWED.includes(question)));
+      assert.ok(shown.every((question) => !RETIRED_EMPTY_STATE.includes(question)));
     }
-    const forestryFixture = await searchPageFixture("Kas raiemaht ületab juurdekasvu?", [], []);
-    const forestryEmpty = broadResultsTree(forestryFixture.renderer,
-      forestryFixture.renderer.render(forestryFixture.SearchResults, forestryFixture.props));
-    const forestryParagraph = elementsOf(forestryEmpty)
-      .find((element) => element.props?.className === "broad-results__suggest");
-    const forestryShown = forestryParagraph ? buttonsIn(forestryParagraph) : [];
-    assert.ok(forestryShown.some((question) => FORESTRY.includes(question)),
-      "a forestry dead end is never starved of forestry questions");
   } finally {
     delete globalThis.__praktikaSearchJobs;
   }
 });
 
-test("a personal name in the visible question never reaches a suggested question", async () => {
+test("a personal name in the visible question never reaches an API suggestion", async () => {
   const name = "Mari Maasikas";
+  const query = `${name} metsateatis`;
+  const expected = FORESTRY.filter((question) => /teatis/iu.test(question)).slice(0, 3);
+  const calls = installFetchCounter((value) => value.includes("metsateatis")
+    ? expected.map((item) => ({ value: item, count: 1 }))
+    : []);
   const { Chatbot } = await loadPages();
-  const renderer = createRenderer(reactInternals);
-  const chatShown = chatExampleQuestions(openChat(renderer, Chatbot, chatProps({ query: `${name} metsateatis` })));
-  assert.ok(chatShown.every((question) => FORESTRY.includes(question)));
-  assert.ok(chatShown.every((question) => !/maasikas|mari\b/iu.test(question)),
-    "the chat never echoes the reader's name into a suggestion");
+  const chatRenderer = createRenderer(reactInternals);
+  const chatPropsValue = chatProps({ query });
+  openChat(chatRenderer, Chatbot, chatPropsValue);
+  browser.flushTimers();
+  await settle();
+  const chatShown = chatExampleQuestions(chatRenderer.render(Chatbot, chatPropsValue));
+  assert.deepEqual(chatShown, expected);
+  assert.ok(chatShown.length > 0);
+  assert.ok(chatShown.every((question) => !/maasikas|mari\b/iu.test(question)));
 
-  installFetchCounter();
   try {
-    const fixture = await searchPageFixture(`${name} metsateatis`);
+    const fixture = await searchPageFixture(query);
     const { SearchResults, props, renderer: pageRenderer } = fixture;
     const form = resultsSearchForm(pageRenderer, pageRenderer.render(SearchResults, props));
     comboboxInput(form.tree).props.onFocus();
+    browser.flushTimers();
+    await settle();
     const focused = resultsSearchForm(pageRenderer, pageRenderer.render(SearchResults, props));
     const shown = searchOptionLabels(focused.tree);
-    assert.ok(shown.every((question) => REVIEWED.includes(question)),
-      "the field only ever offers reviewed questions");
+    assert.deepEqual(shown, expected);
     assert.ok(shown.every((question) => !/maasikas|mari\b/iu.test(question)));
+    assert.deepEqual(calls.map((call) => call.body), [{ q: query }, { q: query }]);
   } finally {
     delete globalThis.__praktikaSearchJobs;
   }

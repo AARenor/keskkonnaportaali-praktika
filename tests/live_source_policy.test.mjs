@@ -35,7 +35,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
 import { hydrateOfficialDocuments } from "../server/integrations.mjs";
-import { evidenceDocumentsFromListing } from "../server/retrieval.mjs";
+import { evidenceDocumentsFromListing } from "../server/retrieval_listing.mjs";
 import {
   SOURCE_POLICY_VERSION,
   observeSourcePolicy,

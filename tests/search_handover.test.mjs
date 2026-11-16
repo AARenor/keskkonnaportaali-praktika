@@ -18,7 +18,7 @@ import {
 } from "../server/request-budget.mjs";
 import { resolvePublicResponseBudget } from "../server/response-budget.mjs";
 import { searchTimeoutFallback } from "../server/pipeline.mjs";
-import { publicSearchListing } from "../server/retrieval.mjs";
+import { publicSearchListing } from "../server/retrieval_listing.mjs";
 import { readSearchStream, searchWaitingMessage } from "../src/search-stream.js";
 
 const NOW = Date.parse("2026-11-12T12:00:00.000Z");

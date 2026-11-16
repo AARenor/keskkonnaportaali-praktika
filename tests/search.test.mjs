@@ -1,27 +1,26 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { SEARCH_DOCUMENTS, officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
 import {
-  SEARCH_DOCUMENTS,
   analyzePublicSearchQuery,
-  assessEvidence,
   assessSearchQuery,
+} from "../server/search_query_assessment.mjs";
+import {
   buildDiscoveryQueries,
   buildDiscoveryQuery,
-  canonicalizePublicSearchQuery,
-  composeScopeResponse,
-  normalize,
-  officialServiceCatalogueDocuments,
-  queryTerms,
-  russianKeywordRoots,
   searchEnvironment,
-  splitTextPassages,
 } from "../server/search.mjs";
+import { canonicalizePublicSearchQuery } from "../server/search_query_canonicalization.mjs";
+import { composeScopeResponse } from "../server/search_response.mjs";
+import { assessEvidence, splitTextPassages } from "../server/search_evidence.mjs";
+import { normalize, queryTerms, russianKeywordRoots } from "../server/search_query_terms.mjs";
 import {
   isCurrentWeatherObservationQuery,
   isLatestPublishedHydrologyQuery,
 } from "../server/indicators.mjs";
-import { prepareRankedSearchResults, rankSearchCandidates } from "../server/retrieval.mjs";
+import { prepareRankedSearchResults } from "../server/retrieval.mjs";
+import { rankSearchCandidates } from "../server/retrieval_ranking.mjs";
 import { sourceResourceKey } from "../server/source-identity.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
 
@@ -454,6 +453,7 @@ test("public organization contacts, role-level duties and public-object navigati
     "Kuidas mõjutab naaberkinnistu kasutamine veekvaliteeti?",
     "Who studies the effects of land use on groundwater quality?",
     "Which organization evaluates land-use impacts on Natura sites?",
+    "Which agency assesses biodiversity impacts near Natura 2000 sites?",
     "Who is responsible for land-use policy in Estonia?",
     "What organization manages groundwater monitoring on agricultural land?",
     "Kuidas hinnata naaberkinnistu mõju põhjaveele?",
@@ -606,6 +606,17 @@ test("every supported structured current-weather phrasing survives the public qu
   for (const query of queries) {
     assert.equal(isCurrentWeatherObservationQuery(query), true, query);
     assert.equal(assessSearchQuery(query).kind, "live-weather", query);
+  }
+});
+test("historical weather qualifiers never classify as live weather", () => {
+  for (const query of [
+    "Mis oli temperatuur Tallinnas eelmisel nädalal?",
+    "Mis oli temperatuur Tallinnas varasemal perioodil?",
+    "Mis oli temperatuur Tallinnas varem?",
+  ]) {
+    const analysis = analyzePublicSearchQuery(query);
+    assert.equal(analysis.candidateRouteClasses.includes("official_live_weather"), false, query);
+    assert.equal(analysis.candidateRouteClasses.includes("official_historical_observation"), true, query);
   }
 });
 

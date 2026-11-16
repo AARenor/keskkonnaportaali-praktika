@@ -5,10 +5,7 @@ import {
   CONTEXTUAL_SUGGESTION_MAX,
   contextualSuggestions,
 } from "../src/suggestion_context.js";
-import {
-  REVIEWED_FORESTRY_SEARCH_SUGGESTIONS,
-  REVIEWED_SEARCH_SUGGESTIONS,
-} from "../src/search-suggestions.js";
+import { REVIEWED_SEARCH_SUGGESTIONS } from "../src/search-suggestions.js";
 
 const REVIEWED = new Set(REVIEWED_SEARCH_SUGGESTIONS);
 
@@ -277,20 +274,11 @@ test("candidate, related and prior lists are scanned with a bounded number of en
   }
 });
 
-test("empty context returns reviewed defaults only when the caller allows it", () => {
+test("empty context does not fabricate suggestions", () => {
   assert.deepEqual(contextualSuggestions({}), []);
-  assert.deepEqual(
-    contextualSuggestions({ allowDefault: true }),
-    REVIEWED_FORESTRY_SEARCH_SUGGESTIONS.slice(0, 3),
-  );
-  assert.deepEqual(
-    contextualSuggestions({ allowDefault: true, limit: 5 }),
-    REVIEWED_FORESTRY_SEARCH_SUGGESTIONS.slice(0, 5),
-  );
-  assert.deepEqual(
-    contextualSuggestions({ query: "   ", allowDefault: true }),
-    REVIEWED_FORESTRY_SEARCH_SUGGESTIONS.slice(0, 3),
-  );
+  assert.deepEqual(contextualSuggestions({ allowDefault: true }), []);
+  assert.deepEqual(contextualSuggestions({ allowDefault: true, limit: 5 }), []);
+  assert.deepEqual(contextualSuggestions({ query: "   ", allowDefault: true }), []);
   assert.deepEqual(
     contextualSuggestions({ related: ["Kuidas arvutatakse juurdekasvu?"], allowDefault: true }),
     ["Kuidas arvutatakse juurdekasvu?"],

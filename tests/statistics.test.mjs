@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { loadStructuredIndicatorDocuments } from "../server/indicators.mjs";
 import { searchEnvironmentLive, searchTimeoutFallback } from "../server/pipeline.mjs";
-import { deduplicateResults, rankPublicSearchCandidates } from "../server/retrieval.mjs";
+import { deduplicateResults } from "../server/retrieval_deduplication.mjs";
+import { rankPublicSearchCandidates } from "../server/retrieval_ranking.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
 import {
   composeStatisticsHazardousWasteResponse,

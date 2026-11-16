@@ -2,23 +2,19 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import {
-  assessSearchQuery,
-  composeScopeResponse,
-  containsPrivatePersonLookup,
-  forestEvidenceIntent,
-  officialServiceCatalogueDocuments,
-} from "../server/search.mjs";
-import {
-  rankPublicSearchCandidates,
-  selectAnswerEvidence,
-} from "../server/retrieval.mjs";
+import { assessSearchQuery } from "../server/search_query_assessment.mjs";
+import { composeScopeResponse } from "../server/search_response.mjs";
+import { containsPrivatePersonLookup } from "../server/search_query_privacy.mjs";
+import { officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
+import { forestEvidenceIntent } from "../server/search_query_terms.mjs";
+import { rankPublicSearchCandidates, selectAnswerEvidence } from "../server/retrieval_ranking.mjs";
 import {
   createPortalDraft,
-  publicResponse,
   searchEnvironmentLive,
 } from "../server/pipeline.mjs";
-import { buildLlmRequest, validateGroundedAnswer } from "../server/llm.mjs";
+import { publicResponse } from "../server/search_public_response.mjs";
+import { validateGroundedAnswer } from "../server/llm_answer_validation.mjs";
+import { buildLlmRequest } from "../server/llm_prompt.mjs";
 import { buildEvidencePack } from "../server/evidence-pack.mjs";
 import { classifyForestryGeographyScope } from "../server/municipalities.mjs";
 import { sourceResourceKey } from "../server/source-identity.mjs";
@@ -38,7 +34,6 @@ import {
 import {
   REVIEWED_FORESTRY_SEARCH_SUGGESTIONS,
   REVIEWED_SEARCH_SUGGESTIONS,
-  suggestionsForValue,
 } from "../src/search-suggestions.js";
 
 const NOW = Date.parse("2026-08-19T12:00:00Z");
@@ -520,10 +515,6 @@ test("all 33 supplied forestry misconceptions and FAQs have an explicit public r
 test("every visible reviewed suggestion leads to a deterministic answer or the intended municipality clarification", () => {
   assert.equal(REVIEWED_FORESTRY_SEARCH_SUGGESTIONS.length, 18);
   assert.equal(REVIEWED_SEARCH_SUGGESTIONS.length, 69);
-  assert.deepEqual(
-    suggestionsForValue("", {}, REVIEWED_SEARCH_SUGGESTIONS, 8).map((item) => item.value),
-    REVIEWED_FORESTRY_SEARCH_SUGGESTIONS.slice(0, 8),
-  );
   const directory = officialServiceCatalogueDocuments();
   for (const query of REVIEWED_FORESTRY_SEARCH_SUGGESTIONS) {
     const assessment = assessSearchQuery(query);
@@ -682,7 +673,6 @@ test("lossy Unicode residuals cannot dispatch the national forest answer to a mo
       selectedModel: "gpt-5.6-luna",
       query,
       evidence: [],
-      singleSource: true,
     }), /private-person|provider boundary/iu, query);
     let discoveryCalls = 0;
     const discovery = await searchOfficialSites(query, 5, {

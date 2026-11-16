@@ -1,9 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import {
-  composeSearchResponse,
-} from "../server/search.mjs";
+import { composeSearchResponse } from "../server/search_response.mjs";
 import {
   LAND_USE_KK07_API_URL,
   LAND_USE_KK07_TABLE_URL,
@@ -234,7 +232,7 @@ test("the share chart prefers Keskkonnaagentuur's SMI split over KK07 and reuses
 });
 
 test("the land-use document fetched for a share question stays within the first visible results", async () => {
-  const { rankPublicSearchCandidates } = await import("../server/retrieval.mjs");
+  const { rankPublicSearchCandidates } = await import("../server/retrieval_ranking.mjs");
   const query = "Kui suur osa Eestist on mets?";
   const shareDocument = smiLandCategoryDocument(query);
   const topics = ["metsamaa pindala", "metsasus maakonniti", "SMI 2024 tulemused", "SMI 2025 tulemused", "metsaga kaetud ala", "puistute pindala", "riigimets ja erametsa osa", "metsade tagavara", "metsa vanuseline struktuur", "mets ja kliima"];

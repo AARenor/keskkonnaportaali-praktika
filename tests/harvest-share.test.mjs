@@ -13,7 +13,7 @@ import {
 import { FOREST_SERIES_MM03_API_URL, FOREST_SERIES_MM03_TABLE_URL } from "../server/forest-series.mjs";
 import { loadStructuredIndicatorDocuments } from "../server/indicators.mjs";
 import { searchEnvironmentLive, searchTimeoutFallback } from "../server/pipeline.mjs";
-import { rankPublicSearchCandidates } from "../server/retrieval.mjs";
+import { rankPublicSearchCandidates } from "../server/retrieval_ranking.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
 
 const NOW = Date.parse("2026-09-28T12:00:00Z");

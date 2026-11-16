@@ -21,8 +21,8 @@ import {
   loadStructuredIndicatorDocuments,
 } from "../server/indicators.mjs";
 import { searchEnvironmentLive, searchTimeoutFallback } from "../server/pipeline.mjs";
-import { rankPublicSearchCandidates } from "../server/retrieval.mjs";
-import { assessSearchQuery } from "../server/search.mjs";
+import { rankPublicSearchCandidates } from "../server/retrieval_ranking.mjs";
+import { assessSearchQuery } from "../server/search_query_assessment.mjs";
 
 const NOW = Date.parse("2026-09-25T12:00:00Z");
 const FETCHED_AT = Date.parse("2026-09-25T11:59:30Z");
@@ -496,7 +496,7 @@ import {
   isForestContextSeriesQuery,
   withForestContextChart,
 } from "../server/forest-series.mjs";
-import { composeSearchResponse } from "../server/search.mjs";
+import { composeSearchResponse } from "../server/search_response.mjs";
 
 const CONTEXT_YEARS = ["2016", "2017", "2018", "2019", "2020", "2021", "2022", "2023", "2024", "2025"];
 const CONTEXT_VALUES = [2313.6, 2331.1, 2331.3, 2333.2, 2325.5, 2325.6, 2325, 2334.2, 2350.8, 2360.2];
@@ -779,7 +779,7 @@ test("an excluded Statistics Estonia series cannot enter the visible results eve
 // Follow-ups that only widen the period ("näita 2000-2025") inherit the root
 // question's indicator and re-run the series with the requested window.
 // ---------------------------------------------------------------------------
-import { contextualRetrievalQuery, isSafeEllipticalFollowUp } from "../server/retrieval.mjs";
+import { contextualRetrievalQuery, isSafeEllipticalFollowUp } from "../server/retrieval_context.mjs";
 
 const WIDE_YEARS = Array.from({ length: 26 }, (_, index) => String(2000 + index));
 const WIDE_VALUES = WIDE_YEARS.map((_, index) => Number((2240 + index * 4.6).toFixed(1)));

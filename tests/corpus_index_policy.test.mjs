@@ -180,8 +180,8 @@ async function insertRow(client, {
   ]);
 }
 
-async function searchUrls(corpus, query) {
-  const result = await corpus.searchCorpus(query, {
+async function searchUrls(corpusRuntime, query) {
+  const result = await corpusRuntime.searchCorpus(query, {
     pageSize: 50,
     includeContent: false,
     preferSnapshot: false,
@@ -217,12 +217,15 @@ test("copied text matches and ranks only under a current allowing index policy",
     process.env.DATABASE_URL = databaseUrl;
     process.env.DATABASE_SSL_MODE = "disable";
     process.env.SEARCH_HASH_SECRET = createHash("sha512").update("corpus-index-policy-fixture").digest("base64");
-    const corpus = await import(new URL("../server/corpus.mjs", import.meta.url).href);
-    const { CORPUS_VECTOR_LAYOUT } = corpus;
+    const [corpusRuntime, corpusStorage] = await Promise.all([
+      import(new URL("../server/corpus_runtime.mjs", import.meta.url).href),
+      import(new URL("../server/corpus_storage.mjs", import.meta.url).href),
+    ]);
+    const { CORPUS_VECTOR_LAYOUT } = corpusStorage;
     admin = new Client({ connectionString: databaseUrl });
     await admin.connect();
     // The production path creates the table, the trigger and the backfill column.
-    await corpus.searchCorpus("soojendus", { preferSnapshot: false });
+    await corpusRuntime.searchCorpus("soojendus", { preferSnapshot: false });
 
     const fetchedAt = new Date(Date.now() - 60_000).toISOString();
     const staleAt = new Date(Date.now() - 86_400_000).toISOString();
@@ -342,11 +345,11 @@ test("copied text matches and ranks only under a current allowing index policy",
 
     const urlOf = (path) => `${ORIGIN}${path}`;
     const expectIn = async (marker, path, label) => {
-      const urls = await searchUrls(corpus, marker);
+      const urls = await searchUrls(corpusRuntime, marker);
       assert.ok(urls.includes(urlOf(path)), `${label}: ${marker} must find ${path}`);
     };
     const expectOut = async (marker, path, label) => {
-      const urls = await searchUrls(corpus, marker);
+      const urls = await searchUrls(corpusRuntime, marker);
       assert.equal(urls.includes(urlOf(path)), false, `${label}: ${marker} must not find ${path}`);
     };
 
@@ -370,7 +373,7 @@ test("copied text matches and ranks only under a current allowing index policy",
 
     // 8. Ranking. Both rows match the title, so both appear; only the allowed row
     // may be lifted by its body, and the restricted one must never be.
-    const ranked = await searchUrls(corpus, "raiemaht");
+    const ranked = await searchUrls(corpusRuntime, "raiemaht");
     const allowedIndex = ranked.indexOf(urlOf("/et/mets/jarjestus-lubatud"));
     const restrictedIndex = ranked.indexOf(urlOf("/et/mets/jarjestus-piiratud"));
     assert.ok(allowedIndex >= 0, "the allowed title match must be present");
@@ -395,11 +398,26 @@ test("copied text matches and ranks only under a current allowing index policy",
     ]);
     await expectOut("markerlubatud", "/et/mets/lubatud", "policy changed to noindex");
 
+    await expectIn("markernosnippet", "/et/mets/nosnippet", "allowed before expiry");
+    const policyExpiry = new Date(Date.now() + 1_000).toISOString();
+    await admin.query(`
+      UPDATE practice_corpus_documents
+      SET metadata = jsonb_set(
+        metadata,
+        '{source_policy,directives,unavailableAfter}',
+        to_jsonb($2::TEXT),
+        TRUE
+      )
+      WHERE canonical_url = $1
+    `, [urlOf("/et/mets/nosnippet"), policyExpiry]);
+    await new Promise((resolve) => setTimeout(resolve, 1_200));
+    await expectOut("markernosnippet", "/et/mets/nosnippet", "index policy expired");
+
     // 10. Backfill is bounded, restartable and idempotent.
-    const first = await corpus.backfillCorpusIndexVectors(admin, { limit: 2, timeBudgetMs: 10_000 });
+    const first = await corpusStorage.backfillCorpusIndexVectors(admin, { limit: 2, timeBudgetMs: 10_000 });
     assert.ok(first.processed <= 2, `a bounded batch processed ${first.processed} rows`);
     assert.equal(typeof first.lastId, "number");
-    const second = await corpus.backfillCorpusIndexVectors(admin, {
+    const second = await corpusStorage.backfillCorpusIndexVectors(admin, {
       limit: 2,
       timeBudgetMs: 10_000,
       afterId: first.lastId,
@@ -408,7 +426,7 @@ test("copied text matches and ranks only under a current allowing index policy",
     let pass = 0;
     let cursor = second.lastId;
     for (;;) {
-      const batch = await corpus.backfillCorpusIndexVectors(admin, {
+      const batch = await corpusStorage.backfillCorpusIndexVectors(admin, {
         limit: 2,
         timeBudgetMs: 10_000,
         afterId: cursor,
@@ -456,8 +474,8 @@ test("copied text matches and ranks only under a current allowing index policy",
       WHERE canonical_url = ANY($1::TEXT[])
     `, [[urlOf("/et/mets/korra-a"), urlOf("/et/mets/korra-b")]]);
     const [left, right] = await Promise.all([
-      corpus.backfillCorpusIndexVectors(admin, { limit: 1, timeBudgetMs: 10_000 }),
-      corpus.backfillCorpusIndexVectors(admin, { limit: 1, timeBudgetMs: 10_000 }),
+      corpusStorage.backfillCorpusIndexVectors(admin, { limit: 1, timeBudgetMs: 10_000 }),
+      corpusStorage.backfillCorpusIndexVectors(admin, { limit: 1, timeBudgetMs: 10_000 }),
     ]);
     assert.ok(left.processed + right.processed <= 2, "concurrent drains must not double process");
     assert.deepEqual(
@@ -490,10 +508,10 @@ test("copied text matches and ranks only under a current allowing index policy",
       WHERE canonical_url = $1
     `, [urlOf("/et/mets/korra-c")]);
     await assert.rejects(
-      corpus.backfillCorpusIndexVectors(failingClient, { limit: 10, timeBudgetMs: 10_000 }),
+      corpusStorage.backfillCorpusIndexVectors(failingClient, { limit: 10, timeBudgetMs: 10_000 }),
       /simulated batch failure/u,
     );
-    const retried = await corpus.backfillCorpusIndexVectors(admin, { limit: 10, timeBudgetMs: 10_000 });
+    const retried = await corpusStorage.backfillCorpusIndexVectors(admin, { limit: 10, timeBudgetMs: 10_000 });
     assert.ok(retried.processed >= 1, "a failed batch must be retryable");
 
     // 13. A policy whose unavailableAfter has passed stops the body even when the
@@ -601,7 +619,7 @@ test("copied text matches and ranks only under a current allowing index policy",
       [bodyHashMissingUrl],
     );
     assert.equal(
-      corpus.publicSearchItem(missingBodyHashRow.rows[0], true).evidencePolicy,
+      corpusRuntime.publicSearchItem(missingBodyHashRow.rows[0], true).evidencePolicy,
       "route-only",
       "delivery rejects a publisher witness without a body hash",
     );
@@ -634,7 +652,7 @@ test("copied text matches and ranks only under a current allowing index policy",
       [legacyUnknownUrl],
     );
     assert.equal(
-      corpus.publicSearchItem(legacyUnknownRow.rows[0], true).evidencePolicy,
+      corpusRuntime.publicSearchItem(legacyUnknownRow.rows[0], true).evidencePolicy,
       "route-only",
       "delivery refuses a legacy-unknown witness that carries a copy permission",
     );
@@ -682,7 +700,7 @@ test("copied text matches and ranks only under a current allowing index policy",
         [urlOf(path)],
       );
       assert.equal(
-        corpus.publicSearchItem(invalidRow.rows[0], true).evidencePolicy,
+        corpusRuntime.publicSearchItem(invalidRow.rows[0], true).evidencePolicy,
         "route-only",
         `delivery refuses the invalid witness shape ${key}`,
       );
@@ -729,8 +747,8 @@ test("copied text matches and ranks only under a current allowing index policy",
     try {
       await lockClient.query("BEGIN");
       await lockClient.query("SELECT 1 FROM practice_corpus_documents WHERE id = $1 FOR UPDATE", [lockedId]);
-      const first = await corpus.backfillCorpusIndexVectors(drainClient, { limit: 100, timeBudgetMs: 5_000 });
-      const second = await corpus.backfillCorpusIndexVectors(drainClient, {
+      const first = await corpusStorage.backfillCorpusIndexVectors(drainClient, { limit: 100, timeBudgetMs: 5_000 });
+      const second = await corpusStorage.backfillCorpusIndexVectors(drainClient, {
         limit: 100,
         timeBudgetMs: 5_000,
         afterId: first.lastId,
@@ -755,7 +773,7 @@ test("copied text matches and ranks only under a current allowing index policy",
       await drainClient.end().catch(() => undefined);
     }
     // Once the lock is released the next drain from zero migrates it.
-    const afterRelease = await corpus.startCorpusIndexBackfill({
+    const afterRelease = await corpusStorage.startCorpusIndexBackfill({
       batchSize: 100,
       intervalMs: 1,
       maximumPasses: 20,
@@ -783,17 +801,113 @@ test("copied text matches and ranks only under a current allowing index policy",
       category: "NavigationMarker",
       fetchedAt,
     });
-    await corpus.startCorpusIndexBackfill({ batchSize: 100, intervalMs: 1, maximumPasses: 20 });
-    const navigation = await searchUrls(corpus, "NavigationMarker");
+    await corpusStorage.startCorpusIndexBackfill({ batchSize: 100, intervalMs: 1, maximumPasses: 20 });
+    const navigation = await searchUrls(corpusRuntime, "NavigationMarker");
     assert.ok(
       navigation.includes(urlOf("/et/mets/navigatsioon")),
       "safe category metadata stays matchable without body permission",
     );
-    const navigationBody = await searchUrls(corpus, "pealkirjataust");
+    const navigationBody = await searchUrls(corpusRuntime, "pealkirjataust");
     assert.ok(
       !navigationBody.includes(urlOf("/et/mets/navigatsioon")),
       "an unpermitted body never matches",
     );
+    await admin.query(`
+      INSERT INTO practice_corpus_documents
+        (external_id, source_key, canonical_url, title, category, organization,
+         topics, source_tier, language, metadata_quality, content_hash)
+      SELECT
+        'listing-window-' || item.number,
+        'official-page-hydration',
+        '${ORIGIN}/et/listing-window/' || item.number,
+        'listingwindowtoken',
+        CASE WHEN item.number > 130 THEN 'Eelistatud' ELSE 'Muu' END,
+        'Keskkonnaagentuur',
+        ARRAY['mets']::TEXT[],
+        'official',
+        'et',
+        1,
+        md5('listing-window-' || item.number)
+      FROM generate_series(1, 140) AS item(number)
+    `);
+    const expectedListingUrls = (await admin.query(`
+      SELECT canonical_url
+      FROM practice_corpus_documents
+      WHERE external_id LIKE 'listing-window-%'
+      ORDER BY id ASC
+    `)).rows.map((row) => row.canonical_url);
+    const listingQuery = "listingwindowtoken";
+    const firstListingPage = await corpusRuntime.searchCorpus(listingQuery, {
+      page: 1,
+      pageSize: 12,
+      includeContent: false,
+      preferSnapshot: false,
+      returnRankedWindow: true,
+    });
+    const secondListingPage = await corpusRuntime.searchCorpus(listingQuery, {
+      page: 2,
+      pageSize: 12,
+      includeContent: false,
+      preferSnapshot: false,
+      returnRankedWindow: true,
+    });
+    assert.equal(firstListingPage.total, 140);
+    assert.equal(firstListingPage.totalRelation, "eq");
+    assert.equal(firstListingPage.truncated, true);
+    assert.equal(firstListingPage.rankedWindow.length, 128);
+    assert.deepEqual(
+      firstListingPage.rankedWindow.map((item) => item.id),
+      secondListingPage.rankedWindow.map((item) => item.id),
+      "page two uses the same bounded ranked window as page one",
+    );
+    assert.equal(firstListingPage.windowId, secondListingPage.windowId);
+    assert.equal(firstListingPage.queryRevision, secondListingPage.queryRevision);
+    assert.equal(firstListingPage.pageCount, 2);
+    assert.equal(firstListingPage.hasMore, true);
+    assert.deepEqual(firstListingPage.items.map((item) => item.url), expectedListingUrls.slice(0, 12));
+    assert.deepEqual(secondListingPage.items.map((item) => item.url), expectedListingUrls.slice(12, 24));
+    assert.equal(secondListingPage.hasMore, false);
+    const inaccessiblePage = await corpusRuntime.searchCorpus(listingQuery, {
+      page: 3,
+      pageSize: 12,
+      preferSnapshot: false,
+    });
+    assert.deepEqual(inaccessiblePage.items, []);
+    assert.equal(inaccessiblePage.hasMore, false);
+
+    const filteredListing = await corpusRuntime.searchCorpus(listingQuery, {
+      pageSize: 50,
+      includeContent: false,
+      preferSnapshot: false,
+      filters: { category: "Eelistatud" },
+    });
+    assert.equal(filteredListing.total, 10);
+    assert.deepEqual(filteredListing.items.map((item) => item.url), expectedListingUrls.slice(130));
+    const emptyListing = await corpusRuntime.searchCorpus("   ", { preferSnapshot: false });
+    assert.equal(emptyListing.total, 0);
+    assert.deepEqual(emptyListing.items, []);
+
+    await admin.query(`
+      INSERT INTO practice_corpus_documents
+        (external_id, source_key, canonical_url, title, category, source_tier, content_hash)
+      VALUES ('listing-window-refresh', 'official-page-hydration',
+        '${ORIGIN}/et/listing-window/refresh', 'listingwindowtoken', 'Muu', 'official',
+        md5('listing-window-refresh'))
+    `);
+    await admin.query(`
+      INSERT INTO practice_corpus_runs (mode, status, finished_at)
+      VALUES ('fixture-refresh', 'ready', NOW())
+    `);
+    const refreshedListing = await corpusRuntime.searchCorpus(listingQuery, {
+      page: 1,
+      pageSize: 12,
+      includeContent: false,
+      preferSnapshot: false,
+      returnRankedWindow: true,
+    });
+    assert.equal(refreshedListing.total, 141);
+    assert.notEqual(refreshedListing.queryRevision, firstListingPage.queryRevision);
+    assert.notEqual(refreshedListing.windowId, firstListingPage.windowId);
   } finally {
     await admin?.end().catch(() => undefined);
     // Only the container this run created is removed. A failed start, including

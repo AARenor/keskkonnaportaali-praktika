@@ -5,8 +5,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { load } from "cheerio";
 import { createServer } from "vite";
-import { officialServiceCatalogueDocuments, splitTextPassages } from "../server/search.mjs";
-import { sourceDateMeta } from "../src/source-label.js";
+import { officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
+import { splitTextPassages } from "../server/search_evidence.mjs";
 
 test("the answer shows only its clickable official sources and never an evidence excerpt disclosure", async () => {
   const vite = await createServer({
@@ -18,7 +18,7 @@ test("the answer shows only its clickable official sources and never an evidence
     appType: "custom",
   });
   try {
-    const { SourceLegend } = await vite.ssrLoadModule("/src/App.jsx");
+    const { SourceLegend } = await vite.ssrLoadModule("/src/AnswerSources.jsx");
     const catalogue = officialServiceCatalogueDocuments();
     const source = { ...catalogue.find((item) => item.id === "protected-forest-share"), citation: 1 };
     const excerpt = buildFakeEvidenceExcerpt(source);
@@ -49,7 +49,7 @@ test("every visible source legend row opens its official HTTPS source, even with
     appType: "custom",
   });
   try {
-    const { SourceLegend } = await vite.ssrLoadModule("/src/App.jsx");
+    const { SourceLegend } = await vite.ssrLoadModule("/src/AnswerSources.jsx");
     const catalogue = officialServiceCatalogueDocuments();
     const http = catalogue.find((item) => item.id === "protected-forest-share");
     const insecure = {

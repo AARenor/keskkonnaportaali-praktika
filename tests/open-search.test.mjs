@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { rankSearchCandidates } from "../server/retrieval.mjs";
-import { assessSearchQuery, officialServiceCatalogueDocuments } from "../server/search.mjs";
+import { rankSearchCandidates } from "../server/retrieval_ranking.mjs";
+import { assessSearchQuery } from "../server/search_query_assessment.mjs";
+import { officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
 
 const fixture = JSON.parse(await readFile(
   new URL("../evaluation/open_search_adversarial_v2.json", import.meta.url),

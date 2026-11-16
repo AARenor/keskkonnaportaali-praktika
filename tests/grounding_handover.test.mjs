@@ -17,11 +17,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as evidencePackModule from "../server/evidence-pack.mjs";
 import * as llm from "../server/llm.mjs";
+import { validateGroundedAnswer } from "../server/llm_answer_validation.mjs";
+import { buildLlmRequest } from "../server/llm_prompt.mjs";
 import * as orchestrator from "../server/agent-orchestrator.mjs";
-import {
-  officialServiceCatalogueDocuments,
-  sanitizeLlmEvidenceText,
-} from "../server/search.mjs";
+import { officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
+import { sanitizeLlmEvidenceText } from "../server/search_evidence_sanitization.mjs";
 
 const { buildEvidencePack, evidencePackMatchesSources } = evidencePackModule;
 const APPROVED_BASE_URL = "https://terrapoint.arle.top/v1";
@@ -46,7 +46,7 @@ function groundedDraft(query, source, intro) {
 }
 
 function rejectsFabricatedMeasurement(pack, source, query) {
-  const verdict = llm.validateGroundedAnswer(
+  const verdict = validateGroundedAnswer(
     { intro: FABRICATED_MEASUREMENT, intro_citations: [1], parts: [] },
     groundedDraft(query, source, FABRICATED_MEASUREMENT),
     query,
@@ -205,11 +205,10 @@ test("a previous turn cannot carry an instruction into the provider request", ()
     title: "SMI kokkuvõte",
     content: "Noorte ja vanade metsade pindala suurenes.",
   }];
-  const payloadFor = (conversationContext) => JSON.parse(llm.buildLlmRequest({
+  const payloadFor = (conversationContext) => JSON.parse(buildLlmRequest({
     selectedModel: "openai-codex/gpt-6-luna",
     query: "Kuidas metsade vanus muutub?",
     evidence,
-    singleSource: true,
     conversationContext,
   }).body.input[1].content[0].text);
   // Each of these stays inside the environment domain, so the scope assessment

@@ -149,12 +149,19 @@ Kõigi intentide kohta kehtib lisaks:
 - Mudelile öeldakse, et ta ei alustaks „Jah”/„Ei” ega oma kokkuvõttega, vaid vastava tõendilausega sõna-sõnalt, ega lõikaks lauset „kuid”/„aga”/„välja arvatud” kohalt pooleks. „Jah, <ümbersõnastus>” ei läbi kontrolli; lõikamata seaduselause läbib.
 - Seaduse loendipunkt lõpeb allikas ilma punktita. Kui mudel kopeerib terve allikarea sõna-sõnalt (ka ilma alalõike numbrita „(1)”), lisatakse punkt; pooleli lõigatud lause lükatakse endiselt tagasi.
 
-- Kõigi kaarditeede järel kehtib lõppvärav: „millal” vajab aega, „kui vana” vanust ning seaduse lõigu algusega katkend („(4) Kokkuleppehinda …”) peab sisaldama küsimuse sõnu nagu iga teine katkend. Võrdluskaart („kõige …”) vastab ainult siis, kui võrdlus ja küsitud näitaja on samas lauses („metsarikkamad maakonnad” ei vasta hektaritagavara küsimusele).
-- Küsimuses nimetatud ala liik (hoiuala, püsielupaik, vääriselupaik, vöönd, loodusreservaat, rahvuspark, talvituspaik) peab olema nimetatud ka lõppvärava läbinud kaardil, mitte ainult mudelivastuses.
-- SMI küsimus peab jõudma küsitud näitajani: „kasvab juurde” on juurdekasv, „kui suur osa on riigimets/eramets” on omandivormi tabel. Muu teema (Natura, ürask, kahjustus, raadamine, omand mõnel muul aastal kui SMI tabeli aasta) ei lange metsamaa pindala kaardile, vaid jääb vastuseta.
-- Reegliküsimus, mis nimetab ühe seaduse paragrahvi pealkirja haruldast sõna („kokkuveoteed” → eeskiri § 8, „uuenenuks” → § 16, „hoiuala teatis” → LKS § 33), saab selle paragrahvi tõendite hulka esimeseks (Keskkonnaameti juhend jääb ette, kui see juba juhib). Sõna peab olema pealkirjas kuni kahes paragrahvis, paragrahv peab rääkima ka küsimuse teisest sõnast ja teist sama head paragrahvi ei tohi olla. „Mets” vormid, ühikud, aastaga ja protsendiga küsimused ning SMI-küsimused seda teed ei kasuta. Vastust kontrollitakse nagu ennegi.
-- Küsimuse sõna leidmisel loetakse samaks: „jätma” = „jätta”, „laiad” = „laius”, „töid” = „tööde”. Kui mudel lõpetab esimese lõigu kooloniga ja paneb reegli järgmisse lõiku, loetakse need üheks esimeseks lõiguks ja kontrollitakse koos.
-- „Mitu hektarit” vastus peab andma hektarid, mitte protsendi. „X, mida see tähendab” vastuse esimene lause peab X-i nimetama (`definition-lead-missing`).
+Kõigi kaarditeede järel kehtib lõppvärav. „Millal” vajab aega, „kui vana” vanust ning seaduse lõigu algusega katkend („(4) Kokkuleppehinda …”) peab sisaldama küsimuse sõnu nagu iga teine katkend. Võrdluskaart vastab ainult siis, kui võrdlus ja küsitud näitaja on samas lauses.
+
+„Mitu hektarit” vastus peab andma hektarid, mitte protsendi. „X, mida see tähendab” vastuse esimene lause peab X-i nimetama.
+
+Küsimuses nimetatud ala liik, nagu hoiuala, püsielupaik, vääriselupaik, vöönd, loodusreservaat, rahvuspark või talvituspaik, peab olema nimetatud ka lõppvärava läbinud kaardil, mitte ainult mudelivastuses.
+
+SMI küsimus peab jõudma küsitud näitajani. „Kasvab juurde” on juurdekasv ja „kui suur osa on riigimets või eramets” on omandivormi tabel. Muu teema, nagu Natura, ürask, kahjustus, raadamine või omand mõnel muul aastal kui SMI tabeli aasta, ei lange metsamaa pindala kaardile, vaid jääb vastuseta.
+
+Reegliküsimus, mis nimetab ühe seaduse paragrahvi pealkirja haruldast sõna, saab selle paragrahvi tõendite hulka esimeseks. Keskkonnaameti juhend jääb ette, kui see juba juhib. Sõna peab olema pealkirjas kuni kahes paragrahvis, paragrahv peab rääkima ka küsimuse teisest sõnast ja teist sama head paragrahvi ei tohi olla. „Mets” vormid, ühikud, aastaga ja protsendiga küsimused ning SMI küsimused seda teed ei kasuta. Vastust kontrollitakse nagu ennegi.
+
+Küsimuse sõna leidmisel loetakse samaks „jätma” ja „jätta”, „laiad” ja „laius” ning „töid” ja „tööde”. Kui mudel lõpetab esimese lõigu kooloniga ja paneb reegli järgmisse lõiku, loetakse need üheks esimeseks lõiguks ja kontrollitakse koos.
+
+Metsapäringu esimene ja teine tulemuste leht kasutavad sama järjestatud otsinguakent. Päringuversioon ja akna tunnus seovad teise lehe sama päringu, filtrite ja kehtiva aknaga. Aknast saab lugeda kuni kaks lehte ning selle invalidatsioon sulgeb ka teise lehe kasutuse.
 
 Tagasilükatud mudelivastuse teksti tootmises ei salvestata (PRIVAATSUS.md). Kontrollide häälestamiseks saab selle näha ainult lokaalselt: `REVIEW_TRACE=local` koos loopback `PUBLIC_ORIGIN`-iga kirjutab iga tagasilükatud vastuse kohta konteineri logisse `review-trace` rea (küsimus, kontrollid, mudeli ettepanek ja see, kas vastus läbiks nelja lõdvendatava kontrollita).
 
@@ -379,7 +386,7 @@ Brauseri regression peab katma 1440 × 1100 ja 390 × 844 vaated, autocomplete'i
 
 Vaadetes 1440 × 1000 ja 390 × 844 jäi värske avaleht `scrollY === 0` juurde, aktiivne element oli hostdokumendi `BODY`, põhiotsing oli nähtav ja horisontaalset overflow'd polnud. Terrapointi cross-origin iframe laadis päris `terrapoint.ee` rakenduse ega võtnud hostilt fookust. UI-päring „jäätmete ringlussevõtu määr Eestis 2023” kuvas 37,9% ja EL-i 47,9%, seadis sama ametliku näitaja nii vastuse esimeseks viiteks kui ka laiotsingu esimeseks tulemuseks, fokusseeris tulemuse H1 ning keris viiteklõpsul olemasoleva `source-1` kaardini. Deterministlik race-test tõendas lisaks, et 15,2 s hiline vana otsing ei muuda uuema vastuse pealkirja ega allika-DOM-i ning B→A järjekorras saabunud autocomplete'i vastustest jääb nähtavale ainult B. First-party konsoolis oli 0 viga ja 0 hoiatust.
 
-Cache'i revisjon `answer-v27-fragment-free-cache-and-exact-entities` seob vastuse jooksva järjestatud allikahulga, allikarolli, tõendipoliitika, täpse andmelokaatori, sisuversiooni, täpse nimeüksuse sidumise ja v5 privaatsuspiiriga, et varasema järjestuse, muudetud allika või vana puhastaja vastus ei jääks pärast deploy'd kehtima. Live-allika ja PostgreSQL-i püsikoopia avalik ID tuletatakse kanoniseeritud URL-ist, mistõttu sama tulemus ei vaheta asünkroonse indekseerimise piiril identiteeti ega Reacti võtit.
+Vastusevahemälu jooksva revisjoni määrab `SEARCH_RESPONSE_REVISION` failis `server/pipeline.mjs`. Vahemäluvõti seob vastuse jooksva järjestatud allikahulga, allikarolli, tõendipoliitika, täpse andmelokaatori, sisuversiooni, täpse nimeüksuse sidumise ja v5 privaatsuspiiriga, et varasema järjestuse, muudetud allika või vana puhastaja vastus ei jääks pärast deploy'd kehtima. Live-allika ja PostgreSQL-i püsikoopia avalik ID tuletatakse kanoniseeritud URL-ist, mistõttu sama tulemus ei vaheta asünkroonse indekseerimise piiril identiteeti ega Reacti võtit.
 
 ## Olulisemad failid
 

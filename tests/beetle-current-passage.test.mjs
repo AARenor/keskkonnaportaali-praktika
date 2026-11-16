@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { officialServiceCatalogueDocuments } from "../server/search.mjs";
-import { rankSearchCandidates, selectAnswerEvidence } from "../server/retrieval.mjs";
+import { officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
+import { rankSearchCandidates, selectAnswerEvidence } from "../server/retrieval_ranking.mjs";
 import { createPortalDraft } from "../server/pipeline.mjs";
 
 // Actual own-body extract checked on the official monitoring page 2026-10-02.

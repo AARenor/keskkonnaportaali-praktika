@@ -1,0 +1,102 @@
+{
+  "artifactStatus": "intermediate_working_copy_observation",
+  "releaseVerification": false,
+  "sourceReport": "evaluation/search_improvements_after_20261113.json",
+  "measurement": {
+    "target": "http://127.0.0.1:3001",
+    "startedAt": "2026-11-13T20:42:57.232Z",
+    "completedAt": "2026-11-13T20:44:40.925Z",
+    "baselinePath": "evaluation/search_improvements_before_20261113.json",
+    "baselineRevision": "bd49abab88d98b152b879b431f34bb39ad1f6adc",
+    "healthBeforeRevision": "development",
+    "healthAfterRevision": "development",
+    "revisionStability": {
+      "status": "unknown",
+      "beforeRevision": "development",
+      "afterRevision": "development"
+    },
+    "observedSearchCount": 10,
+    "actualModelUsingSearchCount": 4,
+    "deterministicZeroSearchCount": 6,
+    "actualBilledCostUsd": null,
+    "actualBilledCostStatus": "unknown"
+  },
+  "samples": [
+    {
+      "caseIndex": 5,
+      "query": "mida loetakse metsaks",
+      "usageTelemetry": {
+        "status": "actual",
+        "requests": 1,
+        "input_tokens": 9870,
+        "cached_input_tokens": 0,
+        "reasoning_tokens": 0,
+        "output_tokens": 182,
+        "total_tokens": 10052,
+        "cost_estimate": {
+          "amount": null,
+          "currency": null,
+          "rate_provenance": null,
+          "status": "unavailable"
+        }
+      }
+    },
+    {
+      "caseIndex": 6,
+      "query": "kuidas esitada raieteatist",
+      "usageTelemetry": {
+        "status": "actual",
+        "requests": 1,
+        "input_tokens": 2425,
+        "cached_input_tokens": 0,
+        "reasoning_tokens": 0,
+        "output_tokens": 204,
+        "total_tokens": 2629,
+        "cost_estimate": {
+          "amount": null,
+          "currency": null,
+          "rate_provenance": null,
+          "status": "unavailable"
+        }
+      }
+    },
+    {
+      "caseIndex": 7,
+      "query": "metsateatise esitamine",
+      "usageTelemetry": {
+        "status": "actual",
+        "requests": 1,
+        "input_tokens": 2643,
+        "cached_input_tokens": 0,
+        "reasoning_tokens": 0,
+        "output_tokens": 104,
+        "total_tokens": 2747,
+        "cost_estimate": {
+          "amount": null,
+          "currency": null,
+          "rate_provenance": null,
+          "status": "unavailable"
+        }
+      }
+    },
+    {
+      "caseIndex": 9,
+      "query": "metsa definitsioon",
+      "usageTelemetry": {
+        "status": "actual",
+        "requests": 1,
+        "input_tokens": 8784,
+        "cached_input_tokens": 0,
+        "reasoning_tokens": 0,
+        "output_tokens": 91,
+        "total_tokens": 8875,
+        "cost_estimate": {
+          "amount": null,
+          "currency": null,
+          "rate_provenance": null,
+          "status": "unavailable"
+        }
+      }
+    }
+  ]
+}

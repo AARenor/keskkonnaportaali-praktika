@@ -35,6 +35,8 @@ Lokaalseks käivituseks on vaja Node 24. Andmebaasi või vahemälu kasutamisel o
 - [Tavakasutaja juhend](https://praktika.arle.top/docs/kasutajale): otsing, filtrid, viited, diagrammid, jätkuküsimused ja privaatsus.
 - [Arendaja integratsioonijuhend](https://praktika.arle.top/docs/arendajale): API leping, sama päritolu ühendamine keskkonnaportaal.ee süsteemiga, töö ja lühiküsitluse transport, ühilduvad voo- ja JSON-liidesed, seadistus ja üleandmise kontrollnimekiri.
 
+Otsingu paranduste valikud, ametlikud allikad ja mõõtmise tulemused on [eraldi üleandmisdokumendis](./docs/OTSINGU_PARANDUSED_20261113.md).
+
 Juhendite versioonitud sisu: [src/docs/content.jsx](./src/docs/content.jsx).
 Need kirjeldavad praegust praktikaversiooni, mitte juba tehtud CMS-i või SSO
 integratsiooni. Vanemad arhitektuuri- ja QA-dokumendid sisaldavad ajaloolisi
@@ -144,8 +146,11 @@ npm run eval:blind
 npm run eval:open
 npm run eval:public
 npm run eval:live -- --base-url=https://praktika.arle.top
+npm run eval:improvements -- --base-url=https://praktika.arle.top --output=evaluation/search_improvements_after_20261113.json --baseline=evaluation/search_improvements_before_20261113.json
 npm run audit:filters -- --base-url=https://praktika.arle.top
 ```
+
+`eval:improvements` kordab kõik baseline'i päringud järjest, ilma küpsiste ja autentimiseta, ning kirjutab võrdlusraporti antud väljundteele. Täpne käivitus ja mõõtmise piirid on [otsingu paranduste üleandmisdokumendis](./docs/OTSINGU_PARANDUSED_20261113.md).
 
 `eval:public` kontrollib 147 käsitsi koostatud realistlikku eestikeelset
 arenduspäringut 11 valdkonnas. Komplekt ei pärine kasutajalogidest ega mõõda tegelikku

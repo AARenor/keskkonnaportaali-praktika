@@ -31,7 +31,8 @@ const { Client } = require("pg");
 const POSTGRES_IMAGE = "postgres:17-alpine";
 const POSTGRES_DATABASE = "keskkonnaportaal_practice";
 const FIXTURE_ORIGIN = "https://keskkonnaportaal.ee";
-const CORPUS_MODULE_URL = new URL("../server/corpus.mjs", import.meta.url).href;
+const CORPUS_HYDRATION_MODULE_URL = new URL("../server/corpus_hydration.mjs", import.meta.url).href;
+const CORPUS_STATISTICS_MODULE_URL = new URL("../server/corpus_statistics.mjs", import.meta.url).href;
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
 const ROBOTS_EXCLUDED_ROWS = 10;
@@ -225,11 +226,14 @@ test("the public corpus status reports robots excluded rows, the last sync error
     process.env.DATABASE_URL = databaseUrl;
     process.env.DATABASE_SSL_MODE = "disable";
     process.env.SEARCH_HASH_SECRET = createHash("sha512").update("corpus-stats-quality-fixture").digest("base64");
-    const corpus = await import(CORPUS_MODULE_URL);
+    const [corpusHydration, corpusStatistics] = await Promise.all([
+      import(CORPUS_HYDRATION_MODULE_URL),
+      import(CORPUS_STATISTICS_MODULE_URL),
+    ]);
 
     // The corpus schema belongs to startup and sync code, so prime it with an
     // empty backlog pass. Nothing is fetched because the table is empty.
-    const primed = await corpus.hydrateCorpusBacklog({ limit: 20, concurrency: 1, delayMs: 0 });
+    const primed = await corpusHydration.hydrateCorpusBacklog({ limit: 20, concurrency: 1, delayMs: 0 });
     assert.equal(primed.status, "ready", "the isolated database must be reachable before the fixtures are inserted");
     assert.equal(primed.remainingChecked, 0, "an empty corpus has no backlog, so the fixtures are the only rows");
 
@@ -369,7 +373,7 @@ test("the public corpus status reports robots excluded rows, the last sync error
       finishedAt: lastRunFinishedAt,
     });
 
-    const stats = await corpus.corpusStats();
+    const stats = await corpusStatistics.corpusStats();
 
     // Deployment readiness means "the database answered", not "the last run was
     // clean", so a run with errors must not flip the public status.

@@ -5,41 +5,46 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import {
   blockedFollowUpAssessment,
-  hasSmiNationalRole,
-  hasForestryComparisonRole,
-  selectSmiDefinitionEvidence,
   contextualRetrievalQuery,
   conversationContext,
-  deduplicateResults,
-  evidenceDocumentsFromListing,
   isContextAnchoredFollowUp,
   isSafeEllipticalFollowUp,
+} from "../server/retrieval_context.mjs";
+import {
+  hasForestryComparisonRole,
+  hasSmiNationalRole,
+  selectSmiDefinitionEvidence,
+} from "../server/retrieval_evidence.mjs";
+import { deduplicateResults } from "../server/retrieval_deduplication.mjs";
+import {
+  evidenceDocumentsFromListing,
   parsePublicSearchFilters,
   publicSearchListing,
   parseBoundedSearchInteger,
+  resultMatchesFilters,
+  shouldUseLiveDiscovery,
+} from "../server/retrieval_listing.mjs";
+import {
   rankPublicSearchCandidates,
   rankSearchCandidates,
-  resultMatchesFilters,
   scoreSearchCandidate,
   selectAnswerEvidence,
-  shouldUseLiveDiscovery,
-} from "../server/retrieval.mjs";
+} from "../server/retrieval_ranking.mjs";
 import { sourceResourceKey, sourceWitnessKey } from "../server/source-identity.mjs";
 import { buildEvidencePack } from "../server/evidence-pack.mjs";
 import { SMI_2025_EDITION, SMI_2025_TABLES_URL, smiTablesSource, smiWorkbookInResults } from "../server/smi-tables.mjs";
 import { requestsUnsupportedForestAreaTimeSeries, statisticalReferenceDimensions } from "../server/municipalities.mjs";
 import {
   analyzePublicSearchQuery,
-  assessEvidence,
   assessSearchQuery,
-  buildDiscoveryQueries,
+} from "../server/search_query_assessment.mjs";
+import { buildDiscoveryQueries } from "../server/search.mjs";
+import {
   FOREST_OVERVIEW_URL,
-  forestEvidenceIntent,
   officialServiceCatalogueDocuments,
-  queryTerms,
-  normalize,
-  splitTextPassages,
-} from "../server/search.mjs";
+} from "../server/search_catalogue.mjs";
+import { assessEvidence, splitTextPassages } from "../server/search_evidence.mjs";
+import { forestEvidenceIntent, queryTerms, normalize } from "../server/search_query_terms.mjs";
 import {
   composeForestHarvestBalanceAnswer,
   forestHarvestBalanceDocumentsFromJson,
@@ -1724,6 +1729,27 @@ test("public search payload strips full text and ranking internals", () => {
   assert.equal(listing.items[0]._ranking, undefined);
   assert.equal(listing.items[0].title, "Ametlik metsaülevaade");
 });
+test("public listing preserves an expired page two window without stale results", () => {
+  const listing = publicSearchListing({
+    total: 0,
+    totalRelation: "gte",
+    truncated: true,
+    page: 2,
+    pageSize: 12,
+    pageCount: 0,
+    hasMore: false,
+    windowExpired: true,
+    windowId: null,
+    items: [],
+    facets: { sources: [], categories: [], years: [] },
+  });
+
+  assert.equal(listing.windowExpired, true);
+  assert.equal(listing.totalRelation, "gte");
+  assert.equal(listing.truncated, true);
+  assert.equal(listing.windowId, undefined);
+  assert.deepEqual(listing.items, []);
+});
 
 test("a persisted live result keeps the same public ID across its cache boundary", () => {
   const liveUrl = "https://www.kliimaministeerium.ee/kliimamuutustega-kohanemine/?b=2&utm_source=live&a=1";
@@ -1805,6 +1831,14 @@ test("follow-up retrieval context is bounded and keeps only recent questions", (
 test("an inflected seasonal precipitation follow-up is self-contained", () => {
   const question = "Kas talved on muutunud sajusemaks?";
   assert.equal(contextualRetrievalQuery("kliimamuutuse mõju sademetele Eestis", question, []), question);
+});
+
+test("a generic process duration follows the conversation, but a named new topic does not", () => {
+  const root = "Kuidas esitada metsateatist?";
+  const followUp = "Kui kaua menetlus kestab?";
+  assert.equal(contextualRetrievalQuery(root, followUp), `${followUp} ${root}`);
+  const independent = "Kui kaua kestab veeloa menetlus?";
+  assert.equal(contextualRetrievalQuery(root, independent), independent);
 });
 
 test("a follow-up without its own subject inherits the accepted root, while an off-domain suffix stays blocked", () => {

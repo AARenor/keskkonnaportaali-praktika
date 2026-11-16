@@ -1,5 +1,6 @@
 import { getForestrySuggestions } from "./forestry.mjs";
-import { normalize, queryTerms } from "./search.mjs";
+import { analyzeQueryIntent } from "./query_intent.mjs";
+import { normalize, queryTerms } from "./search_query_terms.mjs";
 
 // Reviewed, directly answerable examples for the structured non-forestry
 // adapters. These are a local availability fallback for the official portal's
@@ -59,6 +60,17 @@ export const REVIEWED_ENVIRONMENT_SUGGESTIONS = Object.freeze([
   "Kust leida keskkonnaregistri andmeid?",
   "Kui palju metsa on Eestis?",
 ]);
+
+const CURATED_FORESTRY_INTENT_SUGGESTIONS = Object.freeze({
+  "clearcut:definition": Object.freeze(["Mida loetakse lageraiks?", "Millal on lageraie lubatud?", "Kui palju lageraiet tehakse?"]),
+  "clearcut:criteria": Object.freeze(["Mis on lageraie?", "Millal on lageraie lubatud?", "Kui palju lageraiet tehakse?"]),
+  "clearcut:conditions": Object.freeze(["Mis on lageraie?", "Mida loetakse lageraiks?", "Kui palju lageraiet tehakse?"]),
+  "clearcut:quantitative": Object.freeze(["Mis on lageraie?", "Mida loetakse lageraiks?", "Millal on lageraie lubatud?"]),
+  "forest:definition": Object.freeze(["Mida loetakse metsaks?", "Mis vahe on metsal ja metsamaal?", "Mis on mets FAO FRA järgi?"]),
+  "forest:criteria": Object.freeze(["Mis on mets?", "Mis vahe on metsal ja metsamaal?", "Mis on mets FAO FRA järgi?"]),
+  "forest_notice:procedure": Object.freeze(["Millal tuleb metsateatis esitada?", "Kui kaua vaatab Keskkonnaamet metsateatist läbi?", "Millal võib raietööga alustada?"]),
+});
+
 
 const REVIEWED_SOURCE_CODE_ALIASES = new Map([
   ["dta08", ["Mis oli Jõgeva 15. jaanuari 2024 ööpäeva keskmine õhutemperatuur?"]],
@@ -121,21 +133,16 @@ const REVIEWED_SOURCE_CODE_ALIASES = new Map([
     "Kas väikese tiigi rajamiseks on luba vaja?",
     "Kuidas kontrollida KOTKAS keskkonnaloa menetluse staatust?",
   ]],
-  ["mets", [
-    "Kui palju metsa on Eestis?",
-    "Kui suur osa Eestist on kaetud metsaga?",
-    "Kas Eestis raiutakse rohkem kui metsa juurde kasvab?",
-    "Mis vahe on SMI-l ja metsaregistril?",
-    "Kui suur osa metsadest on kaitse all?",
-    "Kuidas mõjutab kliimamuutus metsi?",
-    "Mis on metsateatis?",
-    "Kuidas taotleda metsateatist?",
-    "Kas kaitsealadel raiutakse?",
-    "Kuidas arvutatakse juurdekasvu?",
-    "Kui palju lageraiet on viimase 10 aasta jooksul tehtud?",
-    "Kust leida konkreetse kinnistu metsaandmeid?",
-  ]],
+  ["lageraie", ["Mis on lageraie?", "Mida loetakse lageraiks?", "Millal on lageraie lubatud?", "Kui palju lageraiet tehakse?"]],
+  ["mets", ["Mis on mets?", "Mida loetakse metsaks?", "Mis on lageraie?", "Millal on lageraie lubatud?", "Kuidas esitada metsateatist?"]],
+  ["metsateatis", ["Kuidas esitada metsateatist?", "Millal tuleb metsateatis esitada?", "Kui kaua vaatab Keskkonnaamet metsateatist läbi?"]],
 ]);
+
+function forestryIntentSuggestions(query, limit) {
+  const { topic, intent } = analyzeQueryIntent(query);
+  return (CURATED_FORESTRY_INTENT_SUGGESTIONS[`${topic}:${intent}`] || []).slice(0, limit);
+}
+
 
 const REVIEWED_ALIAS_SURFACE_PATTERN = /^[a-z0-9õäöüšž]+(?:[ _-][a-z0-9õäöüšž]+)*$/iu;
 
@@ -199,6 +206,8 @@ function generalSuggestions(query, limit) {
 
 export function getReviewedSearchSuggestions(query, limit = 5) {
   const safeLimit = Math.max(1, Math.min(Number(limit) || 5, 12));
+  const intentSuggestions = forestryIntentSuggestions(query, safeLimit);
+  if (intentSuggestions.length) return intentSuggestions;
   const reviewedAliases = aliasSuggestions(query, safeLimit);
   const reviewedGeneral = generalSuggestions(query, safeLimit);
   const values = [
@@ -213,4 +222,17 @@ export function getReviewedSearchSuggestions(query, limit = 5) {
     seen.add(key);
     return true;
   }).slice(0, safeLimit);
+}
+
+const RELATED_QUERIES = {
+  mets: ["metsade pindala Eestis", "metsaraie andmed", "metsa looduskaitsepiirangud"],
+  kliima: ["Eesti temperatuuritrend", "sademed maakonniti", "kliimastsenaarium 2100"],
+  vesi: ["põhjavee seisund", "järvede veekvaliteet", "Läänemere seisund"],
+  jäätmed: ["jäätmeteke Eestis", "ringlussevõtu määr", "jäätmeluba KOTKASes"],
+};
+
+export function relatedQueries(query, _sources = []) {
+  const normalizedQuery = normalize(query);
+  const direct = Object.entries(RELATED_QUERIES).find(([key]) => normalizedQuery.includes(normalize(key)));
+  return direct ? direct[1] : [];
 }

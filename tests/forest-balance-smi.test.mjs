@@ -11,7 +11,7 @@ import {
 } from "../server/indicators.mjs";
 import { forestSeriesIntent, smiForestSeriesDocument } from "../server/forest-series.mjs";
 import { searchTimeoutFallback } from "../server/pipeline.mjs";
-import { selectAnswerEvidence } from "../server/retrieval.mjs";
+import { selectAnswerEvidence } from "../server/retrieval_ranking.mjs";
 import { sourceCanSupportPublicCitation } from "../server/source-registry.mjs";
 import { ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS } from "../server/forestry-public.mjs";
 import { SMI_2025_TABLES_URL } from "../server/smi-tables.mjs";

@@ -6,27 +6,37 @@ import {
   blockedFollowUpAssessment,
   contextualRetrievalQuery,
   conversationContext,
-  deduplicateResults,
-  evidenceDocumentsFromListing,
-  prepareRankedSearchResults,
+} from "../server/retrieval_context.mjs";
+import { deduplicateResults } from "../server/retrieval_deduplication.mjs";
+import { evidenceDocumentsFromListing } from "../server/retrieval_listing.mjs";
+import { prepareRankedSearchResults } from "../server/retrieval.mjs";
+import {
   rankPublicSearchCandidates,
   selectAnswerEvidence,
-} from "../server/retrieval.mjs";
+} from "../server/retrieval_ranking.mjs";
 import {
   analyzePublicSearchQuery,
   assessSearchQuery,
-  buildDiscoveryQueries,
+} from "../server/search_query_assessment.mjs";
+import { buildDiscoveryQueries } from "../server/search.mjs";
+import {
   canonicalizePublicSearchQuery,
+  MAX_PUBLIC_SEARCH_QUERY_LENGTH,
+} from "../server/search_query_canonicalization.mjs";
+import {
   containsPrivatePersonLookup,
+  minimizePublicProviderQuery,
+  preparePublicProviderQuery,
+} from "../server/search_query_privacy.mjs";
+import {
   isReviewedGenericProtectedAreaConsentQuery,
   isReviewedPublicOrganizationProtectedBuildingContactQuery,
-  MAX_PUBLIC_SEARCH_QUERY_LENGTH,
-  minimizePublicProviderQuery,
+} from "../server/search_privacy_public_exceptions.mjs";
+import {
   officialServiceCatalogueDocuments,
-  preparePublicProviderQuery,
   reviewedCatalogueEvidenceVersion,
-} from "../server/search.mjs";
-import { buildLlmRequest } from "../server/llm.mjs";
+} from "../server/search_catalogue.mjs";
+import { buildLlmRequest } from "../server/llm_prompt.mjs";
 import { buildEvidencePack } from "../server/evidence-pack.mjs";
 import { forestrySourceClass } from "../server/forestry-source-policy.mjs";
 import { sourceResourceKey } from "../server/source-identity.mjs";
@@ -93,7 +103,6 @@ test("multilingual private-person clauses fail closed at every search boundary",
       selectedModel: "gpt-5.6-luna",
       query,
       evidence: [],
-      singleSource: true,
     }), (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY", query);
   }
 
@@ -135,7 +144,6 @@ test("reviewed benign person attribution is removed at discovery and model bound
       selectedModel: "gpt-5.6-luna",
       query,
       evidence: [],
-      singleSource: true,
     });
     assert.doesNotMatch(JSON.stringify(request.body), /Jaan|Tamm/iu, query);
     assert.match(JSON.stringify(request.body), /kaitsealal|Lahemaa/iu, query);
@@ -161,7 +169,6 @@ test("reviewed benign person attribution is removed at discovery and model bound
       selectedModel: "gpt-5.6-luna",
       query: organizationQuery,
       evidence: [],
-      singleSource: true,
     });
     assert.match(JSON.stringify(request.body), new RegExp(organization, "iu"), organizationQuery);
   }
@@ -177,7 +184,6 @@ test("reviewed benign person attribution is removed at discovery and model bound
       selectedModel: "gpt-5.6-luna",
       query: privateQuery,
       evidence: [],
-      singleSource: true,
     }), /private-person|blocked/iu, privateQuery);
   }
 });
@@ -199,7 +205,6 @@ test("multi-word English public organizations remain public at every provider bo
         selectedModel: "gpt-5.6-luna",
         query,
         evidence: [],
-        singleSource: true,
       });
       assert.match(JSON.stringify(request.body), new RegExp(organization, "iu"), query);
     }
@@ -232,7 +237,6 @@ test("national ownership breakdowns stay public while named private-asset suffix
       selectedModel: "gpt-5.6-luna",
       query,
       evidence: [],
-      singleSource: true,
     }), query);
   }
 
@@ -267,7 +271,6 @@ test("national ownership breakdowns stay public while named private-asset suffix
       selectedModel: "gpt-5.6-luna",
       query,
       evidence: [],
-      singleSource: true,
     }), (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY", query);
   }
 
@@ -296,7 +299,6 @@ test("national ownership breakdowns stay public while named private-asset suffix
       selectedModel: "gpt-5.6-luna",
       query,
       evidence: [],
-      singleSource: true,
     }), query);
   }
 });
@@ -360,7 +362,6 @@ test("public possessive forest aggregates stay open without admitting person or 
       selectedModel: "gpt-5.6-luna",
       query,
       evidence: [],
-      singleSource: true,
     }), query);
   }
 
@@ -382,7 +383,6 @@ test("public possessive forest aggregates stay open without admitting person or 
       selectedModel: "gpt-5.6-luna",
       query,
       evidence: [],
-      singleSource: true,
     }), (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY", query);
   }
 });
@@ -426,7 +426,6 @@ test("organization-designator surnames cannot cross possessive forest provider b
         selectedModel: "gpt-5.6-luna",
         query,
         evidence: [],
-        singleSource: true,
       }), (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY", query);
     }
   }
@@ -454,7 +453,6 @@ test("organization-designator surnames cannot cross possessive forest provider b
       selectedModel: "gpt-5.6-luna",
       query,
       evidence: [],
-      singleSource: true,
     }), query);
   }
 });
@@ -797,7 +795,6 @@ test("Estonian genitive names cannot hide private compound assets behind a publi
       selectedModel: "gpt-5.6-luna",
       query,
       evidence: [],
-      singleSource: true,
     }), (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY", query);
   }
 
@@ -915,7 +912,6 @@ test("Estonian genitive names cannot hide private compound assets behind a publi
       selectedModel: "gpt-5.6-luna",
       query,
       evidence: [],
-      singleSource: true,
     }), query);
   }
 });
@@ -945,7 +941,6 @@ test("public organization contacts cannot mask a separate private-asset clause",
       selectedModel: "gpt-5.6-luna",
       query,
       evidence: [],
-      singleSource: true,
     }), (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY", query);
   }
 
@@ -958,7 +953,6 @@ test("public organization contacts cannot mask a separate private-asset clause",
     selectedModel: "gpt-5.6-luna",
     query: publicComposition,
     evidence: [],
-    singleSource: true,
   }));
 
   for (const regionalComposition of [
@@ -986,7 +980,6 @@ test("aggregate-prefixed cadastral person associations fail before every provide
       selectedModel: "gpt-5.6-luna",
       query,
       evidence: [],
-      singleSource: true,
     }), (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY", query);
   }
 
@@ -1015,7 +1008,6 @@ test("official organization contacts for reviewed national parks stay public", (
         selectedModel: "gpt-5.6-luna",
         query,
         evidence: [],
-        singleSource: true,
       }), query);
     }
   }
@@ -1080,7 +1072,6 @@ test("place- or ecology-shaped personal names cannot bypass contact privacy", ()
         selectedModel: "gpt-5.6-luna",
         query,
         evidence: [],
-        singleSource: true,
       }),
       (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY",
       query,
@@ -1127,7 +1118,6 @@ test("place- or ecology-shaped personal names cannot bypass contact privacy", ()
       selectedModel: "gpt-5.6-luna",
       query,
       evidence: [],
-      singleSource: true,
     }), query);
   }
 });
@@ -1291,7 +1281,6 @@ test("generic protected-area consent questions remain public without weakening p
       selectedModel: "gpt-5.6-luna",
       query,
       evidence: [],
-      singleSource: true,
     }), query);
     assert.equal(rankPublicSearchCandidates(query, services)[0]?.id, "protected-area-construction", query);
   }
@@ -1435,7 +1424,6 @@ test("generic protected-area consent questions remain public without weakening p
         selectedModel: "gpt-5.6-luna",
         query,
         evidence: [],
-        singleSource: true,
       }),
       (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY",
       query,
@@ -1553,7 +1541,6 @@ test("provider boundaries reject lossy-script identities, partial geographies, a
           selectedModel: "gpt-5.6-luna",
           query,
           evidence: [],
-          singleSource: true,
         }),
         (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY",
         query,
@@ -1607,7 +1594,6 @@ test("provider boundaries reject lossy-script identities, partial geographies, a
       selectedModel: "gpt-5.6-luna",
       query,
       evidence: [],
-      singleSource: true,
     }), query);
   }
 });
@@ -1669,7 +1655,6 @@ test("municipality substrings cannot publicize larger person identities", async 
           selectedModel: "gpt-5.6-luna",
           query,
           evidence: [],
-          singleSource: true,
         }),
         (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY",
         query,
@@ -1841,7 +1826,6 @@ test("regional aggregate routing cannot exempt appended sensitive person fields"
         selectedModel: "gpt-5.6-luna",
         query,
         evidence: [],
-        singleSource: true,
       }),
       (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY",
       query,
@@ -1925,7 +1909,6 @@ test("regional aggregate routing cannot exempt appended sensitive person fields"
         selectedModel: "gpt-5.6-luna",
         query,
         evidence: [],
-        singleSource: true,
       }),
       (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY",
       query,
@@ -2028,6 +2011,7 @@ test("public entities, ecological descriptions and institutional contacts stay p
     "Meri Metsa elupaiga keskkonna kirjeldus",
     "Tartu linn erapuurkaevu permit holder",
     "Environment Board private well permit holder",
+    "Environment Board private borehole permit holder",
     "Forest parcel purchased by Environment Board",
     "Forest land inherited by Tartu linn",
     "General rules for forest land sold to public agencies",
@@ -2040,7 +2024,6 @@ test("public entities, ecological descriptions and institutional contacts stay p
       selectedModel: "gpt-5.6-luna",
       query,
       evidence: [],
-      singleSource: true,
     }), query);
   }
 });
@@ -2349,7 +2332,6 @@ test("Climate Ministry contact topics cannot fuse a person or private field past
           selectedModel: "gpt-5.6-luna",
           query,
           evidence: [],
-          singleSource: true,
         }),
         (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY",
         query,
@@ -2411,7 +2393,6 @@ test("Unicode-dash public contacts stay searchable without weakening appended pr
           selectedModel: "gpt-5.6-luna",
           query: privateQuery,
           evidence: [],
-          singleSource: true,
         }),
         (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY",
         privateQuery,
@@ -2504,7 +2485,6 @@ test("punctuation-separated private asset qualifiers stay private at every bound
           selectedModel: "gpt-5.6-luna",
           query,
           evidence: [],
-          singleSource: true,
         }),
         (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY",
         query,
@@ -3005,7 +2985,6 @@ test("role-identity regressions fail closed at every public boundary", async () 
         selectedModel: "gpt-5.6-luna",
         query,
         evidence: [],
-        singleSource: true,
       }),
       (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY",
       query,
@@ -3054,7 +3033,6 @@ test("county forest person suffixes use one punctuation-independent privacy boun
       selectedModel: "gpt-5.6-luna",
       query,
       evidence: [],
-      singleSource: true,
     }), (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY", query);
   }
 
@@ -3446,6 +3424,7 @@ test("public role, official-contact and environmental controls remain searchable
     "Kuidas mõjutab Jaan Tamm hallatav rahvusmets elupaika?",
     "Kuidas mõjutab Jaan Tamm hallatav avalik mets elupaika?",
     "North District Team manages private woodland habitat",
+    "Coast Renewal Team administers private forest habitat",
     "Keskkonnaameti meeskond haldab erametsa mõju elupaigale",
     "What are environmental effects of managing a private forest?",
     "What are environmental effects of managing private woodland?",
@@ -3511,7 +3490,6 @@ test("public role, official-contact and environmental controls remain searchable
       selectedModel: "gpt-5.6-luna",
       query,
       evidence: [],
-      singleSource: true,
     }), query);
   }
 });
@@ -3593,6 +3571,7 @@ test("adversarial public-role controls remain open at every search and model bou
     "Kuidas mõjutab Jaan Tamm hallatav rahvusmets elupaika?",
     "Kuidas mõjutab Jaan Tamm hallatav avalik mets elupaika?",
     "North District Team manages private woodland habitat",
+    "Coast Renewal Team administers private forest habitat",
     "Keskkonnaameti meeskond haldab erametsa mõju elupaigale",
     "What are environmental effects of managing a private forest?",
     "What are environmental effects of managing private woodland?",
@@ -3684,7 +3663,6 @@ test("adversarial public-role controls remain open at every search and model bou
       selectedModel: "gpt-5.6-luna",
       query,
       evidence: [],
-      singleSource: true,
     }), query);
   }
 });
@@ -3836,6 +3814,7 @@ test("private lookup aliases are rejected at the model boundary", () => {
     "Is John Smith the operator of the private borehole beside Natura?",
     "The manager of the parcel beside the river is John Smith.",
     "John Smith manages the parcel beside the river.",
+    "North District Team manages private woodland habitat and John Smith's address",
     "Which named person administers the parcel beside the river?",
     "Who is the caretaker of the private property beside the river?",
     "Who is the permittee for the private borehole beside Natura?",
@@ -3849,7 +3828,6 @@ test("private lookup aliases are rejected at the model boundary", () => {
         selectedModel: "gpt-5.6-luna",
         query,
         evidence: [],
-        singleSource: true,
       }),
       (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY",
       query,
@@ -3918,6 +3896,7 @@ test("general ownership duties and ecological residence remain public queries", 
     "Kuidas mõjutab naaberkinnistu kasutamine veekvaliteeti?",
     "Who studies the effects of land use on groundwater quality?",
     "Which organization evaluates land-use impacts on Natura sites?",
+    "Which agency assesses biodiversity impacts near Natura 2000 sites?",
     "Who is responsible for land-use policy in Estonia?",
     "What organization manages groundwater monitoring on agricultural land?",
     "Kuidas hinnata naaberkinnistu mõju põhjaveele?",
@@ -4812,7 +4791,6 @@ test("the AI evidence pack carries source role and freshness constraints", () =>
     selectedModel: "gpt-5.6-luna",
     query: "2025. aasta seiretulemused",
     evidence,
-    singleSource: true,
   });
   assert.match(request.body.input[0].content[0].text, /Timestamped väärtust.*observed_at/iu);
 });

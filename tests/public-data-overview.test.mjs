@@ -6,13 +6,11 @@ import {
   blockedFollowUpAssessment,
   contextualRetrievalQuery,
   isSafeEllipticalFollowUp,
-  rankPublicSearchCandidates,
-} from "../server/retrieval.mjs";
-import {
-  assessSearchQuery,
-  directDirectoryDocumentIds,
-  officialServiceCatalogueDocuments,
-} from "../server/search.mjs";
+} from "../server/retrieval_context.mjs";
+import { rankPublicSearchCandidates } from "../server/retrieval_ranking.mjs";
+import { assessSearchQuery } from "../server/search_query_assessment.mjs";
+import { directDirectoryDocumentIds } from "../server/search_selectors.mjs";
+import { officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
 
 const DATA_OVERVIEWS = [
   ["Põhjavesi andmed Eestis", "groundwater-overview"],

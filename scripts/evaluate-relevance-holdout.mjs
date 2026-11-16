@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { rankSearchCandidates } from "../server/retrieval.mjs";
+import { rankSearchCandidates } from "../server/retrieval_ranking.mjs";
 import { sourceResourceKey } from "../server/source-identity.mjs";
-import { officialServiceCatalogueDocuments, officialSourceSelectionExclusions } from "../server/search.mjs";
+import { officialServiceCatalogueDocuments, officialSourceSelectionExclusions } from "../server/search_catalogue.mjs";
 import { requestBoundedAuditJson, SEARCH_AUDIT_TIMEOUT_MS } from "./audit-http.mjs";
 
 const options = Object.fromEntries(process.argv.slice(2).map((argument) => {

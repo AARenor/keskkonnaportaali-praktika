@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { hydrateCorpusPdfSource, publicSearchItem } from "../server/corpus.mjs";
+import { hydrateCorpusPdfSource } from "../server/corpus_hydration.mjs";
+import { publicSearchItem } from "../server/corpus_runtime.mjs";
 
 // Background PDF hydration, driven through the real function with a stubbed
 // byte transport and a stubbed extractor. The body, the policy, the page

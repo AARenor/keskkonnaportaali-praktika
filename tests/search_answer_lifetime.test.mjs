@@ -5,7 +5,7 @@ import { resolvePublicResponseBudget } from "../server/response-budget.mjs";
 import { searchTimeoutFallback } from "../server/pipeline.mjs";
 import { smiIncrementDocument } from "../server/indicators.mjs";
 import { ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS } from "../server/forestry-public.mjs";
-import { publicSearchListing } from "../server/retrieval.mjs";
+import { publicSearchListing } from "../server/retrieval_listing.mjs";
 import { SOURCE_POLICY_PRODUCT, observeSourcePolicy } from "../server/source_policy.mjs";
 import { streamListingThenAnswer } from "../server/http-stream.mjs";
 

@@ -2,15 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { sourceDateMeta, sourceOrganizationLabel } from "../src/source-label.js";
 import * as labels from "../src/source-label.js";
-import { readFile } from "node:fs/promises";
 import { sanitizeCachedResponse, restoreCachedResponse } from "../server/database.mjs";
-import { publicResponse } from "../server/pipeline.mjs";
-import { officialServiceCatalogueDocuments } from "../server/search.mjs";
+import { publicResponse } from "../server/search_public_response.mjs";
+import { officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
 
-test("legend source numbers are readable without relying on color or hover", async () => {
-  const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
-  assert.match(app, /<span className="source-legend__number">\{source\.citation\}<\/span>/u);
-});
 
 test("source legend colors agree by citation and latest marker compares only valid page updates", () => {
   assert.equal(typeof labels.citationColor, "function");

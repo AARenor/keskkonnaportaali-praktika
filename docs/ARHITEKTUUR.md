@@ -1,8 +1,10 @@
 # Keskkonnaportaali arhitektuuri- ja otsinguuuring
 
-Uuendatud: 10.11.2026
+Uuendatud: 13.11.2026
 
 **Kehtiv allikapoliitika:** Statistikaamet on avalikest tulemustest, vastustest ja diagrammidest välistatud. Allpool mainitud PXWeb-adapterite tehnilised piirid säilivad ajalooliste skeemilepingutena, mitte avaliku tõendi erandina. Toetatud metsadiagrammid kasutavad Keskkonnaagentuuri SMI töövihikut; puuduva primaarse rea asemel ei kuvata teise väljaandja graafikut. Vt [allikaregister](ALLIKAD.md).
+
+13.11.2026 otsingu muudatuse mõõdetud lähtebaas, arhitektuurivalikud, ametlikud üleandmise allikad ja pärast mõõdetav tulemus on [eraldi üleandmisdokumendis](OTSINGU_PARANDUSED_20261113.md).
 
 ## Mida avalikust portaalist kinnitati
 
@@ -107,9 +109,9 @@ Otsing kombineerib:
 
 GIN-indeks kiirendab täistekstivälja ning trigrammiindeks pealkirja sarnasust. Rakenduse enda vastusevahemälu ja privaatsust hoidev tehniline sündmuslogi on samas eraldatud praktika andmebaasis, kuid korpusetabelitest lahus. PostgreSQL-i ametlikud alusmaterjalid: [Full Text Search](https://www.postgresql.org/docs/current/textsearch-controls.html) ja [GIN-indeksid](https://www.postgresql.org/docs/current/gin.html).
 
-Lehitsemise stabiilsuseks moodustab server igal lehel sama relevantsusjärjestatud prefiksi kuni 50 kohaliku kandidaadi, ametlike live-vastete ja teenusekataloogi põhjal. Kui leht ulatub prefiksist kaugemale, küsitakse ülejäänud saba PostgreSQL-ist prefiksi kanoniseeritud URL-e välistades. See säilitab relevantsuse esimestel lehtedel ja väldib kordusi lehtede vahel.
+Lehitsemisel kasutatakse sama päringu ja filtritega seotud piiratud tulemusteakent. Vaikimisi on lehel 12 tulemust ning lubatud on kuni kaks lehte. Teine leht kasutab sama järjestatud akent; avalik loenditee ei küsi sügavat PostgreSQL-i saba. Aegunud akent ei jätkata ega ühendata uue päringu tulemustega: selle asemel on vaja uut otsingut.
 
-Korpuse järjestus on kaheastmeline. Kõigepealt valitakse laiast `OR`-vastest materiaalne kandidaadiaken, mille järjestus on odav `ts_rank` laia päringu vastu; akna suurus on `min(50 000, max(1000, offset + 4 × lehe suurus))`. Seejärel arvutatakse kogu kaalutud valem (kaks `ts_rank_cd`-d, trigrammi-sarnasus, pealkirja ja kokkuvõtte märksõnahulk, allikatasem, värskus) ainult akna sees. Range `AND`- ja `websearch_to_tsquery`-järgne `ts_rank_cd` arvutatakse ainult reale, mis sellele päringule tegelikult vastab; mittevaste korral annaks funktsioon niikuinii nulli. Ilma piirita võttis 43 000 kirjega korpuses loomuliku küsimuse korpusepäring 8–11 sekundit, ületas 4 sekundi `statement_timeout`-i ja vastus degradeerus vaikselt kataloogikaartideks. Lehekülgede koguarv ja `hasMore` tulevad samast filtreeritud vastepredikaadist eraldi loenduspäringust, seega ei sõltu need kandidaadiakna suurusest. Sama päring loeb snapshot'i ainult vaikimisi filtritega ja ainult siis, kui sellele vastav eelseadistatud snapshot on olemas.
+Korpuse järjestus on kaheastmeline: PostgreSQL valib odavama täistekstihinde abil kandidaadid ning täpsem kaalutud järjestus rakendub piiratud aknas. Filtrid rakendatakse enne seda akent. Tulemuste arvu juures tähendab `totalRelation: eq` täpset arvu ja `totalRelation: gte` alampiiri. Piiratud akna suurust ei esitata kogu korpuse täpse vastete arvuna. See piirab nii teenusesse laaditavat andmemahtu kui ka kasutajale lubatud lehitsemist.
 
 ## Allikatasemed
 
@@ -162,7 +164,13 @@ Qdrant on vektorandmebaas: see leiab embedding'ute abil semantiliselt sarnaseid 
 
 Rakenduse sõnastusmudel on `openai-codex/gpt-6-luna`, mida kutsutakse serverist autenditud Codex gateway Responses API kaudu. Tootmises kasutatakse `LLM_ORCHESTRATION=direct`: üks mudelikõne ja sõltumatu serveripoolne tõendikontroll. Valikuline `agents` režiim kasutab mitme allika korral SDK manageri ja kaht järjestikust review-spetsialisti; selle neljakutseline tervikvoog ületas 06.10.2026 varasemates live-kontrollides senise ajapiiri. Väljuv päring sisaldab kuni 180 märgini piiratud küsimust ja ainult valitud avalikku tõendipakki. Kasutusel on range JSON-väljundleping, `LLM_REASONING_EFFORT=low` ja mudelikõne taimer `LLM_TIMEOUT_MS`; tegelikku kutset piirab endpoint'i järelejäänud aeg ning vastuse etappi eraldi `ANSWER_DEADLINE_MS`, mitte loendi aken. Lubatud effort'id on `low` ja `medium`; `minimal` ei ole Luna lepingus toetatud ning `none` ei tähenda gateway's mõtlemise väljalülitamist, mistõttu mõlemad peatavad käivituse. Vastuse eelarvereserv ei ole väljundtokenite taotlus: päring ei saada `max_output_tokens` välja, vaid reservatsioon kasutab fikseeritud hinnangut 4 000 tokenit (`AGENT_MANAGER_ANSWER_TOKENS`), mis on hinnang, mitte tõendatud upstream-väljundipiir. Tunnine libisev eelarve lubab vaikimisi kuni 60 mudelipäringut ja 240 000 sisend- ning väljundtokenit kokku. Iga dispatch reserveerib enne võrku saatmist sisendi-, väljundi- ja protokollivaru; vastuse järel asendub see raporteeritud kogutokenitega. Teadmata kasutusega katkestus debiteerib täisreservi. Transport ei järgi redirecte, ei tee peidetud retry'sid ja piirab vastuse 1 MB-ni. Deterministlik server otsustab enne mudelikõnet, milline allikas on ametlik ja tõendikõlblik; mudel ei pääse PostgreSQL-i, Qdranti ega veebi. Eelarve-, mahu-, timeout'i või validaatoritõrke korral säilib sama jooksva tõendi viidatud deterministlik draft, mitte teine varumudel.
 
-Vastuse väljundtokenitel ei ole ülempiiri: päring ei saada `max_output_tokens` välja ja eelarve reservatsioon kasutab fikseeritud vastusehinnangut. Mõõdetud vastused jäävad 200–850 väljundtokeni juurde, seega piirab kestust pigem allikate lugemine ja mudelikõne kui väljundlae puudumine.
+Avalikul vastusel on kuni viis osa ja kokku kuni 3200 märki; liiga pikk mudelivastus lükatakse tervikuna tagasi, mitte ei lõigata selle väiteid pooleks. Need kontrollid ega 4000 tokeni eelarvereservatsioon ei garanteeri mudeliteenuse väljundtokenite ülempiiri. [Säilitatud nelja mudelikõne valimis](../evaluation/search_model_usage_sample_20261113.json) olid väljundid 91 kuni 204 tokenit. See on mõõdetud valim, mitte teenuse piir ega kõigi otsingute prognoos.
+
+### Väljundtokenite eraldi kontroll
+
+13.11.2026 kontrollis eraldi päring `openai-codex/gpt-6-luna` Responses API teed. Päringus oli `max_output_tokens: 32`, kuid vastus oli HTTP 200 ja `completed`: 27 sisendtokenit, 203 väljundtokenit ja 230 tokenit kokku, ilma katkestuse põhjuseta. Vastus oli 291 märki ning kestis 5,44 sekundit. See näitab, et selles kontrollis ei jõustanud tee saadetud 32 tokeni piiri.
+
+Rakenduse päring ei saada `max_output_tokens` välja. Vastuse nähtav tekst jääb eraldi 3200 märgi validaatori piiridesse, konteksti ja mudelikõnede arv on piiratud ning 4000 tokeni reservatsioon on eelarvehinnang, mitte väljundipiir. See üksik gateway katse ei kuulu otsingu baseline'i ega 1, 10 või 100 otsingu kasutusnäidetesse.
 
 Kontroll on intentide kaupa, mitte üks üldine võtmesõnakattuvus: `protected-forest-share`, `forest-area`, `forest-area-method`, `forest-covered-area`, `forest-species-share`, `climate-impact`, `forest-data-sources` ja `forest-depletion` omavad igaüks oma sisulist nõuet (`server/llm.mjs` `assertAnswerAddressesQuery`), ülejäänud intentid kasutavad 75% tüvede kattuvust. Klassifitseerija (`server/forestry-public.mjs`) peab tabama käändevorme; `kuivendus` ei kuulu kliimaintenti. Tõendipakki minev tekst kannab avaldatud täpsust, lahtrite toorväärtused jäävad `locator`-isse.
 

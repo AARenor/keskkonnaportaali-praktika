@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseRobotsTxt as corpusParseRobotsTxt } from "../server/corpus.mjs";
+import { parseRobotsTxt as corpusParseRobotsTxt } from "../server/corpus_document_parsing.mjs";
 import {
   SOURCE_POLICY_PRODUCT,
   SOURCE_POLICY_VERSION,

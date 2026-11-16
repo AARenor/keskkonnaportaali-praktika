@@ -27,9 +27,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { searchEnvironmentLive } from "../server/pipeline.mjs";
-import { NO_ANSWER_EYEBROW, officialServiceCatalogueDocuments } from "../server/search.mjs";
+import { NO_ANSWER_EYEBROW } from "../server/search_response.mjs";
+import { officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
 import { isForestHarvestBalanceQuery, smiHarvestBalanceDocument } from "../server/indicators.mjs";
-import { contextualRetrievalQuery, conversationContext } from "../server/retrieval.mjs";
+import { contextualRetrievalQuery, conversationContext } from "../server/retrieval_context.mjs";
 import { sourceCanSupportPublicCitation } from "../server/source-registry.mjs";
 
 const NOW = Date.parse("2026-11-11T10:00:00Z");

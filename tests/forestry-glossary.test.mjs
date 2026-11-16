@@ -9,7 +9,7 @@ import {
   glossaryAvoidHits,
   glossaryTermsInText,
 } from "../server/forestry-glossary.mjs";
-import { validateGroundedAnswer } from "../server/llm.mjs";
+import { validateGroundedAnswer } from "../server/llm_answer_validation.mjs";
 
 function groundingSource(source) {
   return {

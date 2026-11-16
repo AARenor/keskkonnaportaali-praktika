@@ -8,13 +8,14 @@ import {
 } from "./provider-policy.mjs";
 import {
   AGENT_MANAGER_MAX_TURNS,
+  AGENT_MANAGER_MAX_ATTEMPTS,
   AGENT_SPECIALIST_MAX_TOKENS,
   MAX_ANSWER_INTRO_CHARS,
   MAX_ANSWER_PART_CHARS,
   AGENT_SPECIALIST_MAX_TURNS,
   estimatedInputTokensFromBytes,
-  normalizedProviderUsage,
 } from "./llm-budget.mjs";
+import { normalizedProviderUsage } from "./llm_usage.mjs";
 import { readBoundedResponseBytes } from "./upstream.mjs";
 import { requestApprovedPublicHttpsJsonPost } from "./public-https.mjs";
 
@@ -56,9 +57,8 @@ const requiredReviewByManager = new WeakMap();
 
 const citationList = z.array(z.number().int().min(1).max(10)).max(10);
 
-// The answer schema carries no length ceiling: a complete, sourced explanation
-// may be longer than the earlier 900/1 200 character windows, and a slice in the
-// middle of a sentence is no longer the way an overlong answer is handled.
+// Per-field schema limits bound generated text. llm.mjs checks the complete
+// intro and parts length and rejects oversized output without slicing it.
 export const GROUNDED_AGENT_OUTPUT = z.object({
   intro: z.string().min(1).max(MAX_ANSWER_INTRO_CHARS),
   intro_citations: citationList,
@@ -108,6 +108,7 @@ export function createGroundedSearchAgents({
   });
   const reviewedContexts = new WeakSet();
   const completedReviewContexts = new WeakSet();
+  let cachedReviewPromise;
   const evidenceReviewTool = tool({
     name: "review_evidence",
     description: "Käivitab järjest allikarelevantsuse spetsialisti ja tõendikriitiku täpselt serveri koostatud tõendipakil.",
@@ -128,13 +129,22 @@ export function createGroundedSearchAgents({
         maxTurns: AGENT_SPECIALIST_MAX_TURNS,
         signal: details?.signal,
       };
-      const relevance = await runner.run(relevanceAgent, reviewInput, runOptions);
-      const consistency = await runner.run(groundingAgent, reviewInput, runOptions);
-      completedReviewContexts.add(runContext);
-      return JSON.stringify({
-        relevance: relevance.finalOutput,
-        consistency: consistency.finalOutput,
-      });
+      try {
+        cachedReviewPromise ||= (async () => {
+          const relevance = await runner.run(relevanceAgent, reviewInput, runOptions);
+          const consistency = await runner.run(groundingAgent, reviewInput, runOptions);
+          return JSON.stringify({
+            relevance: relevance.finalOutput,
+            consistency: consistency.finalOutput,
+          });
+        })();
+        const result = await cachedReviewPromise;
+        completedReviewContexts.add(runContext);
+        return result;
+      } catch (error) {
+        cachedReviewPromise = null;
+        throw error;
+      }
     },
   });
   const manager = new Agent({
@@ -236,6 +246,7 @@ export function createBoundedOpenAiFetch({
   reserveProviderRequest,
   settleProviderRequest,
   onDispatch,
+  onProviderUsage,
 } = {}) {
   const approvedBaseUrl = validateLlmProviderUrl(baseUrl);
   const requestLimit = boundedBytes(maximumRequestBytes, MAX_AGENT_REQUEST_BYTES, 1_000_000);
@@ -271,6 +282,15 @@ export function createBoundedOpenAiFetch({
       throw error;
     }
     let observedUsage;
+    let usageReported = false;
+    const reportUsage = (usage) => {
+      usageReported = true;
+      try {
+        onProviderUsage?.(usage);
+      } catch {
+        // Telemetry must not change provider request behavior.
+      }
+    };
     try {
       onDispatch?.();
       let response;
@@ -302,6 +322,7 @@ export function createBoundedOpenAiFetch({
       } catch {
         observedUsage = { requests: 1 };
       }
+      reportUsage(observedUsage);
       const status = Number(response.status || 0);
       const body = [204, 205, 304].includes(status) ? null : bytes;
       return new Response(body, {
@@ -310,6 +331,7 @@ export function createBoundedOpenAiFetch({
         headers: response.headers,
       });
     } finally {
+      if (!usageReported) reportUsage({ requests: 1 });
       if (reservation?.ok && typeof settleProviderRequest === "function") {
         settleProviderRequest(reservation, observedUsage, { chargeUnknown: true });
       }
@@ -326,6 +348,7 @@ export function createGroundedOpenAiClient({
   reserveProviderRequest,
   settleProviderRequest,
   onDispatch,
+  onProviderUsage,
 } = {}) {
   const approvedBaseUrl = validateLlmProviderUrl(baseUrl);
   return new OpenAI({
@@ -340,9 +363,11 @@ export function createGroundedOpenAiClient({
       reserveProviderRequest,
       settleProviderRequest,
       onDispatch,
+      onProviderUsage,
     }),
   });
 }
+
 
 export async function runAgentWithUsage({
   runner,
@@ -350,15 +375,14 @@ export async function runAgentWithUsage({
   userInput,
   signal,
   onUsage,
-  maxAttempts = 2,
+  maxAttempts = AGENT_MANAGER_MAX_ATTEMPTS,
   createRunContext = () => new RunContext(),
 } = {}) {
-  const attempts = Math.max(1, Math.min(Number(maxAttempts) || 2, 3));
+  const attempts = Math.max(1, Math.min(Number(maxAttempts) || AGENT_MANAGER_MAX_ATTEMPTS, 3));
   let lastError;
-  // Every attempt gets a FRESH RunContext: the review_evidence tool is
-  // single-use per context and tool call IDs must stay unique, so reusing
-  // one context across attempts would reject the repeated review call.
-  // Usage still accumulates across attempts via onUsage snapshots below.
+  // Every attempt gets a FRESH RunContext: tool call IDs must stay unique, and
+  // the review tool is single-use per context. Its successful specialist result
+  // is cached for this answer run, so a retry repeats manager work, not reviews.
   let runContext = createRunContext();
   const aggregateUsage = {
     requests: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0,
@@ -461,6 +485,7 @@ export async function runGroundedSearchOrchestration({
   timeoutMs,
   onUsage,
   onDispatch,
+  onProviderUsage,
   reserveProviderRequest,
   settleProviderRequest,
   fetchImpl,
@@ -478,6 +503,7 @@ export async function runGroundedSearchOrchestration({
     reserveProviderRequest,
     settleProviderRequest,
     onDispatch,
+    onProviderUsage,
   });
   const provider = new OpenAIProvider({
     openAIClient,

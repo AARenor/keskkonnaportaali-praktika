@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { extractReadablePage } from "../server/corpus.mjs";
+import { extractReadablePage } from "../server/corpus_document_parsing.mjs";
 
 test("publisher-excluded page text does not enter a stored source body", () => {
   const page = extractReadablePage(

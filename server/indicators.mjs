@@ -64,7 +64,8 @@ import {
   resolveForestSeriesIntent,
   smiForestSeriesDocument,
 } from "./forest-series.mjs";
-import { forestEvidenceIntent } from "./search.mjs";
+import { forestEvidenceIntent } from "./search_query_terms.mjs";
+import { isHistoricalPeriodQuery } from "./query_historical_period.mjs";
 import {
   SMI_2025_EDITION,
   SMI_2025_EXPERT_CUT,
@@ -235,8 +236,9 @@ function currentWeatherIntent(query) {
   const text = normalize(query);
   const location = WEATHER_LOCATIONS.find((candidate) => candidate.query.test(text));
   if (!location || hasWaterTemperatureContext(text)
-    || /\b(?:homme|ulehomme|prognoos|ennustus|hoiatus|eile|mullu|ajalool|arhiiv|tulevik)\w*/u.test(text)
-    || /\b(?:19|20)\d{2}\b/u.test(text)) return null;
+    || /\b(?:homme|ulehomme|prognoos|ennustus|hoiatus|tulevik)\w*/u.test(text)
+    || /\b(?:tomorrow|forecast\w*|next\s+(?:week|month|year))\b/u.test(text)
+    || isHistoricalPeriodQuery(query)) return null;
   const metric = /\b(?:tuul|tuulekiirus|wind)\w*/u.test(text)
     ? "wind"
     : /\b(?:ohu ?niiskus|suhteline (?:ohu ?)?niiskus|niiskus|humidity)\w*/u.test(text)
@@ -2085,7 +2087,7 @@ function composeSmiHarvestBalanceAnswer(query, sources = [], controlQuery = quer
         : "Raiemahu ja juurdekasvu suhe sõltub mõõdikust ja perioodist",
       intro: askedYear
         ? introForAskedYear
-        : `${baseIntro} Viie aasta keskmine raiemaht metsamaal oli ${etNumberWithDigits(projection.fiveYearCutThousandM3, 0)} tuhat m³. ${grossNetSentence}${pastYearCaveat}`,
+        : `${baseIntro} Viie aasta keskmine raiemaht metsamaal oli ${etNumberWithDigits(projection.fiveYearCutThousandM3, 0)} tuhat m³. ${grossNetSentence}${pastYearCaveat}`.trim(),
       introCitations: askedYear
         ? [smiCitation, ...(expertCitation ? [expertCitation] : [])]
         : [smiCitation],
@@ -2129,6 +2131,23 @@ export function composeForestHarvestBalanceAnswer(query, sources = [], controlQu
   if (explicitYear && (!requestedObservation
     || requestedObservation.increment === null
     || requestedObservation.removals === null)) {
+    const comparisonYearParts = requestedYears(temporalQuery)
+      .filter((year) => year !== explicitYear)
+      .flatMap((year) => {
+        const observation = allObservations.find((item) => item.year === year);
+        if (!observation || observation.increment === null || observation.removals === null) return [];
+        const difference = Math.abs(observation.removals - observation.increment);
+        const relation = observation.removals > observation.increment
+          ? `ületas netojuurdekasvu ${etDecimal(difference, 1)} miljoni m³ võrra`
+          : observation.removals < observation.increment
+            ? `jäi netojuurdekasvust ${etDecimal(difference, 1)} miljoni m³ võrra madalamaks`
+            : "võrdus netojuurdekasvuga";
+        return [{
+          title: `${year}. aasta avaldatud väärtused`,
+          text: `${year}. aastal oli netojuurdekasv ${etDecimal(observation.increment, 1)} ja Eurostati raiemaht (removals) ${etDecimal(observation.removals, 1)} miljonit m³ koorega, seega raiemaht ${relation}.`,
+          citations: [eurostatCitation],
+        }];
+      });
     const missingYearExplanation = [
       methodCitation ? "Netojuurdekasv on kogu juurdekasv pärast loodusliku suremuse mahaarvamist." : "",
       handbookCitation ? "Eurostati käsiraamatu järgi näitab sama aasta raiemahu ja netojuurdekasvu võrdlus, kas raiemaht ületab juurdekasvu või jääb sellest alla." : "",
@@ -2139,11 +2158,14 @@ export function composeForestHarvestBalanceAnswer(query, sources = [], controlQu
         title: `${explicitYear}. aasta kohta võrreldav paar puudub`,
         intro: `Kasutatud Eurostati metsa arvepidamise väljavõttes ei ole ${explicitYear}. aasta kohta korraga avaldatud nii Eesti netojuurdekasvu kui ka raiemahu (removals) väärtust.`,
         introCitations: [eurostatCitation],
-        parts: missingYearExplanation ? [{
-          title: "Miks ma puuduvat väärtust ei asenda",
-          text: missingYearExplanation,
-          citations: [methodCitation, handbookCitation].filter(Boolean),
-        }] : [],
+        parts: [
+          ...comparisonYearParts,
+          ...(missingYearExplanation ? [{
+            title: "Miks ma puuduvat väärtust ei asenda",
+            text: missingYearExplanation,
+            citations: [methodCitation, handbookCitation].filter(Boolean),
+          }] : []),
+        ],
         note: "Puuduv võrreldav paar ei tähenda, et raiet või juurdekasvu sel aastal ei olnud; see tähendab ainult, et kasutatud ametlikus reas ei ole mõlemat väärtust avaldatud.",
       },
       related: [
@@ -2203,7 +2225,7 @@ export function composeForestHarvestBalanceAnswer(query, sources = [], controlQu
         title: incompleteWindow
           ? `${startYear}–${endYear} viie aasta kohta ei saa lünkade tõttu täielikku trendi anda`
           : `Viie värskeima võrdlusaasta reas oli ${latestWindow.year}. aastal raiemaht netojuurdekasvust ${latestWindowRelation}`,
-        intro: `Kasutatud väljavõtte aastad on ${startYear}–${endYear}; ${nextUnavailableYear}. aasta rida selles väljavõttes veel ei ole. Avaldatud on need võrreldavad paarid: ${availableWindow || "ühtegi täielikku paari ei ole"}. ${relations ? `${relations}.` : ""}${missingWindow.length ? ` Mõlemat võrreldavat väärtust ei ole aastate ${missingWindow.join(", ")} kohta avaldatud.` : ""}${forestObservationStatusSentence(comparableWindow)}`,
+        intro: `Kasutatud väljavõtte aastad on ${startYear}–${endYear}; ${nextUnavailableYear}. aasta rida selles väljavõttes veel ei ole. Avaldatud on need võrreldavad paarid: ${availableWindow || "ühtegi täielikku paari ei ole"}. ${relations ? `${relations}.` : ""}${missingWindow.length ? ` Mõlemat võrreldavat väärtust ei ole aastate ${missingWindow.join(", ")} kohta avaldatud.` : ""}${forestObservationStatusSentence(comparableWindow)}`.trim(),
         introCitations: [eurostatCitation],
         parts: [
           ...(handbookCitation ? [{
@@ -2254,7 +2276,7 @@ export function composeForestHarvestBalanceAnswer(query, sources = [], controlQu
     answer: {
       eyebrow: "Allikapõhine koondvastus",
       title: directTitle,
-      intro: `${directLead}Eurostati metsa arvepidamises oli Eesti ${latest.year}. aasta raiemaht (removals) ${etDecimal(latest.removals, 1)} miljonit m³ koorega ja netojuurdekasv ${etDecimal(latest.increment, 1)} miljonit m³ koorega; ${relation}.${qualitySentence}`,
+      intro: `${directLead}Eurostati metsa arvepidamises oli Eesti ${latest.year}. aasta raiemaht (removals) ${etDecimal(latest.removals, 1)} miljonit m³ koorega ja netojuurdekasv ${etDecimal(latest.increment, 1)} miljonit m³ koorega; ${relation}.${qualitySentence}`.trim(),
       introCitations: [eurostatCitation],
       parts: [
         ...(handbookCitation ? [{

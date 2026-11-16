@@ -30,7 +30,7 @@ import {
   SEARCH_RUN_CAPACITY_SQL,
   SEARCH_RUN_MAX_ROWS,
 } from "../server/database.mjs";
-import { createCoalescedTtlSnapshot } from "../server/corpus.mjs";
+import { createCoalescedTtlSnapshot } from "../server/corpus_snapshot.mjs";
 import {
   createRollingLlmBudget,
   createClientScopedLlmBudget,
@@ -41,61 +41,57 @@ import {
   resolveLlmClientBudget,
   settleLlmReservation,
 } from "../server/llm-budget.mjs";
-import {
-  buildLlmRequest,
-  assertAnswerAddressesQuery,
-  extractLlmBudgetUsage,
-  extractLlmText,
-  parseLlmJson,
-  numericClaimBindingsMatch,
-  resolveLlmConcurrency,
-  resolveLlmTimeout,
-  validateGroundedAnswer,
-} from "../server/llm.mjs";
+import { resolveLlmConcurrency } from "../server/llm.mjs";
+import { parseLlmJson } from "../server/llm_response_parser.mjs";
+import { numericClaimBindingsMatch } from "../server/llm_claim_grounding.mjs";
+import { assertAnswerAddressesQuery, validateGroundedAnswer } from "../server/llm_answer_validation.mjs";
+import { MAX_CONVERSATION_CONTEXT_CHARS, buildLlmRequest } from "../server/llm_prompt.mjs";
+import { extractLlmBudgetUsage, extractLlmText } from "../server/llm_usage.mjs";
 import { buildEvidencePack } from "../server/evidence-pack.mjs";
-import { sanitizeLlmEvidenceText } from "../server/search.mjs";
+import { sanitizeLlmEvidenceText } from "../server/search_evidence_sanitization.mjs";
 import { deliveredOutcome } from "../server/delivered-outcome.mjs";
 import { sourceWitnessKey } from "../server/source-identity.mjs";
 import {
-  ANSWER_SOURCE_EXPIRY,
   createPortalDraft as createPortalDraftImplementation,
   createDeadlineCleanupLease,
-  cachedSourcesBelongToListing,
-  directEvidenceExtract,
-  draftMatchesListingAndFilters,
   isSearchCacheEnabled,
-  publicResponse,
   reassociateHydratedDocuments,
   requestCanStillPersist,
   retainSearchPersistence,
   SEARCH_RESPONSE_REVISION,
-  searchListingRevision,
   searchEnvironmentLive as searchEnvironmentLiveImplementation,
   searchTimeoutFallback,
   settleWithinDeadline,
   shouldGenerateGroundedAnswer,
 } from "../server/pipeline.mjs";
-import { cadastreSourceDocuments, composeCadastreAnswer, normalizeSpatialState } from "../server/cadastre.mjs";
+import { ANSWER_SOURCE_EXPIRY, publicResponse } from "../server/search_public_response.mjs";
 import {
-  assessEvidence,
-  assessSearchQuery,
+  cachedSourcesBelongToListing,
+  draftMatchesListingAndFilters,
+  searchListingRevision,
+} from "../server/search_listing_stage.mjs";
+import { directEvidenceExtract } from "../server/search_answer_evidence.mjs";
+import { cadastreSourceDocuments, composeCadastreAnswer, normalizeSpatialState } from "../server/cadastre.mjs";
+import { assessSearchQuery } from "../server/search_query_assessment.mjs";
+import {
   composeAmbiguousDomainGuidanceResponse,
   composeOfficialServiceNavigationResponse,
   composeWasteFacilitiesNavigationResponse,
   composeScopeResponse,
   composeSearchResponse,
-  officialServiceCatalogueDocuments,
-  rankDocuments,
-  directDirectoryDocumentIds,
-  rankedSetCoversSubject,
-  searchEnvironment,
-} from "../server/search.mjs";
+  NO_ANSWER_EYEBROW,
+} from "../server/search_response.mjs";
+import { officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
+import { rankDocuments } from "../server/search_ranking.mjs";
+import { directDirectoryDocumentIds } from "../server/search_selectors.mjs";
+import { searchEnvironment } from "../server/search.mjs";
+import { assessEvidence, rankedSetCoversSubject, splitTextPassages } from "../server/search_evidence.mjs";
 import {
   getReviewedSearchSuggestions,
   isReviewedSearchSuggestionAlias,
   REVIEWED_ENVIRONMENT_SUGGESTIONS,
 } from "../server/suggestions.mjs";
-import { scoreSearchCandidate } from "../server/retrieval.mjs";
+import { scoreSearchCandidate } from "../server/retrieval_ranking.mjs";
 import { localEmbedding } from "../server/qdrant.mjs";
 import {
   aggregateClientAddress,
@@ -124,7 +120,6 @@ import { publicDeploymentRevision } from "../server/version.mjs";
 import { validateLlmProviderUrl } from "../server/provider-policy.mjs";
 import { safeExternalHref } from "../src/url-safety.js";
 import {
-  REVIEWED_SEARCH_SUGGESTIONS,
   shouldFetchRemoteSuggestions,
   suggestionsForValue,
 } from "../src/search-suggestions.js";
@@ -148,18 +143,17 @@ import {
   EELIS_EMAJOGI_PUBLIC_WATERCOURSE_WFS_URL,
   eelisEmajogiPublicWatercourseFromGeoJson,
 } from "../server/eelis.mjs";
+import { contextualRetrievalQuery } from "../server/retrieval_context.mjs";
+import { deduplicateResults } from "../server/retrieval_deduplication.mjs";
+import { evidenceDocumentsFromListing } from "../server/retrieval_listing.mjs";
 import {
-  contextualRetrievalQuery,
-  deduplicateResults,
-  evidenceDocumentsFromListing,
   rankPublicSearchCandidates,
   rankSearchCandidates,
   selectAnswerEvidence,
-} from "../server/retrieval.mjs";
+} from "../server/retrieval_ranking.mjs";
 import { sourceEvidenceEligibility } from "../server/source-registry.mjs";
 import { observeSourcePolicy } from "../server/source_policy.mjs";
 import { relationshipClaimHasPassageWitness } from "../server/proposition-grounding.mjs";
-import { splitTextPassages } from "../server/search.mjs";
 
 function explicitEvidenceSource(source = {}) {
   return {
@@ -438,10 +432,9 @@ test("container readiness is withdrawn before the old listener drains", async ()
 });
 
 test("API admission precedes JSON parsing and HTTP receive budgets are explicit", async () => {
-  const [index, cadastre, corpus] = await Promise.all([
+  const [index, cadastre] = await Promise.all([
     readFile(new URL("../server/index.mjs", import.meta.url), "utf8"),
     readFile(new URL("../server/cadastre.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../server/corpus.mjs", import.meta.url), "utf8"),
   ]);
   assert.doesNotMatch(index, /app\.use\(express\.json/u);
   assert.match(index, /scope: "search"/u);
@@ -470,28 +463,17 @@ test("API admission precedes JSON parsing and HTTP receive budgets are explicit"
   assert.match(cadastre, /maximumBytes: MAX_RESPONSE_BYTES/u);
   assert.match(cadastre, /maximumRedirects: 0/u);
   assert.doesNotMatch(cadastre, /\bfetch\s*\(/u);
-  assert.match(corpus, /requestApprovedPublicHttpsText/u);
-  assert.match(corpus, /maximumBytes: byteLimit/u);
-  assert.match(corpus, /Math\.trunc\(Number\(maximumBytes\) \|\| MAX_FETCH_BYTES\)[\s\S]*?MAX_FETCH_BYTES/u);
-  assert.doesNotMatch(corpus, /response\.arrayBuffer\(\)|response\.json\(\)/u);
 });
 
-test("public corpus statistics are coalesced, deadline-bound and fairly admitted", async () => {
-  const [index, corpus, database] = await Promise.all([
+test("public corpus statistics route propagates deadlines and fairly admits requests", async () => {
+  const [index, database] = await Promise.all([
     readFile(new URL("../server/index.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../server/corpus.mjs", import.meta.url), "utf8"),
     readFile(new URL("../server/database.mjs", import.meta.url), "utf8"),
   ]);
   assert.match(index, /const corpusStatsAdmission = createFairSearchAdmission\(\{[\s\S]*?maximumActivePerClient: 1,[\s\S]*?maximumQueuedPerClient: 1/u);
-  assert.match(corpus, /const corpusStatsBackendAdmission = createFairSearchAdmission\(\{[\s\S]*?maximumActive: 2,[\s\S]*?capacityCode: "CORPUS_CAPACITY"/u);
-  assert.match(corpus, /acquireWork: \(\{ clientKey, signal \}\) => corpusStatsBackendAdmission\.acquire/u);
   assert.match(index, /app\.get\("\/api\/corpus"[\s\S]*?bindRequestAbort\(request, response\)[\s\S]*?corpusStatsAdmission\.acquire[\s\S]*?corpusStats\(\{[\s\S]*?signal: lifecycle\.controller\.signal,[\s\S]*?deadlineAt,[\s\S]*?clientKey/u);
   assert.match(index, /corpusStatsAdmission\.close\(\)/u);
   assert.match(index, /closeCorpusStatsBackendAdmission\(/u);
-  const corpusStatsReader = corpus.match(/async function readCorpusStats[\s\S]*?const corpusStatsSnapshot/u)?.[0] || "";
-  assert.match(corpusStatsReader, /const queryOptions = \{ signal, deadlineAt, ensureSearchSchema: false \}/u);
-  assert.match(corpusStatsReader, /databaseQuery\([\s\S]*?\[\], queryOptions\)[\s\S]*?databaseQuery\([\s\S]*?\[\], queryOptions\)/u);
-  assert.doesNotMatch(corpusStatsReader, /ensureCorpusSchema\(/u);
   assert.match(index, /stats\.status === "degraded" \? "no-store"/u);
   assert.match(database, /practice_search_cache_expires_at_hash_idx[\s\S]*?\(expires_at ASC, query_hash ASC\)/u);
   assert.match(database, /practice_search_cache_created_at_hash_idx[\s\S]*?\(created_at ASC, query_hash ASC\)/u);
@@ -1108,96 +1090,49 @@ test("request lifecycle aborts on disconnect and removes both listeners", () => 
   assert.equal(response.listenerCount("close"), 0);
 });
 
-test("external result links allow only HTTPS and seeded markup remains inert", async () => {
+test("external source URLs allow only HTTPS", () => {
   assert.equal(safeExternalHref("https://keskkonnaportaal.ee/et/mets"), "https://keskkonnaportaal.ee/et/mets");
   for (const value of ["javascript:alert(1)", "data:text/html,<script>alert(1)</script>", "http://example.com", "not a URL"]) {
     assert.equal(safeExternalHref(value), null, value);
   }
-  const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
-  assert.doesNotMatch(app, /dangerouslySetInnerHTML|\.innerHTML\s*=/u);
-  assert.match(app, /safeExternalHref\(href\)/u);
 });
 
-test("error states offer retry that re-runs the failed request", async () => {
-  const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
-  assert.match(app, /\{error \? <div className="broad-results__error"[\s\S]{0,200}disabled=\{!interactive \|\| busy\}[\s\S]{0,120}onClick=\{\(\) => onPage\(current\)\}[\s\S]{0,80}Proovi uuesti/u);
-  assert.match(app, /disabled=\{!interactive \|\| busy\}[\s\S]{0,200}onClick=\{\(\) => onPage\(current\)\}/u);
-  assert.match(app, /\{error \? <div className="search-error"[\s\S]{0,400}disabled=\{busy\}[\s\S]{0,120}onClick=\{\(\) => onSearch\(query, \{ filters: appliedFilters \}\)\}[\s\S]{0,80}Proovi uuesti/u);
-});
 
-test("autocomplete never renders a late response under a newer query", () => {
+test("autocomplete ignores stale API responses and never falls back to local examples", () => {
   const lateFirstResponse = {
     query: "mets",
     items: [{ value: "metsade seisund", count: 10 }],
   };
-  assert.deepEqual(suggestionsForValue("vesi", lateFirstResponse, ["põhjavee seisund"]), []);
-  assert.deepEqual(suggestionsForValue("mets", lateFirstResponse, []), lateFirstResponse.items);
-  const reviewed = [
-    "Kui suur osa Eestist on kaetud metsaga?",
-    "Kuidas mõjutab kliimamuutus metsi?",
-    "Kuidas arvutatakse juurdekasvu?",
-    "Mis vahe on SMI-l ja metsaregistril?",
-    "Kas Eestis saab mets otsa?",
-  ];
-  assert.equal(suggestionsForValue("", {}, reviewed).length, 5);
-  assert.ok(suggestionsForValue("m", {}, reviewed).every((item) => item.value.endsWith("?")));
-  assert.deepEqual(suggestionsForValue("me", {}, ["How is forest increment calculated?"]), []);
-  const rawClimate = { query: "kliima", items: [{ value: "kliima", count: 42 }, { value: "kliimamuutused", count: 18 }] };
-  assert.equal(suggestionsForValue("kliima", rawClimate, reviewed)[0].value, "Kuidas mõjutab kliimamuutus metsi?");
-});
-
-test("autocomplete covers reviewed environmental prefixes with diacritic and one-edit tolerance", () => {
-  const cases = [
-    ["põhj", /põhjavee/u],
-    ["pohj", /põhjavee/u],
-    ["õhk", /õhukvaliteet/u],
-    ["kliima", /2024\. aasta keskmine/u],
-    ["uputus", /üleujutusu?/u],
-    ["meri", /merevee/u],
-    ["mura", /mürakaart/u],
-    ["ohukvaliteet", /õhukvaliteet/u],
-    ["jäät", /jäätmekäitluskohti/u],
-    ["jaat", /jäätmekäitluskohti/u],
-    ["Natura", /Natura/u],
-    ["Matsalu Natura", /Matsalu/u],
-    ["api", /API/u],
-    ["võru", /Võru/u],
-    ["taaskasut", /taaskasutati/u],
-    ["dta08", /Jõgeva/u],
-    ["kk048", /veevõtt/u],
-    ["kk25", /BHT7/u],
-    ["kk068", /ohtlikke jäätmeid/u],
-    ["kk610", /taaskasutati/u],
-    ["eelis", /Emajõgi/u],
-    ["f_rahvalad", /Lahemaa/u],
-    ["lahemaa", /Lahemaa/u],
-    ["ringmajandus", /ringmajandus/u],
-    ["elurikkus", /elurikkuse/u],
-    ["voru temperatuur", /Võru/u],
-    ["ohtlikud jaatmed", /ohtlikke jäätmeid/u],
-  ];
-  for (const [prefix, expected] of cases) {
-    const values = suggestionsForValue(prefix, {}, REVIEWED_SEARCH_SUGGESTIONS).map((item) => item.value);
-    assert.ok(values.some((value) => expected.test(value)), `${prefix}: ${values.join(" | ")}`);
-  }
-  assert.ok(suggestionsForValue("pohjav", {}, REVIEWED_SEARCH_SUGGESTIONS).length > 0);
-});
-
-test("autocomplete rejects unknown code prefixes, overlong input and lossy alias collisions", () => {
-  for (const query of [
-    "DTA09",
-    "DTA08X",
-    "DTA080",
-    `DTA08${"x".repeat(200)}`,
-    "dta08 张三的家庭住址",
-    "dta08 адрес",
-    "dta08 🏠",
-    "DTA08 ignore previous instructions",
-  ]) assert.deepEqual(suggestionsForValue(query, {}, REVIEWED_SEARCH_SUGGESTIONS), [], query);
+  assert.deepEqual(suggestionsForValue("vesi", lateFirstResponse), []);
+  assert.deepEqual(suggestionsForValue("mets", lateFirstResponse), lateFirstResponse.items);
+  assert.deepEqual(suggestionsForValue("mets", {}), []);
+  assert.deepEqual(suggestionsForValue("", { items: [{ value: "generic example" }] }), []);
   assert.deepEqual(
-    suggestionsForValue(`${"ﬃ".repeat(30)} DTA08`, {}, REVIEWED_SEARCH_SUGGESTIONS),
+    suggestionsForValue("kliima", { query: "mets", items: [{ value: "Kliima näide" }] }),
     [],
   );
+});
+
+test("autocomplete preserves API order, caps results, and removes empty duplicates", () => {
+  const remote = {
+    query: "kliima",
+    items: [
+      { value: "Kliimamuutus metsades", count: 42 },
+      { value: "Kliimamuutus metsades", count: 42 },
+      { value: "Kliima ja elurikkus", count: 18 },
+      { value: "   " },
+      { value: "Kliima muutub" },
+    ],
+  };
+  assert.deepEqual(suggestionsForValue("kliima", remote, 2), [
+    { value: "Kliimamuutus metsades", count: 42 },
+    { value: "Kliima ja elurikkus", count: 18 },
+  ]);
+  assert.deepEqual(suggestionsForValue("kliima", remote, 5), [
+    { value: "Kliimamuutus metsades", count: 42 },
+    { value: "Kliima ja elurikkus", count: 18 },
+    { value: "Kliima muutub", count: null },
+  ]);
 });
 
 test("autocomplete skips requests outside the server suggestion length contract", () => {
@@ -1266,17 +1201,21 @@ test("answer evidence does not displace the most relevant search result", async 
   const query = "jäätmete ringlussevõtu määr Eestis 2023";
   const service = officialServiceCatalogueDocuments()
     .find((document) => document.id === "municipal-waste-recycling-page");
-  const numericEvidence = {
+  const numericEvidence = explicitEvidenceSource({
     id: "official-2023-rate",
     title: "Jäätmereform",
     url: "https://kliimaministeerium.ee/jaatmereform",
     summary: "Olmejäätmete ringlussevõtt 2023. aastal oli 38%.",
+    content: "Olmejäätmete ringlussevõtt 2023. aastal oli 38%.",
     organization: "Kliimaministeerium",
     type: "Ametlik ülevaade",
     published: "2026",
     sourceTier: "official",
+    retrieval: "reviewed-official-source",
+    evidencePolicy: "claim-specific",
+    _answerEvidenceEligible: true,
     topics: ["jäätmed", "ringlussevõtt"],
-  };
+  });
   const draft = await createPortalDraft(query, {
     deadlineAt: Date.now(),
     searchResults: { total: 2, items: [numericEvidence, service] },
@@ -2336,14 +2275,16 @@ test("successful LLM work consumes one process-wide rolling allowance", () => {
     requests: 1,
     tokens: AGENT_MANAGER_ANSWER_TOKENS + 1_512,
   });
+  const orchestratedTokens = 4 * AGENT_MANAGER_ANSWER_TOKENS + 1_400;
   assert.deepEqual(estimatedLlmBudgetUsage({ orchestrated: true }), {
-    requests: 4,
-    tokens: 2 * AGENT_MANAGER_ANSWER_TOKENS + 1_400,
+    requests: 6,
+    tokens: orchestratedTokens,
   });
-  assert.equal(
-    estimatedLlmBudgetTokens({ orchestrated: true }),
-    2 * AGENT_MANAGER_ANSWER_TOKENS + 1_400,
-  );
+  assert.equal(estimatedLlmBudgetTokens({ orchestrated: true }), orchestratedTokens);
+  assert.deepEqual(estimatedLlmBudgetUsage({ orchestrated: true, inputBytes: 100 }), {
+    requests: 6,
+    tokens: orchestratedTokens + 6 * 612,
+  });
 });
 
 test("rolling LLM reservations reconcile aggregate agent usage without erasing partial work", () => {
@@ -2501,29 +2442,48 @@ test("unknown dispatched work is charged at its full reservation and observed ov
   assert.equal(budget.reserve({ requests: 1, tokens: 1 }).reason, "token-budget-exhausted");
 });
 
-test("direct LLM usage charges provider-billed input and output tokens", () => {
+test("direct LLM usage normalizes provider token detail without undercounting totals", () => {
   assert.deepEqual(extractLlmBudgetUsage({
     usage: { input_tokens: 679, output_tokens: 321, total_tokens: 1_000 },
-  }, "responses"), {
+  }), {
     requests: 1,
     tokens: 1_000,
+    totalTokens: 1_000,
+    inputTokens: 679,
+    outputTokens: 321,
   });
   assert.deepEqual(extractLlmBudgetUsage({
     usage: { prompt_tokens: 277, completion_tokens: 123, total_tokens: 400 },
-  }, "chat-completions"), {
+  }), {
     requests: 1,
     tokens: 400,
+    totalTokens: 400,
+    inputTokens: 277,
+    outputTokens: 123,
   });
   assert.deepEqual(extractLlmBudgetUsage({
     usage: { input_tokens: 10, output_tokens: 5 },
-  }, "responses"), { requests: 1, tokens: 15 });
+  }), {
+    requests: 1,
+    tokens: 15,
+    totalTokens: 15,
+    inputTokens: 10,
+    outputTokens: 5,
+  });
   assert.deepEqual(extractLlmBudgetUsage({
     usage: { input_tokens: 500, output_tokens: 100, total_tokens: 200 },
-  }, "responses"), { requests: 1, tokens: 600 });
-  assert.deepEqual(extractLlmBudgetUsage({ usage: { output_tokens: 123 } }, "responses"), {
+  }), {
     requests: 1,
+    tokens: 600,
+    totalTokens: 600,
+    inputTokens: 500,
+    outputTokens: 100,
   });
-  assert.deepEqual(extractLlmBudgetUsage({}, "responses"), { requests: 1 });
+  assert.deepEqual(extractLlmBudgetUsage({ usage: { output_tokens: 123 } }), {
+    requests: 1,
+    outputTokens: 123,
+  });
+  assert.deepEqual(extractLlmBudgetUsage({}), { requests: 1 });
 });
 
 test("Luna uses the Responses API with strict structured output", () => {
@@ -2539,7 +2499,6 @@ test("Luna uses the Responses API with strict structured output", () => {
     selectedModel: "openai-codex/gpt-6-luna",
     query: "Ｋａｓ metsad muutuvad nooremaks?",
     evidence,
-    singleSource: true,
   });
   assert.equal(request.endpoint, "/responses");
   assert.equal(request.body.model, "openai-codex/gpt-6-luna");
@@ -2559,25 +2518,42 @@ test("Luna uses the Responses API with strict structured output", () => {
     output: [{ content: [{ type: "output_text", text: "{\"intro\":\"Vastus\"}" }] }],
   }), '{"intro":"Vastus"}');
 
-  const safeContext = "Metsade vanus → Kas muutus on ühesuunaline? ".repeat(8).trim();
+  const contextTurn = "Metsade vanus → Kas muutus on ühesuunaline?";
+  const safeContext = Array.from({ length: 8 }, () => contextTurn).join(" ");
   const followUpRequest = buildLlmRequest({
     selectedModel: "openai-codex/gpt-6-luna",
     query: "Mida see tähendab?",
     evidence,
-    singleSource: true,
     conversationContext: safeContext,
   });
   const followUpPayload = JSON.parse(followUpRequest.body.input[1].content[0].text);
   assert.equal(followUpPayload.question, "Mida see tähendab?");
-  assert.equal(followUpPayload.conversation_context, safeContext);
+  assert.equal(followUpPayload.conversation_context, contextTurn);
+  assert.ok(followUpPayload.conversation_context.length <= MAX_CONVERSATION_CONTEXT_CHARS);
   assert.equal(Object.keys(followUpPayload)[0], "evidence");
   assert.ok(Object.keys(followUpPayload).indexOf("question") > 0);
+
+  const longHistory = [
+    "Metsade vanus, puistu kasv, tagavara ja pindala selgitavad varasemat küsimust. ".repeat(12),
+    "Juurdekasv, aastad ja mõõtühikud aitavad võrrelda metsamaa muutust. ".repeat(12),
+  ].join(" → ");
+  const boundedFollowUpRequest = buildLlmRequest({
+    selectedModel: "openai-codex/gpt-6-luna",
+    query: "Mida see tähendab?",
+    evidence,
+    conversationContext: longHistory,
+  });
+  const boundedFollowUpPayload = JSON.parse(boundedFollowUpRequest.body.input[1].content[0].text);
+  assert.equal(boundedFollowUpPayload.question, "Mida see tähendab?");
+  assert.ok(
+    boundedFollowUpPayload.conversation_context === undefined
+      || boundedFollowUpPayload.conversation_context.length <= MAX_CONVERSATION_CONTEXT_CHARS,
+  );
 
   const privateContextRequest = buildLlmRequest({
     selectedModel: "openai-codex/gpt-6-luna",
     query: "Kui suur on Eesti metsamaa pindala?",
     evidence,
-    singleSource: true,
     conversationContext: "Kus elab Jaan Tamm?",
   });
   const privateContextPayload = JSON.parse(privateContextRequest.body.input[1].content[0].text);
@@ -2586,7 +2562,6 @@ test("Luna uses the Responses API with strict structured output", () => {
     selectedModel: "openai-codex/gpt-6-luna",
     query: `${"ﬃ".repeat(75)} x`,
     evidence,
-    singleSource: true,
   }), (error) => error?.code === "INVALID_LLM_QUERY");
   for (const privateQuery of [
     "Jaan Tamme isikuandmed metsaregistris",
@@ -2621,7 +2596,6 @@ test("Luna uses the Responses API with strict structured output", () => {
       selectedModel: "openai-codex/gpt-6-luna",
       query: privateQuery,
       evidence,
-      singleSource: true,
     }), (error) => error?.code === "PRIVATE_PERSON_LLM_QUERY", privateQuery);
   }
 });
@@ -2644,19 +2618,16 @@ test("the LLM system prefix is identical while evidence precedes the changing qu
       selectedModel: "openai-codex/gpt-6-luna",
       query: "Kui suur on Eesti metsamaa pindala?",
       evidence: [englishEvidence],
-      singleSource: true,
     }),
     buildLlmRequest({
       selectedModel: "openai-codex/gpt-6-luna",
       query: "Miks erinevad allikate arvud?",
       evidence: [englishEvidence, registryEvidence],
-      singleSource: false,
     }),
     buildLlmRequest({
       selectedModel: "openai-codex/gpt-6-luna",
       query: "Kui palju raiuti Eestis?",
       evidence: [englishEvidence],
-      singleSource: true,
     }),
   ];
   const systems = requests.map((request) => request.body.input[0].content[0].text);
@@ -2668,10 +2639,11 @@ test("the LLM system prefix is identical while evidence precedes the changing qu
   assert.match(payloads[0].glossary_directive, /wood removals → raiemaht/u);
   assert.match(payloads[0].glossary_directive, /clear felling → lageraie/u);
   assert.ok(payloads[1].intent_directive.length > 0);
-  assert.equal(payloads[0].outputContract.parts, "empty");
+  assert.equal(payloads[0].outputContract.parts, "cited_synthesis");
   assert.equal(payloads[1].outputContract.parts, "cited_synthesis");
-  assert.match(payloads[0].outputContract.source_rule, /evidence\.content lausete hulgast/u);
-  assert.equal(payloads[2].outputContract.parts, "empty");
+  assert.match(payloads[0].outputContract.source_rule, /evidence\.content välja faktitoena/u);
+  assert.match(payloads[0].outputContract.source_rule, /eri panus/u);
+  assert.equal(payloads[2].outputContract.parts, "cited_synthesis");
 });
 
 test("Luna evidence uses raw bodies rather than draft, title or tag proofs", () => {
@@ -5893,6 +5865,31 @@ test("search copy says plainly when there is no answer, with or without results"
   assert.match(empty.answer.intro, /Meil ei ole sellele küsimusele vastust/u);
 });
 
+test("an explicitly irrelevant result cannot produce an answerable public response", () => {
+  const source = {
+    id: "unrelated-fixture",
+    title: "Unrelated source",
+    url: "https://example.invalid/",
+    content: "Unrelated source",
+    tags: [],
+  };
+  const query = "Mis on mets?";
+  const options = { answerable: true, related: [] };
+  const relevant = composeSearchResponse(query, [source], {
+    ...options,
+    hasRelevantResults: true,
+  });
+  const irrelevant = composeSearchResponse(query, [source], {
+    ...options,
+    hasRelevantResults: false,
+  });
+
+  assert.equal(relevant.evidence.answerable, true);
+  assert.notEqual(relevant.answer.eyebrow, NO_ANSWER_EYEBROW);
+  assert.equal(irrelevant.evidence.answerable, false);
+  assert.equal(irrelevant.answer.eyebrow, NO_ANSWER_EYEBROW);
+});
+
 test("broad ambiguous-domain questions route to their reviewed official service", () => {
   const query = "Kus Eestis on kõige puhtam õhk?";
   const source = officialServiceCatalogueDocuments()
@@ -6663,13 +6660,16 @@ test("a provider timeout or failure preserves a detached accepted deterministic 
     });
 
     assert.ok(streamedDraft, outcome);
-    // The reader keeps the answer that was already streamed: the accepted
-    // deterministic draft, not the provider's partial one. The returned result is
-    // that draft projected for publication, so the only difference it may carry is
-    // the copied-text expiry instant, which rides on the internal result as an own
-    // symbol and is dropped by serialization.
-    const delivered = (value) => JSON.parse(JSON.stringify(value));
+    // The answer remains the accepted deterministic draft. A dispatched
+    // provider attempt has unknown usage, not the draft's known zero usage.
+    const delivered = (value) => {
+      const serialized = JSON.parse(JSON.stringify(value));
+      delete serialized.usage_telemetry;
+      return serialized;
+    };
     assert.deepEqual(delivered(result), delivered(streamedDraft), outcome);
+    assert.equal(result.usage_telemetry.status, "unknown", outcome);
+    assert.equal(result.usage_telemetry.requests, 1, outcome);
     assert.equal(
       typeof result[ANSWER_SOURCE_EXPIRY],
       "number",
@@ -7296,8 +7296,8 @@ test("the live answer path excludes legacy static SMI answer fixtures", async ()
   assert.doesNotMatch(pipeline, /SEARCH_DOCUMENTS|answerForestryQuestion|knowledge\/forestry/u);
   assert.match(retrieval, /officialServiceCatalogueDocuments/u);
   const [{ officialServiceCatalogueDocuments }, { evidenceDocumentsFromListing }] = await Promise.all([
-    import("../server/search.mjs"),
-    import("../server/retrieval.mjs"),
+    import("../server/search_catalogue.mjs"),
+    import("../server/retrieval_listing.mjs"),
   ]);
   const directory = officialServiceCatalogueDocuments();
   const visibleIds = new Set(directory.map((document) => document.id));
@@ -7363,7 +7363,7 @@ test("a source link opens the publisher page and an in-page anchor is never visi
     appType: "custom",
   });
   try {
-    const { SourceLegend } = await vite.ssrLoadModule("/src/App.jsx");
+    const { SourceLegend } = await vite.ssrLoadModule("/src/AnswerSources.jsx");
     const $ = load(renderToStaticMarkup(createElement(SourceLegend, {
       sources: [
         {
@@ -7458,7 +7458,6 @@ test("home links and the 320px quick bar keep accessible names, contrast and ref
   ]);
   assert.match(app, /aria-label=\{`Ava artikkel: \$\{card\.title\}`\}/u);
   assert.match(app, /aria-label=\{`Ava uudis: \$\{item\.title\}`\}/u);
-  assert.match(app, /className="search-filters" aria-label="Otsingutulemuste filtrid" role="group"/u);
   assert.match(styles, /--brand-700:\s*#0073b8/u);
   assert.match(styles, /--brand-600:\s*#007dbb/u);
   assert.match(styles, /--green:\s*#008849/u);

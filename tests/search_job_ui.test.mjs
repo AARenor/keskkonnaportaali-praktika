@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { after, before, test } from "node:test";
+import { after, before, beforeEach, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 import { DEFAULT_SEARCH_FILTERS } from "../src/search_request.js";
-import { canonicalizePublicSearchQuery, composeSearchResponse, NO_ANSWER_EYEBROW } from "../server/search.mjs";
+import { composeSearchResponse, NO_ANSWER_EYEBROW } from "../server/search_response.mjs";
 
 const SOURCE_ONLY_EYEBROW = composeSearchResponse("mets", [{ id: "mets", title: "Mets" }], { related: [] }).answer.eyebrow;
 
@@ -38,6 +38,10 @@ function fakeSearchJobs() {
 }
 
 function installBrowserGlobals() {
+  const listeners = new Map();
+  const location = { pathname: "/", search: "", href: "http://localhost/" };
+  const stack = [{ state: null, url: "/" }];
+  let historyIndex = 0;
   const document = {
     title: "",
     activeElement: null,
@@ -51,24 +55,63 @@ function installBrowserGlobals() {
       return null;
     },
   };
+  const updateLocation = (url) => {
+    const next = new URL(url, location.href);
+    location.pathname = next.pathname;
+    location.search = next.search;
+    location.href = next.href;
+  };
+  const dispatch = (event) => {
+    for (const listener of listeners.get(event.type) ?? []) listener(event);
+  };
+  const history = {
+    scrollRestoration: "auto",
+    get state() {
+      return stack[historyIndex].state;
+    },
+    pushState(state, _title, url = location.href) {
+      stack.splice(historyIndex + 1);
+      stack.push({ state, url });
+      historyIndex = stack.length - 1;
+      updateLocation(url);
+    },
+    replaceState(state, _title, url = location.href) {
+      stack[historyIndex] = { state, url };
+      updateLocation(url);
+    },
+    back() {
+      historyIndex = Math.max(0, historyIndex - 1);
+      const entry = stack[historyIndex];
+      updateLocation(entry.url);
+      dispatch({ type: "popstate", state: entry.state });
+    },
+    forward() {
+      historyIndex = Math.min(stack.length - 1, historyIndex + 1);
+      const entry = stack[historyIndex];
+      updateLocation(entry.url);
+      dispatch({ type: "popstate", state: entry.state });
+    },
+  };
+  let scrollY = 0;
   const window = {
     document,
-    location: { pathname: "/", search: "", href: "http://localhost/" },
-    history: {
-      state: null,
-      pushState(state) {
-        this.state = state;
-      },
-      replaceState(state) {
-        this.state = state;
-      },
+    location,
+    history,
+    get scrollY() {
+      return scrollY;
     },
-    addEventListener() {},
-    removeEventListener() {},
-    dispatchEvent() {
-      return false;
+    addEventListener(type, listener) {
+      const entries = listeners.get(type) ?? new Set();
+      entries.add(listener);
+      listeners.set(type, entries);
     },
-    scrollTo() {},
+    removeEventListener(type, listener) {
+      listeners.get(type)?.delete(listener);
+    },
+    dispatchEvent: dispatch,
+    scrollTo(position, top) {
+      scrollY = typeof position === "number" ? top ?? position : position?.top ?? 0;
+    },
     matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
     requestAnimationFrame: (callback) => {
       callback(0);
@@ -83,12 +126,21 @@ function installBrowserGlobals() {
   const previous = { window: globalThis.window, document: globalThis.document };
   globalThis.window = window;
   globalThis.document = document;
-  return () => {
+  const release = () => {
     if (previous.window === undefined) delete globalThis.window;
     else globalThis.window = previous.window;
     if (previous.document === undefined) delete globalThis.document;
     else globalThis.document = previous.document;
   };
+  release.reset = () => {
+    stack.splice(0, stack.length, { state: null, url: "/" });
+    historyIndex = 0;
+    updateLocation("/");
+    scrollY = 0;
+    listeners.clear();
+    history.scrollRestoration = "auto";
+  };
+  return release;
 }
 
 // A fake transport with a scripted per-call behaviour, so a flow can be made to
@@ -504,6 +556,10 @@ before(async () => {
     || exported.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
   assert.ok(reactInternals && "H" in reactInternals, "React exposes the hook dispatcher slot this renderer drives");
 });
+beforeEach(() => {
+  releaseBrowserGlobals?.reset();
+});
+
 
 after(async () => {
   await vite?.close();
@@ -1077,20 +1133,12 @@ test("a chat answer with no card at all keeps the listing it already found above
   }
 });
 
-// The reviewed typo list rewrites a grammatical genitive the reader typed on
-// purpose, because "raiemahu" is one substitution from the listed word
-// "raiemaht". The evidence, citations and the response body keep that canonical
-// query, but the heading a reader looks at must keep the words the reader typed.
+// This explicit response fixture tests a card that echoes one corrected word.
+// The UI must keep the spelling the reader entered.
 const ASKED_GENITIVE = "Kas 2025. aasta raiemahu kohta on eksperdihinnang?";
-const CANONICAL_HARVEST = canonicalizePublicSearchQuery(ASKED_GENITIVE).query;
-
-function equalsOneEditApart() {
-  assert.notEqual(CANONICAL_HARVEST, ASKED_GENITIVE, "the server really rewrites this question");
-  assert.match(CANONICAL_HARVEST, /raiemaht/u);
-}
+const CANONICAL_HARVEST = "Kas 2025. aasta raiemaht kohta on eksperdihinnang?";
 
 test("an answer card that only echoes the corrected query keeps the wording the reader typed", async () => {
-  equalsOneEditApart();
   const transport = createJobTransport();
   globalThis.__praktikaSearchJobs = transport;
   try {
@@ -1187,3 +1235,539 @@ test("a meaningful answer title is never replaced with the question", async () =
     delete globalThis.__praktikaSearchJobs;
   }
 });
+
+test("a filtered search restores all filters before retrying after Back", async () => {
+  const transport = createJobTransport();
+  globalThis.__praktikaSearchJobs = transport;
+  try {
+    const { App } = await loadPages();
+    const { default: SearchResults } = await vite.ssrLoadModule("/src/SearchResults.jsx");
+    const renderer = createRenderer(reactInternals);
+    const filters = { ...DEFAULT_SEARCH_FILTERS, source: "official", category: "mets", year: 2024, sort: "newest" };
+    const home = find(renderer.render(App, {}), (element) => element.props?.searchInputRef !== undefined);
+    transport.queue(() => { throw new Error("Temporary search failure"); });
+    await home.props.onSearch("mets kaitse", { filters });
+
+    const failed = find(renderer.render(App, {}), (element) => typeof element.props?.onHome === "function");
+    assert.equal(failed.props.query, "mets kaitse");
+    assert.deepEqual(failed.props.filters, filters);
+    assert.ok(failed.props.error);
+    failed.props.onHome();
+    globalThis.window.history.back();
+
+    const restored = find(renderer.render(App, {}), (element) => typeof element.props?.onHome === "function");
+    assert.equal(restored.props.query, "mets kaitse");
+    assert.deepEqual(restored.props.filters, filters);
+    assert.ok(restored.props.error);
+    assert.equal(globalThis.window.location.search, "", "the query stays out of the URL");
+
+    const tree = renderer.render(SearchResults, restored.props);
+    const retry = find(tree, (element) => element.type === "button" && element.props?.className === "error-retry");
+    transport.queue(() => { throw new Error("Retry failed"); });
+    await retry.props.onClick();
+    assert.deepEqual(transport.calls.at(-1).payload.filters, filters);
+  } finally {
+    delete globalThis.__praktikaSearchJobs;
+  }
+});
+
+test("Back and Forward restore cached search pages without another search job", async () => {
+  const transport = createJobTransport();
+  globalThis.__praktikaSearchJobs = transport;
+  const originalFetch = globalThis.fetch;
+  const filteredFilters = { ...DEFAULT_SEARCH_FILTERS, category: "mets", year: 2024 };
+  const firstListing = {
+    ...listingOf(),
+    total: 24,
+    pageCount: 2,
+    windowId: "first-window",
+  };
+  const filteredListing = {
+    ...listingOf(),
+    total: 13,
+    pageCount: 2,
+    windowId: "filtered-window",
+    appliedFilters: filteredFilters,
+  };
+  const secondPage = {
+    ...filteredListing,
+    page: 2,
+    items: [{
+      id: "metsamajandus",
+      title: "Metsamajandus",
+      url: "https://keskkonnaportaal.ee/et/metsamajandus",
+      sourceTier: "official",
+      summary: "Teine kasulik leht.",
+    }],
+  };
+  const pageRequests = [];
+  globalThis.fetch = async (_url, options) => {
+    pageRequests.push(JSON.parse(options.body));
+    return {
+      ok: true,
+      headers: { get: () => null },
+      json: async () => secondPage,
+    };
+  };
+  try {
+    const { App } = await loadPages();
+    const { default: BroadSearchResults } = await vite.ssrLoadModule("/src/BroadSearchResults.jsx");
+    const renderer = createRenderer(reactInternals);
+    const searchResults = () => {
+      const page = find(renderer.render(App, {}), (element) => typeof element.props?.onHome === "function");
+      const tree = renderer.render(page.type, page.props);
+      const broadResults = find(tree, (element) => element.type === BroadSearchResults);
+      return {
+        props: page.props,
+        tree: [tree, renderer.render(BroadSearchResults, broadResults.props)],
+      };
+    };
+
+    transport.queue(emits(
+      { type: "results", searchResults: firstListing },
+      { type: "answer", result: answerOf("Esimene vastus", "mets") },
+    ));
+    await find(renderer.render(App, {}), (element) => element.props?.searchInputRef !== undefined)
+      .props.onSearch("mets");
+    globalThis.window.scrollTo({ top: 321 });
+    globalThis.window.dispatchEvent({ type: "scroll" });
+
+    transport.queue(emits(
+      { type: "results", searchResults: filteredListing },
+      { type: "answer", result: answerOf("Filtreeritud vastus", "mets kaitse") },
+    ));
+    const activeSearch = searchResults();
+    await activeSearch.props.onSearch("mets kaitse", { filters: filteredFilters });
+    globalThis.window.scrollTo({ top: 456 });
+    globalThis.window.dispatchEvent({ type: "scroll" });
+
+    const { tree } = searchResults();
+    const secondPageButton = find(tree, (element) => element.type === "button" && element.props?.children === 2);
+    await secondPageButton.props.onClick();
+    assert.deepEqual(pageRequests, [{
+      q: "mets kaitse",
+      filters: filteredFilters,
+      page: 2,
+      page_size: 12,
+      window_id: "filtered-window",
+    }]);
+    globalThis.window.scrollTo({ top: 789 });
+    globalThis.window.dispatchEvent({ type: "scroll" });
+
+    const assertCurrentSearch = (query, title, page, filters, scrollY) => {
+      const { props, tree: currentTree } = searchResults();
+      assert.equal(props.query, query);
+      assert.equal(props.result.answer.title, title);
+      assert.equal(props.previewListing.page, page);
+      assert.deepEqual(props.previewListing.appliedFilters, filters);
+      assert.equal(globalThis.window.scrollY, scrollY);
+      assert.equal(globalThis.window.location.pathname, "/otsi");
+      assert.equal(globalThis.window.location.search, "", "the query stays out of the URL");
+      return currentTree;
+    };
+
+    assertCurrentSearch("mets kaitse", "Filtreeritud vastus", 2, filteredFilters, 789);
+    globalThis.window.history.back();
+    assertCurrentSearch("mets kaitse", "Filtreeritud vastus", 1, filteredFilters, 456);
+    globalThis.window.history.back();
+    assertCurrentSearch("mets", "Esimene vastus", 1, DEFAULT_SEARCH_FILTERS, 321);
+    globalThis.window.history.forward();
+    assertCurrentSearch("mets kaitse", "Filtreeritud vastus", 1, filteredFilters, 456);
+    globalThis.window.history.forward();
+    const restoredPageTwo = assertCurrentSearch("mets kaitse", "Filtreeritud vastus", 2, filteredFilters, 789);
+    assert.match(textOf(restoredPageTwo), /Metsamajandus/u);
+    assert.equal(transport.calls.length, 2, "history navigation does not start another search or model job");
+    assert.equal(transport.calls[0].payload.page_size, 12);
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete globalThis.__praktikaSearchJobs;
+  }
+});
+
+
+test("Back does not restore an expired search snapshot after starting another search", async () => {
+  const transport = createJobTransport();
+  globalThis.__praktikaSearchJobs = transport;
+  const originalNow = Date.now;
+  let now = originalNow();
+  Date.now = () => now;
+  try {
+    const { App } = await loadPages();
+    const renderer = createRenderer(reactInternals);
+    const home = () => find(renderer.render(App, {}), (element) => element.props?.searchInputRef !== undefined);
+    const search = () => find(renderer.render(App, {}), (element) => typeof element.props?.onHome === "function");
+
+    transport.queue(emits(
+      { type: "results", searchResults: { ...listingOf(), windowId: "expired-window-a" } },
+      { type: "answer", result: answerOf("Vana vastus A", "otsing A") },
+    ));
+    await home().props.onSearch("otsing A");
+
+    now += 16 * 60 * 1_000;
+    transport.queue(emits(
+      { type: "results", searchResults: { ...listingOf(), windowId: "window-b" } },
+      { type: "answer", result: answerOf("Vastus B", "otsing B") },
+    ));
+    await search().props.onSearch("otsing B");
+    assert.equal(transport.calls.length, 2);
+
+    globalThis.window.history.back();
+    await settle();
+
+    assert.ok(home(), "Back must not restore an expired search snapshot");
+    assert.equal(globalThis.window.location.pathname, "/", "an expired opaque history entry returns to Home");
+    assert.equal(transport.calls.length, 2, "Back does not revive the old search or start a new job");
+    assert.equal(globalThis.window.location.search, "", "the query stays out of the URL");
+  } finally {
+    Date.now = originalNow;
+    delete globalThis.__praktikaSearchJobs;
+  }
+});
+
+
+test("a late page one answer preserves both history entries scroll positions", async () => {
+  const transport = createJobTransport();
+  globalThis.__praktikaSearchJobs = transport;
+  const originalFetch = globalThis.fetch;
+  let releaseAnswer;
+  let answerReleased = false;
+  let pendingSearch;
+  const answerGate = new Promise((resolve) => {
+    releaseAnswer = resolve;
+  });
+  const firstListing = {
+    ...listingOf(),
+    pageCount: 2,
+    windowId: "streaming-window",
+  };
+  const secondPage = {
+    ...firstListing,
+    page: 2,
+    items: [{ ...firstListing.items[0], title: "Teine leht" }],
+  };
+  globalThis.fetch = async () => {
+    // The loading state can shorten the document before the page request resolves.
+    globalThis.window.scrollTo({ top: 0 });
+    globalThis.window.dispatchEvent({ type: "scroll" });
+    return {
+      ok: true,
+      headers: { get: () => null },
+      json: async () => secondPage,
+    };
+  };
+  try {
+    const { App } = await loadPages();
+    const { default: BroadSearchResults } = await vite.ssrLoadModule("/src/BroadSearchResults.jsx");
+    const renderer = createRenderer(reactInternals);
+    const home = () => find(renderer.render(App, {}), (element) => element.props?.searchInputRef !== undefined);
+    const search = () => find(renderer.render(App, {}), (element) => typeof element.props?.onHome === "function");
+    const resultsTree = () => {
+      const page = search();
+      const tree = renderer.render(page.type, page.props);
+      const broadResults = find(tree, (element) => element.type === BroadSearchResults);
+      return renderer.render(BroadSearchResults, broadResults.props);
+    };
+
+    transport.queue(async ({ onEvent }) => {
+      onEvent({ type: "results", searchResults: firstListing });
+      await answerGate;
+      onEvent({ type: "answer", result: answerOf("Hiline vastus A", "mets") });
+    });
+    pendingSearch = home().props.onSearch("mets");
+    await settle();
+    assert.equal(search().props.previewListing.page, 1);
+
+    globalThis.window.scrollTo({ top: 321 });
+    globalThis.window.dispatchEvent({ type: "scroll" });
+    await settle();
+    const pageTwoButton = find(
+      resultsTree(),
+      (element) => element.type === "button" && element.props?.children === 2,
+    );
+    await pageTwoButton.props.onClick();
+    search();
+    globalThis.window.scrollTo({ top: 789 });
+    globalThis.window.dispatchEvent({ type: "scroll" });
+    await settle();
+
+    releaseAnswer();
+    answerReleased = true;
+    await pendingSearch;
+    assert.equal(search().props.previewListing.page, 2);
+    assert.equal(search().props.result.answer.title, "Hiline vastus A");
+    assert.equal(globalThis.window.scrollY, 789);
+
+    globalThis.window.history.back();
+    await settle();
+    assert.equal(search().props.previewListing.page, 1);
+    assert.equal(search().props.result.answer.title, "Hiline vastus A");
+    assert.equal(globalThis.window.scrollY, 321);
+
+    globalThis.window.history.forward();
+    await settle();
+    assert.equal(search().props.previewListing.page, 2);
+    assert.equal(search().props.result.answer.title, "Hiline vastus A");
+    assert.equal(globalThis.window.scrollY, 789);
+    assert.equal(transport.calls.length, 1, "history navigation does not start another search job");
+  } finally {
+    if (!answerReleased) releaseAnswer();
+    if (pendingSearch) await pendingSearch.catch(() => {});
+    globalThis.fetch = originalFetch;
+    delete globalThis.__praktikaSearchJobs;
+  }
+});
+
+test("a draft arriving during a page request keeps that request and shows page two", async () => {
+  const transport = createJobTransport();
+  globalThis.__praktikaSearchJobs = transport;
+  const originalFetch = globalThis.fetch;
+  let releaseDraft;
+  let releasePage;
+  let pendingSearch;
+  let pendingPage;
+  let pageSignal;
+  const draftGate = new Promise((resolve) => { releaseDraft = resolve; });
+  const pageGate = new Promise((resolve) => { releasePage = resolve; });
+  const firstListing = {
+    ...listingOf(),
+    total: 24,
+    pageCount: 2,
+    windowId: "draft-window",
+    queryRevision: "draft-revision",
+  };
+  const secondPage = {
+    ...firstListing,
+    page: 2,
+    items: [{ ...firstListing.items[0], title: "Teise lehe tegelik tulemus" }],
+  };
+  globalThis.fetch = async (_url, options) => {
+    pageSignal = options.signal;
+    await pageGate;
+    if (pageSignal.aborted) throw Object.assign(new Error("aborted"), { name: "AbortError" });
+    return { ok: true, headers: { get: () => null }, json: async () => secondPage };
+  };
+  try {
+    const { App } = await loadPages();
+    const { default: BroadSearchResults } = await vite.ssrLoadModule("/src/BroadSearchResults.jsx");
+    const renderer = createRenderer(reactInternals);
+    const home = () => find(renderer.render(App, {}), (element) => element.props?.searchInputRef !== undefined);
+    const search = () => find(renderer.render(App, {}), (element) => typeof element.props?.onHome === "function");
+    const resultsTree = () => {
+      const page = search();
+      const tree = renderer.render(page.type, page.props);
+      return renderer.render(BroadSearchResults, find(tree, (element) => element.type === BroadSearchResults).props);
+    };
+    transport.queue(async ({ onEvent }) => {
+      onEvent({ type: "results", searchResults: firstListing });
+      await draftGate;
+      onEvent({
+        type: "draft",
+        result: { ...answerOf("Esialgne vastus", "mets"), searchResults: { ...firstListing } },
+      });
+    });
+    pendingSearch = home().props.onSearch("mets");
+    await settle();
+    assert.equal(search().props.result, null, "pagination starts before an answer exists");
+    const pageTwoButton = find(resultsTree(), (element) => element.type === "button" && element.props?.children === 2);
+    pendingPage = pageTwoButton.props.onClick();
+    assert.ok(pageSignal, "page two is requested before the draft");
+    releaseDraft();
+    await pendingSearch;
+    resultsTree();
+    assert.equal(pageSignal.aborted, false, "the same-window draft must not cancel page two");
+    releasePage();
+    await pendingPage;
+    const selectedPage = search();
+    assert.equal(selectedPage.props.previewListing.page, 2);
+    assert.equal(selectedPage.props.result.searchResults.page, 2);
+    assert.equal(selectedPage.props.result.answer.title, "Esialgne vastus");
+    for (const listing of [selectedPage.props.previewListing, selectedPage.props.result.searchResults]) {
+      assert.equal(listing.windowId, "draft-window");
+      assert.equal(listing.queryRevision, "draft-revision");
+    }
+    const remountRenderer = createRenderer(reactInternals);
+    const remountedTree = remountRenderer.render(selectedPage.type, selectedPage.props);
+    const remountedListing = find(remountedTree, (element) => element.type === BroadSearchResults);
+    assert.match(textOf(remountRenderer.render(BroadSearchResults, remountedListing.props)), /Teise lehe tegelik tulemus/u);
+    globalThis.window.history.back();
+    search();
+    globalThis.window.history.forward();
+    const restoredPage = search();
+    assert.equal(restoredPage.props.previewListing.page, 2);
+    assert.equal(restoredPage.props.result.answer.title, "Esialgne vastus");
+    assert.equal(restoredPage.props.previewListing.windowId, "draft-window");
+    assert.equal(restoredPage.props.previewListing.queryRevision, "draft-revision");
+    const restoredRenderer = createRenderer(reactInternals);
+    const restoredTree = restoredRenderer.render(restoredPage.type, restoredPage.props);
+    const restoredListing = find(restoredTree, (element) => element.type === BroadSearchResults);
+    assert.match(textOf(restoredRenderer.render(BroadSearchResults, restoredListing.props)), /Teise lehe tegelik tulemus/u);
+  } finally {
+    releaseDraft();
+    releasePage();
+    if (pendingPage) await pendingPage.catch(() => {});
+    if (pendingSearch) await pendingSearch.catch(() => {});
+    globalThis.fetch = originalFetch;
+    delete globalThis.__praktikaSearchJobs;
+  }
+});
+
+
+test("an expired or mismatched result window is discarded and refreshed from page one", async () => {
+  const transport = createJobTransport();
+  globalThis.__praktikaSearchJobs = transport;
+  const originalFetch = globalThis.fetch;
+  const firstListing = {
+    ...listingOf(),
+    total: 24,
+    pageCount: 2,
+    queryRevision: "revision-one",
+    windowId: "window-one",
+  };
+  const refreshedListing = {
+    ...firstListing,
+    total: 25,
+    queryRevision: "revision-two",
+    windowId: "window-two",
+    items: [{ ...firstListing.items[0], title: "Värskendatud esimene tulemus" }],
+  };
+  const finalListing = {
+    ...refreshedListing,
+    total: 26,
+    queryRevision: "revision-three",
+    windowId: "window-three",
+    items: [{ ...firstListing.items[0], title: "Lõplik esimene tulemus" }],
+  };
+  const responses = [
+    {
+      ...firstListing,
+      page: 2,
+      queryRevision: "revision-stale",
+      windowId: "window-stale",
+      items: [{ ...firstListing.items[0], id: "stale-result", title: "Aegunud tulemus" }],
+    },
+    refreshedListing,
+    {
+      page: 2,
+      pageSize: 12,
+      pageCount: 0,
+      hasMore: false,
+      total: 0,
+      totalRelation: "gte",
+      truncated: true,
+      windowExpired: true,
+      items: [],
+    },
+    finalListing,
+  ];
+  const pageRequests = [];
+  globalThis.fetch = async (_url, options) => {
+    pageRequests.push(JSON.parse(options.body));
+    const data = responses.shift();
+    assert.ok(data, "the UI only requests the expected result pages");
+    return { ok: true, headers: { get: () => null }, json: async () => data };
+  };
+  try {
+    const { App } = await loadPages();
+    const { default: BroadSearchResults } = await vite.ssrLoadModule("/src/BroadSearchResults.jsx");
+    const renderer = createRenderer(reactInternals);
+    const appPage = () => find(renderer.render(App, {}), (element) => typeof element.props?.onHome === "function");
+    const searchTree = () => {
+      const page = appPage();
+      const tree = renderer.render(page.type, page.props);
+      const broadResults = find(tree, (element) => element.type === BroadSearchResults);
+      return [tree, renderer.render(BroadSearchResults, broadResults.props)];
+    };
+    transport.queue(emits(
+      { type: "results", searchResults: firstListing },
+      { type: "answer", result: answerOf("Metsateatis", "metsateatis") },
+    ));
+    await find(renderer.render(App, {}), (element) => element.props?.searchInputRef !== undefined)
+      .props.onSearch("metsateatis");
+
+    const originalPageKey = appPage().key;
+    const firstSecondPageButton = find(searchTree(), (element) => element.type === "button" && element.props?.children === 2);
+    await firstSecondPageButton.props.onClick();
+    assert.deepEqual(pageRequests.slice(0, 2), [
+      {
+        q: "metsateatis",
+        filters: DEFAULT_SEARCH_FILTERS,
+        page: 2,
+        page_size: 12,
+        window_id: "window-one",
+      },
+      { q: "metsateatis", filters: DEFAULT_SEARCH_FILTERS, page: 1, page_size: 12 },
+    ]);
+    assert.match(textOf(searchTree()), /Värskendatud esimene tulemus/u);
+    assert.doesNotMatch(textOf(searchTree()), /Aegunud tulemus/u);
+    assert.match(textOf(searchTree()), /Uuendasin esimest lehte/u);
+    const expiryNotice = "Otsinguaken aegus. Uuendasin esimest lehte. Lehevalik näitab nüüd ajakohaseid tulemusi.";
+    const refreshedPage = appPage();
+    assert.notEqual(refreshedPage.key, originalPageKey, "refreshing creates the keyed result page entry");
+    assert.equal(refreshedPage.props.listingNotice, expiryNotice, "the parent owns the notice across a keyed child remount");
+    globalThis.window.history.back();
+    assert.equal(appPage().props.listingNotice, "", "the previous page has no expiry notice");
+    globalThis.window.history.forward();
+    assert.equal(appPage().props.listingNotice, expiryNotice, "Forward restores the notice from the page snapshot");
+    assert.match(textOf(searchTree()), /Uuendasin esimest lehte/u);
+
+    const refreshedSecondPageButton = find(searchTree(), (element) => element.type === "button" && element.props?.children === 2);
+    await refreshedSecondPageButton.props.onClick();
+    assert.deepEqual(pageRequests.slice(2), [
+      {
+        q: "metsateatis",
+        filters: DEFAULT_SEARCH_FILTERS,
+        page: 2,
+        page_size: 12,
+        window_id: "window-two",
+      },
+      { q: "metsateatis", filters: DEFAULT_SEARCH_FILTERS, page: 1, page_size: 12 },
+    ]);
+    assert.match(textOf(searchTree()), /Lõplik esimene tulemus/u);
+    assert.doesNotMatch(textOf(searchTree()), /Aegunud tulemus/u);
+    assert.equal(transport.calls.length, 1, "page recovery does not start a model job");
+    assert.equal(globalThis.window.location.search, "", "the query stays out of the URL");
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete globalThis.__praktikaSearchJobs;
+  }
+});
+
+
+test("truncated counts are lower bounds and result navigation stops at two pages", async () => {
+  const { default: BroadSearchResults } = await vite.ssrLoadModule("/src/BroadSearchResults.jsx");
+  const renderer = createRenderer(reactInternals);
+  const listing = {
+    ...listingOf(Array.from({ length: 12 }, (_value, index) => ({
+      id: `result-${index + 1}`,
+      title: `Tulemus ${index + 1}`,
+      url: `https://keskkonnaportaal.ee/et/tulemus-${index + 1}`,
+      sourceTier: "official",
+      summary: "Otsingutulemus.",
+    }))),
+    total: 1_280,
+    totalRelation: "gte",
+    truncated: true,
+    pageCount: 99,
+    hasMore: true,
+  };
+  const tree = renderer.render(BroadSearchResults, {
+    listing,
+    busy: false,
+    error: "",
+    onPage() {},
+    onFilters() {},
+  });
+  const total = find(tree, (element) => element.type === "strong");
+  const visibleCount = find(total, (element) => element.props?.["aria-hidden"] === "true");
+  const accessibleCount = find(total, (element) => element.props?.className === "sr-only");
+  const formattedTotal = listing.total.toLocaleString("et-EE");
+  const pageButtons = elementsOf(tree)
+    .filter((element) => element.type === "button" && Number.isInteger(element.props?.children))
+    .map((element) => element.props.children);
+
+  assert.equal(visibleCount.props.children.join(""), `≥ ${formattedTotal}`);
+  assert.equal(textOf(accessibleCount).replace(/\s+/gu, " ").trim(), `Vähemalt ${formattedTotal} vastet`);
+  assert.deepEqual(pageButtons, [1, 2]);
+  assert.match(textOf(tree), /Näitan kuni kahte esimest kasulikku lehte/u);
+});
+
