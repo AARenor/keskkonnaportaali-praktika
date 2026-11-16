@@ -235,3 +235,5 @@ Järelparanduse kaheksa JavaScripti faili `biome check` andis 0 viga ja 2 olemas
 Eraldi regressioon tõendas, et varem ainult pealkirjaga kuvatud allika hilisem lubatud täistekst ei tohi vana akent tühistada. Test ebaõnnestus enne parandust ning sama PostgreSQL kontroll läbis selle pärast parandust. Valideerija keelab endiselt varem lubatud indekseerimisõiguse kadumise ja kontrollib iga säilitatud tekstivälja kehtivaid piiranguid.
 
 Aegumise serverilogisse lisati ainult kindlad tõeväärtused ja korpuse olekud: kas aken leiti, kas selle kontrolliandmed olid olemas, kas õiguste kontroll õnnestus ning kas ohutuse põlvkond muutus. Päringut, filtreid, akna ID-d, allikateksti ega autentimisandmeid see logi ei salvesta. See aitab eristada puuduva akna ja õiguste kontrolli tõrget, tegemata ühe aegumisjuhtumi põhjusest oletust.
+
+Kui korpuse lugemine ebaõnnestub, võib otsing siiski väljastada kahe lehega tulemuste akna ilma korpuse sisuta. Selle akna teist lehte ei tohi üksnes korpuse tõrke või taastumise tõttu aegunuks lugeda. Korpuse sisu sisaldava akna puhul jääb kehtima värske õiguste kontroll ja andmebaasivea korral turvaline tagasilükkamine.

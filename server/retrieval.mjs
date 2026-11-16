@@ -124,12 +124,13 @@ export async function prepareRankedSearchResults(query, {
       includeContent: true,
       windowId: requestedWindowId,
     });
-    const corpusValid = cached && local && local.status !== "degraded"
-      && (cached.corpusWindow
-        ? await validateRetainedCorpusWindow(cached.corpusWindow, appliedFilters, {
+    const corpusValid = cached && (cached.corpusWindow
+      ? local && local.status !== "degraded"
+        && await validateRetainedCorpusWindow(cached.corpusWindow, appliedFilters, {
           signal, deadlineAt, items: cached.corpusItems,
         })
-        : cached.corpusStatus === "disabled" && local.status === "disabled");
+      : (cached.corpusStatus === "disabled" || cached.corpusStatus === "degraded")
+        && Array.isArray(cached.corpusItems) && cached.corpusItems.length === 0);
     if (!cached || !corpusValid || retrievalListingWindows.generation() !== retrievalWindowGeneration
       || getBoundListingWindow(retrievalListingWindows, {
         query: acceptedQuery, filters: appliedFilters, includeContent: true, windowId: requestedWindowId,

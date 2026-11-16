@@ -936,6 +936,74 @@ test("copied text matches and ranks only under a current allowing index policy",
     assert.equal(await corpusRuntime.validateRetainedCorpusWindow(
       longListing._corpusWindow, {}, { items: longListing.rankedWindow },
     ), true);
+
+    // A fallback-only listing must survive a genuine failed corpus read and
+    // recovery, while a listing retaining corpus text still needs permission.
+    const { prepareRankedSearchResults } = await import(new URL("../server/retrieval.mjs", import.meta.url).href);
+    const overviewQuery = "metsa ülevaade";
+    const overviewUrl = urlOf("/et/mets/overview_window_fixture");
+    await insertRow(admin, {
+      externalId: "overview_window_fixture",
+      path: "/et/mets/overview_window_fixture",
+      title: "Metsa ülevaade",
+      content: "Metsa ülevaade sisaldab ametlikku metsateavet.",
+      fetchedAt,
+      metadata: { hydrated: true, source_kind: "official-page-hydration", source_policy: policy },
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => { throw new Error("External transport disabled in fixture"); };
+    try {
+      const options = { pageSize: 12, clientKey: "corpus-window-regression", deadlineAt: Date.now() + 60_000 };
+      const healthy = await prepareRankedSearchResults(overviewQuery, options);
+      assert.ok(healthy.windowId);
+      assert.equal(healthy.pageCount, 2);
+      assert.ok(healthy.evidenceCandidates.some((item) => item.url === overviewUrl && item.content));
+      await admin.query("ALTER TABLE practice_corpus_documents RENAME TO practice_corpus_documents_pagination_fixture");
+      let fallback;
+      try {
+        const degraded = await corpusRuntime.searchCorpus(overviewQuery, { preferSnapshot: false });
+        assert.equal(degraded.status, "degraded");
+        const rejected = await prepareRankedSearchResults(overviewQuery, {
+          ...options, page: 2, windowId: healthy.windowId,
+        });
+        assert.equal(rejected.windowExpired, true, "corpus-backed text fails closed during a degraded read");
+        fallback = await prepareRankedSearchResults(overviewQuery, options);
+        assert.ok(fallback.windowId);
+        assert.equal(fallback.pageCount, 2);
+        assert.ok(fallback.evidenceCandidates.every((item) => item.url !== overviewUrl));
+        const wrongQuery = await prepareRankedSearchResults("metsa pindala", {
+          ...options, page: 2, windowId: fallback.windowId,
+        });
+        assert.equal(wrongQuery.windowExpired, true);
+        const duringFailure = await prepareRankedSearchResults(overviewQuery, {
+          ...options, page: 2, windowId: fallback.windowId,
+        });
+        assert.equal(duringFailure.windowId, fallback.windowId);
+        assert.deepEqual(duringFailure.items.map((item) => item.id),
+          fallback.evidenceCandidates.slice(12, 24).map((item) => item.id));
+        assert.ok(duringFailure.items.length);
+      } finally {
+        await admin.query("ALTER TABLE practice_corpus_documents_pagination_fixture RENAME TO practice_corpus_documents");
+      }
+      const recovered = await corpusRuntime.searchCorpus(overviewQuery, { preferSnapshot: false });
+      assert.equal(recovered.status, "ready");
+      const afterRecovery = await prepareRankedSearchResults(overviewQuery, {
+        ...options, page: 2, windowId: fallback.windowId,
+      });
+      assert.equal(afterRecovery.windowId, fallback.windowId);
+      assert.deepEqual(afterRecovery.items.map((item) => item.id),
+        fallback.evidenceCandidates.slice(12, 24).map((item) => item.id));
+      await admin.query(
+        "UPDATE practice_corpus_documents SET metadata = metadata - 'source_policy' WHERE canonical_url = $1",
+        [overviewUrl],
+      );
+      const withdrawn = await prepareRankedSearchResults(overviewQuery, {
+        ...options, page: 2, windowId: healthy.windowId,
+      });
+      assert.equal(withdrawn.windowExpired, true, "withdrawn corpus permission cannot reuse retained text");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
     const hydration = await import(new URL("../server/corpus_hydration.mjs", import.meta.url).href);
 
     const pendingUrl = urlOf("/et/mets/retained_pending");
