@@ -157,13 +157,14 @@ function mentionsFelling(text) {
 // The series and SMI cards state one national figure. Every word of the question
 // must belong to that figure's vocabulary: a leftover word ("hind", "sailikpuid",
 // "metsauhistut") means something else was asked, and the figure would not answer it.
-const FOREST_AMOUNT_WORD = /^(?:\d+|\d+[.,]\d+|kui|kas|palju|jooksul|perioodil|vahemikus|naita|reeglina|muutub|seda|kuidas|moodetakse|hinnatakse|mitu|mis|milline|millised|suur\w*|vaiksem\w*|osa|on|oli|olid|oleks|ja|ning|ka|eesti\w*|riigis?|aasta\w*|praegu\w*|nuud|territoorium\w*|how|much|many|there|does|estonia|have|it|and|measured|what|the|in|is|of|forest|forests|area|hectares|tana|varem|hetkel|kokku|meil|viimas\w*|tagasi|alates|kuni|kumne\w*|kumnendi\w*|aastakumne\w*|kahe|kolme|viie|rohkem|vahem|vorrel\w*|muutu\w*|trend\w*|aegri\w*|loikes|kaupa|dunaamika\w*|kasvanud|kasvab|vahenenud|vaheneb|langenud|tousnud|suurenenud|suureneb|ajalug\w*|ajalooli\w*|areng\w*|dunaamika|maha|voetakse|voeti|langeta\w*|pindala\w*|hektar\w*|ha|tuhat|tuhandet|miljon\w*|mln|protsent\w*|osakaal\w*|maht\w*|mahu\w*|m3|tihumeet\w*|tm|kuupmeet\w*|kogus\w*|mets|metsa|metsad|metsade|metsas|metsi|metsaga|kaetud|metsamaa\w*|metsasus\w*|raie\w*|raiu\w*|lageraie\w*|harvendus\w*|koguraie\w*|puistu\w*|kogutagavara\w*|tagavara\w*|uldvaru\w*|puidu|puit\w*|varu\w*|hektarivaru\w*|juurdekasv\w*|netojuurdekasv\w*|kasvava|kasvav|keskmi\w*|eemalda\w*)$/u;
-const FOREST_MEASURE_WORD = /\b(?:pindala\w*|hektar\w*|ha|maht\w*|mahu\w*|osakaal\w*|tagavara\w*|kogutagavara\w*|metsasus\w*)\b/u;
+const FOREST_AMOUNT_WORD = /^(?:\d+|\d+[.,]\d+|kui|kas|palju|jooksul|perioodil|vahemikus|naita|reeglina|muutub|seda|kuidas|moodetakse|hinnatakse|mitu|mis|milline|millised|suur\w*|vaiksem\w*|osa|on|oli|olid|oleks|ja|ning|ka|eesti\w*|riigis?|aasta\w*|praegu\w*|nuud|territoorium\w*|how|much|many|there|does|estonia|have|it|and|measured|what|the|in|is|of|forest|forests|area|hectares|tana|varem|hetkel|kokku|meil|viimas\w*|tagasi|alates|kuni|kumne\w*|kumnendi\w*|aastakumne\w*|kahe|kolme|viie|rohkem|vahem|vorrel\w*|muutu\w*|trend\w*|aegri\w*|loikes|kaupa|dunaamika\w*|kasvanud|kasvab|vahenenud|vaheneb|langenud|tousnud|suurenenud|suureneb|ajalug\w*|ajalooli\w*|areng\w*|dunaamika|maha|voetakse|voeti|langeta\w*|pindala\w*|hektar\w*|ha|tuhat|tuhandet|miljon\w*|mln|protsent\w*|osakaal\w*|maht\w*|mahu\w*|m3|tihumeet\w*|tm|kuupmeet\w*|kogus\w*|mets|metsa|metsad|metsade|metsas|metsi|metsaga|kaetud|metsamaa\w*|metsasus\w*|raie(?!smik|rahu|vanus|jaa|oigus|lub|load|tunnistus|piirang|reegl)\w*|raiu\w*|lageraie\w*|harvendus\w*|koguraie\w*|puistu\w*|kogutagavara\w*|tagavara\w*|uldvaru\w*|puidu|puit\w*|varu\w*|hektarivaru\w*|juurdekasv\w*|netojuurdekasv\w*|kasvava|kasvav|keskmi\w*|eemalda\w*)$/u;
+const FOREST_MEASURE_WORD = /\b(?:raiemah\w*|raiepindala\w*|pindala\w*|hektar\w*|ha|maht\w*|mahu\w*|osakaal\w*|tagavara\w*|kogutagavara\w*|metsasus\w*)\b/u;
 
 export function asksOnlyForestAmount(query) {
   const text = normalize(query);
   if (!text) return false;
-  if (/^mis on\b/u.test(text) && !FOREST_MEASURE_WORD.test(text)) return false;
+  // "mis on X", "X mis on", "mida tähendab X" ask what a word means, not a figure.
+  if (/^mis on\b|\bmis on$|\bmis see on\b|\bmida (?:see )?tahendab\b/u.test(text) && !FOREST_MEASURE_WORD.test(text)) return false;
   return text.split(" ").every((word) => FOREST_AMOUNT_WORD.test(word));
 }
 

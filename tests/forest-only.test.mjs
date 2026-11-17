@@ -1138,3 +1138,51 @@ test("forest only listings carry a usable ranked window onto page two", async ()
     assert.deepEqual(second.items.map((item) => item.id), first.evidenceCandidates.slice(12, 24).map((item) => item.id));
   });
 });
+
+test("a clearing, an age or a rest period is not a felling amount", () => {
+  // "raiesmik mis on" was answered with the national felling volume.
+  for (const query of ["raiesmik mis on", "raiesmike pindala", "raierahu", "raievanus mis on", "mida tähendab raie"]) {
+    assert.equal(asksOnlyForestAmount(query), false, query);
+  }
+  for (const query of ["raie 2024", "kui palju raiuti 2023", "raiemaht 2023 mis on", "raiepindala 2020"]) {
+    assert.equal(asksOnlyForestAmount(query), true, query);
+  }
+});
+
+test("a term the law defines in a list, in brackets or of a stand is found however it is asked", () => {
+  // Round 15: "mis on kujundusraie", "trassiraie mida tähendab", "mis on täius metsas" got no answer.
+  const raied = "(1) Lubatud on järgmised raied: 1) uuendusraie, mille hulka kuuluvad lage- ja turberaie; 4) trassiraie, mille hulka kuulub kuni nelja meetri laiuselt sihi sisseraie; 6) kujundusraie, mida tehakse kaitstaval loodusobjektil.";
+  assert.equal(definesLawTerm("mis on kujundusraie", raied), true);
+  assert.equal(definesLawTerm("trassiraie mida tähendab", raied), true);
+  assert.equal(definesLawTerm("mida tähendab uuendusraie", raied), true);
+  assert.equal(definesLawTerm("mis on harvendusraie", "Hooldusraiet tehakse: 2) metsa väärtuse tõstmiseks (harvendusraie)."), true);
+  const lageraie = { id: "t", summary: "Lageraie", _lawSection: true, content: "(1) Lageraie on lubatud puistus, mis on küps. (9) Puistu täius on puistu rinnaspindala suhe samasuguse normaalpuistu rinnaspindalasse." };
+  assert.match(focusedLawSection("mis on täius metsas", [lageraie])._lawDefinition, /^Puistu täius on/u);
+  assert.equal(definesLawTerm("raiesmik mis on", "Raiesmik on metsata ala."), true);
+  // The card shows only the asked item of the list, in the law's own words.
+  const raiedSection = { id: "r", summary: "Raied", _lawSection: true, content: raied };
+  assert.equal(focusedLawSection("mis on kujundusraie", [raiedSection])._lawDefinition, "Kujundusraie, mida tehakse kaitstaval loodusobjektil.");
+  const hooldus = { id: "h", summary: "Raied", _lawSection: true, content: "(3) Hooldusraiet tehakse: 1) puude valgustingimuste parandamiseks (valgustusraie); 2) metsa väärtuse tõstmiseks ja puidu kasutamise võimaldamiseks (harvendusraie)." };
+  assert.equal(focusedLawSection("mis on harvendusraie", [hooldus])._lawDefinition, "Hooldusraiet tehakse metsa väärtuse tõstmiseks ja puidu kasutamise võimaldamiseks (harvendusraie).");
+  // A list of trees that may be felled defines none of them.
+  assert.equal(definesLawTerm("mis on kuusk", "Sanitaarraie korras võib raiuda: 7) kuuski, mille koor on kahjustatud."), false);
+});
+
+test("a source card that answers stays when the model's answer missed the question", async () => {
+  // After an intent rejection the card is checked with the same test. A reviewed
+  // figure that answers ("669 713 ha kaitsealust metsamaad") must not be lost.
+  const source = officialServiceCatalogueDocuments().find((document) => document.id === "protected-forest-share");
+  for (const detail of ["LLM introduction does not answer the requested intent (1/3)", "LLM introduction does not give the amount the question asks for"]) {
+    const startedAt = Date.now();
+    const result = await searchEnvironmentLive("Kui suur osa metsadest on kaitse all?", {
+      startedAt, deadlineAt: startedAt + 8_000, useCache: false,
+      searchResults: { total: 1, items: [source] },
+      async recordSearch() {},
+      generateAnswer() { return { answer: null, acceptedClaims: [], attempt: { provider: "test", status: "degraded", reason: "local-rejected", detail } }; },
+    });
+    assert.equal(result.answer.eyebrow, "Allikapõhine kokkuvõte", detail);
+    assert.match(result.answer.intro, /669 713 ha/u, detail);
+  }
+  // The card a failed intent leaves must itself carry the asked amount.
+  assert.throws(() => assertAnswerAddressesQuery("Küll aga saan kinnitada, et RMK ei ole ühtki vääriselupaika raiunud.", "Kui palju on Eestis vääriselupaiku?"), /amount/u);
+});

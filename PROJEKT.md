@@ -161,6 +161,12 @@ Reegliküsimus, mis nimetab ühe seaduse paragrahvi pealkirja haruldast sõna, s
 
 Küsimuse sõna leidmisel loetakse samaks „jätma” ja „jätta”, „laiad” ja „laius” ning „töid” ja „tööde”. Kui mudel lõpetab esimese lõigu kooloniga ja paneb reegli järgmisse lõiku, loetakse need üheks esimeseks lõiguks ja kontrollitakse koos.
 
+Mõiste küsimus võib olla ka kujul „X mis on”, „X mida tähendab”, „mida tähendab X” või „mis on X metsas”; viieliteline sõna („täius”) loeb. Seadus defineerib ka loetelus („4) trassiraie, mille hulka kuulub …”, „6) kujundusraie, mida tehakse …”), sulgudes lause lõpus („… (harvendusraie)”) ja puistu kohta („Puistu täius on …”); need laused on mõiste tõendiks. Loetelu „7) kuuski, mille koor …” ei ole definitsioon.
+
+„Raiesmik”, „raierahu”, „raievanus” jms ei ole raiekoguse sõnad: „raiesmik mis on” ei saa SMI koguraie kaarti. „… mis on” lõpus ilma mõõdusõnata on mõiste küsimus, mitte arvu küsimus.
+
+Kui mudeli vastus lükati tagasi, sest see ei vastanud küsimusele (`does-not-answer-the-requested-intent`, `does-not-give-the-amount…`, `does-not-give-the-hectares…`, `does-not-speak-about-the-place…`, `asked-concept-missing`, `definition-lead-missing`), peab asemel näidatav allika väljavõtte kaart („Allikapõhine kokkuvõte/vastus”) läbima sama kontrolli (`assertAnswerAddressesQuery`); muidu „Vastust ei leitud”. 15. voorus näidati muidu „Küll aga … RMK ei ole ühtki vääriselupaika raiunud” küsimusele „kui palju on vääriselupaiku”. SMI ja seaduse kaardid ning küsimusele vastav ülevaadatud arv (nt 669 713 ha kaitsealust metsa) jäävad.
+
 Metsapäringu esimene ja teine tulemuste leht kasutavad sama järjestatud otsinguakent. Päringuversioon ja akna tunnus seovad teise lehe sama päringu, filtrite ja kehtiva aknaga. Aknast saab lugeda kuni kaks lehte ning selle invalidatsioon sulgeb ka teise lehe kasutuse.
 
 Tagasilükatud mudelivastuse teksti tootmises ei salvestata (PRIVAATSUS.md). Kontrollide häälestamiseks saab selle näha ainult lokaalselt: `REVIEW_TRACE=local` koos loopback `PUBLIC_ORIGIN`-iga kirjutab iga tagasilükatud vastuse kohta konteineri logisse `review-trace` rea (küsimus, kontrollid, mudeli ettepanek ja see, kas vastus läbiks nelja lõdvendatava kontrollita).

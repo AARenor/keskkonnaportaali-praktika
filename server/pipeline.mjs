@@ -9,6 +9,7 @@ import {
   hydrateOfficialDocuments,
 } from "./integrations.mjs";
 import { generateGroundedAnswer } from "./llm.mjs";
+import { assertAnswerAddressesQuery } from "./llm_answer_validation.mjs";
 import { buildEvidencePack } from "./evidence-pack.mjs";
 import { deliveredOutcome } from "./delivered-outcome.mjs";
 import { sameSourceResource, sourceEvidenceBinding, sourceWitnessKey } from "./source-identity.mjs";
@@ -141,7 +142,14 @@ function isPermissionFocusedLawCandidate(source, intent) {
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v109-intent-bounded-evidence";
+export const SEARCH_RESPONSE_REVISION = "answer-v110-card-answers-asked";
+
+// Cards that only quote a source passage, as opposed to a structured figure or
+// a reviewed law card. Only these are withdrawn after an intent rejection.
+const SOURCE_EXTRACT_EYEBROWS = new Set(["Allikapõhine kokkuvõte", "Allikapõhine vastus"]);
+// Check codes that say the answer did not answer what was asked, as opposed to
+// citation, wording or grounding failures.
+const INTENT_REJECTION = /does-not-(?:answer-the-requested-intent|give-the-amount|give-the-hectares|speak-about-the-place)|says-its-sources-do-not-answer|^asked-concept-missing$|^definition-lead-missing$/u;
 const REVIEWED_RETRIEVAL_PATTERN = /^(?:official-service-directory|reviewed-)/u;
 const QUERY_BOUND_ADAPTER_RETRIEVALS = new Set([
   "official-structured-climate-daily",
@@ -986,6 +994,23 @@ async function searchWithinBudget(cleanQuery, {
     draft = visibleRejected ? withoutRawLawSection(deterministicDraft) : modelDraft;
   } else {
     draft = withoutRawLawSection(deterministicDraft);
+  }
+  // The model's answer was turned down because it did not answer the question
+  // (no amount, wrong place, other intent). The source card shown instead must
+  // then pass the same test itself: round 15 showed "Küll aga … RMK ei ole ühtki
+  // vääriselupaika raiunud" for "kui palju on vääriselupaiku". A card that does
+  // answer (a reviewed figure) stays; structured figure and law cards stay.
+  if (SOURCE_EXTRACT_EYEBROWS.has(draft.answer?.eyebrow)
+    && INTENT_REJECTION.test((!llmResult.answer || visibleRejected) ? attemptCheckCode(visibleCheck, llmResult.attempt) || "" : "")) {
+    let cardAnswers = true;
+    try {
+      assertAnswerAddressesQuery([draft.answer.intro, ...(draft.answer.parts || []).map((part) => part.text)].join(" "), retrievalQuery);
+    } catch {
+      cardAnswers = false;
+    }
+    if (!cardAnswers) {
+      draft = { ...draft, answer: { ...draft.answer, eyebrow: NO_ANSWER_EYEBROW, intro: NO_ANSWER_INTRO, introCitations: [], parts: [], note: "" }, clarification: null };
+    }
   }
   draft.usage_telemetry = searchUsageTelemetry(llmResult, { modelStarted });
   // The caveat scopes an excerpt the card shows. A no-answer card shows none,

@@ -227,7 +227,15 @@ function definitionPattern(words) {
   const clearcutActivity = words.length === 1 && plainWord(words[0]) === "lageraie"
     ? `(?:^|[.;:] )${termPattern("lageraie")} korral\\b`
     : "";
-  return new RegExp(`${copula}|${classified}${clearcutActivity ? `|${clearcutActivity}` : ""}`, "u");
+  // A law also defines inside a numbered list ("4) trassiraie, mille hulka
+  // kuulub …", "6) kujundusraie, mida tehakse …"), by naming the term in
+  // brackets after what it is ("… kasutamise võimaldamiseks (harvendusraie)"),
+  // or of a stand ("Puistu täius on …"). "7) kuuski, mille koor …" is a list
+  // of trees, not a definition.
+  const listed = `(?:^|[;:] |\\d\\) )${phrase}, (?:mille hulka|mida tehakse)\\b`;
+  const bracketed = `\\(${phrase}\\)`;
+  const ofStand = `(?:^|[.;:] )(?:puistu|metsa) ${phrase} on\\s+(?!${nonDefinition}\\b)`;
+  return new RegExp(`${copula}|${classified}|${listed}|${bracketed}|${ofStand}${clearcutActivity ? `|${clearcutActivity}` : ""}`, "u");
 }
 
 function isStatisticalContext(query) {
@@ -243,15 +251,18 @@ export function askedLawTerm(query) {
     const relevant = intent.terms
       .map(plainWord)
       .filter((word) => !LAW_QUERY_CONTEXT_WORDS.has(word));
-    if (relevant.some((word) => ["mets", "metsamaa", "lageraie"].includes(word))) return relevant;
+    // "mis on täius metsas" asks about täius; "metsas" only says where.
+    if (relevant.length && relevant.every((word) => ["mets", "metsamaa", "lageraie"].includes(word))) return relevant;
   }
   const asked = text.match(/^mis on (\p{L}+(?: \p{L}+)?)$/u)?.[1]
-    || text.match(/^(\p{L}+(?: \p{L}+)?) (?:mis|mida) see tahendab$/u)?.[1]
+    || text.match(/^mida tahendab (\p{L}+(?: \p{L}+)?)$/u)?.[1]
+    || text.match(/^(\p{L}+(?: \p{L}+)?) (?:(?:mis|mida) see tahendab|mida tahendab|mis (?:see )?on)$/u)?.[1]
     || text.match(/^(\p{L}+(?: \p{L}+)?) (?:moiste|tahendus|definitsioon)$/u)?.[1]
     || text.match(/^(\p{L}+)$/u)?.[1];
   if (!asked) return null;
-  const words = asked.split(" ");
-  if (words.every((word) => GENERIC_TERM_WORDS.has(word)) || !words.some((word) => word.length >= 6)) return null;
+  // "mis on täius metsas": the place word only says where the term is used.
+  const words = asked.split(" ").filter((word, index, all) => !(index === all.length - 1 && all.length > 1 && /^metsa(?:s|st|des)?$/u.test(word)));
+  if (words.every((word) => GENERIC_TERM_WORDS.has(word)) || !words.some((word) => word.length >= 5)) return null;
   return words;
 }
 
@@ -338,6 +349,36 @@ function focusedAuthoritySection(documents, subjectTerms) {
   return focusSection(document, statement, words, false);
 }
 
+function capitalized(text) {
+  return text ? text[0].toLocaleUpperCase("et") + text.slice(1) : text;
+}
+
+// A definition inside a list sentence is only the asked item, in the law's own
+// words: "Kujundusraie, mida tehakse …" out of "Lubatud on järgmised raied: 1)
+// uuendusraie, …; 6) kujundusraie, mida tehakse …", and "Hooldusraiet tehakse
+// metsa väärtuse tõstmiseks, … (harvendusraie)." out of the hooldusraie list.
+// Accent removal keeps each letter in place, so positions found in the plain
+// text are the same in the original.
+function definitionClause(sentence, words) {
+  const plain = plainWord(sentence);
+  if (plain.length !== sentence.length) return sentence;
+  const phrase = `(?:${words.map(termPattern).join(" ")})`;
+  const items = [...plain.matchAll(/(?:^|\s)\d+\)\s([^;]*)/gu)];
+  for (const item of items) {
+    const start = item.index + item[0].length - item[1].length;
+    const text = sentence.slice(start, start + item[1].length).replace(/[.;]\s*$/u, "");
+    if (new RegExp(`^${phrase}, (?:mille hulka|mida tehakse)\\b`, "u").test(item[1])) {
+      return `${capitalized(text)}.`;
+    }
+    if (new RegExp(`\\(${phrase}\\)`, "u").test(item[1])) {
+      const lead = sentence.slice(0, items[0].index).replace(/[:\s]+$/u, "");
+      const upToTerm = text.replace(/\).*$/u, ")");
+      return lead ? `${lead} ${upToTerm}.` : `${capitalized(upToTerm)}.`;
+    }
+  }
+  return sentence;
+}
+
 export function focusedLawSection(query, documents = []) {
   const intent = analyzeQueryIntent(query);
   if (intent.authoritySubjectTerms.length) {
@@ -389,7 +430,7 @@ export function focusedLawSection(query, documents = []) {
     ...best.document,
     content: best.content,
     _focusedLawTerm: words.join(" "),
-    _lawDefinition: best.definition ? best.definition.replace(/^\(\d+[^)]*\)\s*/u, "").trim() : "",
+    _lawDefinition: best.definition ? definitionClause(best.definition.replace(/^\(\d+[^)]*\)\s*/u, "").trim(), words) : "",
   };
 }
 const LAW_TOPIC_UNIT_WORDS = new Set(["ha", "hektar", "aasta", "protsent", "osakaal", "pindala", "ruutmeeter", "kuupmeeter", "tihumeeter"]);
