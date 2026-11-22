@@ -444,7 +444,10 @@ function comparisonCoverage(query, text, evidenceKind = "") {
   ])];
   const asksComparison = STATED_COMPARISON_PATTERN.test(normalize(query))
     || terms.some((term) => COMPARISON_ROOT_PATTERN.test(normalize(term)));
-  if (!asksComparison) return { comparisonPresent: comparisons.length > 0, valid: true };
+  // A comparison word in the text ("Seetõttu võib … kõige ülevaatlikumaks")
+  // answers only a question that asks to compare; otherwise the card must
+  // still carry the question's own words.
+  if (!asksComparison) return { comparisonPresent: false, valid: true };
   if (!comparisons.length) return { comparisonPresent: false, valid: false };
   const valid = comparisons.some((sentence) => terms.every((term) => (
     textHasQueryRoot(sentence, term)

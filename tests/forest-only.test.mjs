@@ -23,7 +23,7 @@ import {
   composeScopeResponse,
   composeSearchResponse,
 } from "../server/search_response.mjs";
-import { answersAskedConcept, answersPermissionQuestion, extractAnswersQuery, isNonAnswerText, namesDefinitionTerm, rawLawLeadAnswersQuery, repeatsEarlierAnswer } from "../server/answer_coverage.mjs";
+import { answersAskedConcept, answersPermissionQuestion, extractAnswersQuery, givesAskedAmount, isNonAnswerText, namesAskedAgeClass, namesAskedClearcut, namesDefinitionTerm, rawLawLeadAnswersQuery, repeatsEarlierAnswer } from "../server/answer_coverage.mjs";
 import { cardAnswersQueryWords, comparisonAnswersQuery } from "../server/search_answer_evidence.mjs";
 import { searchEnvironmentLive } from "../server/pipeline.mjs";
 import { attemptCheckCode } from "../server/search_public_response.mjs";
@@ -1185,4 +1185,23 @@ test("a source card that answers stays when the model's answer missed the questi
   }
   // The card a failed intent leaves must itself carry the asked amount.
   assert.throws(() => assertAnswerAddressesQuery("Küll aga saan kinnitada, et RMK ei ole ühtki vääriselupaika raiunud.", "Kui palju on Eestis vääriselupaiku?"), /amount/u);
+});
+
+test("a copied source passage must give the asked amount, name the clear-cut and the asked forest", () => {
+  // Round 15: a comparison word in an unrelated sentence counted as an answer.
+  assert.equal(cardAnswersQueryWords("kas tohin oma metsast kütet võtta ilma paberiteta",
+    "Seetõttu võib FRA 2025 andmeid pidada hetkel kõige ülevaatlikumaks ja adekvaatsemaks maailma metsade kirjelduseks."), false);
+  assert.equal(cardAnswersQueryWords("kust tohib riigimetsast saunaviha jaoks kaseoksi võtta",
+    "Kaseoksi, nii nagu marju-seenigi, tohib riigimetsast oma tarbeks korjata praktiliselt kõikjalt. Riigimets, kust tohib julgelt saunaviha jaoks oksi otsima minna, on RMK kaardil tähistatud tumerohelisega. Metsas võib lõigata ka pikemad oksad, mida hiljem vihta kokku sättima hakates saab parajaks timmida."), true);
+  assert.equal(givesAskedAmount("Kui palju on Eestis vääriselupaiku?", "Küll aga saan kinnitada, et RMK ei ole ühtki vääriselupaika raiunud."), false);
+  assert.equal(givesAskedAmount("Palju metsa üldse on?", "Sel perioodil suunatakse tegevusi selliselt, et oleks tagatud lindude rahu."), false);
+  assert.equal(givesAskedAmount("kui palju metsamaad on SMI 2025 järgi kahjustatud", "SMI 2025 töövihik sisaldab 1999–2025 aegridu."), false);
+  assert.equal(givesAskedAmount("Kui suur osa Eesti metsast on riigimets?", "Riigimetskondade metsamaad oli 1 088,108 tuhat hektarit ehk 46%."), true);
+  assert.equal(namesAskedClearcut("lageraie lubatud pindala erametsas", "Metsateatis esitatakse kavandatavate raiete kohta, välja arvatud valgustusraie."), false);
+  assert.equal(namesAskedClearcut("Kui suur võib olla lageraie langi maksimaalne pindala?", "Metsaseaduse § 29 lõike 11 järgi on lageraielangi ülempiir kaks hektarit luitel."), true);
+  assert.equal(namesAskedAgeClass("mitu protsenti metsast on ule 100 aasta vana", "Kõige metsarikkamad maakonnad on Hiiumaa, Valgamaa ja Ida-Virumaa, kus metsasus on üle 60%."), false);
+  assert.equal(namesAskedAgeClass("mitu protsenti metsast on ule 100 aasta vana", "Üle 100 aasta vanu puistuid oli 6% metsamaast."), true);
+  assert.equal(givesAskedAmount("Kui palju metsa uuendati 2025. aastal?", "2025. aasta pindala ei ole nendes ametlikes allikates avaldatud. Andme puudumine ei tähenda nullväärtust."), true);
+  assert.equal(answersAskedConcept("surnud puidu tagavara metsamaal 2025", "Kasvava metsa tagavara oli 466 miljonit m³."), false);
+  assert.equal(answersAskedConcept("kui palju riigimets 2025 juurde kasvas võrreldes raiega", "2025. aasta raiemahu eksperthinnang oli 11,0 miljonit m³."), false);
 });

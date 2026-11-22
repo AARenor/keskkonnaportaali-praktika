@@ -51,7 +51,7 @@ import {
 } from "./retrieval_ranking.mjs";
 import { resultPublishedAt } from "./retrieval_deduplication.mjs";
 import { prepareRankedSearchResults } from "./retrieval.mjs";
-import { answersAskedConcept, extractAnswersQuery, isNonAnswerText, namesDefinitionTerm, rawLawLeadAnswersQuery } from "./answer_coverage.mjs";
+import { answersAskedConcept, extractAnswersQuery, givesAskedAmount, isNonAnswerText, namesAskedAgeClass, namesAskedClearcut, namesDefinitionTerm, rawLawLeadAnswersQuery } from "./answer_coverage.mjs";
 import { canonicalizePublicSearchQuery } from "./search_query_canonicalization.mjs";
 import {
   assessSearchQuery,
@@ -142,7 +142,7 @@ function isPermissionFocusedLawCandidate(source, intent) {
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v110-card-answers-asked";
+export const SEARCH_RESPONSE_REVISION = "answer-v111-copied-card-checks";
 
 // Cards that only quote a source passage, as opposed to a structured figure or
 // a reviewed law card. Only these are withdrawn after an intent rejection.
@@ -683,6 +683,14 @@ function answerCardAnswersQuery(draft, query, { deterministicEvidence = true } =
     && intro === municipal.answer.intro
     && draft.answer.introCitations?.length === 1
     && draft.answer.introCitations[0] === 1;
+  // A copied source passage has no model check behind it, so it must at least
+  // give the amount asked and speak of stand age when asked. The general
+  // forest notice guide comes up for every clear-cut condition question; its
+  // passage answers one only when it names the clear-cut.
+  const sourceExtract = deterministicEvidence && SOURCE_EXTRACT_EYEBROWS.has(draft.answer.eyebrow);
+  const fromNoticeGuide = (draft.answer.introCitations || []).some((citation) => draft.sources?.[citation - 1]?.id === "forest-notice-guidance");
+  if (sourceExtract && (!givesAskedAmount(query, text) || !namesAskedAgeClass(query, text)
+    || (fromNoticeGuide && !namesAskedClearcut(query, text)))) return false;
   return answersAskedConcept(query, text)
     && namesDefinitionTerm(query, intro)
     && rawLawLeadAnswersQuery(query, intro)

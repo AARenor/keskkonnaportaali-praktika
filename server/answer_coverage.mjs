@@ -184,6 +184,30 @@ export function rawLawLeadAnswersQuery(query, text) {
   return extractAnswersQuery(query, text);
 }
 
+const AMOUNT_QUESTION = /^palju\b|\b(?:kui\s+(?:suur|lai|korge|pikk|palju|vana|kaua)\w*|mitu|mitme)\b/u;
+const STATED_AMOUNT = /\d|\b(?:uks|uhe|kaks|kahe|kolm|kolme|neli|nelja|viis|viie|kuus|kuue|seitse|seitsme|kaheksa|uheksa|kumme|kumne|sada|saja|tuhat|tuhande|pool|poole)\b/u;
+
+// "Kui palju, mitu" is answered by an amount; a source sentence without one
+// ("RMK ei ole ühtki vääriselupaika raiunud") does not answer it.
+export function givesAskedAmount(query, text) {
+  // A year or a year range ("1999–2025 aegridu") is not the amount.
+  const withoutYears = normalize(text).replace(/\b(?:19|20)\d{2}\b/gu, " ");
+  // "… ei ole avaldatud; andme puudumine ei tähenda nullväärtust" is an honest
+  // answer without an amount.
+  return !AMOUNT_QUESTION.test(normalize(query)) || STATED_AMOUNT.test(withoutYears)
+    || /\bei ole\b[^.]{0,120}\bavaldatud\b/u.test(normalize(text));
+}
+
+// "Üle 100 aasta vana" asks about stand age; county forest cover does not answer it.
+export function namesAskedAgeClass(query, text) {
+  return !/\b\d+\s+aasta\w*\s+van\w*/u.test(normalize(query)) || /\bvan(?:a|u|us|ad|em|im)\w*/u.test(normalize(text));
+}
+
+// A clear-cut question is not answered by a passage that never names clear-cutting.
+export function namesAskedClearcut(query, text) {
+  return !/\blageraie\w*/u.test(normalize(query)) || /lageraie|\blan(?:k|gi?|ge)\w*|raiesmik/u.test(normalize(text));
+}
+
 export function answersPermissionQuestion(query, text) {
   if (!/\b(?:lubatud|lubatav\w*|keelatud)\b/u.test(normalize(query))) return true;
   return /\b(?:luba\w*|tohi\w*|keela\w*|nou[dt]\w*|piirang\w*|voib|voi[bm]\w*|peab|seadus\w*|maarus\w*|kuni)\b/u.test(normalize(text));
@@ -193,6 +217,9 @@ const ASKED_CONCEPTS = [
   { asks: /toetus|taotlus|huvitis/u, answers: /toetus|toetami|taotl|rahasta|huvit|kompens|meetm/u },
   { asks: /puhapaev|laupaev|nadalavahetus|riigipuha/u, answers: /puhapaev|laupaev|nadalavahetus|riigipuha/u },
   { asks: /\beramets\w*|\beraomand\w*|\beramaa\w*/u, answers: /eramets|eraomand|erao|eramaa|metsaomanik|eramaad? kokku/u },
+  { asks: /\briigimets\w*/u, answers: /riigimets|\brmk\b|riigimaa|riigi omand/u },
+  // Living growing stock does not answer a question about dead wood.
+  { asks: /\b(?:surnud|kuivanud|lamapuu\w*|tuuleheide\w*)\b/u, answers: /\b(?:surnud|surev\w*|kuiv\w*|lamapuu\w*|tuuleheit\w*)/u },
   { asks: /kaitsevoon\w*.*\b(?:joe|jogi|joge|jarve|veekogu\w*|kalda\w*)\b/u, answers: /veekogu|\bjo(?:e|gi|ge)\b|jarve|kalda|ranna/u },
 ];
 function askedDefinitionTerm(query) {
