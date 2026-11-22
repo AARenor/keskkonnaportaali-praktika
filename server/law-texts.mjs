@@ -514,6 +514,104 @@ export function topicalLawSection(query, documents = []) {
   return { ...best.document, content: best.content, _focusedLawTopic: true };
 }
 
+// A tree is named in many forms ("kuuse", "kuusk", "Harilik kuusk", "männikus",
+// "mändi", "kase", "Aru- ja sookask"); a stem alone does not reach them.
+const LAW_TREE_FORMS = [
+  /^(?:mand|manni\p{L}*|mandi|mande|mannik\p{L}*)$/u,
+  /^(?:kuusk|kuuse\p{L}*|kuuske|kuuski|kuusik\p{L}*)$/u,
+  /^(?:\p{L}*kask|kase\p{L}*|kaske|kaski|kaasik\p{L}*)$/u,
+  /^(?:haab|haava\p{L}*|haabu|haavik\p{L}*)$/u,
+  /^(?:\p{L}*lepp|\p{L}*lepa|\p{L}*leppa|lepik\p{L}*)$/u,
+];
+const LAW_NUMBER_QUESTION_WORDS = new Set(["mitu", "mitme", "palju", "kuidas", "milline", "millised", "tuleb", "peab", "tohib", "jatma", "jatta", "jaetakse", "voib"]);
+const LAW_NUMBER_SECTION_LIMIT = 8;
+// Asks for an amount, a time span or an age; "raievanus" is itself an age.
+const LAW_NUMBER_QUESTION = /^palju\b|\b(?:kui\s+(?:suur|lai|korge|pikk|palju|vana|kaua|sugav)\w*|mitu|mitme|\w*vanus\w*)\b/u;
+// The rare word must be a forest word: "eelmisel" or "kiiresti" are rare in the
+// laws too, but they do not name what the law counts.
+const LAW_NUMBER_FOREST_WORD = /raie|puu|pui|puist|lank|langi|tais|seemne|sailik|istut|taim|uuend|pinnas|jark/u;
+// A quantity, not a list marker "1)" or a reference "§ 15": a value with a unit,
+// a range, or a cell of a table.
+const LAW_QUANTITY = /\d+(?:[,.]\d+)?\s*(?:[–-]\s*\d+(?:[,.]\d+)?|%|\||(?:tihumeet|kuupmeet|hektar|ha\b|sentimeet|cm\b|meet|m\b|aasta|paev|kuu|nadal|protsen|puud|puid|taime|eurot))/u;
+
+function lawWordMatches(word, text) {
+  const tree = LAW_TREE_FORMS.find((pattern) => pattern.test(word));
+  if (tree) return (plainWord(text).match(/\p{L}+/gu) || []).some((token) => tree.test(token));
+  return topicalBodyMatches(word, text);
+}
+
+// The law states counts and ages ("20–70 seemnepuud", "viis tihumeetrit", the
+// raievanus table) in a section whose heading may not name them. When the two
+// pickers above find nothing, this one finds the statements that carry the
+// question's rarest law word together with a number. A word found in more
+// than a few sections is not specific enough to pick one.
+export function lawNumberSections(query, documents = []) {
+  if (askedLawTerm(query)
+    || isStatisticalContext(query)
+    || LAW_TOPIC_STATISTIC_PATTERN.test(plainWord(query))
+    || !LAW_NUMBER_QUESTION.test(plainWord(query))) return [];
+  const intent = analyzeQueryIntent(query);
+  const words = [...new Set(intent.terms.map(plainWord).filter((word) => (
+    word.length >= 4
+    && !LAW_QUERY_CONTEXT_WORDS.has(word)
+    && !LAW_NUMBER_QUESTION_WORDS.has(word)
+    && !GENERIC_TERM_WORDS.has(word)
+    && !topicExcludedWord(word, LAW_TOPIC_UNIT_WORDS)
+    && !topicExcludedWord(word, LAW_TOPIC_OWNER_WORDS)
+    && !/^\d+$/u.test(word)
+  )))];
+  // The same section can come twice, once cut to a short copy; keep the fullest.
+  const byKey = new Map();
+  for (const document of documents.slice(0, 512)) {
+    if (!document?._lawSection) continue;
+    const key = String(document.id || document.url || "");
+    if (!key) continue;
+    const kept = byKey.get(key);
+    if (!kept || String(document.content || "").length > String(kept.content || "").length) byKey.set(key, document);
+  }
+  const sections = [...byKey.values()];
+  const anchors = words.filter((word) => LAW_NUMBER_FOREST_WORD.test(word)
+    && !LAW_TREE_FORMS.some((pattern) => pattern.test(word)))
+    .filter((word) => {
+      const count = sections.filter((document) => termMatches([word], document.content || "")).length;
+      return count >= 1 && count <= LAW_NUMBER_SECTION_LIMIT;
+    });
+  if (!anchors.length) return [];
+
+  const candidates = [];
+  for (const document of sections) {
+    // Whole subsections: a table ("Harilik kuusk | 60 | 70 …") stays with the
+    // line that says what it lists.
+    const statements = String(document.content || "").slice(0, 12_000)
+      .split(/\s+(?=\(\d+[¹²³⁴⁵⁶⁷⁸⁹]*\)\s)/u);
+    const scored = statements.map((statement) => {
+      if (!anchors.some((anchor) => termMatches([anchor], statement))) return null;
+      const matched = words.filter((word) => lawWordMatches(word, statement)).length;
+      const hasNumber = LAW_QUANTITY.test(spelledLawCounts(plainWord(statement)));
+      return { statement, matched, hasNumber };
+    }).filter(Boolean);
+    const best = scored.filter((item) => item.hasNumber).sort((left, right) => right.matched - left.matched)[0];
+    if (!best) continue;
+    const content = scored
+      .filter((item) => item.hasNumber ? item.matched >= best.matched - 1 : item.matched >= best.matched)
+      .slice(0, 4)
+      .map((item) => item.statement)
+      .join(" ");
+    if (content.length < MINIMUM_SECTION_LENGTH) continue;
+    candidates.push({ document, content, score: best.matched });
+  }
+  if (!candidates.length) return [];
+  const top = Math.max(...candidates.map((candidate) => candidate.score));
+  const leaders = candidates.filter((candidate) => candidate.score === top);
+  if (leaders.length > 2) return [];
+  return leaders.map(({ document, content }) => ({ ...document, content, _focusedLawTopic: true }));
+}
+
+const SPELLED_LAW_COUNT = /(?<!\p{L})(?:kaks|kahe|kolm|kolme|neli|nelja|viis|viie|kuue|seitse|seitsme|kaheksa|uheksa|kumme|kumne)(?=\s+(?:tihumeet|hektar|meet|aasta|paev|korda))/gu;
+function spelledLawCounts(text) {
+  return text.replace(SPELLED_LAW_COUNT, "0");
+}
+
 export function definesLawTerm(query, text) {
   const words = askedLawTerm(query);
   if (!words) return false;

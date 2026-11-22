@@ -9,7 +9,7 @@ import {
   rankPublicSearchCandidates,
   withFocusedLawSection,
 } from "../server/retrieval_ranking.mjs";
-import { FOREST_LAWS, currentForestLawDocuments, definesLawTerm, focusedLawSection, topicalLawSection, forestLawVersionStamp, parseLawSections, refreshForestLaws, resetForestLawsForTests, reviewedLawSummaryIsOutdated } from "../server/law-texts.mjs";
+import { FOREST_LAWS, currentForestLawDocuments, definesLawTerm, focusedLawSection, lawNumberSections, topicalLawSection, forestLawVersionStamp, parseLawSections, refreshForestLaws, resetForestLawsForTests, reviewedLawSummaryIsOutdated } from "../server/law-texts.mjs";
 import { asksOnlyForestAmount } from "../server/forest-series.mjs";
 import { officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
 import { assessEvidence, splitTextPassages } from "../server/search_evidence.mjs";
@@ -1087,6 +1087,24 @@ test("a rule question gets the law section its heading names, and only that one"
   assert.equal(topicalLawSection("kui palju on metsade tagavara hektaril", sections), null);
   assert.equal(topicalLawSection("mitu kokkuveoteed rajati 2024. aastal langil", sections), null);
   assert.equal(topicalLawSection("mis on kokkuveotee", sections), null);
+});
+
+test("a law count reaches the model from a section its heading does not name", () => {
+  const section = (id, summary, content) => ({ id, summary, content, _lawSection: true });
+  const clearcut = section("clearcut", "Lageraie", "(1) Lageraie korral raiutakse raielangilt ühe aasta jooksul kõik puud, välja arvatud: 1) seemnepuudeks jäetavad 20–70 hajali paiknevat mändi ühe hektari kohta; 3) säilikpuud tüvepuidu kogumahuga vähemalt viis tihumeetrit ühe hektari kohta. (2) Seemnepuid ei jäeta, kui langil on elujõuline järelkasv.");
+  const ages = section("ages", "Lageraie", "(1) Lageraie on lubatud puistus, mille keskmine vanus on võrdne raievanusest. (1²) Raievanused puuliikide viisi on järgmised: Puuliik | Boniteediklass | ; Harilik kuusk | 60 | 70 | 80 | ; Aru- ja sookask | 60 | 60 | 70 | ;");
+  const seedRules = section("seed-rules", "Seemnepuudele esitatavad nõuded", "(1) Seemnepuudeks jäetakse hea tüvevormiga puud. (2) Seemnepuud võib koristada sanitaarraie korras.");
+  const fines = section("fines", "Karistused", "(1) Ebaseadusliku raie eest karistatakse rahatrahviga kuni 300 trahviühikut.");
+  const sections = [clearcut, ages, seedRules, fines, { ...ages, content: "(1) Lageraie on lubatud." }];
+  const ids = (query) => lawNumberSections(query, sections).map((document) => document.id);
+  assert.deepEqual(ids("mitu seemnepuud tuleb jätta männikus"), ["clearcut"]);
+  assert.match(lawNumberSections("mitu seemnepuud tuleb jätta männikus", sections)[0].content, /20–70/u);
+  assert.deepEqual(ids("Mis on kase ja kuuse raievanused?"), ["ages"]);
+  assert.match(lawNumberSections("Mis on kase ja kuuse raievanused?", sections)[0].content, /Harilik kuusk \| 60/u);
+  // Not an amount question, a statistic, or a word that is not forest law.
+  assert.deepEqual(ids("kuidas seemnepuid valida"), []);
+  assert.deepEqual(ids("kui palju seemnepuid jäeti 2024. aastal"), []);
+  assert.deepEqual(ids("kui palju raiuti eelmisel aastal"), []);
 });
 
 test("a list lead and its first item are read as one answer", () => {

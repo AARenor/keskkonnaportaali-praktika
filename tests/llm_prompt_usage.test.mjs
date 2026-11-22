@@ -397,3 +397,23 @@ test("grounding review work stays under one answer level budget", () => {
     (error) => error?.code === "LLM_GROUNDING_WORK_LIMIT",
   );
 });
+
+test("a spelled-out count in a law binds to the same digit and to no other", () => {
+  const law = "(1) Kasvavaid säilikpuid või nende säilinud püstiseisvaid osi tuleb lageraielangil säilitada tüvepuidu kogumahuga vähemalt viis tihumeetrit ühe hektari kohta, üle viie hektari suurusel lageraielangil vähemalt kümme tihumeetrit ühe hektari kohta.";
+  const draft = { evidence: { kind: "reviewed-forestry-knowledge" } };
+  const grounds = (text) => {
+    const context = groundingValidationContext({ entries: [{ citation: 1, content: law }] });
+    try {
+      assertClaimGrounding(text, [1], draft, "introduction", "kui palju säilikpuid peab lageraiel jätma", context);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const sentence = (small, area, large) => `Kasvavaid säilikpuid või nende säilinud püstiseisvaid osi tuleb lageraielangil säilitada tüvepuidu kogumahuga vähemalt ${small} tihumeetrit ühe hektari kohta, üle ${area} hektari suurusel lageraielangil vähemalt ${large} tihumeetrit ühe hektari kohta.`;
+  assert.equal(grounds(sentence("viis", "viie", "kümme")), true);
+  assert.equal(grounds(sentence(5, 5, 10)), true);
+  assert.equal(grounds(sentence(10, 5, 5)), false);
+  assert.equal(grounds(sentence(6, 5, 10)), false);
+  assert.equal(grounds(sentence(5, 10, 10)), false);
+});

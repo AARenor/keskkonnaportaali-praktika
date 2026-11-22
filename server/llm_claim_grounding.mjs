@@ -60,6 +60,23 @@ export function protectedDirectIntro(draft, query, sourceCount) {
     : null;
 }
 
+// Laws spell small counts out ("vähemalt viis tihumeetrit", "üle viie hektari").
+// The binder reads digits only, so both the claim and the evidence read a
+// spelled count as its digit. Only when a unit or count word follows: "ta viis
+// puidu ära" is a verb, "kuus" is also "in a month" and "üks" an article.
+const SPELLED_COUNTS = new Map([
+  ["kaks", "2"], ["kahe", "2"], ["kolm", "3"], ["kolme", "3"], ["neli", "4"], ["nelja", "4"],
+  ["viis", "5"], ["viie", "5"], ["kuue", "6"], ["seitse", "7"], ["seitsme", "7"],
+  ["kaheksa", "8"], ["üheksa", "9"], ["kümme", "10"], ["kümne", "10"],
+]);
+const SPELLED_COUNT_PATTERN = new RegExp(
+  `(?<![\\p{L}\\p{N}])(${[...SPELLED_COUNTS.keys()].join("|")})(?=\\s+(?:tihumeet|kuupmeet|hektar|sentimeet|kilomeet|meet|aasta|päev|nädal|kuu(?:d|ks|l|ni)?(?![\\p{L}])|protsen|korda|tund|minut|ha(?![\\p{L}])|tm(?![\\p{L}])|cm(?![\\p{L}])|km(?![\\p{L}])|m(?![\\p{L}])))`,
+  "giu",
+);
+export function spelledCountsAsDigits(value) {
+  return String(value || "").replace(SPELLED_COUNT_PATTERN, (word) => SPELLED_COUNTS.get(word.toLocaleLowerCase("et")) || word);
+}
+
 function sourceEvidence(evidencePack, citations, query = "", validationContext) {
   const allowed = new Set(citations);
   const cacheKey = `${[...allowed].sort((left, right) => left - right).join(",")}\0${query}`;
@@ -73,6 +90,7 @@ function sourceEvidence(evidencePack, citations, query = "", validationContext) 
     // was selected for the model.
     .map((source) => source.content)
     .filter(Boolean)
+    .map(spelledCountsAsDigits)
     .join("\n");
   validationContext?.evidenceCache?.set(cacheKey, evidence);
   return evidence;
@@ -1327,13 +1345,14 @@ export function safeSemanticInference(sentence, trustedEvidence, query) {
 }
 
 export function assertClaimGrounding(
-  text,
+  rawText,
   citations,
   draft,
   label,
   query = "",
   validationContext,
 ) {
+  const text = spelledCountsAsDigits(rawText);
   if (!citations.length) throw new Error(`LLM ${label} has no citations`);
   if (!hasCompleteSentenceEnding(text)) throw new Error(`LLM ${label} ends with an incomplete sentence`);
   const trustedEvidence = sourceEvidence(validationContext.evidencePack, citations, query, validationContext);

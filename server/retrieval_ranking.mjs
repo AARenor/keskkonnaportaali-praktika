@@ -1,4 +1,4 @@
-import { definesLawTerm, focusedLawSection, topicalLawSection } from "./law-texts.mjs";
+import { definesLawTerm, focusedLawSection, lawNumberSections, topicalLawSection } from "./law-texts.mjs";
 import { analyzeQueryIntent } from "./query_intent.mjs";
 import { publicSourceAllowed } from "./citation-policy.mjs";
 import { sameSourceResource, sourceEvidenceBinding, sourceResourceKey, sourceWitnessKey } from "./source-identity.mjs";
@@ -1457,10 +1457,18 @@ export function withFocusedLawSection(query, ranked, available) {
   }
   if (alreadyDefined || forestEvidenceIntent(query)) return ranked;
   const topical = topicalLawSection(query, available);
-  if (!topical || ranked.some((document) => document.id === topical.id)) return ranked;
-  const reordered = [...ranked];
+  if (topical && ranked.some((document) => document.id === topical.id)) return ranked;
+  // The number a law question asks for may sit in a section the ranking
+  // brought in at its wrong part, or not at all; the focused part replaces it.
+  const lawParts = topical ? [topical] : lawNumberSections(query, available);
+  if (!lawParts.length) return ranked;
+  const partIds = new Set(lawParts.map((document) => document.id));
+  const reordered = ranked.filter((document) => !partIds.has(document.id));
   const firstReviewed = reordered.findIndex(canLead);
-  reordered.splice(firstReviewed < 0 ? 0 : firstReviewed + 1, 0, topical);
+  const afterReviewed = firstReviewed < 0 ? 0 : firstReviewed + 1;
+  // A law number part stays at the top: a reviewed page far down the list
+  // would otherwise push it past what the answer reads.
+  reordered.splice(topical ? afterReviewed : Math.min(afterReviewed, 1), 0, ...lawParts);
   for (const key of Object.keys(ranked)) {
     if (!/^\d+$/u.test(key)) reordered[key] = ranked[key];
   }

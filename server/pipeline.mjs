@@ -142,7 +142,7 @@ function isPermissionFocusedLawCandidate(source, intent) {
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v112-verbatim-numbers";
+export const SEARCH_RESPONSE_REVISION = "answer-v113-law-counts";
 
 // Cards that only quote a source passage, as opposed to a structured figure or
 // a reviewed law card. Only these are withdrawn after an intent rejection.
