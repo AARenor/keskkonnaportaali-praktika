@@ -108,6 +108,8 @@ function answerHasRoot(answer, root) {
   if (/^matka/u.test(root) && /\b(?:viibi|liiku)\p{L}*/u.test(answer)) return true;
   if (/^lai(?:ad|a|u|uga|us)?$/u.test(root)
     && /\blai(?:us|use|usi|ust|une|used|uga)?\b/u.test(answer)) return true;
+  // "Mõõdetakse", "mõõdetuna" and "mõõtmine" are one verb; t and d alternate.
+  if (/^moot/u.test(root) && /\bmoo[dt]\p{L}*/u.test(answer)) return true;
   if (/^to(?:o|od|id|ode)$/u.test(root)
     && /\bto(?:o|od|ode|id|oga|oks|ost|osse|odest|odele)\b/u.test(answer)) return true;
   // A long compound is answered by its first part: "pesitsusperioodil" by

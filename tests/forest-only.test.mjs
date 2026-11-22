@@ -1205,3 +1205,9 @@ test("a copied source passage must give the asked amount, name the clear-cut and
   assert.equal(answersAskedConcept("surnud puidu tagavara metsamaal 2025", "Kasvava metsa tagavara oli 466 miljonit m³."), false);
   assert.equal(answersAskedConcept("kui palju riigimets 2025 juurde kasvas võrreldes raiega", "2025. aasta raiemahu eksperthinnang oli 11,0 miljonit m³."), false);
 });
+
+test("a measuring verb is answered in any of its forms", () => {
+  // "mõõdetakse" is answered by "mõõdetuna"; a vague answer still is not.
+  assert.doesNotThrow(() => assertAnswerAddressesQuery("Rinnasdiameeter on puutüve läbimõõt, mõõdetuna 1,3 meetri kõrgusel juurekaelast.", "rinnasdiameeter mis kõrguselt mõõdetakse"));
+  assert.throws(() => assertAnswerAddressesQuery("Rinnasdiameeter on puu jämedus.", "rinnasdiameeter mis kõrguselt mõõdetakse"));
+});
