@@ -595,7 +595,7 @@ export function lawNumberSections(query, documents = []) {
     const content = scored
       .filter((item) => item.hasNumber ? item.matched >= best.matched - 1 : item.matched >= best.matched)
       .slice(0, 4)
-      .map((item) => item.statement)
+      .map((item) => joinLawList(item.statement))
       .join(" ");
     if (content.length < MINIMUM_SECTION_LENGTH) continue;
     candidates.push({ document, content, score: best.matched });
@@ -605,6 +605,35 @@ export function lawNumberSections(query, documents = []) {
   const leaders = candidates.filter((candidate) => candidate.score === top);
   if (leaders.length > 2) return [];
   return leaders.map(({ document, content }) => ({ ...document, content, _focusedLawTopic: true }));
+}
+
+// A numbered list keeps its subject in the lead: "Turberaie tegemisel: 1) peab
+// raiejärkude vahe olema vähemalt viis aastat; 3) ei tohi raielangi pindala
+// olla suurem kui kümme hektarit". Each item read alone has no subject, so the
+// model gets every item as one sentence with its lead, in the law's own words:
+// "Turberaie tegemisel peab raiejärkude vahe olema vähemalt viis aastat."
+// Nothing is added or dropped but the item number and the list punctuation.
+const LAW_LIST_START = /:\s+(?=\d+[¹²³⁴⁵⁶⁷⁸⁹]*\)\s)/u;
+export function joinLawList(statement) {
+  const text = String(statement || "").replace(/^\(\d+[¹²³⁴⁵⁶⁷⁸⁹]*\)\s*/u, "").trim();
+  const start = text.search(LAW_LIST_START);
+  if (start < 0) return statement;
+  const before = text.slice(0, start);
+  const sentenceStart = Math.max(before.lastIndexOf(". "), before.lastIndexOf("; "));
+  const prefix = sentenceStart < 0 ? "" : before.slice(0, sentenceStart + 1).trim();
+  const lead = (sentenceStart < 0 ? before : before.slice(sentenceStart + 2)).trim();
+  const listText = text.slice(start).replace(/^:\s+/u, "");
+  // The list ends where a new sentence starts after a full stop.
+  const end = listText.search(/\.\s+(?=\p{Lu})/u);
+  const list = end < 0 ? listText : listText.slice(0, end + 1);
+  const after = end < 0 ? "" : listText.slice(end + 1).trim();
+  const items = list.split(/[;,]?\s+(?=\d+[¹²³⁴⁵⁶⁷⁸⁹]*\)\s)/u)
+    .map((item) => item.replace(/^\d+[¹²³⁴⁵⁶⁷⁸⁹]*\)\s+/u, "").replace(/[;.,\s]+$/u, "").trim())
+    .filter(Boolean);
+  // "… vastab vähemalt ühele järgmistest tingimustest:" names the list itself;
+  // its items do not read as one sentence with it.
+  if (!lead || !items.length || /\bjärgmi\p{L}*/u.test(lead)) return statement;
+  return [prefix, ...items.map((item) => `${capitalized(lead)} ${item}.`), after].filter(Boolean).join(" ");
 }
 
 const SPELLED_LAW_COUNT = /(?<!\p{L})(?:kaks|kahe|kolm|kolme|neli|nelja|viis|viie|kuue|seitse|seitsme|kaheksa|uheksa|kumme|kumne)(?=\s+(?:tihumeet|hektar|meet|aasta|paev|korda))/gu;

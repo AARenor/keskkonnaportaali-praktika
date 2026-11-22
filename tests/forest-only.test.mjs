@@ -9,7 +9,7 @@ import {
   rankPublicSearchCandidates,
   withFocusedLawSection,
 } from "../server/retrieval_ranking.mjs";
-import { FOREST_LAWS, currentForestLawDocuments, definesLawTerm, focusedLawSection, lawNumberSections, topicalLawSection, forestLawVersionStamp, parseLawSections, refreshForestLaws, resetForestLawsForTests, reviewedLawSummaryIsOutdated } from "../server/law-texts.mjs";
+import { FOREST_LAWS, currentForestLawDocuments, definesLawTerm, focusedLawSection, joinLawList, lawNumberSections, topicalLawSection, forestLawVersionStamp, parseLawSections, refreshForestLaws, resetForestLawsForTests, reviewedLawSummaryIsOutdated } from "../server/law-texts.mjs";
 import { asksOnlyForestAmount } from "../server/forest-series.mjs";
 import { officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
 import { assessEvidence, splitTextPassages } from "../server/search_evidence.mjs";
@@ -1105,6 +1105,23 @@ test("a law count reaches the model from a section its heading does not name", (
   assert.deepEqual(ids("kuidas seemnepuid valida"), []);
   assert.deepEqual(ids("kui palju seemnepuid jäeti 2024. aastal"), []);
   assert.deepEqual(ids("kui palju raiuti eelmisel aastal"), []);
+});
+
+test("a law list item is given with its lead, in the law's own words", () => {
+  assert.equal(
+    joinLawList("(6) Turberaie tegemisel: 1) peab raiejärkude vahe olema vähemalt viis aastat, mille hulka ei loeta raieaastaid; 3) ei tohi raielangi pindala olla suurem kui kümme hektarit."),
+    "Turberaie tegemisel peab raiejärkude vahe olema vähemalt viis aastat, mille hulka ei loeta raieaastaid. Turberaie tegemisel ei tohi raielangi pindala olla suurem kui kümme hektarit.",
+  );
+  assert.equal(
+    joinLawList("(3) Algtihedus peab olema: 1) hariliku männi istutamisel vähemalt 2600 taime hektaril; 3) hariliku kuuse istutamisel vähemalt 1500 taime hektaril. (4) Muu."),
+    "Algtihedus peab olema hariliku männi istutamisel vähemalt 2600 taime hektaril. Algtihedus peab olema hariliku kuuse istutamisel vähemalt 1500 taime hektaril. (4) Muu.",
+  );
+  // A lead that names the list itself, a table and plain text stay as they are.
+  const conditions = "(4) Lageraie on lubatud puistus, mis vastab vähemalt ühele järgmistest tingimustest: 1) puistu on raievanuses; 2) puistu täius on väike.";
+  assert.equal(joinLawList(conditions), conditions);
+  const table = "(1²) Raievanused on: Puuliik | Boniteediklass | ; Harilik kuusk | 60 | 70 |";
+  assert.equal(joinLawList(table), table);
+  assert.equal(joinLawList("(1) Säilikpuid jäetakse vähemalt viis tihumeetrit."), "(1) Säilikpuid jäetakse vähemalt viis tihumeetrit.");
 });
 
 test("a list lead and its first item are read as one answer", () => {
