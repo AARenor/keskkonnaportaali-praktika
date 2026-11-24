@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ArrowRight, LoaderCircle, Search, Sparkles, X } from "lucide-react";
-import { suggestionsForValue, shouldFetchRemoteSuggestions } from "./search-suggestions.js";
+import { primarySuggestionsForValue, suggestionsForValue, shouldFetchRemoteSuggestions } from "./search-suggestions.js";
 
 function comparableQuestion(value) {
   return String(value || "")
@@ -73,9 +73,15 @@ export default function SearchForm({ initialValue = "", onSearch, busy, variant 
     };
   }, [suggestionQuery]);
 
-  const suggestions = useMemo(
+  const remoteSuggestionItems = useMemo(
     () => suggestionsForValue(suggestionQuery, remoteSuggestions, 5),
     [remoteSuggestions, suggestionQuery],
+  );
+  const suggestions = useMemo(
+    () => (suggestionQuery.trim().length >= 2
+      ? (remoteSuggestionItems.length ? remoteSuggestionItems : primarySuggestionsForValue(suggestionQuery, 5))
+      : primarySuggestionsForValue(suggestionQuery, 6)),
+    [remoteSuggestionItems, suggestionQuery],
   );
 
   const chooseSuggestion = (suggestion) => {

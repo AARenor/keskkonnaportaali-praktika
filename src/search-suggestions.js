@@ -81,6 +81,18 @@ export const REVIEWED_SEARCH_SUGGESTIONS = Object.freeze([
   ...REVIEWED_ENVIRONMENT_SEARCH_SUGGESTIONS,
 ]);
 
+// The six questions the empty search box offers first. Every entry also exists
+// in REVIEWED_SEARCH_SUGGESTIONS, so the panel never advertises a query the
+// reviewed candidate set does not already contain.
+export const PRIMARY_SEARCH_SUGGESTIONS = Object.freeze([
+  "Kui palju metsa on Eestis?",
+  "Kui suur osa Eestist on kaetud metsaga?",
+  "Kas Eestis raiutakse rohkem kui metsa juurde kasvab?",
+  "Mis on metsateatis?",
+  "Mis vahe on SMI-l ja metsaregistril?",
+  "Kui palju lageraiet on viimase 10 aasta jooksul tehtud?",
+]);
+
 
 export function shouldFetchRemoteSuggestions(value) {
   const query = String(value || "").trim();
@@ -112,4 +124,13 @@ export function suggestionsForValue(value, remote = {}, limit = 12) {
       return true;
     })
     .slice(0, maximum);
+}
+
+export function primarySuggestionsForValue(value, limit = 6) {
+  const query = normalizeSuggestion(value).replace(/\s+/gu, " ").trim();
+  const maximum = Number.isInteger(limit) ? Math.max(0, Math.min(12, limit)) : 6;
+  return PRIMARY_SEARCH_SUGGESTIONS
+    .filter((suggestion) => !query || normalizeSuggestion(suggestion).includes(query))
+    .slice(0, maximum)
+    .map((suggestion) => ({ value: suggestion, count: null }));
 }

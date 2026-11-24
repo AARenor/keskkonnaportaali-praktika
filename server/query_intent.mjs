@@ -111,11 +111,14 @@ export function isNoticeFeeQuestion(query) {
 }
 
 // A duration question asks for processing time, not the notice's validity.
+// The ordinary wording is "Kui kaua vaatab Keskkonnaamet metsateatist läbi?",
+// where the verb "vaatab ... läbi" carries the review without the noun
+// "läbivaatamine", so that phrasing has to match too.
 export function isNoticeReviewDurationQuestion(query) {
   const text = normalizeQuery(query);
   return topicFor((text.match(/[\p{L}\p{N}']+/gu) || []).map(canonicalTerm)) === "forest_notice"
     && /\b(?:kaua|kest\p{L}*|menetlusaeg\p{L}*|menetlust[aä]htaeg\p{L}*)\b/u.test(text)
-    && /\b(?:menetl\p{L}*|l[aä]bivaat\p{L}*)\b/u.test(text);
+    && /\b(?:menetl\p{L}*|l[aä]bivaat\p{L}*|vaat\p{L}*(?:\s+\S+){0,4}\s+(?:l[aä]bi|[uü]le)|[uü]le\s+vaat\p{L}*)\b/u.test(text);
 }
 
 function hasNoticeRequirementFrame(query) {

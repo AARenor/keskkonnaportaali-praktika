@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { classifyForestryGeographyScope } from "../server/municipalities.mjs";
 import { resolvePublicForestryIntent } from "../server/forestry-public.mjs";
+import { isNoticeReviewDurationQuestion } from "../server/query_intent.mjs";
 import { assessSearchQuery } from "../server/search_query_assessment.mjs";
 
 // Questions from the 2026-09 manual review of forest and wildlife answers.
@@ -58,6 +59,21 @@ test("plain forest-area questions keep the forest-area snapshot", () => {
   ]) {
     assert.equal(resolvePublicForestryIntent(query)?.kind, "forest-area", query);
   }
+});
+
+test("a notice review question phrased with vaatab ... läbi keeps the duration route", () => {
+  for (const query of [
+    "Kui kaua vaatab Keskkonnaamet metsateatist läbi?",
+    "Kui kaua kestab metsateatise menetlus?",
+  ]) {
+    assert.equal(isNoticeReviewDurationQuestion(query), true, query);
+    assert.deepEqual(
+      resolvePublicForestryIntent(query)?.evidenceGroups,
+      [["tööpäeva jooksul"], ["menetlus kesta"]],
+      query,
+    );
+  }
+  assert.equal(isNoticeReviewDurationQuestion("Kui kaua vaatab Keskkonnaamet metsateatist?"), false);
 });
 
 test("the hourly page-body backfill limit defaults to 300 and is capped", async () => {

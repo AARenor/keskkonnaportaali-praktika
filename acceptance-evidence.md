@@ -415,7 +415,7 @@ Commit'id `642149a` (legend algab protsendiga; tundmatu diagrammiliik ei joonist
 
 ## Mudeliahel ja kvalitatiivne süntees 24.11.2026 (2f56aef)
 
-Commit'id `d6c4723` (mudeliahel ja mitme allika süntees), `f6bc0c5` ja `2f56aef` (Metsaregistri lõigu parandus) ning `ca282a9` (laia teema täpsustuse säilitamine) juurutati `main`-i push'iga; workflow `success`, `/api/health` tagastas `2f56aef742b8a52480dbb968de21ee51511715cd` (21:43). Enne seda oli tootmise AI vastus surnud: `terrapoint-api.service` oli 19.11.2026 seisuga peatatud ja Codex 7-päeva kvoot 100 % kulutatud, mistõttu iga mudelikatse lõppes `provider-error` või avatud vooluahelaga ja lugeja nägi deterministlikku kaarti.
+Commit'id `d6c4723` (mudeliahel ja mitme allika süntees), `f6bc0c5` ja `2f56aef` (Metsaregistri lõigu parandus) ning `ca282a9` (laia teema täpsustuse säilitamine) juurutati `main`-i push'iga; workflow `success`, `/api/health` tagastas `2f56aef742b8a52480dbb968de21ee51511715cd` (21:43). Enne seda oli tootmise AI vastus surnud, kuigi gateway töötas: `terrapoint-codex-gateway.service` (172.20.0.1:4000) oli aktiivne alates 20.11.2026 ja `/healthz` vastas 200. Põhjus oli Codex 7-päeva kvoot 100 % kulutatud: iga mudelikatse lõppes `usage_limit_reached` (429), see avas vooluahela ja lugeja nägi deterministlikku kaarti. `terrapoint-api.service` (127.0.0.1:8099) on Terrapointi rakenduse API, mitte praktika mudelitee; selle peatamine 19.11.2026 ei mõjutanud `https://terrapoint.arle.top/v1/responses` marsruuti, mis suundub Traefikust otse gateway'le 4000. Teenuse käivitamine taastas Terrapointi rakenduse liidese, mitte AI vastuse. Esialgne kirje nimetas põhjuseks `terrapoint-api` peatamise; see parandus asendab selle väite.
 
 | Kontroll (`2f56aef` live) | Mõõdetud lõpptulemus |
 |---|---|
@@ -428,3 +428,30 @@ Commit'id `d6c4723` (mudeliahel ja mitme allika süntees), `f6bc0c5` ja `2f56aef
 | `kui palju on Eestis metsa` | `AI koondvastus`, 2 osa, 2 allikat, `ready/none` (varem deterministlik) |
 | `mis on ringmajandus` | `Vastust ei leitud`, 0 vastuseallikat, `searchResults.total` 1147; metsapiirang jääb kehtima |
 | Avalik juhend | `/docs/arendajale` kuvab rea `LLM_MODEL_FALLBACKS` |
+
+## Metsaküsimuste patarei ja peamised soovitused 24.11.2026
+
+Tootmises käivitati 24 eestikeelset metsaküsimust `POST /api/search` kaudu. Kõik vastasid HTTP 200. Allpool on kokkuvõte.
+
+| Küsimus | Mõõdetud tulemus |
+|---|---|
+| `Kui palju metsa on Eestis?` | `AI koondvastus`, 2 osa, 2 allikat, `ready/none` |
+| `Kui suur osa Eestist on metsaga kaetud?` | `Allikapõhine kokkuvõte`, 1 osa, 2 allikat, `ready/no-new-contribution` |
+| `Mis on mets?` / `Mis on metsamaa?` | `Metsaseaduse § 3` deterministlik vastus, 1 allikas |
+| `Mis on metsateatis?` | `AI koondvastus`, 1 osa, 1 allikas, `ready/none` |
+| `Kui kaua vaatab Keskkonnaamet metsateatist läbi?` | Enne parandust `Vastust ei leitud`; pärast `Allikapõhine kokkuvõte` vastusega 15 tööpäeva, erandjuhul kuni 30, 1 allikas |
+| `Kui palju raiuti Eestis 2024. aastal?` | `Keskkonnaagentuur, SMI 2025` deterministlik vastus, 1 allikas |
+| `Miks metsad muutuvad nooremaks?` | `AI koondvastus`, 2 osa, 1 allikas, `ready/none` |
+| `Kas kaitsealal tohib raiuda?` | `AI koondvastus`, 1 osa, 2 allikat, `ready/none` |
+| `Kust leida konkreetse kinnistu metsaandmeid?` | `AI koondvastus`, 2 osa, 2 allikat, `ready/none` |
+| `Kui suur osa metsadest on kaitse all?` | `Allikapõhine kokkuvõte`, vastus 669 713 ha ehk 28,4%, 1 allikas |
+| `Kui palju metsa uuendati Eestis 2024. aastal?` | `Vastust ei leitud`; korpuse otsing ei leidnud üleriigilist 2024. aasta uuendusmahu rida, leitud allikad on seadusenoodid |
+| `Kuidas mõjutab kliimamuutus metsi?` | `Vastust ei leitud`; mudel vastas, kuid kordas kõrvalejäävat juhtlauset (`visible-rejected/repeats-off-target-lead`) |
+| `Kui palju metsa on Tartumaal?` | `Vajan täpsustust`; maakonna pindala vajab küsimusega seotud mõõtmist ja jääb teadlikult fail-closed |
+| Ülejäänud 10 küsimust | 6 kasulikku vastust; 4 jäid nõrgaks: lageraiemaht 10 aasta jooksul (0 osa, `local-rejected`), metsa otsasaamine (2 osa, `local-rejected`), juurdekasvu arvutamine ja süsinikusidumine (`Vastust ei leitud`) |
+
+Fallback-tõestus samal päeval kohalikus 8101 serveris: kui `LLM_MODEL` oli `nonexistent/model-zzz` ja `LLM_MODEL_FALLBACKS` tühi, lõppes `Metsaraie mõju loodusele` staatusega `degraded/provider-error`. Kui `LLM_MODEL_FALLBACKS` oli `mistral/deepseek-v4-1-flash-1017`, vastasid samas serveris `Kust leida konkreetse kinnistu metsaandmeid?` (`AI koondvastus`, 2 osa, `ready/none`) ja `Kas kaitsealal tohib raiuda?` (`AI koondvastus`, 4 osa, `ready/none`), seega varumudel vastas pärast esmase mudeli tagasilükkamist.
+
+Parandus: metsateatise läbivaatamise kestus ei leidnud enne vastust, sest küsimus kasutas sõnaühendit `vaatab ... läbi`, mitte nimisõna `läbivaatamine`. `server/query_intent.mjs` funktsioon `isNoticeReviewDurationQuestion` aktsepteerib nüüd mõlemat sõnastust, seega suunatakse küsimus `forest-notice-review-duration` tõenditele. Test: `tests/reviewer-gates.test.mjs` lisandus juhtum mõlema sõnastusega.
+
+Peamised soovitused: tühja otsingukasti fookusel kuvatakse kuus üle vaadatud metsaküsimust (`src/search-suggestions.js` eksport `PRIMARY_SEARCH_SUGGESTIONS`). Nimekiri on brauseris ega tee võrgupäringut; ühe kuni kahe tähe sisestamisel filtreeritakse see kohapeal ja kahe tähe järel asendab selle serveri autocomplete, kui see vastab. Kontroll: 1280 × 800 ja 390 × 844 vaates kuvati kuus rida, horisontaalne ülevool 0, ekraanilugeja loendil `role=listbox` ja nooleklahvid toimivad. Test: `tests/search_primary_suggestions.test.mjs` (5 juhtumit).

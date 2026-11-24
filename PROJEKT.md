@@ -388,6 +388,7 @@ Automaattestid kontrollivad muu hulgas:
 - kolme järjestikuse jätkuküsimuse filtri-, allika- ja viitelepingu püsimist;
 - Terrapointi ning infrastruktuurijargooni puudumist üldotsingu payload'ist ja UI-st;
 - kuni viit sisulist autocomplete-soovitust;
+- tühja otsingukasti kuut peamist üle vaadatud küsimust kohalikust loendist, mis ei tee võrgupäringut;
 - Sites-buildi lepingut.
 
 Brauseri regression peab katma 1440 × 1100 ja 390 × 844 vaated, autocomplete'i kihistuse, klaviatuurikäitumise, mobiili esimest vaadet, kompaktset otsingulehte, allikate avamist, horisontaalse overflow puudumist ning avaliku iframe'i fookuse/scroll'i kontrolli.

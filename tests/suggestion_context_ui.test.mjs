@@ -786,7 +786,9 @@ test("the results search field displays query-matched API suggestions", async ()
 
     comboboxInput(cleared.tree).props.onChange({ target: { value: "mets" } });
     const typedBeforeResponse = resultsSearchForm(renderer, renderer.render(SearchResults, props));
-    assert.deepEqual(searchOptionLabels(typedBeforeResponse.tree), []);
+    const pendingLabels = searchOptionLabels(typedBeforeResponse.tree);
+    assert.ok(pendingLabels.length > 0, "the primary list stays visible while the API request is pending");
+    assert.ok(pendingLabels.every((question) => /mets/iu.test(question)));
     browser.flushTimers();
     await settle();
     const typed = resultsSearchForm(renderer, renderer.render(SearchResults, props));
