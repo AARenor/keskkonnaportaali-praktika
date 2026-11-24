@@ -76,8 +76,9 @@ test("law sections and route-only cards never become synthesis evidence", () => 
   assert.deepEqual(documents.map((document) => document.id), ["1", "2", "8"]);
 });
 
-test("a definition question about a broad topic is answerable instead of a clarification", () => {
-  assert.equal(assessSearchQuery("mis on elurikkus").kind, "answerable");
+test("a bare broad topic still asks for clarification", () => {
+  assert.equal(assessSearchQuery("mis on elurikkus").reason, "broad-topic");
+  assert.equal(assessSearchQuery("mis on lageraie").kind, "answerable");
   assert.equal(assessSearchQuery("vesi").kind, "needs-clarification");
 });
 

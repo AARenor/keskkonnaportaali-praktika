@@ -581,10 +581,6 @@ export function assessSearchQuery(query, options = {}) {
     && !namesFellingType
     && !explicitYearMetric
     && !explicitReportQuery
-    // "Mis on elurikkus?" names one concept to define; the bare root is not
-    // an underspecified request. Retrieval decides whether a definition
-    // source exists, and a missing one still yields the honest no-answer card.
-    && analyzeQueryIntent(cleanQuery).intent !== "definition"
     && AMBIGUOUS_ROOTS.has(topic) && (roots.length <= 1 || waterContextOnly)) {
     return {
       kind: "needs-clarification",
