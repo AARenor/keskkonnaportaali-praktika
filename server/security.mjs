@@ -118,6 +118,14 @@ function isPublicHttpOrigin(value) {
   return !LOOPBACK_ORIGIN_HOSTS.has(hostname) && !hostname.endsWith(".localhost");
 }
 
+export function isPublicProductionOrigin({
+  environment = process.env.NODE_ENV,
+  publicOrigin = process.env.PUBLIC_ORIGIN,
+} = {}) {
+  const production = String(environment || "").trim().toLocaleLowerCase("en") === "production";
+  return production && isPublicHttpOrigin(publicOrigin);
+}
+
 // The six request windows are the only ceiling between an anonymous caller and
 // the shared corpus, database and model budget, so a production process that
 // serves a public origin keeps them even when the testing switch says off.
@@ -129,8 +137,7 @@ export function resolveRateWindowEnforcement({
 } = {}) {
   const requested = String(enabled ?? "true").trim().toLocaleLowerCase("en") !== "false";
   if (requested) return { enforce: true, reason: "enabled" };
-  const production = String(environment || "").trim().toLocaleLowerCase("en") === "production";
-  if (!production || !isPublicHttpOrigin(publicOrigin)) {
+  if (!isPublicProductionOrigin({ environment, publicOrigin })) {
     return { enforce: false, reason: "testing-switch" };
   }
   return { enforce: true, reason: "public-origin" };

@@ -2421,6 +2421,46 @@ test("a model budget of 0 or off switches that limit off instead of allowing one
   assert.equal(resolveLlmClientBudget({ requestBudget: "25" }).requestBudget, 25);
 });
 
+test("public production keeps finite LLM budgets when off is configured", () => {
+  const production = { environment: "production", publicOrigin: "https://praktika.example" };
+  for (const off of ["0", "off", "none", "unlimited", "false", 0, Infinity]) {
+    const rolling = resolveLlmRollingBudget({ ...production, requestBudget: off, tokenBudget: off });
+    assert.equal(rolling.requestBudget, 60);
+    assert.equal(rolling.tokenBudget, 240_000);
+    const client = resolveLlmClientBudget({ ...production, requestBudget: off, tokenBudget: off });
+    assert.equal(client.requestBudget, 15);
+    assert.equal(client.tokenBudget, 120_000);
+  }
+
+  const rolling = createRollingLlmBudget({ ...production, requestBudget: "off", tokenBudget: "off" });
+  assert.equal(rolling.snapshot().limits.requestBudget, 60);
+  assert.equal(rolling.snapshot().limits.tokenBudget, 240_000);
+  const client = createClientScopedLlmBudget({
+    globalBudget: rolling,
+    ...production,
+    requestBudget: "off",
+    tokenBudget: "off",
+  });
+  assert.equal(client.snapshot("reader").limits.requestBudget, 15);
+  assert.equal(client.snapshot("reader").limits.tokenBudget, 120_000);
+
+  assert.equal(resolveLlmRollingBudget({
+    ...production,
+    requestBudget: 120,
+    tokenBudget: 480_000,
+  }).requestBudget, 120);
+  assert.equal(resolveLlmClientBudget({
+    environment: "development",
+    publicOrigin: "https://praktika.example",
+    requestBudget: "off",
+  }).requestBudget, Infinity);
+  assert.equal(resolveLlmRollingBudget({
+    environment: "production",
+    publicOrigin: "http://localhost:3000",
+    requestBudget: "off",
+  }).requestBudget, Infinity);
+});
+
 test("unknown dispatched work is charged at its full reservation and observed overruns remain visible", () => {
   const budget = createRollingLlmBudget({
     requestBudget: 10,

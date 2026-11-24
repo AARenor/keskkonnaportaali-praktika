@@ -1,20 +1,23 @@
 import { normalizedProviderUsage } from "./llm_usage.mjs";
+import { isPublicProductionOrigin } from "./security.mjs";
+
 function boundedInteger(value, fallback, minimum, maximum) {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed)) return fallback;
   return Math.max(minimum, Math.min(parsed, maximum));
 }
 
-// A budget limit of 0, "off", "none" or "unlimited" explicitly switches it off.
-// Unset or invalid limits use finite defaults so a public deployment is protected
-// even when it is started outside compose.yaml.
+// A budget limit of 0, "off", "none", "unlimited" or "false" explicitly
+// switches it off outside public production. Unset or invalid limits use finite
+// defaults, and public production also replaces an explicit off value with them.
 const NO_LIMIT_VALUES = new Set(["0", "off", "none", "unlimited", "false"]);
 
-function budgetLimit(value, fallback, minimum, maximum) {
-  if (value === Infinity) return Infinity;
+function budgetLimit(value, fallback, minimum, maximum, enforceFiniteLimits = false) {
   const text = String(value ?? "").trim().toLocaleLowerCase("en");
   // An empty setting is an unset one, not 0 clamped up to the minimum.
   if (!text) return fallback;
+  if (enforceFiniteLimits && (value === Infinity || NO_LIMIT_VALUES.has(text))) return fallback;
+  if (value === Infinity) return Infinity;
   if (NO_LIMIT_VALUES.has(text)) return Infinity;
   return boundedInteger(value, fallback, minimum, maximum);
 }
@@ -46,11 +49,14 @@ export function resolveLlmRollingBudget({
   windowMs = process.env.LLM_BUDGET_WINDOW_MS,
   requestBudget = process.env.LLM_ROLLING_REQUEST_BUDGET,
   tokenBudget = process.env.LLM_ROLLING_TOKEN_BUDGET,
+  environment = process.env.NODE_ENV,
+  publicOrigin = process.env.PUBLIC_ORIGIN,
+  enforceFiniteLimits = isPublicProductionOrigin({ environment, publicOrigin }),
 } = {}) {
   return {
     windowMs: boundedInteger(windowMs, 60 * 60_000, 60_000, 24 * 60 * 60_000),
-    requestBudget: budgetLimit(requestBudget, 60, 1, 10_000),
-    tokenBudget: budgetLimit(tokenBudget, 240_000, 1_000, 100_000_000),
+    requestBudget: budgetLimit(requestBudget, 60, 1, 10_000, enforceFiniteLimits),
+    tokenBudget: budgetLimit(tokenBudget, 240_000, 1_000, 100_000_000, enforceFiniteLimits),
   };
 }
 
@@ -59,11 +65,14 @@ export function resolveLlmClientBudget({
   requestBudget = process.env.LLM_CLIENT_REQUEST_BUDGET,
   tokenBudget = process.env.LLM_CLIENT_TOKEN_BUDGET,
   maximumClients = process.env.LLM_CLIENT_BUDGET_KEYS,
+  environment = process.env.NODE_ENV,
+  publicOrigin = process.env.PUBLIC_ORIGIN,
+  enforceFiniteLimits = isPublicProductionOrigin({ environment, publicOrigin }),
 } = {}) {
   return {
     windowMs: boundedInteger(windowMs, 60 * 60_000, 60_000, 24 * 60 * 60_000),
-    requestBudget: budgetLimit(requestBudget, 15, 1, 1_000),
-    tokenBudget: budgetLimit(tokenBudget, 120_000, 1_000, 10_000_000),
+    requestBudget: budgetLimit(requestBudget, 15, 1, 1_000, enforceFiniteLimits),
+    tokenBudget: budgetLimit(tokenBudget, 120_000, 1_000, 10_000_000, enforceFiniteLimits),
     maximumClients: boundedInteger(maximumClients, 2_000, 100, 100_000),
   };
 }
@@ -148,8 +157,16 @@ export function createRollingLlmBudget({
   requestBudget = 60,
   tokenBudget = 240_000,
   now = () => Date.now(),
+  environment = process.env.NODE_ENV,
+  publicOrigin = process.env.PUBLIC_ORIGIN,
+  enforceFiniteLimits = isPublicProductionOrigin({ environment, publicOrigin }),
 } = {}) {
-  const limits = resolveLlmRollingBudget({ windowMs, requestBudget, tokenBudget });
+  const limits = resolveLlmRollingBudget({
+    windowMs,
+    requestBudget,
+    tokenBudget,
+    enforceFiniteLimits,
+  });
   const events = [];
   const reservations = new Map();
   let reservationId = 0;
@@ -222,11 +239,20 @@ export function createClientScopedLlmBudget({
   tokenBudget = 120_000,
   maximumClients = 2_000,
   now = () => Date.now(),
+  environment = process.env.NODE_ENV,
+  publicOrigin = process.env.PUBLIC_ORIGIN,
+  enforceFiniteLimits = isPublicProductionOrigin({ environment, publicOrigin }),
 } = {}) {
   if (!globalBudget?.reserve) throw new TypeError("A global LLM budget is required");
-  const limits = resolveLlmClientBudget({ windowMs, requestBudget, tokenBudget, maximumClients });
+  const limits = resolveLlmClientBudget({
+    windowMs,
+    requestBudget,
+    tokenBudget,
+    maximumClients,
+    enforceFiniteLimits,
+  });
   const clients = new Map();
-  const overflowBudget = createRollingLlmBudget({ ...limits, now });
+  const overflowBudget = createRollingLlmBudget({ ...limits, now, enforceFiniteLimits });
 
   const clientBudget = (rawKey) => {
     const at = Number(now());
@@ -244,7 +270,7 @@ export function createClientScopedLlmBudget({
       }
     }
     if (clients.size >= limits.maximumClients) return overflowBudget;
-    const budget = createRollingLlmBudget({ ...limits, now });
+    const budget = createRollingLlmBudget({ ...limits, now, enforceFiniteLimits });
     clients.set(key, { budget, lastSeenAt: at });
     return budget;
   };
