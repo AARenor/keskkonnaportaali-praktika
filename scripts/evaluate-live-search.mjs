@@ -40,6 +40,7 @@ async function request(pathname, parameters = {}) {
     q: parameters.q,
     page: parameters.page,
     page_size: parameters.page_size,
+    window_id: parameters.window_id,
     filters: {
       source: parameters.source,
       category: parameters.category,
@@ -158,10 +159,15 @@ const secondPage = await request("/api/search/results", {
   q: "mets",
   page: 2,
   page_size: 10,
+  window_id: firstPage.body?.windowId,
   source: "official",
 });
 const firstIds = (firstPage.body?.items || []).map((item) => item.id);
 const secondIds = (secondPage.body?.items || []).map((item) => item.id);
+check(typeof firstPage.body?.windowId === "string" && firstPage.body.windowId.length > 0,
+  "first result page did not return a pagination window");
+check(secondPage.body?.windowId === firstPage.body?.windowId,
+  "second result page did not keep the first page window");
 check(firstPage.status === 200 && secondPage.status === 200, "pagination request failed", {
   firstStatus: firstPage.status,
   secondStatus: secondPage.status,
