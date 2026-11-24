@@ -88,7 +88,7 @@ katab loendi akna, vastuse akna ja lõppvastuse reservi ning
 Kui see ei kehti, keeldub server käivitumast, mitte ei lühenda eelarvet vaikselt.
 Vaikeväärtused on failis `.env.example`. Neljakutseline `agents` režiim ületas
 varasemas live-kontrollis tolleaegse ajapiiri.
-Transport on alati Responses API; teist varumudelit ei kasutata.
+Transport on alati Responses API; teenusepakkuja tagasilükkamise korral jätkab sama tõendipakk `LLM_MODEL_FALLBACKS` ahela järgmise mudeliga.
 `LLM_API_KEY` saab ainult serveri runtime-keskkonnas
 gateway bearer'i; `.env.example` ei sisalda võtit. Võtmeta lokaalse käivituse
 jaoks määra `LLM_ENABLED=false`. OpenAI Codex sisselogimine jääb hosti OMP

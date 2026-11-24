@@ -233,6 +233,45 @@ function documentCarriesFactCheckPair(document, terms) {
     && passages.some((passage) => FACT_CHECK_CORRECTION_MARKER.test(normalize(passage)) && hasSubject(passage));
 }
 
+const PRECISE_QUANTITY_PATTERN = /\b(?:kui\s+palju|mitu|arv|kogus|maht|pindala|protsent|osakaal|tase|hind|temperatuur|heide|heitkogus|saastekogus)\b/u;
+
+// A quantity or year question needs a passage that states the number; a
+// qualitative question may be synthesised from several relevant sources.
+export function asksForPreciseQuantity(query = "") {
+  const years = normalize(query)
+    .replace(/\bnatura\s+2000\b/gu, "natura")
+    .match(/\b(?:19|20)\d{2}\b/gu) || [];
+  return years.length > 0 || PRECISE_QUANTITY_PATTERN.test(normalize(query));
+}
+
+// Google-style overview: several official documents that each carry a real
+// passage about the question are enough for a cited synthesis, even when no
+// single passage answers it alone. The model still writes every sentence
+// against this same evidence, and the claim validator still rejects anything
+// the cited passages do not support.
+export function multiSourceSynthesisDocuments(query, documents = [], { minimum = 3, maximum = 8 } = {}) {
+  if (asksForPreciseQuantity(query)) return null;
+  const eligible = (documents || []).filter((document) => document
+    && document.sourceTier === "official"
+    && document.evidencePolicy !== "route-only"
+    && document._answerEvidenceEligible !== false
+    // A statute answers the rule it states, not an open impact question.
+    // Law sections stay on the focused rule route and never become the
+    // evidence pack of a general synthesis.
+    && !document._lawSection
+    && !document._focusedLawTerm
+    && !document._focusedLawTopic
+    && !/riigiteataja\.ee/iu.test(String(document.url || ""))
+    && String(document.content || "").trim().length >= 200);
+  if (eligible.length < minimum) return null;
+  if (!rankedSetCoversSubject(query, eligible)) return null;
+  return eligible.slice(0, maximum);
+}
+
+export function asksForImpact(query = "") {
+  return /\b(?:moju\w*|mojutab|mojutavad|seos\w*|tahtsus\w*|kasu\w*|kahju\w*|roll)\b/u.test(normalize(query));
+}
+
 export function assessEvidence(query, documents = []) {
   const terms = queryTerms(query);
   // Among documents that directly answer, Keskkonnaagentuur and its portal go
@@ -327,8 +366,7 @@ export function assessEvidence(query, documents = []) {
   // or year-bound questions keep the strict path so a side fact cannot answer
   // a measurement the evidence does not contain.
   const normalizedQuery = normalize(query);
-  const asksForMeasurement = years.length > 0
-    || /\b(?:kui\s+palju|mitu|arv|kogus|maht|pindala|protsent|osakaal|tase|hind|temperatuur|heide|heitkogus|saastekogus)\b/u.test(normalizedQuery);
+  const asksForMeasurement = asksForPreciseQuantity(query);
   const explicitSubjects = explicitSubjectTerms(query);
   const optionalContext = new Set(["kodus", "keskkond", "andmed", "seire", "eesti", "eestis", "riik"]);
   const broadDomainTerms = terms.filter((term) => rootIsDomain(term)

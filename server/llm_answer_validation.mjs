@@ -131,7 +131,7 @@ function askedEstonianPlace(query) {
   return base.length >= 3 ? base : "";
 }
 
-export function assertAnswerAddressesQuery(text, query, label = "answer") {
+export function assertAnswerAddressesQuery(text, query, label = "answer", { synthesis = false } = {}) {
   const answerIntent = forestEvidenceIntent(query);
   const roots = queryTerms(query).filter((root) => !QUESTION_FORM_ROOTS.has(root)).slice(0, 6);
   if (!roots.length) return true;
@@ -263,7 +263,22 @@ export function assertAnswerAddressesQuery(text, query, label = "answer") {
     throw new Error(`LLM ${label} does not explain the requested middle-aged forest share direction`);
   }
   const matched = roots.filter((root) => answerHasRoot(answer, root));
-  const required = roots.length <= 3 ? roots.length : Math.ceil(roots.length * 0.75);
+  // A synthesis explains the asked aspect instead of repeating its wording:
+  // "metsaraie mõju loodusele" may answer with raie, metsade seisund and
+  // elupaigad. The primary subject must still be named, and at least half of
+  // the remaining roots must appear, so an answer about another topic fails.
+  if (synthesis) {
+    const primary = [...roots].sort((left, right) => right.length - left.length)[0];
+    if (primary && !answerHasRoot(answer, primary)) {
+      failCheck(rejectionWithText(
+        `LLM ${label} does not name the question's subject (${primary})`,
+        `missing subject root: ${primary}`,
+      ));
+    }
+  }
+  const required = synthesis
+    ? Math.max(1, Math.ceil(roots.length / 2))
+    : roots.length <= 3 ? roots.length : Math.ceil(roots.length * 0.75);
   if (matched.length < required) {
     failCheck(rejectionWithText(
       `LLM ${label} does not answer the requested intent (${matched.length}/${roots.length})`,
@@ -486,7 +501,9 @@ function validateGroundedProposal(rawPayload, draft, query, evidencePack) {
   // Query coverage belongs to the complete independently grounded answer.
   // A measured lead need not repeat a method that its retained part explains;
   // rejected fields, headings and notes cannot supply the missing facet.
-  assertAnswerAddressesQuery([finalIntro, ...finalParts.map((part) => part.text)].join(" "), query);
+  assertAnswerAddressesQuery([finalIntro, ...finalParts.map((part) => part.text)].join(" "), query, "answer", {
+    synthesis: draft?.evidence?.answerIntent === "multi-source-synthesis",
+  });
   if ([finalIntro, ...finalParts.map((part) => part.text)].filter(Boolean).join("\n").length > MAX_ANSWER_TOTAL_CHARS) {
     throw new Error("LLM final answer exceeds the configured character limit");
   }

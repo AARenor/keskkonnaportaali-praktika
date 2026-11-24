@@ -13,6 +13,11 @@ ARG SOURCE_COMMIT=development
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV APP_REVISION=${SOURCE_COMMIT}
+# Provider fallback chain for this deployment. The gateway lists several
+# providers; when the first model's account is spent, the next one answers the
+# same grounded request instead of dropping the reader to the deterministic
+# card. Override or empty this in the receiving deployment's own environment.
+ENV LLM_MODEL_FALLBACKS="mistral/deepseek-v4-1-flash-1017,opencode-go/hy4-flash-free"
 LABEL org.opencontainers.image.revision=${SOURCE_COMMIT}
 WORKDIR /app
 

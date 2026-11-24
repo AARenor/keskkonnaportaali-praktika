@@ -79,7 +79,7 @@ import {
   queryTerms,
   textHasQueryRoot,
 } from "./search_query_terms.mjs";
-import { assessEvidence, rankedSetCoversSubject } from "./search_evidence.mjs";
+import { asksForImpact, assessEvidence, multiSourceSynthesisDocuments, rankedSetCoversSubject } from "./search_evidence.mjs";
 import { projectSourceCopy, SOURCE_EVIDENCE_COPY_CHARS, sourceCanSupportPublicCitation } from "./source-registry.mjs";
 import { queryNeedsFreshness } from "./corpus_query.mjs";
 import { configuredAnswerBudgetMs } from "./request-budget.mjs";
@@ -391,6 +391,30 @@ export async function createPortalDraft(query, {
     quality.supportingDocumentIds = [];
   }
 
+  // A qualitative question with several on-topic official documents may be
+  // answered by a cited synthesis even when no single passage answers it
+  // alone. Quantity and year questions keep the strict single-passage path,
+  // and a reviewed intent template or a focused law section still wins.
+  const directAnswerDocument = quality.directDocumentId
+    ? reranked.find((document) => document.id === quality.directDocumentId) || null
+    : null;
+  const lawOnlyAnswer = Boolean(directAnswerDocument?._lawSection
+    || /riigiteataja\.ee/iu.test(String(directAnswerDocument?.url || "")));
+  const synthesisDocuments = !forestBalance
+    && (quality.answerable !== true || (lawOnlyAnswer && asksForImpact(retrievalQuery)))
+    ? multiSourceSynthesisDocuments(retrievalQuery, reranked) || []
+    : [];
+  if (synthesisDocuments.length) {
+    quality.strong = false;
+    quality.answerable = true;
+    quality.synthesis = true;
+    quality.broad = true;
+    quality.directDocumentId = synthesisDocuments[0].id;
+    quality.broadDocumentId = synthesisDocuments[0].id;
+    quality.supportingDocumentIds = synthesisDocuments.map((document) => document.id);
+    quality.answerIntent = "multi-source-synthesis";
+  }
+
   // Does the ranked set actually carry the question's subject? This decides
   // whether the answer may claim to have found "related official results" or
   // must report that no suitable official evidence exists at all. The visible
@@ -417,7 +441,8 @@ export async function createPortalDraft(query, {
     ? (listing?.items || []).filter((document) => document?.id === "forest-overview").slice(0, 1)
     : [];
   const seenAnswerDocuments = new Set();
-  const answerDocuments = [...compositeNavigationDocuments, ...plannedAnswerDocuments, ...intentTemplateDocuments]
+  const evidenceAnswerDocuments = synthesisDocuments.length ? synthesisDocuments : plannedAnswerDocuments;
+  const answerDocuments = [...compositeNavigationDocuments, ...evidenceAnswerDocuments, ...intentTemplateDocuments]
     .filter((document) => {
       const key = sourceWitnessKey(document) || document?.id;
       if (!key || seenAnswerDocuments.has(key)) return false;

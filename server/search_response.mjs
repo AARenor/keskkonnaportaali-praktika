@@ -6,7 +6,7 @@ import {
   reviewedNavigationCitationSource,
 } from "./search_catalogue.mjs";
 import { ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS } from "./forestry-public.mjs";
-import { assessEvidence, scoreDocument } from "./search_evidence.mjs";
+import { asksForImpact, assessEvidence, scoreDocument } from "./search_evidence.mjs";
 import { specificQuestionMismatch, wasteFacilitiesNavigationContext } from "./search_navigation_policy.mjs";
 import { isForestRelatedQuery, assessSearchQuery } from "./search_query_assessment.mjs";
 import { canonicalizePublicSearchQuery } from "./search_query_canonicalization.mjs";
@@ -205,6 +205,10 @@ export function composeTopicDataOverviewResponse(query, documents = [], options 
 export function composeOfficialServiceNavigationResponse(query, documents = [], options = {}) {
   const canonicalInput = canonicalizePublicSearchQuery(query);
   if (!canonicalInput.ok || forestEvidenceIntent(canonicalInput.query)) return null;
+  // A service page describes what the service offers; it never states the
+  // effect of a phenomenon. "Kliimamuutuste mõju Eestile" must reach content
+  // evidence, not an offer to download weather observations.
+  if (asksForImpact(canonicalInput.query)) return null;
   const cleanQuery = canonicalInput.query;
   const catalogue = [...SEARCH_DOCUMENTS, ...ADDITIONAL_OFFICIAL_SERVICE_DOCUMENTS];
   const visible = Array.isArray(documents) ? documents : [];
@@ -259,6 +263,7 @@ export function composeOfficialServiceNavigationResponse(query, documents = [], 
 export function composeAmbiguousDomainGuidanceResponse(query, documents = [], options = {}) {
   const canonicalInput = canonicalizePublicSearchQuery(query);
   if (!canonicalInput.ok || forestEvidenceIntent(canonicalInput.query)) return null;
+  if (asksForImpact(canonicalInput.query)) return null;
   const cleanQuery = canonicalInput.query;
   const assessment = assessSearchQuery(cleanQuery);
   if (assessment.kind !== "answerable") return null;

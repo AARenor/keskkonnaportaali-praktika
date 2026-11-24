@@ -148,6 +148,7 @@ export function buildLlmRequest({
   conversationContext = "",
   directIntroCitations = [],
   directIntro = "",
+  synthesisIntent = "",
   reasoningEffort = process.env.LLM_REASONING_EFFORT,
 }) {
   const queryInput = canonicalizePublicSearchQuery(query);
@@ -179,9 +180,15 @@ export function buildLlmRequest({
     .filter((citation) => evidenceCitations.includes(citation));
   const answerIntent = forestEvidenceIntent(safeQuery);
   const queryIntent = analyzeQueryIntent(safeQuery);
+  const synthesisDirective = synthesisIntent === "multi-source-synthesis"
+    ? "Koosta terviklik ülevaade 2 kuni 4 allikast: intro vastab otse küsimusele ja nimetab küsimuse subjekti; iga parts lisab eri allikast ühe kontrollitud aspekti, näiteks põhjuse, mõju, tingimuse või näitaja. Ära korda sama väidet ega jäta vastust ühe lause pikkuseks, kui allikad annavad sisuliselt eri panuse."
+    : synthesisIntent === "broad-qualitative"
+      ? "Vasta 2 kuni 4 lühikese lausega: esimene lause annab otsese järelduse ja nimetab küsimuse subjekti, järgmised lisavad samast allikast ühe põhjuse või mõju ja ühe piirangu. Ära korda küsimust sõna-sõnalt ega lisa üldistust, mida allikas ei ütle."
+      : "";
   const intentDirective = [
     queryIntentDirective(queryIntent.intent),
     forestIntentDirective(answerIntent),
+    synthesisDirective,
   ].filter(Boolean).join(" ");
   const effort = resolveLlmReasoningEffort(reasoningEffort);
   const glossary = glossaryDirective(evidence);

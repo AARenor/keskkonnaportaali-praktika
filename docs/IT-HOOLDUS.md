@@ -116,7 +116,7 @@ eraldi lokaalse stack'i leping ega määra selle tootmisrakenduse runtime'i.
    teenusepakkujat. Gateway Responses marsruut on `/v1/responses`; autentitud
    kontroll ja mudeli identiteedi kinnitus toimuvad ainult serveri poolel ilma
    bearer'i, OAuth-i või küsimuse sisu logimata. Mudelitõrge või täis eelarve
-   peab jätma alles viidatud deterministliku vastuse, mitte teise varumudeli.
+   peab jätma alles viidatud deterministliku vastuse. Ainus erand on teenusepakkuja enda tagasilükkamine (402/404/429/5xx), kus sama tõendipakiga proovitakse `LLM_MODEL_FALLBACKS` ahela järgmist mudelit.
    Tootmine kasutab olemasolevat otsest mudeliteed: nelja järjestikuse
    mudelikutsena töötav `agents` režiim ületas 06.10.2026 live-kontrollides
    14,5-sekundilise ajapiiri. Üks varasem otsene Luna vastus koos serveri viite-

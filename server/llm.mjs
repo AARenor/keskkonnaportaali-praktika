@@ -18,6 +18,8 @@ import {
 import {
   LLM_GATEWAY_BASE_URL,
   LLM_GATEWAY_MODEL,
+  isRetryableLlmProviderFailure,
+  resolveLlmModelChain,
   resolveLlmReasoningEffort,
   validateLlmProviderUrl,
 } from "./provider-policy.mjs";
@@ -31,6 +33,7 @@ import { parseLlmJson } from "./llm_response_parser.mjs";
 const baseUrl = validateLlmProviderUrl(process.env.LLM_BASE_URL || LLM_GATEWAY_BASE_URL);
 const LLM_PROVIDER_ORIGINS = new Set([new URL(baseUrl).origin]);
 const model = String(process.env.LLM_MODEL || LLM_GATEWAY_MODEL);
+const modelChain = resolveLlmModelChain(model);
 const llmReasoningEffort = resolveLlmReasoningEffort(process.env.LLM_REASONING_EFFORT);
 // Read the credential only after the destination has passed the startup
 // invariant, so an invalid deployment can never attach it to a request.
@@ -79,7 +82,10 @@ let activeRequests = 0;
 
 
 export async function generateGroundedAnswer(query, draft, options = {}) {
-  const attemptedProvider = `${agentOrchestrationEnabled() ? "openai-agents" : "codex-gateway"}/${model}`;
+  const retryDepth = Math.max(0, Number(options.retryDepth) || 0);
+  const attemptStartedAt = Date.now();
+  const selectedModel = String(options.selectedModel || model);
+  const attemptedProvider = `${agentOrchestrationEnabled() ? "openai-agents" : "codex-gateway"}/${selectedModel}`;
   const rejected = (
     status,
     reason,
@@ -99,11 +105,11 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
   if (Date.now() < circuitOpenUntil) {
     return rejected("circuit-open", "capacity");
   }
-  if (activeRequests >= maxConcurrentRequests) {
+  if (retryDepth === 0 && activeRequests >= maxConcurrentRequests) {
     return rejected("capacity-fallback", "capacity");
   }
 
-  activeRequests += 1;
+  if (retryDepth === 0) activeRequests += 1;
   try {
     const clientScopeKey = llmClientScopeKey(options.clientKey);
     const evidence = evidencePack.entries;
@@ -112,12 +118,15 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
       return rejected("degraded", "budget");
     }
     const request = buildLlmRequest({
-      selectedModel: model,
+      selectedModel,
       query,
       evidence,
       conversationContext: options.conversationContext || "",
       directIntroCitations: validCitations(draft.answer?.introCitations, draft.sources.length),
       directIntro: draft.answer?.intro || "",
+      synthesisIntent: draft.evidence?.answerIntent === "multi-source-synthesis"
+        ? "multi-source-synthesis"
+        : draft.evidence?.kind === "broad-grounded-answer" ? "broad-qualitative" : "",
       reasoningEffort: llmReasoningEffort,
     });
     const orchestrated = agentOrchestrationEnabled() && evidence.length > 1;
@@ -140,6 +149,7 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
       : controller.signal;
     let observedUsage;
     let providerRequestDispatched = false;
+    let transientProviderFailure = false;
     const providerUsage = createUsageAccumulator();
     const telemetryForAttempt = () => {
       if (!providerRequestDispatched) return createUsageTelemetry({ status: "deterministic_zero" });
@@ -159,7 +169,7 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
         const agentRun = await runGroundedSearchOrchestration({
           apiKey,
           baseUrl,
-          model,
+          model: selectedModel,
           reasoningEffort: request.body.reasoning.effort,
           systemInstructions,
           userInput,
@@ -212,7 +222,7 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
         acceptedClaims: validated.acceptedClaims,
         usage_telemetry: telemetryForAttempt(),
         attempt: {
-          provider: `${orchestrated ? "openai-agents" : "codex-gateway"}/${model}`,
+          provider: `${orchestrated ? "openai-agents" : "codex-gateway"}/${selectedModel}`,
           status: validated.answer ? "ready" : "degraded",
           reason: validated.rejectionReason || "none",
           ...(validated.rejectionDetail ? { detail: validated.rejectionDetail } : {}),
@@ -226,6 +236,27 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
       const locallyTimedOut = error.name === "AbortError"
         && controller.signal.aborted
         && !options.signal?.aborted;
+      // A provider rejection (spent account, missing model, gateway 5xx) used
+      // no completion tokens. Charging the full answer estimate for it would
+      // spend the reader's budget before the fallback model even runs.
+      transientProviderFailure = isRetryableLlmProviderFailure(error)
+        && !/invalid JSON|return JSON/iu.test(String(error.message || ""));
+      const chainIndex = modelChain.indexOf(selectedModel);
+      const nextModel = chainIndex >= 0 ? modelChain[chainIndex + 1] : undefined;
+      const retryBudgetMs = requestTimeoutMs - (Date.now() - attemptStartedAt) - 250;
+      const retryable = Boolean(nextModel)
+        && retryDepth < modelChain.length
+        && !options.signal?.aborted
+        && retryBudgetMs >= 500
+        && isRetryableLlmProviderFailure(error);
+      if (retryable) {
+        return generateGroundedAnswer(query, draft, {
+          ...options,
+          selectedModel: nextModel,
+          retryDepth: retryDepth + 1,
+          timeoutMs: retryBudgetMs,
+        });
+      }
       if (error.status === 429) {
         circuitOpenUntil = Date.now() + circuitBreakMs;
       } else if (locallyTimedOut) {
@@ -246,13 +277,13 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
     } finally {
       if (reservation) {
         settleLlmReservation(reservation, observedUsage, {
-          chargeUnknown: providerRequestDispatched,
+          chargeUnknown: providerRequestDispatched && !transientProviderFailure,
         });
       }
       clearTimeout(timer);
     }
   } finally {
-    activeRequests = Math.max(0, activeRequests - 1);
+    if (retryDepth === 0) activeRequests = Math.max(0, activeRequests - 1);
   }
 }
 
