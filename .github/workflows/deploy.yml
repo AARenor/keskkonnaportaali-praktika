@@ -92,15 +92,7 @@ jobs:
             exit 1
           fi
           database_host="$(
-            node --input-type=module -e '
-              const url = new URL(process.argv[1]);
-              const host = url.hostname.replace(/^\[|\]$/gu, "").toLocaleLowerCase("en");
-              const labels = host.split(".");
-              const valid = host.length <= 253 && labels.every((label) =>
-                /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u.test(label));
-              if (!valid) process.exit(1);
-              process.stdout.write(host);
-            ' "$database_url"
+            printf '%s' "$database_url" | node scripts/coolify_private_database_host.mjs
           )"
 
           payload="$(jq -n --arg host "$database_host" \
