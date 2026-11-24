@@ -412,3 +412,19 @@ Commit'id `642149a` (legend algab protsendiga; tundmatu diagrammiliik ei joonist
 | `mitu ha metsa on eestis`, `Mitu ha võetakse eestis metsa maha`, `Kui suur on lageraie pindala?`, `Kas raiemaht ületab juurdekasvu?`, `mets` | muutumatud |
 | Uue versiooni teavitus (lokaalne stack) | enne uuesti ehitamist avatud vaheleht (bundle `index-B6aLUbvx.js`) näitas pärast järgmise versiooni vastust teavituse „Otsingust on uus versioon. Laadi leht uuesti…” koos nupuga; värske leht teavitust ei näita |
 | Brauser (live) | sektordiagramm 29,0 % keskel, legend protsent ees; `scrollY === 0` värskel laadimisel; horisontaalset kerimist ei ole |
+
+## Mudeliahel ja kvalitatiivne süntees 24.11.2026 (2f56aef)
+
+Commit'id `d6c4723` (mudeliahel ja mitme allika süntees), `f6bc0c5` ja `2f56aef` (Metsaregistri lõigu parandus) ning `ca282a9` (laia teema täpsustuse säilitamine) juurutati `main`-i push'iga; workflow `success`, `/api/health` tagastas `2f56aef742b8a52480dbb968de21ee51511715cd` (21:43). Enne seda oli tootmise AI vastus surnud: `terrapoint-api.service` oli 19.11.2026 seisuga peatatud ja Codex 7-päeva kvoot 100 % kulutatud, mistõttu iga mudelikatse lõppes `provider-error` või avatud vooluahelaga ja lugeja nägi deterministlikku kaarti.
+
+| Kontroll (`2f56aef` live) | Mõõdetud lõpptulemus |
+|---|---|
+| Unit/integratsioon | `npm test`: 1381/1381 (809,6 s); `npm run build` OK |
+| Avalik evaluatsioon | `npm run eval:public`: 147/147, kõik viis väravat 1,0 |
+| Muud offline väravad | `eval:blind` 10/10; `eval:open` nDCG@5 0,9955, ülejäänud 1,0; `eval:holdout` kaks varasemat viga (H05 statistikaameti väljajätt, H11 `smi` 30. koht) korduvad muutmata `HEAD`-il |
+| Konteineri seadistus | `LLM_MODEL=openai-codex/gpt-6-luna`, `LLM_MODEL_FALLBACKS=mistral/deepseek-v4-1-flash-1017,opencode-go/hy4-flash-free`; gateway vastas produktsioonikonteinerist Mistrali mudeliga HTTP 200 |
+| `mets` | `Allikapõhine kokkuvõte`, 3 osa, 4 allikat; mudel vastas ja lükati kohalikult tagasi (`degraded/local-rejected`), mitte `provider-error`; vana katkend `metsaeraldise asukohakirjeldus, mis` puudub, uus lause `Metsaeraldise asukohakirjeldus sisaldab` on nähtav |
+| `metsaraie mõju loodusele` | `AI koondvastus`, 1 osa, 1 allikas, `answerAttempt.ready/none` |
+| `kui palju on Eestis metsa` | `AI koondvastus`, 2 osa, 2 allikat, `ready/none` (varem deterministlik) |
+| `mis on ringmajandus` | `Vastust ei leitud`, 0 vastuseallikat, `searchResults.total` 1147; metsapiirang jääb kehtima |
+| Avalik juhend | `/docs/arendajale` kuvab rea `LLM_MODEL_FALLBACKS` |
