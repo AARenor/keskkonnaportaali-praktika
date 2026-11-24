@@ -9,6 +9,7 @@ import {
   startContinuousCorpusBackfill,
   startCorpusSyncIfStale,
 } from "./corpus.mjs";
+import { ensureCorpusSchema } from "./corpus_storage.mjs";
 import {
   closeCorpusStatsBackendAdmission,
   corpusStats,
@@ -56,6 +57,7 @@ import {
   requestFromTrustedProxy,
   resolveIpv6ClientPrefixBits,
   resolveProxyConfiguration,
+  resolveRateWindowEnforcement,
 } from "./security.mjs";
 import {
   answerDeadline,
@@ -126,8 +128,21 @@ const proxyInflight = new Map();
 const requestWindows = new Map();
 const MAX_RATE_LIMIT_KEYS = 2_000;
 // RATE_LIMIT_WINDOWS_ENABLED=false removes the six public request windows for
-// teammate testing. Unset, or any other value, keeps every window enforced.
-const RATE_LIMIT_WINDOWS_ENABLED = String(process.env.RATE_LIMIT_WINDOWS_ENABLED ?? "true").toLocaleLowerCase("en") !== "false";
+// teammate testing on a local instance. A production process that serves a
+// public origin keeps every window enforced even when the switch says off, so
+// the off value can never remove the only ceiling before the shared budget.
+const rateWindowEnforcement = resolveRateWindowEnforcement({
+  enabled: process.env.RATE_LIMIT_WINDOWS_ENABLED,
+  environment: process.env.NODE_ENV,
+  publicOrigin,
+});
+const RATE_LIMIT_WINDOWS_ENABLED = rateWindowEnforcement.enforce;
+if (rateWindowEnforcement.reason === "public-origin") {
+  console.warn(JSON.stringify({
+    event: "rate-window-switch-ignored",
+    message: "RATE_LIMIT_WINDOWS_ENABLED=false is ignored in production with a public origin",
+  }));
+}
 function createPublicRateWindow(options) {
   const limiter = createFixedWindowRateLimiter(options);
   return (request, response, next) => (RATE_LIMIT_WINDOWS_ENABLED ? limiter(request, response, next) : next());
@@ -1651,6 +1666,16 @@ app.use((request, response, next) => {
 });
 
 app.use((_request, response) => response.status(404).json({ error: "Lehte ei leitud." }));
+
+try {
+  await ensureCorpusSchema();
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  await new Promise((resolve) => {
+    process.stderr.write(`${JSON.stringify({ event: "corpus-schema-startup-failed", message })}\n`, resolve);
+  });
+  process.exit(1);
+}
 
 const server = createServer({ maxHeaderSize: 16 * 1024 }, app);
 server.on("connection", publicSocketBudget);

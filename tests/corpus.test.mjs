@@ -154,8 +154,9 @@ test("live discovery persistence has explicit retirement and deletion bounds", (
   assert.match(PORTAL_UNAVAILABLE_DELETE_SQL, /is_available = FALSE/u);
   assert.match(PORTAL_UNAVAILABLE_DELETE_SQL, /portal-sitemap/u);
   assert.match(PORTAL_UNAVAILABLE_DELETE_SQL, /make_interval\(hours => \$1\)/u);
-  assert.match(CORPUS_OVERFLOW_DELETE_SQL, /GREATEST\(COUNT\(\*\) - \$1, 0\)/u);
-  assert.match(CORPUS_OVERFLOW_DELETE_SQL, /SUM\(pg_column_size\(document\)\)/u);
+  assert.match(CORPUS_OVERFLOW_DELETE_SQL, /FROM practice_corpus_capacity/u);
+  assert.doesNotMatch(CORPUS_OVERFLOW_DELETE_SQL, /GREATEST\(COUNT\(\*\)/u);
+  assert.doesNotMatch(CORPUS_OVERFLOW_DELETE_SQL, /GREATEST\(COALESCE\(SUM\(pg_column_size/u);
 
 });
 
@@ -334,7 +335,7 @@ test("authoritative portal retirement is suppressed only by truncated portal dis
   }), false);
 });
 
-test("hydration commits only when the locked post-update aggregate stays below the byte ceiling", async () => {
+test("hydration commits only when the locked post-update capacity counter stays below the byte ceiling", async () => {
   const run = async (totalBytes) => {
     const calls = [];
     const client = {
@@ -342,8 +343,8 @@ test("hydration commits only when the locked post-update aggregate stays below t
         const text = String(sql).trim();
         calls.push(text);
         if (text.startsWith("UPDATE practice_corpus_documents")) return { rowCount: 1, rows: [{ id: 1 }] };
-        if (text.startsWith("SELECT COALESCE(SUM(pg_column_size")) {
-          return { rows: [{ total_bytes: String(totalBytes) }] };
+        if (text.startsWith("SELECT row_count, total_bytes, version")) {
+          return { rows: [{ row_count: "1", total_bytes: String(totalBytes), version: 1 }] };
         }
         return { rowCount: 0, rows: [] };
       },
@@ -1075,7 +1076,7 @@ test("identity backfill preserves historical records, is bounded and idempotent,
           record.metadata.sourceIdentityVersion = update.identity_version;
         }
       }
-      if (text.startsWith("SELECT COALESCE(SUM(pg_column_size")) return { rows: [{ total_bytes: totalBytes }] };
+      if (text.startsWith("SELECT row_count, total_bytes, version")) return { rows: [{ row_count: "2", total_bytes: String(totalBytes), version: 1 }] };
       return { rows: [] };
     },
   };
@@ -1133,7 +1134,7 @@ test("identity backfill rejects non-object legacy JSON before mutation and prese
             { sourceResourceKey: identity.resource_key, sourceIdentityVersion: identity.identity_version },
           ];
         }
-        if (text.startsWith("SELECT COALESCE(SUM(pg_column_size")) return { rows: [{ total_bytes: 100 }] };
+        if (text.startsWith("SELECT row_count, total_bytes, version")) return { rows: [{ row_count: "1", total_bytes: String(totalBytes), version: 1 }] };
         return { rows: [] };
       },
     };

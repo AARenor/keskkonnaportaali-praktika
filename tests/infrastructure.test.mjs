@@ -106,6 +106,7 @@ import {
   requestRateLimitAddress,
   resolveIpv6ClientPrefixBits,
   resolveProxyConfiguration,
+  resolveRateWindowEnforcement,
 } from "../server/security.mjs";
 import {
   createFairSearchAdmission,
@@ -7470,5 +7471,104 @@ test("reviewed autocomplete suggests paraphrased synonym queries the same review
     const values = getReviewedSearchSuggestions(query, 5);
     assert.equal(values[0], "Kui palju tekkis Eestis 2024. aastal ohtlikke jäätmeid?");
     assert.ok(values.every((value) => /jäätm/iu.test(value)));
+  }
+});
+
+function composeServiceSection(compose, service) {
+  const lines = compose.split("\n");
+  const start = lines.findIndex((line) => line === `  ${service}:`);
+  assert.ok(start >= 0, `compose.yaml must define the ${service} service`);
+  const section = [];
+  for (const line of lines.slice(start + 1)) {
+    if (/^ {2}[A-Za-z0-9_-]+:$/u.test(line)) break;
+    section.push(line);
+  }
+  return section.join("\n");
+}
+
+function composeListValues(section, key) {
+  const lines = section.split("\n");
+  const start = lines.findIndex((line) => line.trim() === `${key}:`);
+  if (start < 0) return null;
+  const values = [];
+  for (const line of lines.slice(start + 1)) {
+    const match = line.match(/^ +- (.+)$/u);
+    if (!match) break;
+    values.push(match[1].trim());
+  }
+  return values;
+}
+
+function assertContainerResourceLimits(section, service) {
+  assert.match(section, /^ {4}mem_limit: 2[gG]$/mu, `${service} must cap memory at 2 GiB`);
+  assert.match(section, /^ {4}cpus: 2(?:\.0)?$/mu, `${service} must cap CPU at 2`);
+  assert.match(section, /^ {4}pids_limit: 256$/mu, `${service} must cap processes at 256`);
+  assert.match(
+    section,
+    /^ {4}ulimits:\n {6}nofile:\n {8}soft: 1024\n {8}hard: 1024$/mu,
+    `${service} must cap open files at 1024`,
+  );
+}
+
+test("public rate windows fail closed in production when an off switch is configured", () => {
+  assert.deepEqual(
+    resolveRateWindowEnforcement({ enabled: undefined, environment: "production", publicOrigin: "https://praktika.example" }),
+    { enforce: true, reason: "enabled" },
+  );
+  assert.deepEqual(
+    resolveRateWindowEnforcement({ enabled: "true", environment: "production", publicOrigin: "https://praktika.example" }),
+    { enforce: true, reason: "enabled" },
+  );
+  assert.deepEqual(
+    resolveRateWindowEnforcement({ enabled: "false", environment: "production", publicOrigin: "https://praktika.example" }),
+    { enforce: true, reason: "public-origin" },
+  );
+  assert.deepEqual(
+    resolveRateWindowEnforcement({ enabled: "FALSE", environment: "production", publicOrigin: "https://praktika.example:8443" }),
+    { enforce: true, reason: "public-origin" },
+  );
+  assert.deepEqual(
+    resolveRateWindowEnforcement({ enabled: "false", environment: "production", publicOrigin: "http://127.0.0.1:3000" }),
+    { enforce: false, reason: "testing-switch" },
+  );
+  assert.deepEqual(
+    resolveRateWindowEnforcement({ enabled: "false", environment: "production", publicOrigin: "http://localhost:3000" }),
+    { enforce: false, reason: "testing-switch" },
+  );
+  assert.deepEqual(
+    resolveRateWindowEnforcement({ enabled: "false", environment: "development", publicOrigin: "https://praktika.example" }),
+    { enforce: false, reason: "testing-switch" },
+  );
+  assert.deepEqual(
+    resolveRateWindowEnforcement({ enabled: "false", environment: "production", publicOrigin: "" }),
+    { enforce: false, reason: "testing-switch" },
+  );
+});
+
+test("both containers drop every Linux capability", async () => {
+  const compose = await readFile(new URL("../compose.yaml", import.meta.url), "utf8");
+  assert.doesNotMatch(compose, /privileged:\s*true/u);
+  for (const service of ["web", "postgres"]) {
+    const section = composeServiceSection(compose, service);
+    assert.deepEqual(composeListValues(section, "cap_drop"), ["ALL"], `${service} must drop every capability`);
+    assert.deepEqual(
+      composeListValues(section, "security_opt"),
+      ["no-new-privileges:true"],
+      `${service} must keep no-new-privileges`,
+    );
+  }
+  const web = composeServiceSection(compose, "web");
+  assert.equal(composeListValues(web, "cap_add"), null, "the web process runs unprivileged and needs nothing added back");
+  assert.deepEqual(
+    composeListValues(composeServiceSection(compose, "postgres"), "cap_add"),
+    ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"],
+    "postgres adds back only the capabilities its root entrypoint needs before it drops to the postgres user",
+  );
+});
+
+test("both containers cap memory, CPU, processes and open files", async () => {
+  const compose = await readFile(new URL("../compose.yaml", import.meta.url), "utf8");
+  for (const service of ["web", "postgres"]) {
+    assertContainerResourceLimits(composeServiceSection(compose, service), service);
   }
 });

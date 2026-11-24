@@ -4,14 +4,285 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
+# A second push must never start a second Coolify deployment while the first is
+# still building, so runs queue on one group instead of overlapping.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  COOLIFY_BASE_URL: https://coolify.arle.top
+  COOLIFY_APPLICATION_ID: asdyidu5wvjx54d0b09t9rhw
+  PUBLIC_URL: https://praktika.arle.top
+  # Bounded deployment wait: 45 minutes at a 15 second poll interval.
+  DEPLOY_TIMEOUT_SECONDS: 2700
+  DEPLOY_POLL_SECONDS: 15
+  # Bounded wait for the new container to answer once Coolify reports finished.
+  HEALTH_TIMEOUT_SECONDS: 300
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Above the internal bounds (45 min deploy + 5 min health + CI work), so a
+    # stall fails with our own message instead of the runner's hard kill.
+    timeout-minutes: 90
     steps:
-      - name: Trigger Coolify redeploy
-        run: >
-          curl --fail-with-body -m 60 -X POST
-          -H "Authorization: Bearer ${{ secrets.COOLIFY_API_TOKEN }}"
-          -H "Content-Type: application/json"
-          -d '{}'
-          "https://coolify.arle.top/api/v1/applications/asdyidu5wvjx54d0b09t9rhw/start"
+      - name: Check out the pushed commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pull PostgreSQL test fixture
+        run: docker pull postgres:17-alpine
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Run sites worker tests
+        run: npm run test:sites
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev
+
+      - name: Apply production resource limits
+        env:
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+
+          # Memory, memory swap, CPU and health check start period only. Process
+          # and file limits stay as they are in production on purpose.
+          limits='{"limits_memory":"2g","limits_memory_swap":"2g","limits_cpus":"2","health_check_start_period":60}'
+
+          http_status="$(
+            curl --silent --show-error --proto '=https' \
+              --max-time 60 --retry 3 --retry-delay 5 --retry-connrefused \
+              --output "$response_file" --write-out '%{http_code}' \
+              --request PATCH \
+              --header "Authorization: Bearer ${COOLIFY_API_TOKEN}" \
+              --header 'Content-Type: application/json' \
+              --header 'Accept: application/json' \
+              --data "$limits" \
+              "${COOLIFY_BASE_URL}/api/v1/applications/${COOLIFY_APPLICATION_ID}" \
+              || true
+          )"
+
+          case "$http_status" in
+            200)
+              echo "Coolify application limits applied: memory 2g, memory swap 2g, cpus 2, health check start period 60s"
+              ;;
+            403)
+              echo "::error::Coolify application PATCH returned HTTP 403: the token needs the deploy ability"
+              exit 1
+              ;;
+            000)
+              echo "::error::Coolify application PATCH got no response"
+              exit 1
+              ;;
+            *)
+              echo "::error::Coolify application PATCH returned HTTP ${http_status:-none}"
+              cat "$response_file" || true
+              exit 1
+              ;;
+          esac
+
+      - name: Trigger Coolify deployment
+        id: trigger
+        env:
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+
+          http_status="$(
+            curl --silent --show-error --proto '=https' \
+              --max-time 60 --retry 3 --retry-delay 5 --retry-connrefused \
+              --output "$response_file" --write-out '%{http_code}' \
+              --request POST \
+              --header "Authorization: Bearer ${COOLIFY_API_TOKEN}" \
+              --header 'Content-Type: application/json' \
+              --header 'Accept: application/json' \
+              --data '{}' \
+              "${COOLIFY_BASE_URL}/api/v1/applications/${COOLIFY_APPLICATION_ID}/start" \
+              || true
+          )"
+
+          if [ "$http_status" != "200" ] && [ "$http_status" != "201" ]; then
+            echo "::error::Coolify start returned HTTP ${http_status}"
+            cat "$response_file" || true
+            exit 1
+          fi
+
+          deployment_uuid="$(
+            jq -r '
+              if type == "array" then .[0] else . end
+              | (.deployment_uuid // .deployments[0].deployment_uuid // empty)
+            ' "$response_file"
+          )"
+          if [ -z "$deployment_uuid" ]; then
+            echo "::error::Coolify start response has no deployment_uuid"
+            cat "$response_file" || true
+            exit 1
+          fi
+
+          echo "deployment_uuid=${deployment_uuid}" >> "$GITHUB_OUTPUT"
+          echo "Coolify deployment ${deployment_uuid} queued for ${GITHUB_SHA}"
+
+      - name: Wait for the deployment to finish
+        env:
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+          DEPLOYMENT_UUID: ${{ steps.trigger.outputs.deployment_uuid }}
+        run: |
+          set -euo pipefail
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+
+          deadline=$(( $(date +%s) + DEPLOY_TIMEOUT_SECONDS ))
+          status='queued'
+          commit=''
+          unreadable_reads=0
+          max_unreadable_reads=20
+
+          # A response we cannot read is not proof of progress. Twenty of them in
+          # a row means the API or the deployment record is broken, so stop
+          # instead of burning the whole deployment budget.
+          count_unreadable_read() {
+            unreadable_reads=$((unreadable_reads + 1))
+            if [ "$unreadable_reads" -ge "$max_unreadable_reads" ]; then
+              echo "::error::Coolify deployment ${DEPLOYMENT_UUID} status could not be read ${unreadable_reads} times in a row"
+              exit 1
+            fi
+            sleep "$DEPLOY_POLL_SECONDS"
+          }
+
+          while :; do
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::Coolify deployment ${DEPLOYMENT_UUID} did not reach finished within ${DEPLOY_TIMEOUT_SECONDS}s (last status: ${status})"
+              exit 1
+            fi
+
+            http_status="$(
+              curl --silent --show-error --proto '=https' \
+                --max-time 60 --retry 2 --retry-delay 5 --retry-connrefused \
+                --output "$response_file" --write-out '%{http_code}' \
+                --header "Authorization: Bearer ${COOLIFY_API_TOKEN}" \
+                --header 'Accept: application/json' \
+                "${COOLIFY_BASE_URL}/api/v1/deployments/${DEPLOYMENT_UUID}" \
+                || true
+            )"
+
+            case "$http_status" in
+              200)
+                status="$(jq -r '.deployments // . | .status // empty' "$response_file")"
+                commit="$(jq -r '.deployments // . | .commit // empty' "$response_file")"
+                if [ -n "$status" ]; then
+                  unreadable_reads=0
+                fi
+                ;;
+              401|403)
+                echo "::error::Coolify API rejected the token (HTTP ${http_status})"
+                exit 1
+                ;;
+              404)
+                echo "::error::Coolify deployment ${DEPLOYMENT_UUID} not found (HTTP 404)"
+                exit 1
+                ;;
+              *)
+                echo "::warning::Coolify deployment status request returned HTTP ${http_status}"
+                count_unreadable_read
+                continue
+                ;;
+            esac
+
+            if [ -z "$status" ]; then
+              echo "::warning::Coolify deployment status response had no status field"
+              count_unreadable_read
+              continue
+            fi
+
+            case "$status" in
+              finished)
+                echo "Coolify deployment ${DEPLOYMENT_UUID} finished on commit ${commit}"
+                break
+                ;;
+              failed|cancelled|canceled|error|errored|skipped)
+                echo "::error::Coolify deployment ${DEPLOYMENT_UUID} ended with status ${status}"
+                exit 1
+                ;;
+              *)
+                sleep "$DEPLOY_POLL_SECONDS"
+                ;;
+            esac
+          done
+
+          deployed_commit="$(printf '%s' "$commit" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+          expected_commit="$(printf '%s' "$GITHUB_SHA" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+          if [ -z "$deployed_commit" ]; then
+            echo "::error::Coolify deployment ${DEPLOYMENT_UUID} reported no commit"
+            exit 1
+          fi
+          if [ "$deployed_commit" != "$expected_commit" ]; then
+            echo "::error::Deployed commit ${deployed_commit} does not match pushed commit ${expected_commit}"
+            exit 1
+          fi
+
+      - name: Verify the live revision serves this commit
+        run: |
+          set -euo pipefail
+          readiness_file="$(mktemp)"
+          trap 'rm -f "$readiness_file"' EXIT
+          deadline=$(( $(date +%s) + HEALTH_TIMEOUT_SECONDS ))
+          revision=''
+          readiness=''
+
+          while :; do
+            http_status="$(
+              curl --silent --show-error --proto '=https' --max-time 30 \
+                --retry 2 --retry-delay 5 --retry-connrefused \
+                --output "$readiness_file" --write-out '%{http_code}' \
+                "${PUBLIC_URL}/api/health/container-readiness" || true
+            )"
+            revision="$(jq -r '.revision // empty' "$readiness_file" 2>/dev/null || true)"
+            readiness="$(jq -r '.status // empty' "$readiness_file" 2>/dev/null || true)"
+            # 200 with status ok is the readiness contract; a 503 draining body
+            # also carries a revision, so the revision alone would accept a
+            # container that is shutting down.
+            if [ "$http_status" = '200' ] && [ "$readiness" = 'ok' ] \
+              && [ "$revision" = "$GITHUB_SHA" ]; then
+              break
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::${PUBLIC_URL}/api/health/container-readiness stayed HTTP ${http_status} status '${readiness}' revision '${revision}', never HTTP 200 ok on revision ${GITHUB_SHA}, within ${HEALTH_TIMEOUT_SECONDS}s"
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "${PUBLIC_URL}/api/health/container-readiness returned HTTP 200 ok on revision ${revision}"
+
+          build_status="$(
+            curl --silent --show-error --proto '=https' \
+              --max-time 30 --retry 3 --retry-delay 5 --retry-connrefused \
+              --output /dev/null --write-out '%{http_code}' \
+              "${PUBLIC_URL}/build.json" || true
+          )"
+          if [ "$build_status" != '200' ]; then
+            echo "::error::${PUBLIC_URL}/build.json returned HTTP ${build_status}"
+            exit 1
+          fi
+          echo "${PUBLIC_URL}/build.json returned HTTP 200"

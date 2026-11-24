@@ -19,8 +19,11 @@ import {
   OFFICIAL_DISCOVERY_RETENTION_HOURS,
   REVIEWED_CATALOGUE_SOURCE_KEY,
   ensureCorpusSchema,
+  planCorpusDocumentAdmission,
+  readCorpusCapacity,
   throwIfCorpusAborted,
   upsertDocuments,
+  withCorpusCapacityTransaction,
 } from "./corpus_storage.mjs";
 import { normalizeCorpusQuery, summarizeUrlOccurrences } from "./corpus_query.mjs";
 
@@ -328,88 +331,138 @@ export async function refreshReviewedCatalogue() {
 // search can also reach external laws, UN terminology and file-only sources.
 // Existing crawled rows are never overwritten; empty metadata-only rows are
 // filled with the reviewed extract.
-export async function seedReviewedCatalogueDocuments(client, runId) {
+export async function seedReviewedCatalogueDocuments(client, runId, options = {}) {
   const records = reviewedCatalogueCorpusRecords();
-  if (!records.length) return { seeded: 0 };
-  const result = await client.query(`
-    INSERT INTO practice_corpus_documents AS current (
-      external_id, source_key, canonical_url, title, summary, content, category,
-      organization, published_at, published_label, modified_at, topics, source_tier,
-      language, metadata_quality, metadata, content_hash, last_seen_run
-    )
-    SELECT
-      item.external_id,
-      item.source_key,
-      item.canonical_url,
-      item.title,
-      item.summary,
-      item.content,
-      item.category,
-      item.organization,
-      NULLIF(item.published_at, '')::DATE,
-      item.published_label,
-      NULLIF(item.modified_at, '')::TIMESTAMPTZ,
-      COALESCE(ARRAY(SELECT jsonb_array_elements_text(item.topics)), ARRAY[]::TEXT[]),
-      item.source_tier,
-      item.language,
-      item.metadata_quality,
-      item.metadata,
-      item.content_hash,
-      $2
-    FROM jsonb_to_recordset($1::JSONB) AS item(
-      external_id TEXT,
-      source_key TEXT,
-      canonical_url TEXT,
-      title TEXT,
-      summary TEXT,
-      content TEXT,
-      category TEXT,
-      organization TEXT,
-      published_at TEXT,
-      published_label TEXT,
-      modified_at TEXT,
-      topics JSONB,
-      source_tier TEXT,
-      language TEXT,
-      metadata_quality SMALLINT,
-      metadata JSONB,
-      content_hash TEXT
-    )
-    ON CONFLICT (canonical_url) DO UPDATE SET
-      external_id = EXCLUDED.external_id,
-      source_key = EXCLUDED.source_key,
-      title = EXCLUDED.title,
-      summary = CASE WHEN current.summary <> '' THEN current.summary ELSE EXCLUDED.summary END,
-      content = CASE WHEN current.content <> '' THEN current.content ELSE EXCLUDED.content END,
-      category = EXCLUDED.category,
-      organization = EXCLUDED.organization,
-      published_at = EXCLUDED.published_at,
-      published_label = EXCLUDED.published_label,
-      topics = EXCLUDED.topics,
-      source_tier = EXCLUDED.source_tier,
-      metadata_quality = GREATEST(current.metadata_quality, EXCLUDED.metadata_quality),
-      metadata = current.metadata || EXCLUDED.metadata,
-      content_hash = CASE WHEN current.content <> '' THEN current.content_hash ELSE EXCLUDED.content_hash END,
-      fetched_at = CASE WHEN current.content <> '' THEN current.fetched_at ELSE NOW() END,
-      last_seen_at = NOW(),
-      last_seen_run = COALESCE($2, current.last_seen_run),
-      is_available = TRUE
-    WHERE current.content = ''
-      OR current.source_key IN ('portal-catalog', 'portal-sitemap')
-      OR current.source_key = 'reviewed-catalogue-source'
-  `, [JSON.stringify(records), runId]);
-  // Retire pre-hash reviewed identities left by the earlier `reviewed:<id>`
-  // scheme. Their slashed URL may also differ from the canonical row, so
-  // leaving them available would answer from a duplicate page.
-  await client.query(`
-    UPDATE practice_corpus_documents
-    SET is_available = FALSE
-    WHERE source_key = 'reviewed-catalogue-source'
-      AND is_available = TRUE
-      AND external_id !~ '^reviewed:[^:]+:[0-9a-f]{16}$'
-  `);
+  if (!records.length) return { seeded: 0, capacityDropped: 0 };
+  const admissionDocuments = records.map((record) => ({
+    externalId: record.external_id,
+    sourceKey: record.source_key,
+    url: record.canonical_url,
+    title: record.title,
+    summary: record.summary,
+    content: record.content,
+    category: record.category,
+    organization: record.organization,
+    publishedAt: record.published_at,
+    publishedLabel: record.published_label,
+    modifiedAt: record.modified_at,
+    topics: record.topics,
+    sourceTier: record.source_tier,
+    language: record.language,
+    quality: record.metadata_quality,
+    metadata: record.metadata,
+    contentHash: record.content_hash,
+  }));
+  const result = await withCorpusCapacityTransaction(client, async () => {
+    const capacity = await readCorpusCapacity(client);
+    const existingResult = await client.query(`
+      SELECT canonical_url,
+             pg_column_size(document)::BIGINT AS existing_bytes
+      FROM practice_corpus_documents AS document
+      WHERE canonical_url = ANY($1::TEXT[])
+    `, [records.map((record) => record.canonical_url)]);
+    const admission = planCorpusDocumentAdmission(
+      admissionDocuments,
+      existingResult.rows,
+      capacity.rowCount,
+      capacity.totalBytes,
+    );
+    const admittedUrls = new Set(admission.admittedDocuments.map((document) => document.url));
+    const admittedRecords = records.filter((record) => admittedUrls.has(record.canonical_url));
+    if (admission.livenessOnlyUrls.length) {
+      await client.query(`
+        UPDATE practice_corpus_documents
+        SET last_seen_at = NOW(),
+            last_seen_run = COALESCE($2::BIGINT, last_seen_run),
+            is_available = TRUE
+        WHERE canonical_url = ANY($1::TEXT[])
+      `, [admission.livenessOnlyUrls, runId]);
+    }
+    let seeded = 0;
+    if (admittedRecords.length) {
+      const inserted = await client.query(`
+        INSERT INTO practice_corpus_documents AS current (
+          external_id, source_key, canonical_url, title, summary, content, category,
+          organization, published_at, published_label, modified_at, topics, source_tier,
+          language, metadata_quality, metadata, content_hash, last_seen_run
+        )
+        SELECT
+          item.external_id,
+          item.source_key,
+          item.canonical_url,
+          item.title,
+          item.summary,
+          item.content,
+          item.category,
+          item.organization,
+          NULLIF(item.published_at, '')::DATE,
+          item.published_label,
+          NULLIF(item.modified_at, '')::TIMESTAMPTZ,
+          COALESCE(ARRAY(SELECT jsonb_array_elements_text(item.topics)), ARRAY[]::TEXT[]),
+          item.source_tier,
+          item.language,
+          item.metadata_quality,
+          item.metadata,
+          item.content_hash,
+          $2
+        FROM jsonb_to_recordset($1::JSONB) AS item(
+          external_id TEXT,
+          source_key TEXT,
+          canonical_url TEXT,
+          title TEXT,
+          summary TEXT,
+          content TEXT,
+          category TEXT,
+          organization TEXT,
+          published_at TEXT,
+          published_label TEXT,
+          modified_at TEXT,
+          topics JSONB,
+          source_tier TEXT,
+          language TEXT,
+          metadata_quality SMALLINT,
+          metadata JSONB,
+          content_hash TEXT
+        )
+        ON CONFLICT (canonical_url) DO UPDATE SET
+          external_id = EXCLUDED.external_id,
+          source_key = EXCLUDED.source_key,
+          title = EXCLUDED.title,
+          summary = CASE WHEN current.summary <> '' THEN current.summary ELSE EXCLUDED.summary END,
+          content = CASE WHEN current.content <> '' THEN current.content ELSE EXCLUDED.content END,
+          category = EXCLUDED.category,
+          organization = EXCLUDED.organization,
+          published_at = EXCLUDED.published_at,
+          published_label = EXCLUDED.published_label,
+          topics = EXCLUDED.topics,
+          source_tier = EXCLUDED.source_tier,
+          metadata_quality = GREATEST(current.metadata_quality, EXCLUDED.metadata_quality),
+          metadata = current.metadata || EXCLUDED.metadata,
+          content_hash = CASE WHEN current.content <> '' THEN current.content_hash ELSE EXCLUDED.content_hash END,
+          fetched_at = CASE WHEN current.content <> '' THEN current.fetched_at ELSE NOW() END,
+          last_seen_at = NOW(),
+          last_seen_run = COALESCE($2, current.last_seen_run),
+          is_available = TRUE
+        WHERE current.content = ''
+          OR current.source_key IN ('portal-catalog', 'portal-sitemap')
+          OR current.source_key = 'reviewed-catalogue-source'
+      `, [JSON.stringify(admittedRecords), runId]);
+      seeded = Number(inserted.rowCount || 0);
+    }
+    // Retire pre-hash reviewed identities left by the earlier `reviewed:<id>`
+    // scheme. Their slashed URL may also differ from the canonical row, so
+    // leaving them available would answer from a duplicate page.
+    await client.query(`
+      UPDATE practice_corpus_documents
+      SET is_available = FALSE
+      WHERE source_key = 'reviewed-catalogue-source'
+        AND is_available = TRUE
+        AND external_id !~ '^reviewed:[^:]+:[0-9a-f]{16}$'
+    `);
+    return { seeded, capacityDropped: admission.capacityDropped };
+  }, options);
   corpusListingWindows.clear();
-  return { seeded: result.rowCount || 0 };
+  return result;
 }
 
 export function isRobotsDisallowedCorpusError(error) {

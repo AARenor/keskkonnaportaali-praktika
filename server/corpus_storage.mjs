@@ -42,9 +42,11 @@ export const REVIEWED_CATALOGUE_MAX_AGE_MS = 366 * 24 * 60 * 60 * 1_000;
 export const REVIEWED_CATALOGUE_SOURCE_KEY = "reviewed-catalogue-source";
 // `search_vector_policy` holds the vector layout, not the policy witness version.
 // The two vectors are split (safe navigation fields, then permitted copied text),
-// so a layout change has to re-derive every stored row; `source-policy-v1` stays
 // the version of the witness inside metadata and keeps its own meaning.
 export const CORPUS_VECTOR_LAYOUT = "index-layout-v2";
+export const CORPUS_CAPACITY_VERSION = 1;
+const CORPUS_CAPACITY_LOCK_SQL = "SELECT pg_advisory_xact_lock(hashtext('practice-corpus-retention-capacity'))";
+const corpusCapacityTransactions = new WeakMap();
 
 // What the search index may contain for one row. The trigger writes the same
 // decision it returns here, and the queries read it back, so copied text is
@@ -219,19 +221,19 @@ export const PORTAL_UNAVAILABLE_DELETE_SQL = `
 export const CORPUS_OVERFLOW_DELETE_SQL = `
   WITH totals AS (
     SELECT
-      GREATEST(COUNT(*) - $1, 0)::BIGINT AS excess_rows,
-      GREATEST(COALESCE(SUM(pg_column_size(document)), 0) - $2, 0)::BIGINT AS excess_bytes
-    FROM practice_corpus_documents document
+      GREATEST(row_count - $1, 0)::BIGINT AS excess_rows,
+      GREATEST(total_bytes - $2, 0)::BIGINT AS excess_bytes
+    FROM practice_corpus_capacity
+    WHERE id = TRUE
   ), ordered AS (
-    SELECT
-      document.id,
-      pg_column_size(document)::BIGINT AS row_bytes,
-      ROW_NUMBER() OVER (ORDER BY document.last_seen_at ASC, document.id ASC) AS row_position,
-      COALESCE(SUM(pg_column_size(document)) OVER (
-        ORDER BY document.last_seen_at ASC, document.id ASC
-        ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-      ), 0)::BIGINT AS bytes_before
-    FROM practice_corpus_documents document
+    SELECT document.id,
+           pg_column_size(document)::BIGINT AS row_bytes,
+           ROW_NUMBER() OVER (ORDER BY document.last_seen_at ASC, document.id ASC) AS row_position,
+           COALESCE(SUM(pg_column_size(document)) OVER (
+             ORDER BY document.last_seen_at ASC, document.id ASC
+             ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+           ), 0)::BIGINT AS bytes_before
+    FROM practice_corpus_documents AS document
     WHERE document.is_available = FALSE
   ), victims AS (
     SELECT ordered.id
@@ -258,7 +260,7 @@ export async function backfillCorpusSourceIdentity(client, {
     await client.query("BEGIN");
     try {
       await client.query("SET LOCAL statement_timeout = '10000ms'");
-      await client.query("SELECT pg_advisory_xact_lock(hashtext('practice-corpus-retention-capacity'))");
+      await client.query({ text: CORPUS_CAPACITY_LOCK_SQL, query_timeout: 15_000 });
       const pending = await client.query(`
         SELECT id, canonical_url, jsonb_typeof(metadata) AS metadata_type
         FROM practice_corpus_documents
@@ -295,12 +297,9 @@ export async function backfillCorpusSourceIdentity(client, {
         )
         WHERE document.id = item.id
       `, [JSON.stringify(identities)]);
-      const aggregate = await client.query(`
-        SELECT COALESCE(SUM(pg_column_size(document)), 0)::BIGINT AS total_bytes
-        FROM practice_corpus_documents AS document
-      `);
+      const capacity = await readCorpusCapacity(client);
       throwIfCorpusAborted(signal);
-      if (Number(aggregate.rows[0]?.total_bytes) > maximumBytes) {
+      if (capacity.totalBytes > maximumBytes) {
         throw new Error("Corpus source identity migration exceeds aggregate storage capacity");
       }
       await client.query("COMMIT");
@@ -316,7 +315,9 @@ export async function ensureCorpusSchema() {
   if (!databaseEnabled()) return false;
   if (!corpusSchemaPromise) {
     corpusSchemaPromise = withDatabaseClient(async (client) => {
-      await client.query(`
+      await withCorpusCapacityTransaction(client, async () => {
+        await client.query({
+          text: `
         CREATE EXTENSION IF NOT EXISTS pg_trgm;
         CREATE EXTENSION IF NOT EXISTS unaccent;
 
@@ -500,9 +501,12 @@ export async function ensureCorpusSchema() {
           END IF;
         END
         $$;
-      `);
+        `,
+          query_timeout: 65_000,
+        });
+      }, { statementTimeoutMs: 60_000 });
+      await ensureCorpusCapacity(client);
       await enforceCorpusRetention(client);
-      await backfillCorpusSourceIdentity(client);
       return true;
     }).catch((error) => {
       corpusSchemaPromise = undefined;
@@ -518,6 +522,186 @@ export function throwIfCorpusAborted(signal) {
     : new DOMException("Corpus indexing was aborted", "AbortError");
 }
 
+async function runCorpusCapacityTransaction(client, operation, signal, statementTimeoutMs) {
+  await client.query("BEGIN");
+  try {
+    await client.query(`SET LOCAL statement_timeout = '${statementTimeoutMs}ms'`);
+    await client.query({ text: CORPUS_CAPACITY_LOCK_SQL, query_timeout: statementTimeoutMs + 5_000 });
+    throwIfCorpusAborted(signal);
+    const result = await operation();
+    throwIfCorpusAborted(signal);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  }
+}
+
+export function withCorpusCapacityTransaction(
+  client,
+  operation,
+  { inTransaction = false, signal, statementTimeoutMs = 10_000 } = {},
+) {
+  throwIfCorpusAborted(signal);
+  const timeout = Math.max(100, Math.min(Math.trunc(Number(statementTimeoutMs) || 10_000), 60_000));
+  if (inTransaction) {
+    return (async () => {
+      await client.query(CORPUS_CAPACITY_LOCK_SQL);
+      throwIfCorpusAborted(signal);
+      return operation();
+    })();
+  }
+  // A pg Client serializes its own protocol, but two callers can still overlap
+  // at the promise level. Queue owned transactions so neither issues a nested
+  // BEGIN on the same connection.
+  const previous = corpusCapacityTransactions.get(client) || Promise.resolve();
+  const current = previous.catch(() => undefined)
+    .then(() => runCorpusCapacityTransaction(client, operation, signal, timeout));
+  const tracked = current.finally(() => {
+    if (corpusCapacityTransactions.get(client) === tracked) corpusCapacityTransactions.delete(client);
+  });
+  corpusCapacityTransactions.set(client, tracked);
+  return tracked;
+}
+
+export async function readCorpusCapacity(client) {
+  const result = await client.query(`
+    SELECT row_count, total_bytes, version
+    FROM practice_corpus_capacity
+    WHERE id = TRUE
+  `);
+  const row = result.rows[0];
+  const rowCount = Number(row?.row_count);
+  const totalBytes = Number(row?.total_bytes);
+  if (!row || Number(row.version) !== CORPUS_CAPACITY_VERSION
+    || !Number.isSafeInteger(rowCount) || rowCount < 0
+    || !Number.isSafeInteger(totalBytes) || totalBytes < 0) {
+    throw new Error("Corpus capacity counter is unavailable or stale");
+  }
+  return { rowCount, totalBytes };
+}
+
+export async function ensureCorpusCapacity(client) {
+  await client.query("BEGIN");
+  try {
+    await client.query("SET LOCAL statement_timeout = '60000ms'");
+    await client.query({ text: CORPUS_CAPACITY_LOCK_SQL, query_timeout: 65_000 });
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS practice_corpus_capacity (
+        id BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (id),
+        row_count BIGINT NOT NULL CHECK (row_count >= 0),
+        total_bytes BIGINT NOT NULL CHECK (total_bytes >= 0),
+        version INTEGER NOT NULL CHECK (version >= 0)
+      );
+      INSERT INTO practice_corpus_capacity (id, row_count, total_bytes, version)
+      VALUES (TRUE, 0, 0, 0)
+      ON CONFLICT (id) DO NOTHING;
+    `);
+    const current = await client.query(`
+      SELECT capacity.version,
+             EXISTS (
+               SELECT 1
+               FROM pg_trigger
+               WHERE tgrelid = 'practice_corpus_documents'::REGCLASS
+                 AND tgname = 'practice_corpus_capacity_trigger'
+                 AND tgenabled = 'O'
+             ) AS trigger_present
+      FROM practice_corpus_capacity AS capacity
+      WHERE capacity.id = TRUE
+    `);
+    const versionCurrent = Number(current.rows[0]?.version) === CORPUS_CAPACITY_VERSION;
+    const triggerPresent = current.rows[0]?.trigger_present === true;
+    await client.query({
+      text: `
+        CREATE OR REPLACE FUNCTION practice_corpus_capacity_update()
+        RETURNS TRIGGER LANGUAGE plpgsql AS $$
+        BEGIN
+          IF TG_OP = 'INSERT' THEN
+            UPDATE practice_corpus_capacity
+            SET row_count = row_count + 1,
+                total_bytes = total_bytes + pg_column_size(NEW)
+            WHERE id = TRUE;
+          ELSIF TG_OP = 'UPDATE' THEN
+            UPDATE practice_corpus_capacity
+            SET total_bytes = total_bytes - pg_column_size(OLD) + pg_column_size(NEW)
+            WHERE id = TRUE;
+          ELSE
+            UPDATE practice_corpus_capacity
+            SET row_count = row_count - 1,
+                total_bytes = total_bytes - pg_column_size(OLD)
+            WHERE id = TRUE;
+          END IF;
+          IF NOT FOUND THEN
+            RAISE EXCEPTION 'Corpus capacity counter row is missing';
+          END IF;
+          RETURN NULL;
+        END
+        $$;
+
+        CREATE OR REPLACE TRIGGER practice_corpus_capacity_trigger
+        AFTER INSERT OR UPDATE OR DELETE ON practice_corpus_documents
+        FOR EACH ROW EXECUTE FUNCTION practice_corpus_capacity_update();
+        ALTER TABLE practice_corpus_documents
+        ENABLE TRIGGER practice_corpus_capacity_trigger;
+      `,
+      query_timeout: 65_000,
+    });
+    if (versionCurrent && triggerPresent) {
+      await client.query("COMMIT");
+      return { initialized: false, version: CORPUS_CAPACITY_VERSION };
+    }
+
+    // The trigger must never observe a missing counter. The table lock also
+    // keeps the scanned bytes stable until the replacement counter is committed.
+    await client.query({ text: "LOCK TABLE practice_corpus_documents IN SHARE ROW EXCLUSIVE MODE", query_timeout: 65_000 });
+    await client.query("UPDATE practice_corpus_capacity SET row_count = 0, total_bytes = 0 WHERE id = TRUE");
+
+    let rowCount = 0;
+    let totalBytes = 0;
+    let afterUrl = null;
+    for (;;) {
+      const result = await client.query(afterUrl === null ? `
+        SELECT COUNT(*) AS row_count,
+               COALESCE(SUM(row_bytes), 0) AS total_bytes,
+               MAX(canonical_url) AS last_url
+        FROM (
+          SELECT canonical_url, pg_column_size(document) AS row_bytes
+          FROM practice_corpus_documents AS document
+          ORDER BY canonical_url
+          LIMIT 500
+        ) AS batch
+      ` : `
+        SELECT COUNT(*) AS row_count,
+               COALESCE(SUM(row_bytes), 0) AS total_bytes,
+               MAX(canonical_url) AS last_url
+        FROM (
+          SELECT canonical_url, pg_column_size(document) AS row_bytes
+          FROM practice_corpus_documents AS document
+          WHERE canonical_url > $1
+          ORDER BY canonical_url
+          LIMIT 500
+        ) AS batch
+      `, afterUrl === null ? [] : [afterUrl]);
+      const batch = result.rows[0];
+      rowCount += Number(batch.row_count);
+      totalBytes += Number(batch.total_bytes);
+      if (Number(batch.row_count) < 500) break;
+      afterUrl = batch.last_url;
+    }
+    await client.query(`
+      UPDATE practice_corpus_capacity
+      SET row_count = $1, total_bytes = $2, version = $3
+      WHERE id = TRUE
+    `, [rowCount, totalBytes, CORPUS_CAPACITY_VERSION]);
+    await client.query("COMMIT");
+    return { initialized: true, version: CORPUS_CAPACITY_VERSION };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  }
+}
+
 export async function enforceCorpusRetention(client, { signal } = {}) {
   throwIfCorpusAborted(signal);
   await client.query("BEGIN");
@@ -525,7 +709,7 @@ export async function enforceCorpusRetention(client, { signal } = {}) {
     await client.query("SET LOCAL statement_timeout = '10000ms'");
     // Every replica and both ingestion paths share one database-scoped lock,
     // so retention and cumulative capacity decisions cannot race each other.
-    await client.query("SELECT pg_advisory_xact_lock(hashtext('practice-corpus-retention-capacity'))");
+    await client.query({ text: CORPUS_CAPACITY_LOCK_SQL, query_timeout: 15_000 });
     let unavailableDeleted = 0;
     for (let batch = 0; batch < CORPUS_RETENTION_MAX_BATCHES; batch += 1) {
       throwIfCorpusAborted(signal);
@@ -549,6 +733,15 @@ export async function enforceCorpusRetention(client, { signal } = {}) {
       if (Number(deleted.rowCount || 0) < CORPUS_RETENTION_DELETE_BATCH) break;
     }
 
+    const interrupted = await client.query(`
+      UPDATE practice_corpus_runs
+      SET status = 'failed',
+          finished_at = NOW(),
+          error_count = error_count + 1,
+          details = jsonb_set(details, '{error}', '"Corpus run interrupted after six hours"'::JSONB, TRUE)
+      WHERE status = 'running'
+        AND started_at < NOW() - INTERVAL '6 hours'
+    `);
     const runsDeleted = await client.query(`
       WITH old_runs AS (
         SELECT id
@@ -565,6 +758,7 @@ export async function enforceCorpusRetention(client, { signal } = {}) {
     return {
       unavailableDeleted,
       overflowDeleted,
+      interrupted: Number(interrupted.rowCount || 0),
       runsDeleted: Number(runsDeleted.rowCount || 0),
     };
   } catch (error) {
@@ -671,12 +865,8 @@ export async function upsertDocuments(
       // Full sync, live discovery and retention all take this transaction lock.
       // Aggregate admission therefore observes a stable capacity snapshot and
       // no replica can insert between the count and the write.
-      await client.query("SELECT pg_advisory_xact_lock(hashtext('practice-corpus-retention-capacity'))");
-      const capacityResult = await client.query(`
-        SELECT COUNT(*)::BIGINT AS total_rows,
-               COALESCE(SUM(pg_column_size(document)), 0)::BIGINT AS total_bytes
-        FROM practice_corpus_documents AS document
-      `);
+      await client.query({ text: CORPUS_CAPACITY_LOCK_SQL, query_timeout: 15_000 });
+      const capacity = await readCorpusCapacity(client);
       const existingResult = await client.query(`
         SELECT canonical_url,
                pg_column_size(document)::BIGINT AS existing_bytes
@@ -687,8 +877,8 @@ export async function upsertDocuments(
       const admission = planCorpusDocumentAdmission(
         batch,
         existingResult.rows,
-        capacityResult.rows[0]?.total_rows,
-        capacityResult.rows[0]?.total_bytes,
+        capacity.rowCount,
+        capacity.totalBytes,
         CORPUS_MAX_ROWS,
         CORPUS_MAX_BYTES,
       );
@@ -891,39 +1081,41 @@ export async function backfillCorpusIndexVectors(client, {
   const budgetMs = Math.max(50, Math.min(Number(timeBudgetMs) || 1_000, 30_000));
   const cursor = Number.isFinite(Number(afterId)) ? Math.max(0, Math.trunc(Number(afterId))) : 0;
   const startedAt = Date.now();
-  const updated = await client.query(`
-    WITH batch AS (
-      SELECT id
-      FROM practice_corpus_documents
-      WHERE id > $1
-        AND search_vector_policy IS DISTINCT FROM '${CORPUS_VECTOR_LAYOUT}'
-      ORDER BY id
-      LIMIT $2
-      FOR UPDATE SKIP LOCKED
-    )
-    UPDATE practice_corpus_documents AS document
-    SET title = document.title
-    FROM batch
-    WHERE document.id = batch.id
-    RETURNING document.id
-  `, [cursor, boundedLimit]);
-  const processedIds = updated.rows
-    .map((row) => Number(row.id))
-    .filter((id) => Number.isFinite(id))
-    .sort((left, right) => left - right);
+  const { processedIds, pending } = await withCorpusCapacityTransaction(client, async () => {
+    const updated = await client.query(`
+      WITH batch AS (
+        SELECT id
+        FROM practice_corpus_documents
+        WHERE id > $1
+          AND search_vector_policy IS DISTINCT FROM '${CORPUS_VECTOR_LAYOUT}'
+        ORDER BY id
+        LIMIT $2
+        FOR UPDATE SKIP LOCKED
+      )
+      UPDATE practice_corpus_documents AS document
+      SET title = document.title
+      FROM batch
+      WHERE document.id = batch.id
+      RETURNING document.id
+    `, [cursor, boundedLimit]);
+    const ids = updated.rows
+      .map((row) => Number(row.id))
+      .filter((id) => Number.isFinite(id))
+      .sort((left, right) => left - right);
+    // A short or empty batch does not prove the table is clean: SKIP LOCKED hides
+    // rows that another writer holds, and those sit below the cursor. Completion is
+    // "no unmigrated row remains anywhere", asked directly rather than inferred.
+    const pendingRow = await client.query(`
+      SELECT EXISTS (
+        SELECT 1
+        FROM practice_corpus_documents
+        WHERE search_vector_policy IS DISTINCT FROM '${CORPUS_VECTOR_LAYOUT}'
+        LIMIT 1
+      ) AS pending
+    `);
+    return { processedIds: ids, pending: pendingRow.rows[0]?.pending === true };
+  });
   if (processedIds.length) corpusListingWindows.clear();
-  // A short or empty batch does not prove the table is clean: SKIP LOCKED hides
-  // rows that another writer holds, and those sit below the cursor. Completion is
-  // "no unmigrated row remains anywhere", asked directly rather than inferred.
-  const pendingRow = await client.query(`
-    SELECT EXISTS (
-      SELECT 1
-      FROM practice_corpus_documents
-      WHERE search_vector_policy IS DISTINCT FROM '${CORPUS_VECTOR_LAYOUT}'
-      LIMIT 1
-    ) AS pending
-  `);
-  const pending = pendingRow.rows[0]?.pending === true;
   const elapsedMs = Date.now() - startedAt;
   return {
     processed: processedIds.length,

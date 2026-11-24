@@ -10,6 +10,7 @@ import {
   ensureCorpusSchema,
   startCorpusIndexBackfill,
   upsertDocuments,
+  withCorpusCapacityTransaction,
 } from "./corpus_storage.mjs";
 import {
   addCorpusFailure,
@@ -247,7 +248,7 @@ export async function syncPortalCorpus({
         catalogSkipped,
         authoritativeCapacityDropped: details.authoritativeCapacityDropped,
       })) {
-        const retired = await client.query(`
+        const retired = await withCorpusCapacityTransaction(client, () => client.query(`
           UPDATE practice_corpus_documents
           SET is_available = FALSE
           WHERE source_key IN ('portal-sitemap', 'portal-catalog', 'official-page-hydration')
@@ -257,7 +258,7 @@ export async function syncPortalCorpus({
             )
             AND last_seen_run IS DISTINCT FROM $1
             AND is_available = TRUE
-        `, [runId]);
+        `, [runId]));
         details.unavailableMarked = retired.rowCount;
         if (retired.rowCount) corpusListingWindows.clear();
       }
@@ -272,14 +273,14 @@ export async function syncPortalCorpus({
           const base = hostname.replace(/^www\./u, "");
           return [`https://${base}/%`, `https://www.${base}/%`];
         }))];
-        const retiredOfficial = await client.query(`
+        const retiredOfficial = await withCorpusCapacityTransaction(client, () => client.query(`
           UPDATE practice_corpus_documents
           SET is_available = FALSE
           WHERE source_key IN ('official-sitemap', 'official-page-hydration')
             AND canonical_url LIKE ANY($2::TEXT[])
             AND last_seen_run IS DISTINCT FROM $1
             AND is_available = TRUE
-        `, [runId, hostPatterns]);
+        `, [runId, hostPatterns]));
         details.unavailableMarked += retiredOfficial.rowCount;
         if (retiredOfficial.rowCount) corpusListingWindows.clear();
       }

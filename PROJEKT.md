@@ -212,7 +212,7 @@ Maa- ja Ruumiameti teenus on tasuta avalik teenus, kuid selle väljavõte on kas
 | Ühendus | Kasutus |
 |---|---|
 | `keskkonnaportaal.ee/et/search?search_api_fulltext=...` | Portaali värske sisu avastamise fallback |
-| `keskkonnaportaal.ee/sitemap.xml` | 8407 avaliku lehe korpuse avastamine ja muutmisajad |
+| `keskkonnaportaal.ee/sitemap.xml` | Portaali avalike lehtede korpuse avastamine ja muutmisajad; tegelik URL-i arv sõltub saidikaardist
 | `keskkonnaportaal.ee/et/search_api_autocomplete/kem_kkp_search` | Täiendavad puhastatud soovitused pärast enda FAQ-sid |
 | `et.wikipedia.org/w/api.php` | Kaheksa kureeritud mõisteartikli täistekst; ainult täiendav taustatase |
 | `search.service.eu-live.vportal.ee/v1/search/keskkonnaamet` | Keskkonnaameti ametliku veebisisu relevantsusjärjestusega täistekstiotsing |

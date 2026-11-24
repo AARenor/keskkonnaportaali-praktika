@@ -109,6 +109,33 @@ export function resolveProxyConfiguration({
   };
 }
 
+const LOOPBACK_ORIGIN_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+function isPublicHttpOrigin(value) {
+  const origin = canonicalHttpOrigin(value, { requestHeader: true });
+  if (!origin) return false;
+  const hostname = new URL(origin).hostname.replace(/^\[|\]$/gu, "").toLocaleLowerCase("en");
+  return !LOOPBACK_ORIGIN_HOSTS.has(hostname) && !hostname.endsWith(".localhost");
+}
+
+// The six request windows are the only ceiling between an anonymous caller and
+// the shared corpus, database and model budget, so a production process that
+// serves a public origin keeps them even when the testing switch says off.
+// Only a non-production process or a literal loopback origin may turn them off.
+export function resolveRateWindowEnforcement({
+  enabled = process.env.RATE_LIMIT_WINDOWS_ENABLED,
+  environment = process.env.NODE_ENV,
+  publicOrigin = process.env.PUBLIC_ORIGIN,
+} = {}) {
+  const requested = String(enabled ?? "true").trim().toLocaleLowerCase("en") !== "false";
+  if (requested) return { enforce: true, reason: "enabled" };
+  const production = String(environment || "").trim().toLocaleLowerCase("en") === "production";
+  if (!production || !isPublicHttpOrigin(publicOrigin)) {
+    return { enforce: false, reason: "testing-switch" };
+  }
+  return { enforce: true, reason: "public-origin" };
+}
+
 function socketAddress(request = {}) {
   return normalizedIpAddress(request.socket?.remoteAddress || request.connection?.remoteAddress);
 }

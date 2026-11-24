@@ -1,12 +1,14 @@
 # Ametlike allikate ja API-de register
 
-Uuendatud: 21.10.2026; täiendatud 11.11.2026 avaldaja õiguste, lühiväljavõtete, ajamudeli ning SMI juurdekasvu ja raie võrdluse osas.
+Uuendatud: 24.11.2026; täiendatud allikate loendi, korpuse katvuseauditi ning mahaloendi osas.
 
 See register kirjeldab, millised allikad on otsingu päringuteel aktiivsed, millised on kasutajale suunavad kataloogiallikad ning milliseid teenuseid ei kasutata enne eraldi valideeritud adapterit. Ükski allikas ei anna mudelile õigust kasutada üldteadmisi: vastus peab jääma tagastatud tõendite piiresse.
 
-Korpuse sünkroonimine ei piirdu Keskkonnaportaali sitemap'iga. Iga 24-tunnine jooks loeb ka heakskiidetud ametlike väljaandjate avalikke sitemap'e: keskkonnaagentuur.ee, keskkonnaamet.ee, kliimaministeerium.ee, rmk.ee (`wp-sitemap.xml`), www.ilmateenistus.ee (`sitemap_index.xml`), terviseamet.ee ja kik.ee. Järgitakse portaali sitemap'i Drupal'i `?page=`-leheküljestamist ja ametlike sitemap'ide indekseid; avalik otsing on eestikeelne, seetõttu jäetakse kõrvalkeelte URL-i harud välja ning iga hosti `robots.txt`-i reegleid kontrollitakse enne päringut. Ühe allika blokeering või katkine sitemap ei katkesta teiste omade jooksu.
+Korpuse sünkroonimine ei piirdu Keskkonnaportaali sitemap'iga. Iga 24-tunnine jooks loeb ka heakskiidetud ametlike väljaandjate avalikke sitemap'e: keskkonnaagentuur.ee, keskkonnaamet.ee, kliimaministeerium.ee, rmk.ee (`wp-sitemap.xml`), www.ilmateenistus.ee (`sitemap_index.xml`), terviseamet.ee, keskkonnaharidus.ee ja kik.ee. Järgitakse portaali sitemap'i Drupal'i `?page=`-leheküljestamist ja ametlike sitemap'ide indekseid; avalik otsing on eestikeelne, seetõttu jäetakse kõrvalkeelte URL-i harud välja ning iga hosti `robots.txt`-i reegleid kontrollitakse enne päringut. Ühe allika blokeering või katkenud sitemap ei katkesta teiste omade jooksu.
 
 Leheteksti hüdratiseeritakse kõigilt lubatud ametlikelt hostidelt, mitte ainult portaalist. Täissünkroonimiste vahel täidab piiratud taustapartii veel tühje või aegunud leheteksti ridu (`CORPUS_CONTINUOUS_BACKFILL`, `CORPUS_BACKFILL_INTERVAL_MS`, `CORPUS_BACKFILL_BATCH_SIZE`); sama nõuandelukk hoiab kõrvuti töötavad replikad ohutuna.
+
+24.11.2026 katvuseaudit (`scripts/audit-corpus-coverage.mjs --compare-public`) võrdleb sama fikseeritud allikahulga sitemap'e andmebaasi kanoniliste URL-idega. Puuduv URL on katvusvahetus; keelatud või kättesaamatu rida ei ole puuduva sisu viga. Auditi ei laieneta allikahulgale ega kirjuta andmebaasi.
 
 ## Metsandusallikate prioriteet
 

@@ -279,14 +279,56 @@ function formatDate() {
 
 
 
-function Header({ compact = false, onRevealSearch }) {
+const DRAWER_FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+export function Header({ compact = false, onRevealSearch }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [megaMenu, setMegaMenu] = useState(null);
+  const menuButtonRef = useRef(null);
+  const drawerRef = useRef(null);
+  const drawerCloseRef = useRef(null);
+
+  const drawerOpen = menuOpen && !compact;
 
   useEffect(() => {
-    document.body.classList.toggle("menu-locked", menuOpen);
+    if (compact) setMenuOpen(false);
+  }, [compact]);
+
+  useEffect(() => {
+    document.body.classList.toggle("menu-locked", drawerOpen);
     return () => document.body.classList.remove("menu-locked");
-  }, [menuOpen]);
+  }, [drawerOpen]);
+
+  useEffect(() => {
+    if (!drawerOpen) return undefined;
+    const drawer = drawerRef.current;
+    drawerCloseRef.current?.focus();
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMenuOpen(false);
+        return;
+      }
+      if (event.key !== "Tab" || !drawer) return;
+      const focusable = [...drawer.querySelectorAll(DRAWER_FOCUSABLE)];
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const inside = drawer.contains(document.activeElement);
+      if (event.shiftKey && (!inside || document.activeElement === first)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (!inside || document.activeElement === last)) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      if (!compact) menuButtonRef.current?.focus();
+    };
+  }, [drawerOpen, compact]);
 
   const toggleMega = (menu) => setMegaMenu((current) => (current === menu ? null : menu));
 
@@ -343,8 +385,8 @@ function Header({ compact = false, onRevealSearch }) {
             <button className="header-icon" onClick={onRevealSearch} type="button" aria-label="Mine otsingusse">
               <Search size={22} />
             </button>
-            <button className="header-icon header-icon--menu" onClick={() => setMenuOpen((open) => !open)} type="button" aria-expanded={menuOpen} aria-label="Ava menüü">
-              {menuOpen ? <X size={24} /> : <Menu size={25} />}
+            <button className="header-icon header-icon--menu" ref={menuButtonRef} onClick={() => setMenuOpen((open) => !open)} type="button" aria-expanded={drawerOpen} aria-controls="mobile-drawer" aria-label={drawerOpen ? "Sulge menüü" : "Ava menüü"}>
+              {drawerOpen ? <X size={24} aria-hidden="true" /> : <Menu size={25} aria-hidden="true" />}
             </button>
           </div>
         </div>
@@ -395,10 +437,18 @@ function Header({ compact = false, onRevealSearch }) {
         </div>
       ) : null}
 
-      <div className={`mobile-drawer ${menuOpen ? "mobile-drawer--open" : ""}`} aria-hidden={!menuOpen}>
+      <div
+        className={`mobile-drawer ${drawerOpen ? "mobile-drawer--open" : ""}`}
+        id="mobile-drawer"
+        ref={drawerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mobile-drawer-title"
+        inert={!drawerOpen}
+      >
         <div className="mobile-drawer__top">
-          <span>Menüü</span>
-          <button onClick={() => setMenuOpen(false)} type="button" aria-label="Sulge menüü"><X size={24} /></button>
+          <span id="mobile-drawer-title">Menüü</span>
+          <button ref={drawerCloseRef} onClick={() => setMenuOpen(false)} type="button" aria-label="Sulge menüü"><X size={24} aria-hidden="true" /></button>
         </div>
         <nav aria-label="Mobiilimenüü">
           {navItems.map((item) => (
@@ -417,7 +467,7 @@ function Header({ compact = false, onRevealSearch }) {
           <span>Keel</span><strong>ET</strong>
         </div>
       </div>
-      {menuOpen ? <button className="drawer-backdrop" onClick={() => setMenuOpen(false)} aria-label="Sulge menüü" type="button" /> : null}
+      {drawerOpen ? <button className="drawer-backdrop" onClick={() => setMenuOpen(false)} aria-label="Sulge menüü" type="button" /> : null}
     </header>
   );
 }
