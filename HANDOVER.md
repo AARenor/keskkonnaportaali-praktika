@@ -12,7 +12,7 @@ Praktika on keskkonnaalaste ametlike allikate otsingu ja tõendipõhise vastuste
 | Server | `server/` | Otsing, allikapoliitika, korpuse haldamine, vastuse kontroll |
 | Andmebaas | PostgreSQL | Dokumendikataloog, sisu, allika identiteedid, otsinguindeks |
 | Korpuse sünkroonimine | `server/sync-corpus.mjs` | Ametlike sitemap'ide leidmine ja lehtede lugemine |
-| Juurutamine | Workflow salvestab eelmise revisioni, seiskab vana konteineri, ootab uut juurutust ja kontrollib elusversiooni | Commit `1c7891a` juurutati, Coolify märgis `finished`, elusloendur tagastas sama SHA |
+| Juurutamine | Workflow salvestab eelmise revisioni, seiskab vana konteineri, ootab uut juurutust ja kontrollib elusversiooni | Commit `c0117b4` juurutati, Coolify märgis `finished`, elusloendur tagastas sama SHA |
 | Kasutusjuhend | `docs/KASUTUSJUHEND.md` | Lõppkasutaja juhend |
 | Tehniline hooldus | `docs/IT-HOOLDUS.md` | Käskused, piirid, tõrkeotsing |
 | Arhitektuur | `docs/ARHITEKTUUR.md` | Moodulid, andmevood ja piirangud |
@@ -104,4 +104,8 @@ Tootmises vajab korpuse käsk `DATABASE_URL` ja `SEARCH_HASH_SECRET` väärtusi.
 
 ## Juurutamise tõend
 
-Viimase juurutuse SHA, Coolify staatuse, elusversiooni vastuse, korpuse täitmise ja lõpliku katvusearuande täiendab see sektsioon pärast tootmisse push'i.
+Lõplik versioon on `c0117b4a831f28082ccc4b3038e832adcf588960`. GitHub Actions töövoog `45536113174` lõppes `success` 12 minuti ja 50 sekundiga. Coolify juurutuse UUID `tffqlmx5g3jgoyzvmijnr6n0` märgitati `finished` kell 03:06:09 UTC ja rakendus oli `running:healthy`. `/api/health/container-readiness` tagastas sama SHA ja `/build.json` vastas HTTP 200.
+
+Tootmises käivitatud `node server/sync-corpus.mjs --hydrate-limit=0` lõppes olekuga `ready`, leidis kataloogist 5 976 tulemust ja seemnepäringu `mets` ajutine allikaviga ei katkestanud sünkrooni. Sünkroon jätkas seega sitemap'ide ja kataloogiga töötamise. Korpuse lõplik audit leidis kõik 42 457 avaliku sitemap URL-i andmebaasist, puuduvaid URL-e 0. Loetud sisu puudus 796 URL-il, need jäid allika HTTP vastuse, `robots.txt` keelu, liiga suure lehe või väljajätmise tõttu.
+
+Brauserikontroll 1280 × 800 ja 390 × 844 vaates näitas HTTP 200, null lehe- ja konsooliviga, null ebaõnnestunud päringut ja null horisontaalset ülevoolu. API päring `mets` vastas HTTP 200, 3 osa ja 4 allikaga. Täistestid läbisid 1 448/1 448, ehitus 1 603 moodulit ja avaliku otsingu kvaliteedivärav 147/147.

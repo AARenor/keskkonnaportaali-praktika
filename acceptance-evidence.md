@@ -457,3 +457,26 @@ Parandus: metsateatise läbivaatamise kestus ei leidnud enne vastust, sest küsi
 Juurutati commit `4d0879c`; `/api/health` tagastas `4d0879ccf7225d1769756daf833abab715480992`. Live kontroll samal päeval: avalehe tühja otsingukasti fookus kuvas kuut soovitust (1280 × 800, lehe vigu 0), `Kui kaua vaatab Keskkonnaamet metsateatist läbi?` tagastas `Allikapõhine kokkuvõte` vastuse 15 tööpäeva ja kuni 30 tööpäeva kohta ühe allikaga, `Metsaraie mõju loodusele` tagastas `AI koondvastus` olekus `ready/none`.
 
 Peamised soovitused: tühja otsingukasti fookusel kuvatakse kuus üle vaadatud metsaküsimust (`src/search-suggestions.js` eksport `PRIMARY_SEARCH_SUGGESTIONS`). Nimekiri on brauseris ega tee võrgupäringut; ühe kuni kahe tähe sisestamisel filtreeritakse see kohapeal ja kahe tähe järel asendab selle serveri autocomplete, kui see vastab. Kontroll: 1280 × 800 ja 390 × 844 vaates kuvati kuus rida, horisontaalne ülevool 0, ekraanilugeja loendil `role=listbox` ja nooleklahvid toimivad. Test: `tests/search_primary_suggestions.test.mjs` (5 juhtumit).
+
+## Portaali kataloogi taastamine ja lõplik üleandmine 25.11.2026 (c0117b4)
+
+Tootmises esines täiskorpuse sünkroonil viga `Portal search returned an inconsistent result count`. Portaali otsing saatis tulemikaardid, kuid ajutine vastus ei sisaldanud usaldusväärset tulemuste arvu. Parandus proovib puudulikku või vastuolulist lehte üks kord uuesti. Kui viga püsib, märgitakse allikas `source-unavailable`, kataloog või seemnepäring jäetakse vahele ning sitemap'ide leidmine ja hüdratsioon jätkuvad. Konfigureeritud lehe ja dokumendilimiit jäävad töö katkestavatele ohutuspiirideks.
+
+| Kontroll | Tulemus |
+|---|---|
+| `env -u DATABASE_URL -u DATABASE_SSL_MODE npm test` | 1 448/1 448, 810,9 sekundit |
+| `npm run build` | 1 603 moodulit, läbitud |
+| `npm run test:sites` | 3/3 |
+| `npm run eval:public` | 147/147, kõik viis näitajat 1,0 |
+| `biome check --formatter-enabled=false --assist-enabled=false` muudetud JS failidel | Läbitud |
+| `semgrep --config auto --quiet` muudetud failidel | 0 leidu |
+| `npm audit --omit=dev` | 0 haavatavust |
+| GitHub Actions `45536113174` | `success`, 12 min 50 sek |
+| Coolify `tffqlmx5g3jgoyzvmijnr6n0` | `finished`, `running:healthy`, SHA `c0117b4a831f28082ccc4b3038e832adcf588960` |
+| Tootmise sünkroon `--hydrate-limit=0` | `ready`, kataloog 5 976, seemnepäring `mets` märgitud `source-unavailable`, vead 0 |
+| Avalike sitemap'ide katvus | 42 457 leitud, 42 457 andmebaasis, 0 puuduvat URL-i |
+| Sisukatvus | 796 avalikku URL-i ilma loetud sisuta, 11 poliitikaga väljajäetud |
+| Brauser 1280 × 800 ja 390 × 844 | HTTP 200, lehe- ja konsoolivigu 0, horisontaalne ülevool 0 |
+| API `mets` | HTTP 200, 3 osa, 4 allikat |
+
+Hüdratsioonisisestus: esmane järjekord töödeldi 1 000 kirjet ja lisas 73 sisu, sihitud ametlike ja portaali sitemap'ide pass töödeldi 767 kirjet ja ei lisandunud sisu, sest allikad vastasid HTTP veaga, keelasid `robots.txt` keelest lugemise, pakkusid liiga suurt lehte või märkisid lehe `noindex`. Näiteks kliimaministeeriumi renoveerimise teadmiste lehel on `noindex` ja selle sisu ei salvestata.
