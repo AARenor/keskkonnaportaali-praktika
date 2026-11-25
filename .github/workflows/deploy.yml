@@ -251,10 +251,9 @@ jobs:
           esac
 
           deadline=$(( $(date +%s) + STOP_TIMEOUT_SECONDS ))
-          status='queued'
           while :; do
             if [ "$(date +%s)" -ge "$deadline" ]; then
-              echo "::error::Coolify did not report the old application exited within ${STOP_TIMEOUT_SECONDS}s (last status: ${status})"
+              echo "::error::Coolify still reported a running old container after ${STOP_TIMEOUT_SECONDS}s"
               exit 1
             fi
             http_status="$(
@@ -263,26 +262,26 @@ jobs:
                 --output "$response_file" --write-out '%{http_code}' \
                 --header "Authorization: Bearer ${COOLIFY_API_TOKEN}" \
                 --header 'Accept: application/json' \
-                "${COOLIFY_BASE_URL}/api/v1/applications/${COOLIFY_APPLICATION_ID}" \
+                "${COOLIFY_BASE_URL}/api/v1/applications/${COOLIFY_APPLICATION_ID}/logs?lines=1" \
                 || true
             )"
-            if [ "$http_status" != 200 ]; then
-              echo "::warning::Coolify application status returned HTTP ${http_status:-none}"
-              sleep "$STOP_POLL_SECONDS"
-              continue
-            fi
-            status="$(jq -r '.status // empty' "$response_file")"
-            case "$status" in
-              exited)
-                echo "Coolify reported the old application exited"
-                exit 0
+            case "$http_status" in
+              200)
                 ;;
-              '')
-                echo "::warning::Coolify application status response had no status field"
+              400)
+                message="$(jq -r '.message // empty' "$response_file" 2>/dev/null || true)"
+                if [ "$message" = 'Application is not running.' ]; then
+                  echo "Coolify confirmed the old application has no running container"
+                  exit 0
+                fi
+                echo "::warning::Coolify logs returned HTTP 400 with message: ${message}"
                 ;;
-              failed|cancelled|canceled|error|errored)
-                echo "::error::Coolify stop ended with status ${status}"
+              401|403)
+                echo "::error::Coolify rejected the stop verification token (HTTP ${http_status})"
                 exit 1
+                ;;
+              *)
+                echo "::warning::Coolify container status returned HTTP ${http_status:-none}"
                 ;;
             esac
             sleep "$STOP_POLL_SECONDS"
