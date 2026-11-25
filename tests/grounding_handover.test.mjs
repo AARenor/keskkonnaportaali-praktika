@@ -335,7 +335,7 @@ test("an aborted agent run settles instead of leaving the request pending", asyn
 test("the ai mode fanout revision invalidates answer cache rows from the previous contract", () => {
   const base = { lawRevision: "law-v1", listingRevision: "listing-v1", filters: { source: "all" } };
   const current = createSearchAnswerCacheRevision({ ...base, responseRevision: SEARCH_RESPONSE_REVISION });
-  const previous = createSearchAnswerCacheRevision({ ...base, responseRevision: "answer-v114-law-list-items" });
-  assert.ok(current.startsWith("answer-v116-unrelated-notice-answer:"), current);
+  const previous = createSearchAnswerCacheRevision({ ...base, responseRevision: "answer-v116-unrelated-notice-answer" });
+  assert.ok(current.startsWith(`${SEARCH_RESPONSE_REVISION}:`), current);
   assert.notEqual(current, previous);
 });

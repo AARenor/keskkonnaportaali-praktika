@@ -117,7 +117,7 @@ export function answersNoticeQualifiers(query, text) {
 // boilerplate so it cannot be published as the answer to an unrelated query.
 export function isForestNoticeFilingPassage(text) {
   const value = normalize(text);
-  return /\bmetsateatis\w*\s+esitatakse\b/u.test(value)
+  return /\bmetsateatis\w*\s+(?:(?:saab|tuleb|peab|voib)\s+)?esita\w*/u.test(value)
     || /\btaida\s+metsateatise\s+vorm\b/u.test(value);
 }
 

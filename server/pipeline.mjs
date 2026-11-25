@@ -161,7 +161,7 @@ function fanoutCountsFromListing(searchResults) {
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v116-unrelated-notice-answer";
+export const SEARCH_RESPONSE_REVISION = "answer-v117-notice-paraphrase";
 
 // Cards that only quote a source passage, as opposed to a structured figure or
 // a reviewed law card. Only these are withdrawn after an intent rejection.

@@ -4,6 +4,13 @@ import test from "node:test";
 import { officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
 import { rankPublicSearchCandidates } from "../server/retrieval_ranking.mjs";
 import { createPortalDraft, searchEnvironmentLive } from "../server/pipeline.mjs";
+import { noticeAnswerWithoutNoticeIntent } from "../server/answer_coverage.mjs";
+test("a paraphrased filing sentence is still a notice filing passage", () => {
+  const passage = "Metsateatise saab esitada Metsaregistri kaudu.";
+  assert.equal(noticeAnswerWithoutNoticeIntent("Kuidas registreerida metsa?", passage), true);
+  assert.equal(noticeAnswerWithoutNoticeIntent("Kui kaua metsateatist menetletakse?", passage), false);
+});
+
 test("a generated forest notice passage is rejected for an unrelated registration question", async () => {
   const query = "Kuidas registreerida metsa?";
   const catalogue = officialServiceCatalogueDocuments();
