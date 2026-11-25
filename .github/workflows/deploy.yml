@@ -17,8 +17,10 @@ env:
   COOLIFY_BASE_URL: https://coolify.arle.top
   COOLIFY_APPLICATION_ID: asdyidu5wvjx54d0b09t9rhw
   PUBLIC_URL: https://praktika.arle.top
-  # Bounded wait for the private database host allowance, runtime hardening,
-  # old container shutdown and rollback readiness.
+  # Bounded deployment wait: 45 minutes at a 15 second poll interval.
+  DEPLOY_TIMEOUT_SECONDS: 2700
+  DEPLOY_POLL_SECONDS: 15
+  # Bounded wait for the old container to disappear and for rollback readiness.
   STOP_TIMEOUT_SECONDS: 300
   STOP_POLL_SECONDS: 5
   # Bounded wait for the new container to answer once Coolify reports finished.
