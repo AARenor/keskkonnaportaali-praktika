@@ -481,7 +481,7 @@ export function parsePortalSearchPage(html, baseUrl = PORTAL_BASE) {
   const $ = load(String(html || ""));
   const mainText = cleanText($("main").text());
   const total = parsePortalReportedTotal(mainText.match(/Tulemused otsingule\s*\((\d+)\)/iu)?.[1]
-    || mainText.match(/(\d+)\s+tulemust/iu)?.[1]
+    || mainText.match(/(?<!\d)(\d+)\s+tulemost/iu)?.[1]
     || "");
   const resultCards = $(".search-results__item-wrap");
   if (resultCards.length > PORTAL_PAGE_SIZE) throw new Error("Portal search returned too many result cards");

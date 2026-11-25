@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { isIP } from "node:net";
 import pg from "pg";
 import { boundedChart, validPublicChart } from "./answer-chart.mjs";
 import { projectSourceCacheCopy } from "./source-registry.mjs";
@@ -145,9 +146,9 @@ export function resolveDatabaseTls({
     if (configuredHosts.some((value) => {
       const labels = value.split(".");
       return value.length > 253
-        || labels.some((label) => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u.test(label));
+        || (isIP(value) !== 6 && labels.some((label) => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u.test(label)));
     })) {
-      throw new Error("DATABASE_PLAINTEXT_HOSTS must contain exact canonical hostnames without ports or wildcards");
+      throw new Error("DATABASE_PLAINTEXT_HOSTS must contain exact canonical hostnames without ports, brackets, or wildcards");
     }
     const allowedPlaintextHosts = new Set([
       "postgres", "localhost", "127.0.0.1", "::1", ...configuredHosts,

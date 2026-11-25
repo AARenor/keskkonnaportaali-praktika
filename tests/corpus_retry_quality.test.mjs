@@ -390,8 +390,12 @@ async function insertRow(client, { externalId, url, title, content, contentHash,
 
 test("the corpus backlog refreshes bodies before the seven day evidence window closes, retries failed reads after the seven day cooldown, survives unreadable attempt markers and refuses cross origin robots answers", { timeout: 240_000 }, async (t) => {
   if (!dockerImageAvailable(POSTGRES_IMAGE)) {
-    t.skip(`Docker image ${POSTGRES_IMAGE} is unavailable, so the isolated PostgreSQL fixture cannot start; the retry selection cannot be exercised without a real SQL engine`);
-    return;
+    const message = `Docker image ${POSTGRES_IMAGE} is required for the isolated PostgreSQL retry fixture`;
+    if (process.env.ALLOW_POSTGRES_TEST_SKIP === "1") {
+      t.skip(message);
+      return;
+    }
+    throw new Error(`${message}. Pull the image or set ALLOW_POSTGRES_TEST_SKIP=1 to skip explicitly.`);
   }
   const containerName = CONTAINER_NAME_OVERRIDE
     || `corpus-retry-quality-${process.pid}-${randomBytes(3).toString("hex")}`;

@@ -121,8 +121,43 @@ const NON_COPIED_SELECTOR = [
 
 // cheerio joins the text of sibling blocks without a separator, which would glue
 // two sentences together and make a copied snippet unusable. Block boundaries
-// become a space before parsing, and whitespace is collapsed afterwards.
-const BLOCK_BREAK_PATTERN = /<br\b[^>]*>|<\/(?:address|article|aside|blockquote|dd|div|dl|dt|fieldset|figcaption|figure|footer|h[1-6]|header|li|main|nav|ol|p|pre|section|table|tbody|td|tfoot|th|thead|tr|ul)>/giu;
+// become a space before parsing, and whitespace is collapsed afterwards. The
+// scanner stops at an unfinished <br because no later closing angle bracket can
+// complete that tag.
+const BLOCK_CLOSE_PATTERN = /<\/(?:address|article|aside|blockquote|dd|div|dl|dt|fieldset|figcaption|figure|footer|h[1-6]|header|li|main|nav|ol|p|pre|section|table|tbody|td|tfoot|th|thead|tr|ul)>/iuy;
+const BR_START_PATTERN = /<br\b/iuy;
+
+function insertBlockBreaks(value) {
+  const chunks = [];
+  let copiedUntil = 0;
+  let searchFrom = 0;
+  while (searchFrom < value.length) {
+    const tagStart = value.indexOf("<", searchFrom);
+    if (tagStart < 0) break;
+
+    BR_START_PATTERN.lastIndex = tagStart;
+    if (BR_START_PATTERN.test(value)) {
+      const tagEnd = value.indexOf(">", tagStart + 3);
+      if (tagEnd < 0) break;
+      chunks.push(value.slice(copiedUntil, tagStart), " ");
+      copiedUntil = tagEnd + 1;
+      searchFrom = copiedUntil;
+      continue;
+    }
+
+    BLOCK_CLOSE_PATTERN.lastIndex = tagStart;
+    if (BLOCK_CLOSE_PATTERN.test(value)) {
+      chunks.push(value.slice(copiedUntil, tagStart), " ");
+      copiedUntil = BLOCK_CLOSE_PATTERN.lastIndex;
+      searchFrom = copiedUntil;
+      continue;
+    }
+
+    searchFrom = tagStart + 1;
+  }
+  chunks.push(value.slice(copiedUntil));
+  return chunks.join("");
+}
 
 const ROBOTS_BYTES_LIMIT = 64_000;
 const ROBOTS_LINES_LIMIT = 2_000;
@@ -199,7 +234,7 @@ export function extractSourceText(value = "") {
   const input = String(value ?? "");
   if (input.trim() === "") return "";
   if (!/<[a-z!/]/iu.test(input)) return cleanText(input);
-  const $ = load(input.replace(BLOCK_BREAK_PATTERN, " "));
+  const $ = load(insertBlockBreaks(input));
   $(NON_COPIED_SELECTOR).remove();
   const main = $("main").first();
   if (main.length) return cleanText(main.text());

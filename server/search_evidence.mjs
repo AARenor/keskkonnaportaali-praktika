@@ -461,14 +461,61 @@ export function rankedSetCoversSubject(query, documents = []) {
     && !ADMIN_CONTEXT_ROOTS.has(term));
 }
 
+// Trimming each passage consumes surrounding whitespace. Keeping whitespace
+// inside this pattern would rescan a long run at every starting position.
+const PASSAGE_BOUNDARY_PATTERN = /(?:\n+|(?<=[.!?])\s+(?=[„“”"']*(?:\p{Lu}|\p{N}|\(\d+\p{No}*\)))|[…•])/gu;
+
+function appendPassage(passages, text, start, end) {
+  const passage = text.slice(start, end).trim();
+  if (passage) passages.push(passage);
+}
+
 export function splitTextPassages(value = "") {
   // A semicolon in a parenthetical alias is not a new claim (SMI; ingl NFI).
   // A law's numbered subsection "(2) …" starts a new sentence, so a "not" in
   // one subsection is never compared against a quote of the one before it.
-  return String(value || "")
-    .split(/(?:\n+|(?<=[.!?])\s+(?=[„“”"']*(?:\p{Lu}|\p{N}|\(\d+\p{No}*\)))|\s*(?:[…•]|;(?![^()]*\))|(?<!\([^()]*);)\s*)/u)
-    .map((passage) => passage.trim())
-    .filter(Boolean);
+  const text = String(value || "");
+  if (!text) return [];
+  if (!text.includes(";")) {
+    return text.split(PASSAGE_BOUNDARY_PATTERN).map((passage) => passage.trim()).filter(Boolean);
+  }
+
+  const previousParenthesis = new Int32Array(text.length).fill(-1);
+  const nextParenthesis = new Int32Array(text.length).fill(-1);
+  let nearest = -1;
+  for (let index = 0; index < text.length; index += 1) {
+    previousParenthesis[index] = nearest;
+    const code = text.charCodeAt(index);
+    if (code === 40 || code === 41) nearest = code;
+  }
+  nearest = -1;
+  for (let index = text.length - 1; index >= 0; index -= 1) {
+    nextParenthesis[index] = nearest;
+    const code = text.charCodeAt(index);
+    if (code === 40 || code === 41) nearest = code;
+  }
+
+  const passages = [];
+  let passageStart = 0;
+  let semicolon = text.indexOf(";");
+  PASSAGE_BOUNDARY_PATTERN.lastIndex = 0;
+  let boundary = PASSAGE_BOUNDARY_PATTERN.exec(text);
+  while (boundary || semicolon >= 0) {
+    if (boundary && (semicolon < 0 || boundary.index < semicolon)) {
+      appendPassage(passages, text, passageStart, boundary.index);
+      passageStart = PASSAGE_BOUNDARY_PATTERN.lastIndex;
+      boundary = PASSAGE_BOUNDARY_PATTERN.exec(text);
+      continue;
+    }
+
+    if (previousParenthesis[semicolon] !== 40 || nextParenthesis[semicolon] !== 41) {
+      appendPassage(passages, text, passageStart, semicolon);
+      passageStart = semicolon + 1;
+    }
+    semicolon = text.indexOf(";", semicolon + 1);
+  }
+  appendPassage(passages, text, passageStart, text.length);
+  return passages;
 }
 export function hasCompleteSentenceEnding(value = "") {
   return /[.!?](?:[”"'’)\]]*)$/u.test(String(value || "").trim());

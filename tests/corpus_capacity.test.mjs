@@ -198,8 +198,12 @@ function planNodes(plan) {
 
 test("corpus capacity stays exact and hydration selection uses a bounded indexed plan", { timeout: 300_000 }, async (t) => {
   if (!dockerImageAvailable(POSTGRES_IMAGE)) {
-    t.skip(`Docker image ${POSTGRES_IMAGE} is unavailable, so the isolated PostgreSQL fixture cannot start`);
-    return;
+    const message = `Docker image ${POSTGRES_IMAGE} is required for the isolated PostgreSQL capacity fixture`;
+    if (process.env.ALLOW_POSTGRES_TEST_SKIP === "1") {
+      t.skip(message);
+      return;
+    }
+    throw new Error(`${message}. Pull the image or set ALLOW_POSTGRES_TEST_SKIP=1 to skip explicitly.`);
   }
   const containerName = `corpus-capacity-${process.pid}-${randomBytes(3).toString("hex")}`;
   const port = await reserveLoopbackPort();
@@ -504,6 +508,27 @@ test("corpus capacity stays exact and hydration selection uses a bounded indexed
       ];
       const selected = await selectHydrationCandidates(admin, rawCandidates, 1, { backlog: true });
       assert.deepEqual(selected, [olderUrl]);
+    });
+
+    await t.test("backlog fills empty bodies before refreshing unwitnessed bodies", async () => {
+      const existingBodyUrl = await insertDocument(admin, {
+        externalId: "capacity-backlog-existing-body",
+        path: "/et/capacity-backlog-existing-body",
+        fetchedAt: "2026-11-24T09:00:00.000000Z",
+      });
+      const emptyBodyUrl = await insertDocument(admin, {
+        externalId: "capacity-backlog-empty-body",
+        path: "/et/capacity-backlog-empty-body",
+        content: "",
+        fetchedAt: "2026-11-24T10:00:00.000000Z",
+      });
+      const selected = await selectHydrationCandidates(
+        admin,
+        [existingBodyUrl, emptyBodyUrl],
+        1,
+        { backlog: true },
+      );
+      assert.deepEqual(selected, [emptyBodyUrl]);
     });
 
     await t.test("retention closes stale running corpus runs with a bounded interrupted error", async () => {

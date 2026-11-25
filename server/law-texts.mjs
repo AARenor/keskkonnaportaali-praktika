@@ -10,6 +10,8 @@ import { REVIEWED_QUERY_WORD_FORMS } from "./query-word-forms.mjs";
 
 const API_BASE = "https://www.riigiteataja.ee/public-api/api/v1/akt";
 const REQUEST_TIMEOUT_MS = 20_000;
+const FEED_BYTE_LIMITS = { xml: 4_000_000, json: 1_000_000 };
+const FEED_TOO_LARGE_MESSAGE = "law feed response exceeds byte limit";
 const CHECK_INTERVAL_MS = 60 * 60 * 1_000;
 const RETRY_AFTER_FAILURE_MS = 5 * 60 * 1_000;
 const MAX_VERIFICATION_AGE_MS = 24 * 60 * 60 * 1_000;
@@ -76,12 +78,39 @@ export function parseLawSections(xml) {
 }
 
 async function fetchFromFeed(fetchImpl, path, kind) {
+  const byteLimit = FEED_BYTE_LIMITS[kind];
+  const controller = new AbortController();
   const response = await fetchImpl(`${API_BASE}/${path}`, {
     headers: { Accept: kind === "xml" ? "application/xml" : "application/json", "User-Agent": "KeskkonnaportaaliPraktika/1.0" },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: AbortSignal.any([AbortSignal.timeout(REQUEST_TIMEOUT_MS), controller.signal]),
   });
   if (!response.ok) throw new Error(`law feed answered ${response.status}`);
-  return kind === "xml" ? response.text() : response.json();
+  const declaredLength = Number(response.headers?.get("content-length"));
+  if (Number.isSafeInteger(declaredLength) && declaredLength > byteLimit) {
+    controller.abort();
+    await response.body?.cancel?.().catch(() => {});
+    throw new Error(FEED_TOO_LARGE_MESSAGE);
+  }
+  const reader = response.body.getReader();
+  const chunks = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > byteLimit) {
+        controller.abort();
+        await reader.cancel().catch(() => {});
+        throw new Error(FEED_TOO_LARGE_MESSAGE);
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const body = new TextDecoder().decode(Buffer.concat(chunks));
+  return kind === "xml" ? body : JSON.parse(body);
 }
 
 function estonianDate(isoValue) {

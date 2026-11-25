@@ -393,7 +393,10 @@ function lawFeed({ inForce = "112052026020", starts = "2026-06-30T21:00:00Z", en
   const calls = [];
   const fetchImpl = async (url) => {
     calls.push(url);
-    const respond = (body) => ({ ok: status === 200, status, json: async () => body, text: async () => body });
+    const respond = (body) => new Response(typeof body === "string" ? body : JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": url.endsWith("/blob-xml") ? "application/xml" : "application/json" },
+    });
     if (url.endsWith("/redaktsioonid")) return respond({ kehtivRedaktsioon: agreed });
     if (url.endsWith("/blob-xml")) return respond(xml);
     const title = FOREST_LAWS.find((law) => url.includes(law.actId))?.title || "Metsaseadus";
@@ -452,6 +455,77 @@ test("law text is withheld when it can no longer be confirmed, and replaced when
     assert.equal(currentForestLawDocuments({ now: Date.parse("2033-01-01T00:00:00Z") }).length, 0);
   } finally {
     FOREST_LAWS.forEach((law, index) => { law.minimumSections = minimums[index]; });
+    resetForestLawsForTests();
+  }
+});
+
+test("an oversized streamed law XML response fails without storing or logging its body", async () => {
+  resetForestLawsForTests();
+  const minimums = FOREST_LAWS.map((law) => law.minimumSections);
+  FOREST_LAWS.forEach((law) => { law.minimumSections = 1; });
+  const warnings = [];
+  const originalWarn = console.warn;
+  const xmlCeiling = 4_000_000;
+  const marker = "RAW_LAW_FEED_BODY_MARKER";
+  const padding = xmlCeiling + 1 - Buffer.byteLength(LAW_XML) - Buffer.byteLength(`<!--${marker}-->`);
+  const oversizedXml = LAW_XML.replace("</oigusakt>", `<!--${marker}${" ".repeat(padding)}--></oigusakt>`);
+  assert.equal(Buffer.byteLength(oversizedXml), xmlCeiling + 1);
+  const xmlSignals = [];
+  const feed = lawFeed();
+  console.warn = (entry) => warnings.push(String(entry));
+  try {
+    const fetchImpl = async (url, options) => {
+      if (url.endsWith("/blob-xml")) {
+        xmlSignals.push(options.signal);
+        return new Response(oversizedXml, { status: 200, headers: { "Content-Type": "application/xml" } });
+      }
+      return feed.fetchImpl(url, options);
+    };
+    assert.equal(await refreshForestLaws({ fetchImpl, now: LAW_NOW }), false);
+    assert.deepEqual(currentForestLawDocuments({ now: LAW_NOW }), []);
+    assert.deepEqual(warnings.map((entry) => JSON.parse(entry)), FOREST_LAWS.map((law) => ({
+      event: "forest-law-check-failed",
+      law: law.key,
+      message: "law feed response exceeds byte limit",
+    })));
+    assert.equal(xmlSignals.length, FOREST_LAWS.length);
+    assert.equal(xmlSignals.every((signal) => signal.aborted), true);
+  } finally {
+    console.warn = originalWarn;
+    FOREST_LAWS.forEach((law, index) => { law.minimumSections = minimums[index]; });
+    resetForestLawsForTests();
+  }
+});
+
+test("an oversized declared law JSON response is rejected before its body is read", async () => {
+  resetForestLawsForTests();
+  const warnings = [];
+  const originalWarn = console.warn;
+  let bodyReads = 0;
+  const fetchImpl = async () => ({
+    ok: true,
+    status: 200,
+    headers: new Headers({ "content-length": "1000001" }),
+    body: {
+      getReader() {
+        bodyReads += 1;
+        throw new Error("oversized body must not be read");
+      },
+      async cancel() {},
+    },
+  });
+  console.warn = (entry) => warnings.push(String(entry));
+  try {
+    assert.equal(await refreshForestLaws({ fetchImpl, now: LAW_NOW }), false);
+    assert.equal(bodyReads, 0);
+    assert.deepEqual(currentForestLawDocuments({ now: LAW_NOW }), []);
+    assert.deepEqual(warnings.map((entry) => JSON.parse(entry)), FOREST_LAWS.map((law) => ({
+      event: "forest-law-check-failed",
+      law: law.key,
+      message: "law feed response exceeds byte limit",
+    })));
+  } finally {
+    console.warn = originalWarn;
     resetForestLawsForTests();
   }
 });

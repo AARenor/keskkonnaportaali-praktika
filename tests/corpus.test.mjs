@@ -612,6 +612,21 @@ test("portal search parser preserves upstream total and card metadata", () => {
   assert.equal(result.documents[0].sourceTier, "official");
 });
 
+test("portal search parser handles 64,000 digits without a result label in linear time", (t) => {
+  const html = `<main>${"1".repeat(64_000)}</main>`;
+  const started = performance.now();
+  const result = parsePortalSearchPage(html);
+  const elapsed = performance.now() - started;
+  t.diagnostic(`64,000 digits without tulemost: ${elapsed.toFixed(2)} ms`);
+  assert.equal(result.total, 0);
+  assert.deepEqual(result.documents, []);
+  assert.ok(elapsed < 1_000, `digit-run parsing took ${elapsed.toFixed(2)} ms`);
+});
+
+test("portal search parser preserves a valid result count after a non-digit boundary", () => {
+  assert.equal(parsePortalSearchPage("<main>Leiti 17 tulemost</main>").total, 17);
+});
+
 test("portal search parser rejects placeholder result URLs", () => {
   const card = (href, title) => `
     <div class="search-results__item-wrap">

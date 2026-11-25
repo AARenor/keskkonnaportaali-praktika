@@ -12,7 +12,14 @@ import {
 import { analyzeQueryIntent } from "./query_intent.mjs";
 import { glossaryAvoidHits } from "./forestry-glossary.mjs";
 import { classifyForestryGeographyScope, normalizeMunicipalityText } from "./municipalities.mjs";
-import { reviewTraceState, SHADOW_CHECK_PATTERN } from "./llm_validation_state.mjs";
+import {
+  reviewAnswerShape,
+  reviewEvidenceShape,
+  reviewRejectionShape,
+  reviewTextShape,
+  reviewTraceState,
+  SHADOW_CHECK_PATTERN,
+} from "./llm_validation_state.mjs";
 import {
   assertAnswerNumericWorkload,
   assertClaimGrounding,
@@ -563,19 +570,21 @@ function traceShadowReview(payload, draft, query, evidencePack, firstError) {
   const skipped = new Set();
   let error = firstError;
   let shadowAnswer = null;
+  let shadowHitCount = 0;
   let introFailure = /\b(?:proposed\s+)?introduction\b/iu.test(String(error?.message || ""))
     ? error
     : null;
   if (error) {
     const check = checkCodeFromMessage(error.message);
-    steps.push({ check, message: String(error.message || "").slice(0, 160), claim: error.rejectedText || "", source: error.evidenceText || "" });
+    steps.push(reviewRejectionShape(check, error));
     if (SHADOW_CHECK_PATTERN.test(check)) {
       skipped.add(check);
-      reviewTraceState.shadowSkippedChecks = Object.assign(new Set(skipped), { hits: [] });
+      reviewTraceState.shadowSkippedChecks = Object.assign(new Set(skipped), { hits: [], hitCount: 0 });
       reviewTraceState.shadowTraceIntro = {};
       try {
         shadowAnswer = validateGroundedProposal(payload, draft, query, evidencePack).answer;
-        steps.push(...reviewTraceState.shadowSkippedChecks.hits.map((hit) => ({ ...hit, skipped: true })));
+        steps.push(...reviewTraceState.shadowSkippedChecks.hits);
+        shadowHitCount = reviewTraceState.shadowSkippedChecks.hitCount;
         error = null;
       } catch (nextError) {
         error = nextError;
@@ -586,22 +595,47 @@ function traceShadowReview(payload, draft, query, evidencePack, firstError) {
       }
     }
   }
-  const text = (answer) => [answer?.intro, ...(answer?.parts || []).map((part) => part?.text)].filter(Boolean).join(" ¶ ");
+  const queryShape = reviewTextShape(query);
+  const proposedShape = reviewAnswerShape(payload);
+  const draftShape = reviewAnswerShape(draft?.answer);
+  const evidenceShape = reviewEvidenceShape(evidencePack);
+  const shadowShape = shadowAnswer ? reviewAnswerShape(shadowAnswer) : null;
+  const introShape = introFailure
+    ? reviewRejectionShape(checkCodeFromMessage(introFailure.message), introFailure)
+    : null;
   console.warn(JSON.stringify({
     event: "review-trace",
-    query: String(query || "").slice(0, 300),
+    queryChars: queryShape.chars,
+    querySha256: queryShape.sha256,
+    stepCount: steps.length,
     steps,
     shadowPasses: !error,
-    proposed: text(payload).slice(0, 2000),
-    draftIntro: String(draft?.answer?.intro || "").slice(0, 400),
-    ...(introFailure ? { introFailure: {
-      message: String(introFailure.message || "").slice(0, 200),
-      claim: introFailure.rejectedText || "",
-      source: introFailure.evidenceText || "",
-    } } : {}),
-    evidence: (evidencePack?.entries || []).map((entry) => `[${entry.citation}] ${String(entry.content || "").slice(0, 700)}`).join("\n").slice(0, 4000),
-    ...(shadowAnswer ? { shadowAnswer: text(shadowAnswer).slice(0, 2000) } : {}),
-    sources: (draft?.sources || []).map((source) => String(source?.title || "").slice(0, 100)),
+    shadowHitCount,
+    proposedChars: proposedShape.chars,
+    proposedSha256: proposedShape.sha256,
+    proposedIntroChars: proposedShape.introChars,
+    proposedPartCount: proposedShape.partCount,
+    draftChars: draftShape.chars,
+    draftSha256: draftShape.sha256,
+    draftIntroChars: draftShape.introChars,
+    draftPartCount: draftShape.partCount,
+    sourceCount: Array.isArray(draft?.sources) ? draft.sources.length : 0,
+    evidenceChars: evidenceShape.chars,
+    evidenceSha256: evidenceShape.sha256,
+    evidenceEntryCount: evidenceShape.entryCount,
+    ...(shadowShape ? {
+      shadowAnswerChars: shadowShape.chars,
+      shadowAnswerSha256: shadowShape.sha256,
+      shadowAnswerIntroChars: shadowShape.introChars,
+      shadowAnswerPartCount: shadowShape.partCount,
+    } : {}),
+    ...(introShape ? {
+      introFailureCheck: introShape.check,
+      introFailureClaimChars: introShape.claimChars,
+      introFailureClaimSha256: introShape.claimSha256,
+      introFailureSourceChars: introShape.sourceChars,
+      introFailureSourceSha256: introShape.sourceSha256,
+    } : {}),
   }));
 }
 

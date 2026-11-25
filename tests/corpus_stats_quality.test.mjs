@@ -205,8 +205,12 @@ async function insertRun(client, { mode, status, errorCount, details, startedAt,
 
 test("the public corpus status reports robots excluded rows, the last sync error count and a fresh evidence count without leaking content", { timeout: 240_000 }, async (t) => {
   if (!dockerImageAvailable(POSTGRES_IMAGE)) {
-    t.skip(`Docker image ${POSTGRES_IMAGE} is unavailable, so the isolated PostgreSQL fixture cannot start; the status aggregates cannot be exercised without a real SQL engine`);
-    return;
+    const message = `Docker image ${POSTGRES_IMAGE} is required for the isolated PostgreSQL corpus stats fixture`;
+    if (process.env.ALLOW_POSTGRES_TEST_SKIP === "1") {
+      t.skip(message);
+      return;
+    }
+    throw new Error(`${message}. Pull the image or set ALLOW_POSTGRES_TEST_SKIP=1 to skip explicitly.`);
   }
   // Random defaults keep concurrent runs apart; the overrides exist so an
   // operator can pin the exact name and port before the run starts.

@@ -38,6 +38,41 @@ test("passages preserve parenthetical SMI aliases but separate independent semic
   ]);
   assert.deepEqual(splitTextPassages("Esimene väide; Teine väide)"), ["Esimene väide", "Teine väide)"]);
   assert.deepEqual(splitTextPassages("(Esimene väide; Teine väide"), ["(Esimene väide", "Teine väide"]);
+  assert.deepEqual(splitTextPassages("((Esimene); Teine)"), ["((Esimene)", "Teine)"]);
+  assert.deepEqual(splitTextPassages("(Esimene (lisa); Teine)"), ["(Esimene (lisa)", "Teine)"]);
+  assert.deepEqual(splitTextPassages("(Esimene; Teine); Kolmas"), ["(Esimene; Teine)", "Kolmas"]);
+  assert.deepEqual(splitTextPassages("Esimene; (Teine; Kolmas); Neljas"), ["Esimene", "(Teine; Kolmas)", "Neljas"]);
+});
+
+test("passage splitting preserves newline, ellipsis, bullet and sentence boundaries", () => {
+  assert.deepEqual(splitTextPassages("Esimene\nTeine"), ["Esimene", "Teine"]);
+  assert.deepEqual(splitTextPassages("Esimene… Teine"), ["Esimene", "Teine"]);
+  assert.deepEqual(splitTextPassages("Esimene • Teine"), ["Esimene", "Teine"]);
+  assert.deepEqual(splitTextPassages("Esimene lause. Teine lause."), ["Esimene lause.", "Teine lause."]);
+  assert.deepEqual(splitTextPassages("Esimene lause. teine lause."), ["Esimene lause. teine lause."]);
+  assert.deepEqual(splitTextPassages("Esimene lause. (2) Teine lause."), ["Esimene lause.", "(2) Teine lause."]);
+});
+
+test("passage splitting handles 80,000 semicolons in linear time", (t) => {
+  const input = "väide;".repeat(80_000);
+  const started = performance.now();
+  const passages = splitTextPassages(input);
+  const elapsed = performance.now() - started;
+  t.diagnostic(`80,000 semicolons: ${elapsed.toFixed(2)} ms`);
+  assert.equal(passages.length, 80_000);
+  assert.equal(passages[0], "väide");
+  assert.equal(passages.at(-1), "väide");
+  assert.ok(elapsed < 1_000, `semicolon splitting took ${elapsed.toFixed(2)} ms`);
+});
+
+test("passage splitting handles a long whitespace run before a semicolon in linear time", (t) => {
+  const input = `${" ".repeat(50_000)};`;
+  const started = performance.now();
+  const passages = splitTextPassages(input);
+  const elapsed = performance.now() - started;
+  t.diagnostic(`50,000 spaces before semicolon: ${elapsed.toFixed(2)} ms`);
+  assert.deepEqual(passages, []);
+  assert.ok(elapsed < 1_000, `whitespace splitting took ${elapsed.toFixed(2)} ms`);
 });
 
 test("public query canonicalization rejects compatibility expansion before assessment", () => {

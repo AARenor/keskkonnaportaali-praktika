@@ -321,6 +321,36 @@ test("persisted search fingerprints require an independent high-entropy key at s
   assert.match(missingSecretStartup.stderr, /SEARCH_HASH_SECRET must .*at least 32 random bytes/u);
 });
 
+test("runtime startup failure logs never expose database credentials", () => {
+  const username = "omp_log_probe_user";
+  const password = "omp_log_probe_secret_9f2c";
+  const secret = Buffer.from(Array.from({ length: 48 }, (_value, index) => (
+    (index * 73 + 19) % 256
+  ))).toString("base64");
+  const startup = spawnSync(process.execPath, ["server/index.mjs"], {
+    cwd: new URL("..", import.meta.url),
+    encoding: "utf8",
+    timeout: 15_000,
+    env: {
+      ...process.env,
+      NODE_ENV: "test",
+      PORT: "0",
+      DATABASE_URL: `postgresql://${username}:${password}@postgres:1/practice`,
+      DATABASE_SSL_MODE: "disable",
+      DATABASE_SSL: "",
+      DATABASE_PLAINTEXT_HOSTS: "postgres",
+      SEARCH_HASH_SECRET: secret,
+      MULTILINGUAL_SEARCH_ENABLED: "true",
+      ALL_ENVIRONMENT_SEARCH_ENABLED: "true",
+    },
+  });
+  assert.notEqual(startup.status, 0);
+  assert.doesNotMatch(`${startup.stdout}\n${startup.stderr}`, new RegExp(password, "u"));
+  assert.doesNotMatch(`${startup.stdout}\n${startup.stderr}`, new RegExp(username, "u"));
+  assert.doesNotMatch(`${startup.stdout}\n${startup.stderr}`, /postgresql:\/\//u);
+  assert.match(startup.stderr, /corpus-schema-startup-failed/u);
+});
+
 test("the public deployment marker accepts only an exact Git revision", () => {
   const revision = "0123456789abcdef0123456789abcdef01234567";
   assert.equal(publicDeploymentRevision(revision), revision);

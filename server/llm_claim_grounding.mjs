@@ -2,7 +2,12 @@ import { hasCompleteSentenceEnding } from "./search_evidence.mjs";
 import { forestEvidenceIntent, normalize } from "./search_query_terms.mjs";
 import { splitTextPassages } from "./search_evidence.mjs";
 import { relationshipClaimHasPassageWitness } from "./proposition-grounding.mjs";
-import { reviewTraceState } from "./llm_validation_state.mjs";
+import {
+  MAX_REVIEW_TRACE_HITS,
+  reviewRejectionShape,
+  reviewTextShape,
+  reviewTraceState,
+} from "./llm_validation_state.mjs";
 export function validCitations(values, sourceCount) {
   return [...new Set((Array.isArray(values) ? values : [])
     .map(Number)
@@ -281,24 +286,27 @@ function permissionPolarity(polarity) {
   return "";
 }
 
-// A rejection carries the rejected sentence (and the source sentence it was
-// compared with), shortened, so a wrongly rejected answer can be seen and fixed.
-// Local review trace (shadow mode). Off unless REVIEW_TRACE=local on a
-// loopback origin: it logs the question and the model's text, which the
-// production server never stores (PRIVAATSUS.md). While a shadow re-run is in
-// progress, checks named in reviewTraceState.shadowSkippedChecks record instead of reject,
-// so the trace shows what a loosened rule would let through. Live answers are
-// never affected: the shadow result is only logged.
+// A rejection carries short text for the live diagnostic. The optional review
+// trace never copies that text into its record. It uses fixed check codes,
+// counts, lengths and hashes. While a shadow re-run is in progress, checks named
+// in reviewTraceState.shadowSkippedChecks record a redacted hit instead of
+// rejecting, so the trace shows what a loosened rule would let through. Live
+// answers are never affected: the shadow result is only logged.
 
 export function checkCodeFromMessage(message) {
   return String(message || "").split("|")[0].replace(/\s*\(.*$/su, "").toLowerCase()
     .replace(/^llm\s+/u, "").replace(/[^a-z]+/gu, "-").replace(/^-+|-+$/gu, "").slice(0, 80);
 }
 
-// Throws the rejection unless a shadow re-run has switched this check off.
 export function failCheck(error) {
-  if (reviewTraceState.shadowSkippedChecks?.has(checkCodeFromMessage(error.message))) {
-    reviewTraceState.shadowSkippedChecks.hits?.push({ check: checkCodeFromMessage(error.message), claim: error.rejectedText || "", source: error.evidenceText || "" });
+  const check = checkCodeFromMessage(error.message);
+  const shadow = reviewTraceState.shadowSkippedChecks;
+  if (shadow?.has(check)) {
+    shadow.hitCount = (shadow.hitCount || 0) + 1;
+    shadow.hits ??= [];
+    if (shadow.hits.length < MAX_REVIEW_TRACE_HITS) {
+      shadow.hits.push(reviewRejectionShape(check, error, true));
+    }
     return;
   }
   throw error;
@@ -312,8 +320,16 @@ export function reviewTraceEnabled(env = process.env) {
 export function rejectionWithText(message, rejectedText = "", evidenceText = "") {
   const error = new Error(message);
   const short = (value) => String(value || "").replace(/\s+/gu, " ").trim().slice(0, 220);
-  if (short(rejectedText)) error.rejectedText = short(rejectedText);
-  if (short(evidenceText)) error.evidenceText = short(evidenceText);
+  const claim = short(rejectedText);
+  const source = short(evidenceText);
+  if (claim) {
+    error.rejectedText = claim;
+    error.rejectedTextShape = reviewTextShape(rejectedText);
+  }
+  if (source) {
+    error.evidenceText = source;
+    error.evidenceTextShape = reviewTextShape(evidenceText);
+  }
   return error;
 }
 

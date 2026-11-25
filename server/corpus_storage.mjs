@@ -46,6 +46,8 @@ export const REVIEWED_CATALOGUE_SOURCE_KEY = "reviewed-catalogue-source";
 export const CORPUS_VECTOR_LAYOUT = "index-layout-v2";
 export const CORPUS_CAPACITY_VERSION = 1;
 const CORPUS_CAPACITY_LOCK_SQL = "SELECT pg_advisory_xact_lock(hashtext('practice-corpus-retention-capacity'))";
+const CORPUS_CAPACITY_TRY_LOCK_SQL = "SELECT pg_try_advisory_xact_lock(hashtext('practice-corpus-retention-capacity')) AS locked";
+const CORPUS_CAPACITY_LOCK_BUSY = Symbol("corpus-capacity-lock-busy");
 const corpusCapacityTransactions = new WeakMap();
 
 // What the search index may contain for one row. The trigger writes the same
@@ -522,11 +524,16 @@ export function throwIfCorpusAborted(signal) {
     : new DOMException("Corpus indexing was aborted", "AbortError");
 }
 
-async function runCorpusCapacityTransaction(client, operation, signal, statementTimeoutMs) {
+async function runCorpusCapacityTransaction(client, operation, signal, statementTimeoutMs, lockMode) {
   await client.query("BEGIN");
   try {
     await client.query(`SET LOCAL statement_timeout = '${statementTimeoutMs}ms'`);
-    await client.query({ text: CORPUS_CAPACITY_LOCK_SQL, query_timeout: statementTimeoutMs + 5_000 });
+    const lockSql = lockMode === "try" ? CORPUS_CAPACITY_TRY_LOCK_SQL : CORPUS_CAPACITY_LOCK_SQL;
+    const lock = await client.query({ text: lockSql, query_timeout: statementTimeoutMs + 5_000 });
+    if (lockMode === "try" && lock.rows[0]?.locked !== true) {
+      await client.query("ROLLBACK");
+      return CORPUS_CAPACITY_LOCK_BUSY;
+    }
     throwIfCorpusAborted(signal);
     const result = await operation();
     throwIfCorpusAborted(signal);
@@ -541,13 +548,15 @@ async function runCorpusCapacityTransaction(client, operation, signal, statement
 export function withCorpusCapacityTransaction(
   client,
   operation,
-  { inTransaction = false, signal, statementTimeoutMs = 10_000 } = {},
+  { inTransaction = false, signal, statementTimeoutMs = 10_000, lockMode = "blocking" } = {},
 ) {
   throwIfCorpusAborted(signal);
   const timeout = Math.max(100, Math.min(Math.trunc(Number(statementTimeoutMs) || 10_000), 60_000));
   if (inTransaction) {
     return (async () => {
-      await client.query(CORPUS_CAPACITY_LOCK_SQL);
+      const lockSql = lockMode === "try" ? CORPUS_CAPACITY_TRY_LOCK_SQL : CORPUS_CAPACITY_LOCK_SQL;
+      const lock = await client.query(lockSql);
+      if (lockMode === "try" && lock.rows[0]?.locked !== true) return CORPUS_CAPACITY_LOCK_BUSY;
       throwIfCorpusAborted(signal);
       return operation();
     })();
@@ -557,7 +566,7 @@ export function withCorpusCapacityTransaction(
   // BEGIN on the same connection.
   const previous = corpusCapacityTransactions.get(client) || Promise.resolve();
   const current = previous.catch(() => undefined)
-    .then(() => runCorpusCapacityTransaction(client, operation, signal, timeout));
+    .then(() => runCorpusCapacityTransaction(client, operation, signal, timeout, lockMode));
   const tracked = current.finally(() => {
     if (corpusCapacityTransactions.get(client) === tracked) corpusCapacityTransactions.delete(client);
   });
@@ -1081,7 +1090,12 @@ export async function backfillCorpusIndexVectors(client, {
   const budgetMs = Math.max(50, Math.min(Number(timeBudgetMs) || 1_000, 30_000));
   const cursor = Number.isFinite(Number(afterId)) ? Math.max(0, Math.trunc(Number(afterId))) : 0;
   const startedAt = Date.now();
-  const { processedIds, pending } = await withCorpusCapacityTransaction(client, async () => {
+  // Index migration is optional maintenance. Queueing it behind hydration or
+  // ingestion can starve those writers until their shorter client timeout fires.
+  // A busy capacity lock yields this pass; the bounded drain retries later.
+  let processedIds = [];
+  let pending = true;
+  const transaction = await withCorpusCapacityTransaction(client, async () => {
     const updated = await client.query(`
       WITH batch AS (
         SELECT id
@@ -1114,7 +1128,8 @@ export async function backfillCorpusIndexVectors(client, {
       ) AS pending
     `);
     return { processedIds: ids, pending: pendingRow.rows[0]?.pending === true };
-  });
+  }, { lockMode: "try" });
+  if (transaction !== CORPUS_CAPACITY_LOCK_BUSY) ({ processedIds, pending } = transaction);
   if (processedIds.length) corpusListingWindows.clear();
   const elapsedMs = Date.now() - startedAt;
   return {

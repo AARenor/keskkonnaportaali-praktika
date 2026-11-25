@@ -234,6 +234,33 @@ test("a data-nosnippet section is removed before text extraction", () => {
   assert.equal(text.includes(HIDDEN), false);
 });
 
+test("source text extraction preserves case-insensitive and exact block boundaries", () => {
+  assert.equal(extractSourceText('<main>Esimene<BR class="vahe">Teine</main>'), "Esimene Teine");
+  assert.equal(extractSourceText("<main>Esimene</P>Teine</main>"), "Esimene Teine");
+  assert.equal(extractSourceText("<main>Esimene<brisk>Teine</brisk></main>"), "EsimeneTeine");
+  assert.equal(extractSourceText("<main>Esimene</p >Teine</main>"), "EsimeneTeine");
+});
+
+test("source text extraction handles 64,000 unmatched br prefixes in linear time", (t) => {
+  const input = `Algus${"<br".repeat(64_000)}`;
+  const started = performance.now();
+  const text = extractSourceText(input);
+  const elapsed = performance.now() - started;
+  t.diagnostic(`64,000 unmatched <br prefixes: ${elapsed.toFixed(2)} ms`);
+  assert.equal(text, "Algus");
+  assert.ok(elapsed < 1_000, `unmatched br parsing took ${elapsed.toFixed(2)} ms`);
+});
+
+test("source text extraction handles 64,000 complete br tags in linear time", (t) => {
+  const input = `<main>Algus${"<br>".repeat(64_000)}Lõpp</main>`;
+  const started = performance.now();
+  const text = extractSourceText(input);
+  const elapsed = performance.now() - started;
+  t.diagnostic(`64,000 complete <br> tags: ${elapsed.toFixed(2)} ms`);
+  assert.equal(text, "Algus Lõpp");
+  assert.ok(elapsed < 1_000, `complete br parsing took ${elapsed.toFixed(2)} ms`);
+});
+
 test("nodes a reader never renders are not copied", () => {
   const html = syntheticPage({
     body: `<p>${VISIBLE}</p><script>var ${HIDDEN} = 1;</script>`

@@ -36,6 +36,7 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
 
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/server ./server
+COPY --from=build /app/scripts/audit-corpus-coverage.mjs ./scripts/audit-corpus-coverage.mjs
 
 USER node
 EXPOSE 3000

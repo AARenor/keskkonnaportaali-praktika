@@ -17,9 +17,10 @@ env:
   COOLIFY_BASE_URL: https://coolify.arle.top
   COOLIFY_APPLICATION_ID: asdyidu5wvjx54d0b09t9rhw
   PUBLIC_URL: https://praktika.arle.top
-  # Bounded deployment wait: 45 minutes at a 15 second poll interval.
-  DEPLOY_TIMEOUT_SECONDS: 2700
-  DEPLOY_POLL_SECONDS: 15
+  # Bounded wait for the private database host allowance, runtime hardening,
+  # old container shutdown and rollback readiness.
+  STOP_TIMEOUT_SECONDS: 300
+  STOP_POLL_SECONDS: 5
   # Bounded wait for the new container to answer once Coolify reports finished.
   HEALTH_TIMEOUT_SECONDS: 300
 
@@ -85,7 +86,7 @@ jobs:
           fi
 
           database_url="$(
-            jq -r '.[] | select(.key == "DATABASE_URL") | (.value // .real_value // empty)' "$response_file" | head -1
+            node scripts/coolify_runtime_database_url.mjs < "$response_file"
           )"
           if [ -z "$database_url" ]; then
             echo "::error::Coolify application has no DATABASE_URL"
@@ -127,8 +128,8 @@ jobs:
           response_file="$(mktemp)"
           trap 'rm -f "$response_file"' EXIT
 
-          # Memory, memory swap, CPU and health check start period only. Process
-          # and file limits stay as they are in production on purpose.
+          # Memory, memory swap, CPU and health check start period only. Runtime
+          # hardening options are managed separately and verified after deploy.
           limits='{"limits_memory":"2g","limits_memory_swap":"2g","limits_cpus":"2","health_check_start_period":60}'
 
           http_status="$(
@@ -158,10 +159,134 @@ jobs:
               ;;
             *)
               echo "::error::Coolify application PATCH returned HTTP ${http_status:-none}"
-              cat "$response_file" || true
               exit 1
               ;;
           esac
+
+      - name: Record current production revision
+        id: previous
+        run: |
+          set -euo pipefail
+          readiness_file="$(mktemp)"
+          trap 'rm -f "$readiness_file"' EXIT
+
+          http_status="$(
+            curl --silent --show-error --proto '=https' --max-time 30 \
+              --retry 2 --retry-delay 5 --retry-connrefused \
+              --output "$readiness_file" --write-out '%{http_code}' \
+              "${PUBLIC_URL}/api/health/container-readiness" || true
+          )"
+          revision="$(jq -r '.revision // empty' "$readiness_file" 2>/dev/null || true)"
+          readiness="$(jq -r '.status // empty' "$readiness_file" 2>/dev/null || true)"
+          if [ "$http_status" != '200' ] || [ "$readiness" != 'ok' ] \
+            || ! printf '%s' "$revision" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::Cannot record a healthy previous revision; refusing to stop production"
+            exit 1
+          fi
+
+          echo "revision=${revision}" >> "$GITHUB_OUTPUT"
+          echo "Recorded previous production revision ${revision}"
+
+      - name: Verify production runtime hardening
+        env:
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+          expected_options='--cap-drop=ALL --init --ulimit nofile=1024:1024'
+          http_status="$(
+            curl --silent --show-error --proto '=https' \
+              --max-time 60 --retry 3 --retry-delay 5 --retry-connrefused \
+              --output "$response_file" --write-out '%{http_code}' \
+              --header "Authorization: Bearer ${COOLIFY_API_TOKEN}" \
+              --header 'Accept: application/json' \
+              "${COOLIFY_BASE_URL}/api/v1/applications/${COOLIFY_APPLICATION_ID}" \
+              || true
+          )"
+          if [ "$http_status" != 200 ]; then
+            echo "::error::Coolify application read returned HTTP ${http_status:-none}"
+            exit 1
+          fi
+          if ! jq -e --arg expected "$expected_options" '.custom_docker_run_options == $expected' "$response_file" >/dev/null; then
+            echo "::error::Production runtime options drifted from the reviewed hardening contract"
+            exit 1
+          fi
+          echo "Production runtime options match the reviewed hardening contract"
+
+      - name: Stop current container before schema deployment
+        id: stop
+        env:
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+          http_status="$(
+            curl --silent --show-error --proto '=https' \
+              --max-time 60 --retry 3 --retry-delay 5 --retry-connrefused \
+              --output /dev/null --write-out '%{http_code}' \
+              --request POST \
+              --header "Authorization: Bearer ${COOLIFY_API_TOKEN}" \
+              --header 'Accept: application/json' \
+              "${COOLIFY_BASE_URL}/api/v1/applications/${COOLIFY_APPLICATION_ID}/stop?docker_cleanup=false" \
+              || true
+          )"
+          case "$http_status" in
+            200|201)
+              echo "requested=true" >> "$GITHUB_OUTPUT"
+              ;;
+            403)
+              echo "::error::Coolify stop returned HTTP 403: the token needs the deploy ability"
+              exit 1
+              ;;
+            000)
+              echo "::error::Coolify stop got no response"
+              exit 1
+              ;;
+            *)
+              echo "::error::Coolify stop returned HTTP ${http_status:-none}"
+              exit 1
+              ;;
+          esac
+
+          deadline=$(( $(date +%s) + STOP_TIMEOUT_SECONDS ))
+          status='queued'
+          while :; do
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::Coolify did not report the old application exited within ${STOP_TIMEOUT_SECONDS}s (last status: ${status})"
+              exit 1
+            fi
+            http_status="$(
+              curl --silent --show-error --proto '=https' \
+                --max-time 30 --retry 2 --retry-delay 2 --retry-connrefused \
+                --output "$response_file" --write-out '%{http_code}' \
+                --header "Authorization: Bearer ${COOLIFY_API_TOKEN}" \
+                --header 'Accept: application/json' \
+                "${COOLIFY_BASE_URL}/api/v1/applications/${COOLIFY_APPLICATION_ID}" \
+                || true
+            )"
+            if [ "$http_status" != 200 ]; then
+              echo "::warning::Coolify application status returned HTTP ${http_status:-none}"
+              sleep "$STOP_POLL_SECONDS"
+              continue
+            fi
+            status="$(jq -r '.status // empty' "$response_file")"
+            case "$status" in
+              exited)
+                echo "Coolify reported the old application exited"
+                exit 0
+                ;;
+              '')
+                echo "::warning::Coolify application status response had no status field"
+                ;;
+              failed|cancelled|canceled|error|errored)
+                echo "::error::Coolify stop ended with status ${status}"
+                exit 1
+                ;;
+            esac
+            sleep "$STOP_POLL_SECONDS"
+          done
 
       - name: Trigger Coolify deployment
         id: trigger
@@ -187,7 +312,6 @@ jobs:
 
           if [ "$http_status" != "200" ] && [ "$http_status" != "201" ]; then
             echo "::error::Coolify start returned HTTP ${http_status}"
-            cat "$response_file" || true
             exit 1
           fi
 
@@ -199,7 +323,6 @@ jobs:
           )"
           if [ -z "$deployment_uuid" ]; then
             echo "::error::Coolify start response has no deployment_uuid"
-            cat "$response_file" || true
             exit 1
           fi
 
@@ -305,6 +428,7 @@ jobs:
           fi
 
       - name: Verify the live revision serves this commit
+        id: readiness
         run: |
           set -euo pipefail
           readiness_file="$(mktemp)"
@@ -336,6 +460,7 @@ jobs:
             sleep 5
           done
           echo "${PUBLIC_URL}/api/health/container-readiness returned HTTP 200 ok on revision ${revision}"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
 
           build_status="$(
             curl --silent --show-error --proto '=https' \
@@ -348,3 +473,128 @@ jobs:
             exit 1
           fi
           echo "${PUBLIC_URL}/build.json returned HTTP 200"
+
+      - name: Recover previous production revision
+        if: ${{ failure() && steps.stop.outputs.requested == 'true' && steps.readiness.outputs.ready != 'true' }}
+        env:
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+          PREVIOUS_REVISION: ${{ steps.previous.outputs.revision }}
+        run: |
+          set -euo pipefail
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+          if ! printf '%s' "$PREVIOUS_REVISION" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::Recovery has no valid previous revision"
+            exit 1
+          fi
+
+          payload="$(jq -n --arg sha "$PREVIOUS_REVISION" '{git_commit_sha:$sha}')"
+          http_status="$(
+            curl --silent --show-error --proto '=https' \
+              --max-time 60 --retry 3 --retry-delay 5 --retry-connrefused \
+              --output "$response_file" --write-out '%{http_code}' \
+              --request PATCH \
+              --header "Authorization: Bearer ${COOLIFY_API_TOKEN}" \
+              --header 'Content-Type: application/json' \
+              --header 'Accept: application/json' \
+              --data "$payload" \
+              "${COOLIFY_BASE_URL}/api/v1/applications/${COOLIFY_APPLICATION_ID}" || true
+          )"
+          if [ "$http_status" != 200 ]; then
+            echo "::error::Recovery could not select previous revision (HTTP ${http_status:-none})"
+            exit 1
+          fi
+
+          http_status="$(
+            curl --silent --show-error --proto '=https' \
+              --max-time 60 --retry 3 --retry-delay 5 --retry-connrefused \
+              --output "$response_file" --write-out '%{http_code}' \
+              --request POST \
+              --header "Authorization: Bearer ${COOLIFY_API_TOKEN}" \
+              --header 'Content-Type: application/json' \
+              --header 'Accept: application/json' \
+              --data '{}' \
+              "${COOLIFY_BASE_URL}/api/v1/applications/${COOLIFY_APPLICATION_ID}/start" || true
+          )"
+          deployment_uuid="$(jq -r '.deployment_uuid // .deployments[0].deployment_uuid // empty' "$response_file" 2>/dev/null || true)"
+          if [ "$http_status" != 200 ] || [ -z "$deployment_uuid" ]; then
+            echo "::error::Recovery deployment could not be queued (HTTP ${http_status:-none})"
+            exit 1
+          fi
+
+          deadline=$(( $(date +%s) + DEPLOY_TIMEOUT_SECONDS ))
+          status='queued'
+          commit=''
+          while :; do
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::Recovery deployment did not finish within ${DEPLOY_TIMEOUT_SECONDS}s (last status: ${status})"
+              exit 1
+            fi
+            http_status="$(
+              curl --silent --show-error --proto '=https' \
+                --max-time 60 --retry 2 --retry-delay 5 --retry-connrefused \
+                --output "$response_file" --write-out '%{http_code}' \
+                --header "Authorization: Bearer ${COOLIFY_API_TOKEN}" \
+                --header 'Accept: application/json' \
+                "${COOLIFY_BASE_URL}/api/v1/deployments/${deployment_uuid}" || true
+            )"
+            if [ "$http_status" = 200 ]; then
+              status="$(jq -r '.deployments // . | .status // empty' "$response_file")"
+              commit="$(jq -r '.deployments // . | .commit // empty' "$response_file")"
+            fi
+            case "$status" in
+              finished)
+                break
+                ;;
+              failed|cancelled|canceled|error|errored|skipped)
+                echo "::error::Recovery deployment ended with status ${status}"
+                exit 1
+                ;;
+            esac
+            sleep "$DEPLOY_POLL_SECONDS"
+          done
+          if [ "$commit" != "$PREVIOUS_REVISION" ]; then
+            echo "::error::Recovery deployed commit ${commit}, expected ${PREVIOUS_REVISION}"
+            exit 1
+          fi
+
+          deadline=$(( $(date +%s) + HEALTH_TIMEOUT_SECONDS ))
+          revision=''
+          readiness=''
+          while :; do
+            http_status="$(
+              curl --silent --show-error --proto '=https' --max-time 30 \
+                --retry 2 --retry-delay 5 --retry-connrefused \
+                --output "$response_file" --write-out '%{http_code}' \
+                "${PUBLIC_URL}/api/health/container-readiness" || true
+            )"
+            revision="$(jq -r '.revision // empty' "$response_file" 2>/dev/null || true)"
+            readiness="$(jq -r '.status // empty' "$response_file" 2>/dev/null || true)"
+            if [ "$http_status" = 200 ] && [ "$readiness" = ok ] \
+              && [ "$revision" = "$PREVIOUS_REVISION" ]; then
+              break
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::Recovery revision ${PREVIOUS_REVISION} did not become ready"
+              exit 1
+            fi
+            sleep 5
+          done
+
+          payload="$(jq -n --arg sha "$GITHUB_SHA" '{git_commit_sha:$sha}')"
+          http_status="$(
+            curl --silent --show-error --proto '=https' \
+              --max-time 60 --retry 3 --retry-delay 5 --retry-connrefused \
+              --output /dev/null --write-out '%{http_code}' \
+              --request PATCH \
+              --header "Authorization: Bearer ${COOLIFY_API_TOKEN}" \
+              --header 'Content-Type: application/json' \
+              --header 'Accept: application/json' \
+              --data "$payload" \
+              "${COOLIFY_BASE_URL}/api/v1/applications/${COOLIFY_APPLICATION_ID}" || true
+          )"
+          if [ "$http_status" != 200 ]; then
+            echo "::error::Previous revision is serving, but restoring the intended commit failed (HTTP ${http_status:-none})"
+            exit 1
+          fi
+          echo "Recovered production revision ${PREVIOUS_REVISION}; intended commit ${GITHUB_SHA} restored in Coolify"

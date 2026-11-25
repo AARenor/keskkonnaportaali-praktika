@@ -453,7 +453,7 @@ export function buildHydrationCandidateQuery({ backlog = false, htmlOnly = false
   const policy = corpusPolicyWitnessSql("document");
   const unwitnessed = `(NOT (document.metadata ? 'source_policy') OR NOT ${policy})`;
   const priority = backlog
-    ? `CASE WHEN document.content <> '' AND ${unwitnessed} THEN 0 ELSE 1 END`
+    ? `CASE WHEN document.content = '' THEN 0 WHEN document.content <> '' AND ${unwitnessed} THEN 1 ELSE 2 END`
     : `CASE
         WHEN document.content = '' AND NOT (document.metadata ? 'hydration_attempted_at') THEN 0
         WHEN document.content = '' THEN 1

@@ -193,8 +193,12 @@ async function searchUrls(corpusRuntime, query) {
 
 test("copied text matches and ranks only under a current allowing index policy", { timeout: 300_000 }, async (t) => {
   if (!dockerImageAvailable(POSTGRES_IMAGE)) {
-    t.skip(`Docker image ${POSTGRES_IMAGE} is unavailable, so the isolated PostgreSQL fixture cannot start`);
-    return;
+    const message = `Docker image ${POSTGRES_IMAGE} is required for the isolated PostgreSQL index policy fixture`;
+    if (process.env.ALLOW_POSTGRES_TEST_SKIP === "1") {
+      t.skip(message);
+      return;
+    }
+    throw new Error(`${message}. Pull the image or set ALLOW_POSTGRES_TEST_SKIP=1 to skip explicitly.`);
   }
   // The name and port can be pinned before the run so the exact container is
   // recorded in advance. Unset, both stay random so parallel suite runs never
@@ -1183,4 +1187,35 @@ test("copied text matches and ranks only under a current allowing index policy",
       );
     }
   }
+});
+
+test("corpus index backfill yields when the capacity lock is busy", async () => {
+  const { backfillCorpusIndexVectors } = await import("../server/corpus_storage.mjs");
+  const statements = [];
+  const client = {
+    async query(query) {
+      const text = typeof query === "string" ? query : String(query?.text || "");
+      statements.push(text);
+      if (text === "BEGIN" || text === "COMMIT" || text === "ROLLBACK"
+        || text.startsWith("SET LOCAL statement_timeout")) {
+        return { rows: [] };
+      }
+      if (text.includes("pg_try_advisory_xact_lock")) {
+        return { rows: [{ locked: false }] };
+      }
+      if (text.includes("pg_advisory_xact_lock")) {
+        throw new Error("Query read timeout");
+      }
+      assert.fail(`backfill wrote rows while the capacity lock was busy: ${text}`);
+    },
+  };
+
+  const batch = await backfillCorpusIndexVectors(client, { limit: 1 });
+  assert.equal(batch.processed, 0);
+  assert.deepEqual(batch.processedIds, []);
+  assert.equal(batch.lastId, 0);
+  assert.equal(batch.complete, false);
+  assert.equal(batch.pending, true);
+  assert.ok(statements.some((text) => text.includes("pg_try_advisory_xact_lock")));
+  assert.ok(statements.every((text) => !text.includes("UPDATE practice_corpus_documents")));
 });
