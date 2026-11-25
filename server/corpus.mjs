@@ -26,6 +26,7 @@ import {
   crawlPortalSearch,
   crawlPortalSitemap,
   OFFICIAL_SITEMAP_SOURCES,
+  isRecoverablePortalSearchError,
   wikipediaDocuments,
 } from "./corpus_fetch.mjs";
 import {
@@ -153,7 +154,7 @@ export async function syncPortalCorpus({
           // The portal now disallows its search endpoint in robots.txt while
           // keeping the sitemap public. Respect that policy, keep the sitemap
           // and seed-query data, and do not fail the whole synchronization.
-          if (!isRobotsDisallowedCorpusError(error) && !/Corpus source returned 5\d\d/u.test(error.message)) throw error;
+          if (!isRecoverablePortalSearchError(error)) throw error;
           catalogSkipped = true;
           details.catalogSkipped = isRobotsDisallowedCorpusError(error) ? "robots-disallowed" : "source-unavailable";
         }
@@ -186,7 +187,7 @@ export async function syncPortalCorpus({
           });
           hydrationCandidates.push(...snapshot.distinctUrls);
         } catch (error) {
-          if (!isRobotsDisallowedCorpusError(error) && !/Corpus source returned 5\d\d/u.test(error.message)) throw error;
+          if (!isRecoverablePortalSearchError(error)) throw error;
           details.seedQueries[query] = { skipped: isRobotsDisallowedCorpusError(error) ? "robots-disallowed" : "source-unavailable" };
         }
       }

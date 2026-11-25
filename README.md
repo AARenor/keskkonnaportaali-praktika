@@ -137,7 +137,7 @@ redeploy'd. Täpne käituskeskkonna ja exact-SHA kontrolli kord:
 ## Kontroll
 
 ```bash
-npm test
+env -u DATABASE_URL -u DATABASE_SSL_MODE npm test
 npm run build
 npm run test:sites
 docker compose config

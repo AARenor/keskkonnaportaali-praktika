@@ -54,7 +54,7 @@ Kindlat kalendripäeva ei eeldata. Kontroll käivitatakse vähemalt kord kuus ni
 
 ## Teadmusväljavõtte uuendamine
 
-HTML-i korpusesünkroon kogub ka ainult saidikaardis olevaid lehti. Täissünkroon kasutab kuni kahte paralleelset hüdratsioonipäringut ja 400 ms pausi partiide vahel; taustakorje kasutab kuni kahte paralleelset päringut ja ühesekundilist pausi. `robots.txt`, `noindex` ja ümbersuunamise piirangud jäävad jõusse. Kui `robots.txt` keelab portaali otsinguotsa, jätkub sünkroon saidikaardi ja kataloogikirjetega ning jooksu detailidesse märgitakse `catalogSkipped: "robots-disallowed"`; keelatud rada ei avata ja vanu kirjeid ei eemaldata. Portaali tulemuste arvu vastuolu katkestab täissünkrooni: seda ei maskeerita eduka täieliku korjena. Korda kontrollitud seemnepäringutega; pooleli jooksnud töö ei anna kogu kataloogi vanade kirjete eemaldamise õigust.
+HTML-i korpusesünkroon kogub ka ainult saidikaardis olevaid lehti. Täissünkroon kasutab kuni kahte paralleelset hüdratsioonipäringut ja 400 ms pausi partiide vahel; taustakorje kasutab kuni kahte paralleelset päringut ja ühesekundilist pausi. `robots.txt`, `noindex` ja ümbersuunamise piirangud jäävad jõusse. Kui `robots.txt` keelab portaali otsinguotsa, jätkub sünkroon saidikaardi ja kataloogikirjetega ning jooksu detailidesse märgitakse `catalogSkipped: "robots-disallowed"`; keelatud rada ei avada ja vanu kirjeid ei eemaldata. Portaali tulemuste lehe puudulik või vastuoluline vastus proovitakse üks kord uuesti. Kui viga püsib, jätkatakse saidikaardi, ametlike sitemap'ide ja hüdratsiooniga, ning detailidesse märgitakse `catalogSkipped: "source-unavailable"` või seemnepäringu `skipped: "source-unavailable"`. Vanu kirjeid ei eemaldata poolelioleva kataloogikirje põhjal. Konfigureeritud lehe või dokumendilimiidi ületamine jääb töö katkestavaks ohutusveaks.
 
 Lehe `.publication-date-author` plokist säilitatakse väljaandja, `Avaldatud` ning `Uuendatud` kuupäev. Andmebaasi `metadata.source_updated_at` tähendab allika avaldatud leheuuendust. `fetched_at` tähendab meie korje aega ja saidikaardi `modified_at` on eraldi tehniline ajamärge; kumbagi ei nimetata avalikus vaates leheuuenduseks. Päev peab olema kalendris olemas. Uus metadata ilmub vanale kirjele alles pärast selle tegelikku uuesti laadimist.
 
@@ -243,7 +243,7 @@ Käivita mõjutatud allika-, grounding'u-, liikmesuse-, graafiku-, cache'i- ja l
 Avaliku kasutatud viite `evidenceExcerpt` peab olema sama immutable pack entry täielik `content`, mitte uus 900-märgiline aknavalik. Kontrolli algallika täisväidet koos ühiku, aasta, nimetaja ja kvalifikatsioonidega; kaitstava metsamaa ETAK-i 2024 range kaitse näitaja 16,8% sisaldab projekteeritavaid alasid. Mudeli/local/public piirid jäävad 10/4000/36000 juurde. Cache-envelope on `privacy-safe-v7` ning korduskontrollis peavad säilima sama allika `published`, `updated`, `dataYear`, `dataAsOf` ja locator; tundmatu `checkedAt` jääb `null`.
 
 ```bash
-npm test
+env -u DATABASE_URL -u DATABASE_SSL_MODE npm test
 npm run build
 npm run test:sites
 npm run eval:blind

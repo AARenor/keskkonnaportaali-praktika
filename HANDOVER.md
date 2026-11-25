@@ -12,7 +12,7 @@ Praktika on keskkonnaalaste ametlike allikate otsingu ja tõendipõhise vastuste
 | Server | `server/` | Otsing, allikapoliitika, korpuse haldamine, vastuse kontroll |
 | Andmebaas | PostgreSQL | Dokumendikataloog, sisu, allika identiteedid, otsinguindeks |
 | Korpuse sünkroonimine | `server/sync-corpus.mjs` | Ametlike sitemap'ide leidmine ja lehtede lugemine |
-| Juurutamine | Workflow salvestab eelmise revisioni, ootab vana konteineri seiskamist ja taastab eelmise versiooni, kui uus ei tule valmis | Push ei tõendanud veel tootmises uut koodi |
+| Juurutamine | Workflow salvestab eelmise revisioni, seiskab vana konteineri, ootab uut juurutust ja kontrollib elusversiooni | Commit `1c7891a` juurutati, Coolify märgis `finished`, elusloendur tagastas sama SHA |
 | Kasutusjuhend | `docs/KASUTUSJUHEND.md` | Lõppkasutaja juhend |
 | Tehniline hooldus | `docs/IT-HOOLDUS.md` | Käskused, piirid, tõrkeotsing |
 | Arhitektuur | `docs/ARHITEKTUUR.md` | Moodulid, andmevood ja piirangud |
@@ -35,19 +35,22 @@ Praktika on keskkonnaalaste ametlike allikate otsingu ja tõendipõhise vastuste
 
 ## Andmebaasi hetkeseis
 
-25. novembri 2026 hommikune audit enne viimast täitmist:
+25. novembri 2026 lõplik audit pärast kahte hüdratsioonikäivitust:
 
 | Näitaja | Väärtus |
 |---|---:|
 | Kataloogi read kokku | 44 420 |
-| Saadaoleva sisuga read | 42 095 |
+| Saadaoleva sisuga read | 42 200 |
+| Loetud sisuga read | 42 156 |
 | Avalike sitemap'ide leitud URL-e | 42 457 |
 | Andmebaasis leitud avalikke URL-e | 42 457 |
 | Andmebaasist puuduvad avalikud URL-id | 0 |
-| Avalikud URL-id ilma loetud sisuta | 846 |
+| Avalikud URL-id ilma loetud sisuta | 796 |
 | Poliitikaga väljajäetud sisu | 11 |
 | Vana viimase külastuse ajaga | 0 |
 | Ainult andmebaasis olevad URL-id | 192 |
+
+Esmase täitmise käigus töödeldi 1 000 kirjet: 73 sisu lisati, 433 jäi vahele ja 494 lugemist ebaõnnestus. Ametlike ja portaali sitemap'ide tühjade kirjete sihitud täitmise käigus töödeldi 767 kirjet: 0 sisu lisati, 283 jäi vahele ja 484 lugemist ebaõnnestus. Tõrked olid peamiselt HTTP vastused, robots keeld, liiga suured lehed ja allika poolt välja jäetud sisu. Näiteks kliimaministeeriumi renoveerimise lehel on `noindex`, mistõttu sisu ei salvestata.
 
 See on täielik URL katvus heakskiidetud ametlike allikate hulgas, mitte kogu interneti peegeldus. Allikate hulk on tahtlikult piiratud. Õigusaktide täisteksti ei salvestata: see loetakse iga kord Riigi Teataja voost.
 
@@ -55,12 +58,13 @@ See on täielik URL katvus heakskiidetud ametlike allikate hulgas, mitte kogu in
 
 | Kontroll | Käsk | Tulemus |
 |---|---|---|
-| Täisautomaattestid | `npm test` | 1445 läbitud, 0 ebaõnnestunud, 832,3 sekundit |
+| Täisautomaattestid | `env -u DATABASE_URL -u DATABASE_SSL_MODE npm test` | 1448 läbitud, 0 ebaõnnestunud, 810,9 sekundit |
 | Ehitus | `npm run build` | Läbitud, 1603 moodulit |
 | Sites ehitus | `npm run test:sites` | 3 läbitud, 0 ebaõnnestunud |
 | Workflow | `actionlint .github/workflows/deploy.yml` | Läbitud |
 | Andmebaasiühenduse test | `node --test tests/coolify_private_database_host.test.mjs` | Täisautomaattestide osa |
-| Korpuse katvus | `node scripts/audit-corpus-coverage.mjs --compare-public --fail-on-gap` | Käivitatakse pärast viimast täitmist |
+| Korpuse katvus | `node scripts/audit-corpus-coverage.mjs --compare-public --fail-on-gap` | Väljuskood 2: 0 puuduvat URL-i, 796 avalikku URL-i ilma loetud sisuta |
+| Avaliku otsingu kvaliteedivärav | `npm run eval:public` | 147/147, kõik viis näitajat 1,0 |
 | Sõltuvused | `npm audit --omit=dev` | 0 haavatavust |
 | Failisüsteem | `trivy fs --scanners vuln --quiet .` | `package-lock.json` jaoks 0 haavatavust |
 | Importitsüklid | `dep-cycles server src scripts` | Ei leitud tsükleid |
@@ -79,7 +83,7 @@ Kõik käsud käivitatakse repositooriumi juurkataloogist.
 | Ülesanne | Käsk |
 |---|---|
 | Kohalik arendus | `npm run dev` |
-| Täistestid | `npm test` |
+| Täistestid | `env -u DATABASE_URL -u DATABASE_SSL_MODE npm test` |
 | Ehitus | `npm run build` |
 | Korpuse sünkroonimine | `npm run sync:corpus -- --hydrate-limit=1000` |
 | Andmebaasi aruanne | `node scripts/audit-corpus-coverage.mjs` |
@@ -92,7 +96,7 @@ Tootmises vajab korpuse käsk `DATABASE_URL` ja `SEARCH_HASH_SECRET` väärtusi.
 ## Teadaolevad piirangud
 
 - Otsing on eestikeelne, kuni `MULTILINGUAL_SEARCH_ENABLED=true` ei ole juurutatud.
-- Avalik otsing vastab ainult metsaküsimustele. Muude teemade puhul näidatakse tulemusi ja sõnumit, et vastust ei leitud.
+- Avalik otsing tugineb heakskiidetud allikatele ja teemadele. Kui piisavat tõendit ei leita, näidatakse tulemusi ja sõnumit, et vastust ei leitud.
 - PDF sisu loetakse piiratud mahus, lehekülgede arvus ja ajaga. Skaneeritud PDF ilma tekstikihita jääb otsimata.
 - Korpuse katvuse aruanne kontrollib ainult heakskiidetud allikate sitemap'e.
 - Andmebaasis olevad vanad dokumendid ei ole automaatselt avalike sitemap'ide osa. Need kustutatakse alles allika poliitika ja säilitusreeglite järgi.

@@ -263,14 +263,57 @@ export async function fetchPortalSearchPage(query, page, pageSize = PORTAL_PAGE_
   return parsePortalSearchPage(response.text, response.finalUrl);
 }
 
-export async function crawlPortalSearch(query, onDocuments, { concurrency = 2, delayMs = 120 } = {}) {
-  const first = await fetchPortalSearchPage(query, 0);
-  if ((!query && first.total === 0) || (first.total > 0 && first.documents.length === 0)) {
-    throw new Error("Portal search returned an incomplete first page");
+function portalSearchUnavailableError(message) {
+  const error = new Error(message);
+  error.code = "CORPUS_PORTAL_SEARCH_UNAVAILABLE";
+  return error;
+}
+
+export function isRecoverablePortalSearchError(error) {
+  return error?.code === "CORPUS_PORTAL_SEARCH_UNAVAILABLE"
+    || error?.code === "CORPUS_ROBOTS_DISALLOWED"
+    || /^Corpus source returned 5\d\d$/u.test(String(error?.message || ""));
+}
+
+async function fetchConsistentPortalSearchPage(query, page, { expectedTotal, retryDelayMs }) {
+  let lastError;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    let result;
+    try {
+      result = await fetchPortalSearchPage(query, page);
+    } catch (error) {
+      if (!/^Portal search returned/u.test(String(error?.message || ""))) throw error;
+      lastError = portalSearchUnavailableError(error.message);
+      if (attempt === 0 && retryDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      }
+      continue;
+    }
+    let problem = "";
+    if (page === 0) {
+      if ((!query && result.total === 0) || (result.total > 0 && result.documents.length === 0)) {
+        problem = "Portal search returned an incomplete first page";
+      } else if ((result.total === 0 && result.documents.length > 0) || result.documents.length > result.total) {
+        problem = "Portal search returned an inconsistent result count";
+      }
+    } else if (page * PORTAL_PAGE_SIZE < expectedTotal && result.documents.length === 0) {
+      problem = "Portal search returned an incomplete result page";
+    }
+    if (!problem) return result;
+    lastError = portalSearchUnavailableError(problem);
+    if (attempt === 0 && retryDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    }
   }
-  if ((first.total === 0 && first.documents.length > 0) || first.documents.length > first.total) {
-    throw new Error("Portal search returned an inconsistent result count");
-  }
+  throw lastError;
+}
+
+export async function crawlPortalSearch(query, onDocuments, {
+  concurrency = 2,
+  delayMs = 120,
+  retryDelayMs = 250,
+} = {}) {
+  const first = await fetchConsistentPortalSearchPage(query, 0, { retryDelayMs });
   await onDocuments(first.documents, 0);
   const orderedUrls = first.documents.map((document) => document.url);
   const seenUrls = new Set(orderedUrls);
@@ -285,12 +328,12 @@ export async function crawlPortalSearch(query, onDocuments, { concurrency = 2, d
     for (let page = offset; page < Math.min(pages, offset + boundedConcurrency); page += 1) {
       pageNumbers.push(page);
     }
-    const results = await Promise.all(pageNumbers.map((page) => fetchPortalSearchPage(query, page)));
+    const results = await Promise.all(pageNumbers.map((page) => fetchConsistentPortalSearchPage(query, page, {
+      expectedTotal: first.total,
+      retryDelayMs,
+    })));
     let stopPaging = false;
     for (const [index, result] of results.entries()) {
-      if (pageNumbers[index] * PORTAL_PAGE_SIZE < first.total && result.documents.length === 0) {
-        throw new Error("Portal search returned an incomplete result page");
-      }
       if (orderedUrls.length + result.documents.length > MAX_PORTAL_CATALOG_TOTAL) {
         throw new Error("Portal search exceeds the configured document limit");
       }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { registerHooks } from "node:module";
+import { randomBytes } from "node:crypto";
 
 import { observeSourcePolicy } from "../server/source_policy.mjs";
 // The audit is the read-only proof that every URL advertised by the approved
@@ -260,7 +261,12 @@ test("loads the sitemap crawler only when compare mode needs it", async () => {
 
   // Control: the hook sees a deliberate import, so the empty list above proves
   // laziness rather than a broken hook.
-  await import("../server/corpus_fetch.mjs");
+  process.env.SEARCH_HASH_SECRET = randomBytes(32).toString("base64url");
+  try {
+    await import("../server/corpus_fetch.mjs");
+  } finally {
+    delete process.env.SEARCH_HASH_SECRET;
+  }
   assert.equal(corpusFetchResolutions.length, 1);
 });
 
