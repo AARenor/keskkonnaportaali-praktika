@@ -121,6 +121,17 @@ export function isForestNoticeFilingPassage(text) {
     || /\btaida\s+metsateatise\s+vorm\b/u.test(value);
 }
 
+// A model answer can quote a visible notice sentence that is irrelevant to
+// the user's actual question. Only a question that asks about the notice may
+// keep that wording, even when the cited passage itself is admissible.
+export function noticeAnswerWithoutNoticeIntent(query, text) {
+  const asked = normalize(query);
+  if (/\b(?:metsateatis|raieteatis)\w*/u.test(asked)) return false;
+  if (/\b(?:luba|lubaa|lubaks|raie\w*)\b/u.test(asked)) return false;
+  if (analyzeQueryIntent(query).topic === "forest_notice") return false;
+  return isForestNoticeFilingPassage(text);
+}
+
 function shortenedQueryWords(query, terms) {
   return normalize(query).split(/\s+/u).filter((word) => word.length >= 7
     && terms.some((term) => {

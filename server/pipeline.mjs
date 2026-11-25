@@ -51,7 +51,7 @@ import {
 } from "./retrieval_ranking.mjs";
 import { resultPublishedAt } from "./retrieval_deduplication.mjs";
 import { prepareRankedSearchResults } from "./retrieval.mjs";
-import { answersAskedConcept, extractAnswersQuery, givesAskedAmount, isForestNoticeFilingPassage, isNonAnswerText, namesAskedAgeClass, namesAskedClearcut, namesDefinitionTerm, rawLawLeadAnswersQuery } from "./answer_coverage.mjs";
+import { answersAskedConcept, extractAnswersQuery, givesAskedAmount, isForestNoticeFilingPassage, isNonAnswerText, namesAskedAgeClass, namesAskedClearcut, namesDefinitionTerm, noticeAnswerWithoutNoticeIntent, rawLawLeadAnswersQuery } from "./answer_coverage.mjs";
 import { canonicalizePublicSearchQuery } from "./search_query_canonicalization.mjs";
 import {
   assessSearchQuery,
@@ -161,7 +161,7 @@ function fanoutCountsFromListing(searchResults) {
 
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v115-ai-mode-fanout";
+export const SEARCH_RESPONSE_REVISION = "answer-v116-unrelated-notice-answer";
 
 // Cards that only quote a source passage, as opposed to a structured figure or
 // a reviewed law card. Only these are withdrawn after an intent rejection.
@@ -1060,11 +1060,15 @@ async function searchWithinBudget(cleanQuery, {
     // supported by the bounded excerpt a reader can actually inspect.
     visibleCheck = !answerClaimsHaveVisibleWitnesses(modelDraft) ? "visible-witness-missing"
       : !answerCardAnswersQuery(modelDraft, retrievalQuery, { deterministicEvidence: false }) ? "asked-concept-missing"
-        : repeatsOffTargetLead(draft, answerCardText(modelDraft)) ? "repeats-off-target-lead" : "";
+        : noticeAnswerWithoutNoticeIntent(cleanQuery, answerCardText(modelDraft)) ? "unrelated-notice-in-answer"
+          : repeatsOffTargetLead(draft, answerCardText(modelDraft)) ? "repeats-off-target-lead" : "";
     visibleRejected = Boolean(visibleCheck);
     draft = visibleRejected ? withoutRawLawSection(deterministicDraft) : modelDraft;
   } else {
     draft = withoutRawLawSection(deterministicDraft);
+  }
+  if (noticeAnswerWithoutNoticeIntent(cleanQuery, answerCardText(draft))) {
+    draft = { ...draft, answer: { ...draft.answer, eyebrow: NO_ANSWER_EYEBROW, intro: NO_ANSWER_INTRO, introCitations: [], parts: [], note: "" }, clarification: null };
   }
   // The model's answer was turned down because it did not answer the question
   // (no amount, wrong place, other intent). The source card shown instead must
