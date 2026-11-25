@@ -476,7 +476,7 @@ jobs:
           echo "${PUBLIC_URL}/build.json returned HTTP 200"
 
       - name: Recover previous production revision
-        if: ${{ failure() && steps.stop.outputs.requested == 'true' && steps.readiness.outputs.ready != 'true' }}
+        if: ${{ always() && (failure() || cancelled()) && steps.stop.outputs.requested == 'true' && steps.readiness.outputs.ready != 'true' }}
         env:
           COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
           PREVIOUS_REVISION: ${{ steps.previous.outputs.revision }}

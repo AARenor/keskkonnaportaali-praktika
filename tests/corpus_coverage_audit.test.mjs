@@ -629,9 +629,11 @@ test("bounds the databaseOnly query and keeps the exact count", async () => {
 });
 
 test("enforces one deadline across crawling and database work", async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
   const crawlers = {
     async crawlPortalSitemap() {
-      await new Promise((resolve) => setTimeout(resolve, 40));
+      await gate;
       return { documents: PORTAL_DOCS.map((url) => ({ url })), pages: 2 };
     },
     async crawlOfficialSitemap({ url }) {
@@ -639,10 +641,14 @@ test("enforces one deadline across crawling and database work", async () => {
       return { documents: documents.map((value) => ({ url: value })), pages: 1 };
     },
   };
-  await assert.rejects(
-    () => audit({ argv: ["--compare-public"], crawlers, deadlineMs: 5 }),
-    /audit deadline exceeded/u,
-  );
+  try {
+    await assert.rejects(
+      () => audit({ argv: ["--compare-public"], crawlers, deadlineMs: 25 }),
+      /audit deadline exceeded/u,
+    );
+  } finally {
+    release();
+  }
 });
 
 test("keeps the database coverage output unchanged without --compare-public", async () => {

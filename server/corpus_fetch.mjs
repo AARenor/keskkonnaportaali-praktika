@@ -385,14 +385,8 @@ export async function crawlOfficialSitemap({ url, sourceKey, delayMs = 120 } = {
     });
     const parsed = parseOfficialSitemapDocument(response.text);
     pages += 1;
-    if (parsed.indexUrls.length) {
-      queue.push(...parsed.indexUrls.filter((child) => !seenSitemaps.has(child)).slice(0, MAX_OFFICIAL_SITEMAP_PAGES));
-      continue;
-    }
-    if (!parsed.entries.length) {
-      if (pages === 1) throw new Error("Official sitemap returned no usable URLs");
-      continue;
-    }
+    // A sitemap document can advertise both child indexes and pages. Read its
+    // own pages first; expanding the indexes must not discard them.
     for (const entry of parsed.entries) {
       if (seenUrls.has(entry.url)) continue;
       seenUrls.add(entry.url);
@@ -406,6 +400,14 @@ export async function crawlOfficialSitemap({ url, sourceKey, delayMs = 120 } = {
         quality: 1,
         metadata: { source_kind: "official-sitemap", placeholder: true },
       }));
+    }
+    if (parsed.indexUrls.length) {
+      queue.push(...parsed.indexUrls.filter((child) => !seenSitemaps.has(child)).slice(0, MAX_OFFICIAL_SITEMAP_PAGES));
+      continue;
+    }
+    if (!parsed.entries.length) {
+      if (pages === 1) throw new Error("Official sitemap returned no usable URLs");
+      continue;
     }
     if (delayMs > 0 && queue.length) await new Promise((resolve) => setTimeout(resolve, delayMs));
   }

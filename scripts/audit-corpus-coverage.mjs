@@ -27,7 +27,12 @@ function createAuditDeadline(deadlineMs = DEFAULT_AUDIT_DEADLINE_MS) {
     ? Math.max(1, Math.min(Math.trunc(deadlineMs), 2_147_483_647))
     : DEFAULT_AUDIT_DEADLINE_MS;
   const expiresAt = performance.now() + duration;
-  const remainingMs = () => Math.max(0, expiresAt - performance.now());
+  let expired = false;
+  const expire = () => {
+    expired = true;
+    return deadlineError();
+  };
+  const remainingMs = () => expired ? 0 : Math.max(0, expiresAt - performance.now());
   const check = () => {
     if (remainingMs() <= 0) throw deadlineError();
   };
@@ -35,7 +40,7 @@ function createAuditDeadline(deadlineMs = DEFAULT_AUDIT_DEADLINE_MS) {
     check();
     let timer;
     const timeout = new Promise((_, reject) => {
-      timer = setTimeout(() => reject(deadlineError()), remainingMs());
+      timer = setTimeout(() => reject(expire()), remainingMs());
     });
     try {
       return await Promise.race([Promise.resolve().then(operation), timeout]);
