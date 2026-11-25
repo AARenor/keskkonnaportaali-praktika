@@ -613,7 +613,7 @@ export async function searchCorpus(query, {
     const candidateSql = buildCorpusCandidateQuery({
       vectorLayout: CORPUS_VECTOR_LAYOUT,
       officialDiscoveryRetentionHours: OFFICIAL_DISCOVERY_RETENTION_HOURS,
-      corpusIndexPolicySql,
+      indexAllowedSql: corpusIndexPolicySql("document"),
       orderClause,
     });
     const [resultState, facetState] = await Promise.allSettled([

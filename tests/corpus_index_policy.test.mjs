@@ -1175,6 +1175,60 @@ test("copied text matches and ranks only under a current allowing index policy",
       WHERE canonical_url = $1
     `, [hydratedUrl]);
     assert.equal(await corpusRuntime.validateRetainedCorpusWindow(retained, {}, { items: retainedItems }), false);
+
+    // The stored decision must agree with the old static witness, including a
+    // legacy row whose readable directive is absent. A flag-only update then
+    // denies copied-text indexing without changing the visible policy witness.
+    const legacyPolicy = currentPolicy(fetchedAt);
+    delete legacyPolicy.directives.readable;
+    const allowedUrl = `${ORIGIN}/et/mets/markerbodyallowed`;
+    const deniedUrl = `${ORIGIN}/et/mets/markerbodydenied`;
+    const legacyUrl = `${ORIGIN}/et/mets/markerbodylegacy`;
+    for (const [externalId, path, body, sourcePolicy] of [
+      ["body-flag-allowed", "/et/mets/markerbodyallowed", "Ametlik lubatud keha, mille ainus otsingumärk on markerbodyallowed koos muu tekstiga.", policy],
+      ["body-flag-denied", "/et/mets/markerbodydenied", "Ametlik keha, mille ainus otsingumärk on markerbodydenied koos muu tekstiga.", policy],
+      ["body-flag-legacy", "/et/mets/markerbodylegacy", "Ametlik keha, mille ainus otsingumärk on markerbodylegacy koos muu tekstiga.", legacyPolicy],
+    ]) {
+      await insertRow(admin, {
+        externalId,
+        path,
+        title: "Ametlik indeksileht",
+        content: body,
+        fetchedAt,
+        metadata: { hydrated: true, source_kind: "official-page-hydration", source_policy: sourcePolicy },
+      });
+    }
+    const parity = await admin.query(`
+      SELECT document.canonical_url AS url,
+             document.body_index_allowed AS stored,
+             ${corpusStorage.corpusIndexPolicyStaticSql("document")} AS expected
+      FROM practice_corpus_documents AS document
+      WHERE document.canonical_url = ANY($1::TEXT[])
+      ORDER BY document.canonical_url
+    `, [[allowedUrl, deniedUrl, legacyUrl]]);
+    assert.equal(parity.rows.length, 3);
+    for (const row of parity.rows) {
+      const expected = row.url === legacyUrl ? false : true;
+      assert.equal(row.stored, expected);
+      assert.equal(row.expected, expected);
+    }
+    await admin.query(`
+      UPDATE practice_corpus_documents
+      SET body_index_allowed = FALSE
+      WHERE canonical_url = $1
+    `, [deniedUrl]);
+    const deniedDecision = await admin.query(`
+      SELECT document.body_index_allowed AS stored,
+             ${corpusStorage.corpusIndexPolicySql("document")} AS full_policy
+      FROM practice_corpus_documents AS document
+      WHERE canonical_url = $1
+    `, [deniedUrl]);
+    assert.equal(deniedDecision.rows[0].stored, false);
+    assert.equal(deniedDecision.rows[0].full_policy, false);
+    const allowedListing = await corpusRuntime.searchCorpus("markerbodyallowed", { preferSnapshot: false });
+    assert.ok(allowedListing.items.some((item) => item.url === allowedUrl));
+    const deniedListing = await corpusRuntime.searchCorpus("markerbodydenied", { preferSnapshot: false });
+    assert.equal(deniedListing.items.some((item) => item.url === deniedUrl), false);
   } finally {
     await admin?.end().catch(() => undefined);
     // Only the container this run created is removed. A failed start, including

@@ -585,6 +585,10 @@ export async function createPortalDraft(query, {
     draft.answer.intro = directExtract;
     draft.answer.introCitations = [directCitation];
   }
+  // A reviewed fallback can pass the final card check even when an earlier
+  // lexical witness marked its lead as off target. Release that marker before
+  // any blanking, because a blank card short circuits the same check.
+  releaseAcceptedOffTargetIntro(draft, retrievalQuery);
   // Every route above can fill the card, so this rule check runs after all of
   // them. The model may still answer from the same sources.
   if (!answerCardAnswersQuery(draft, retrievalQuery)) {
@@ -720,6 +724,13 @@ function answerCardAnswersQuery(draft, query, { deterministicEvidence = true } =
     && namesDefinitionTerm(query, intro)
     && rawLawLeadAnswersQuery(query, intro)
     && (municipalComparison || comparisonAnswersQuery(query, text, comparisonEvidenceKind));
+}
+
+export function releaseAcceptedOffTargetIntro(draft, query) {
+  if (draft?.evidence?.offTargetIntro && answerCardAnswersQuery(draft, query)) {
+    delete draft.evidence.offTargetIntro;
+  }
+  return draft;
 }
 
 

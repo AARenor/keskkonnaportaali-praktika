@@ -154,14 +154,31 @@ export function corpusPolicyWitnessSql(alias) {
     ), false)`;
 }
 
-export function corpusIndexPolicySql(alias) {
+export function corpusIndexPolicyStaticSql(alias) {
   const row = String(alias);
-  return `((${row}.search_vector_policy = '${CORPUS_VECTOR_LAYOUT}'
+  // The stored flag is derived from this expression on every corpus write.
+  // It deliberately excludes the availability clock, which is evaluated at
+  // query time so an expired publisher decision stops matching immediately.
+  return `COALESCE((${row}.search_vector_policy = '${CORPUS_VECTOR_LAYOUT}'
     AND ${corpusPolicyWitnessSql(row)}
     AND ${row}.metadata->'source_policy'->'directives'->>'noindex' = 'false'
     AND ${row}.metadata->'source_policy'->'directives'->>'readable' = 'true'
     AND ${row}.metadata->'source_policy'->'use'->>'indexBody' = 'true'
-    AND ${row}.metadata->'source_policy'->'robots'->>'status' IN ('allowed', 'absent', 'not-applicable')
+    AND ${row}.metadata->'source_policy'->'robots'->>'status' IN ('allowed', 'absent', 'not-applicable')), false)`;
+}
+
+export function corpusBodyIndexAllowedSql(alias) {
+  const row = String(alias);
+  // A row written before the flag existed has NULL here, so it falls back to
+  // the same static expression the backfill writes. Backfilled rows take the
+  // cheap branch and never reparse their policy witness during search.
+  return `COALESCE(${row}.body_index_allowed, ${corpusIndexPolicyStaticSql(row)})`;
+}
+
+export function corpusIndexPolicySql(alias, { staticOnly = false } = {}) {
+  const row = String(alias);
+  if (staticOnly) return corpusIndexPolicyStaticSql(row);
+  return `((${corpusBodyIndexAllowedSql(row)}
     -- Availability is a clock, not a write. A body indexed before its deadline
     -- stops qualifying at the deadline even when no later write touches the row.
     -- pg_input_is_valid needs PostgreSQL 16 or newer; the deployed image is 17.
@@ -377,6 +394,12 @@ export async function ensureCorpusSchema() {
         ALTER TABLE practice_corpus_documents
           ADD COLUMN IF NOT EXISTS search_vector_policy TEXT;
 
+        -- Nullable on purpose. Pre-existing rows keep a NULL until the explicit
+        -- backfill runs, and search falls back to the same static expression
+        -- for those rows. Adding a nullable Boolean is metadata only.
+        ALTER TABLE practice_corpus_documents
+          ADD COLUMN IF NOT EXISTS body_index_allowed BOOLEAN;
+
         -- The safe navigation fields and the permitted copied text live in two
         -- vectors, so withdrawing permission never removes title, category,
         -- organization or topic navigation from search. A constant default makes
@@ -392,6 +415,7 @@ export async function ensureCorpusSchema() {
           -- The marker is written first because the shared gate reads it; a row
           -- being written now always carries the current vector layout.
           NEW.search_vector_policy := '${CORPUS_VECTOR_LAYOUT}';
+          NEW.body_index_allowed := ${corpusIndexPolicyStaticSql("NEW")};
           policy_allows_copy := ${corpusIndexPolicySql("NEW")};
           -- Title and the independently authored navigation columns are always
           -- indexed, so a restricted or not yet migrated row stays findable by
@@ -913,46 +937,53 @@ export async function upsertDocuments(
       INSERT INTO practice_corpus_documents AS current (
         external_id, source_key, canonical_url, title, summary, content, category,
         organization, published_at, published_label, modified_at, topics, source_tier,
-        language, metadata_quality, metadata, content_hash, last_seen_run
+        language, metadata_quality, metadata, content_hash, body_index_allowed, last_seen_run
       )
       SELECT
-        item.external_id,
-        item.source_key,
-        item.canonical_url,
-        item.title,
-        item.summary,
-        item.content,
-        item.category,
-        item.organization,
-        NULLIF(item.published_at, '')::DATE,
-        item.published_label,
-        NULLIF(item.modified_at, '')::TIMESTAMPTZ,
-        COALESCE(ARRAY(SELECT jsonb_array_elements_text(item.topics)), ARRAY[]::TEXT[]),
-        item.source_tier,
-        item.language,
-        item.metadata_quality,
-        item.metadata,
-        item.content_hash,
+        incoming.external_id,
+        incoming.source_key,
+        incoming.canonical_url,
+        incoming.title,
+        incoming.summary,
+        incoming.content,
+        incoming.category,
+        incoming.organization,
+        NULLIF(incoming.published_at, '')::DATE,
+        incoming.published_label,
+        NULLIF(incoming.modified_at, '')::TIMESTAMPTZ,
+        COALESCE(ARRAY(SELECT jsonb_array_elements_text(incoming.topics)), ARRAY[]::TEXT[]),
+        incoming.source_tier,
+        incoming.language,
+        incoming.metadata_quality,
+        incoming.metadata,
+        incoming.content_hash,
+        ${corpusIndexPolicyStaticSql("incoming")},
         $2
-      FROM jsonb_to_recordset($1::JSONB) AS item(
-        external_id TEXT,
-        source_key TEXT,
-        canonical_url TEXT,
-        title TEXT,
-        summary TEXT,
-        content TEXT,
-        category TEXT,
-        organization TEXT,
-        published_at TEXT,
-        published_label TEXT,
-        modified_at TEXT,
-        topics JSONB,
-        source_tier TEXT,
-        language TEXT,
-        metadata_quality SMALLINT,
-        metadata JSONB,
-        content_hash TEXT
-      )
+      FROM (
+        SELECT
+          item.*,
+          '${CORPUS_VECTOR_LAYOUT}'::TEXT AS search_vector_policy,
+          NOW()::TIMESTAMPTZ AS fetched_at
+        FROM jsonb_to_recordset($1::JSONB) AS item(
+          external_id TEXT,
+          source_key TEXT,
+          canonical_url TEXT,
+          title TEXT,
+          summary TEXT,
+          content TEXT,
+          category TEXT,
+          organization TEXT,
+          published_at TEXT,
+          published_label TEXT,
+          modified_at TEXT,
+          topics JSONB,
+          source_tier TEXT,
+          language TEXT,
+          metadata_quality SMALLINT,
+          metadata JSONB,
+          content_hash TEXT
+        )
+      ) AS incoming
       ON CONFLICT (canonical_url) DO UPDATE SET
         external_id = CASE
           WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search'
@@ -1040,6 +1071,8 @@ export async function upsertDocuments(
           WHEN EXCLUDED.source_key = 'official-live-search' AND current.source_key <> 'official-live-search' THEN current.fetched_at
           WHEN current.source_key = 'official-live-search' AND EXCLUDED.source_key <> 'official-live-search' THEN NOW()
           WHEN EXCLUDED.metadata_quality >= current.metadata_quality AND EXCLUDED.content <> '' THEN NOW() ELSE current.fetched_at END,
+        -- The vector trigger recomputes this from the merged row afterward.
+        body_index_allowed = EXCLUDED.body_index_allowed,
         last_seen_at = NOW(),
         last_seen_run = EXCLUDED.last_seen_run,
         is_available = TRUE

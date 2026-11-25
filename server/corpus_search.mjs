@@ -3,10 +3,12 @@ export const CORPUS_SEARCH_QUERY_VERSION = "corpus-search-window-v1";
 export function buildCorpusCandidateQuery({
   vectorLayout,
   officialDiscoveryRetentionHours,
-  corpusIndexPolicySql,
+  indexAllowedSql,
   orderClause,
 }) {
-  const indexAllowed = corpusIndexPolicySql("document");
+  // The caller passes the stored-flag expression, so each repeated use below
+  // stays identical and unbackfilled rows still evaluate the static witness.
+  const indexAllowed = indexAllowedSql;
   return `
       WITH parameters AS (
         SELECT

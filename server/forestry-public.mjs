@@ -886,6 +886,8 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
     || (!hasIncrement && /\b(?:meetodiga|moodab\w*)\b/u.test(text)))) {
     return resolved("smi-method-comparison");
   }
+  if (hasForest && asksForestMeasurementMethod && !hasIncrement && !hasHarvest
+    && !regionalScope && !municipalityScope) return resolved("smi-method-comparison");
   if (hasStock && (/\b(?:uks|kindel|vaieldamatu|tapselt|tapne)\b[\s\S]{0,50}\b(?:numb\w*|arv\w*|hinnang\w*)\b/u.test(text)
     || /\b(?:ebakindl\w*|veapiir\w*|usaldusvahem\w*|tapsus\w*|tapne|hinnangu\s+viga)\b/u.test(text))) {
     return resolved("forest-stock-uncertainty");

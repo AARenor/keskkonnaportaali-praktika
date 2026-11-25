@@ -61,3 +61,8 @@ test("inflected raieteatis forms are covered by the shared reviewed list", () =>
     "Raieteatise esitamine toimub Metsaportaalis.",
   ), true);
 });
+
+test("a general forest method question keeps the national method route", () => {
+  assert.equal(resolvePublicForestryIntent("Millise meetodiga mõõdetakse Eesti metsa?")?.kind, "smi-method-comparison");
+  assert.equal(resolvePublicForestryIntent("Kuidas metsa mõõdetakse Soomes?"), null);
+});

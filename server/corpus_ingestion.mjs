@@ -17,6 +17,8 @@ import {
   OFFICIAL_DISCOVERY_DELETE_SQL,
   OFFICIAL_DISCOVERY_RETIRE_SQL,
   OFFICIAL_DISCOVERY_RETENTION_HOURS,
+  CORPUS_VECTOR_LAYOUT,
+  corpusIndexPolicySql,
   REVIEWED_CATALOGUE_SOURCE_KEY,
   ensureCorpusSchema,
   planCorpusDocumentAdmission,
@@ -384,46 +386,53 @@ export async function seedReviewedCatalogueDocuments(client, runId, options = {}
         INSERT INTO practice_corpus_documents AS current (
           external_id, source_key, canonical_url, title, summary, content, category,
           organization, published_at, published_label, modified_at, topics, source_tier,
-          language, metadata_quality, metadata, content_hash, last_seen_run
+          language, metadata_quality, metadata, content_hash, body_index_allowed, last_seen_run
         )
         SELECT
-          item.external_id,
-          item.source_key,
-          item.canonical_url,
-          item.title,
-          item.summary,
-          item.content,
-          item.category,
-          item.organization,
-          NULLIF(item.published_at, '')::DATE,
-          item.published_label,
-          NULLIF(item.modified_at, '')::TIMESTAMPTZ,
-          COALESCE(ARRAY(SELECT jsonb_array_elements_text(item.topics)), ARRAY[]::TEXT[]),
-          item.source_tier,
-          item.language,
-          item.metadata_quality,
-          item.metadata,
-          item.content_hash,
+          incoming.external_id,
+          incoming.source_key,
+          incoming.canonical_url,
+          incoming.title,
+          incoming.summary,
+          incoming.content,
+          incoming.category,
+          incoming.organization,
+          NULLIF(incoming.published_at, '')::DATE,
+          incoming.published_label,
+          NULLIF(incoming.modified_at, '')::TIMESTAMPTZ,
+          COALESCE(ARRAY(SELECT jsonb_array_elements_text(incoming.topics)), ARRAY[]::TEXT[]),
+          incoming.source_tier,
+          incoming.language,
+          incoming.metadata_quality,
+          incoming.metadata,
+          incoming.content_hash,
+          ${corpusIndexPolicySql("incoming", { staticOnly: true })},
           $2
-        FROM jsonb_to_recordset($1::JSONB) AS item(
-          external_id TEXT,
-          source_key TEXT,
-          canonical_url TEXT,
-          title TEXT,
-          summary TEXT,
-          content TEXT,
-          category TEXT,
-          organization TEXT,
-          published_at TEXT,
-          published_label TEXT,
-          modified_at TEXT,
-          topics JSONB,
-          source_tier TEXT,
-          language TEXT,
-          metadata_quality SMALLINT,
-          metadata JSONB,
-          content_hash TEXT
-        )
+        FROM (
+          SELECT
+            item.*,
+            '${CORPUS_VECTOR_LAYOUT}'::TEXT AS search_vector_policy,
+            NOW()::TIMESTAMPTZ AS fetched_at
+          FROM jsonb_to_recordset($1::JSONB) AS item(
+            external_id TEXT,
+            source_key TEXT,
+            canonical_url TEXT,
+            title TEXT,
+            summary TEXT,
+            content TEXT,
+            category TEXT,
+            organization TEXT,
+            published_at TEXT,
+            published_label TEXT,
+            modified_at TEXT,
+            topics JSONB,
+            source_tier TEXT,
+            language TEXT,
+            metadata_quality SMALLINT,
+            metadata JSONB,
+            content_hash TEXT
+          )
+        ) AS incoming
         ON CONFLICT (canonical_url) DO UPDATE SET
           external_id = EXCLUDED.external_id,
           source_key = EXCLUDED.source_key,
@@ -440,6 +449,8 @@ export async function seedReviewedCatalogueDocuments(client, runId, options = {}
           metadata = current.metadata || EXCLUDED.metadata,
           content_hash = CASE WHEN current.content <> '' THEN current.content_hash ELSE EXCLUDED.content_hash END,
           fetched_at = CASE WHEN current.content <> '' THEN current.fetched_at ELSE NOW() END,
+          -- The vector trigger recomputes this from the merged row afterward.
+          body_index_allowed = EXCLUDED.body_index_allowed,
           last_seen_at = NOW(),
           last_seen_run = COALESCE($2, current.last_seen_run),
           is_available = TRUE
