@@ -17,10 +17,10 @@ function answerPartKey(part) {
   return part.id || `${part.role || "part"}:${part.step || ""}:${part.title || ""}:${part.text}`;
 }
 
-function PartTitle({ children, headingLevel, className }) {
+function PartTitle({ children, headingLevel }) {
   if (!children) return null;
   const Heading = headingLevel === "h4" ? "h4" : "h2";
-  return <Heading className={className}>{children}</Heading>;
+  return <Heading>{children}</Heading>;
 }
 
 function procedureStepHeading(part) {
@@ -31,12 +31,11 @@ function procedureStepHeading(part) {
 export default function AnswerParts({ answer, sources = [], Citation, headingLevel = "h2" }) {
   const { format, sections, steps } = answerPartsPresentation(answer);
   if (!sections.length && !steps.length) return null;
-  const titleClass = headingLevel === "h4" ? "chatbot__part-title" : undefined;
   return (
     <div className={`answer-parts answer-parts--${format}`}>
       {sections.map((part) => (
         <section key={answerPartKey(part)}>
-          <PartTitle className={titleClass} headingLevel={headingLevel}>{part.title}</PartTitle>
+          <PartTitle headingLevel={headingLevel}>{part.title}</PartTitle>
           <p><CitedText Citation={Citation} part={part} sources={sources} /></p>
         </section>
       ))}
@@ -44,7 +43,7 @@ export default function AnswerParts({ answer, sources = [], Citation, headingLev
         <ol aria-label="Protseduuri sammud" className="answer-procedure-steps">
           {steps.map((part) => (
             <li key={answerPartKey(part)} value={part.step}>
-              <PartTitle className={titleClass} headingLevel={headingLevel}>{procedureStepHeading(part)}</PartTitle>
+              <PartTitle headingLevel={headingLevel}>{procedureStepHeading(part)}</PartTitle>
               <p><CitedText Citation={Citation} part={part} sources={sources} /></p>
             </li>
           ))}

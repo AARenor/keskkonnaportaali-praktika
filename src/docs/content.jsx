@@ -94,23 +94,6 @@ export const userGuide = {
       </>,
     },
     {
-      id: "vestlus",
-      title: "Vestlus eraldi aknas",
-      content: <>
-        <p>Avalehel ja otsinguvaates <code>/otsi</code> on nupp „Ava vestlus”. See avab vestlusakna, mis kasutab sama allikapõhist otsingut ega asenda tavalist otsingut: põhiotsing jääb lehele alles ja töötab vestlusest sõltumata.</p>
-        <ul>
-          <li><strong>Esimene küsimus</strong> läheb samasse otsingusse kui põhivorm. Vastus, nummerdatud viited, diagramm ja võimalik täpsustuspalve on samad, mida näed otsingutulemuse juures.</li>
-          <li><strong>Iga järgmine küsimus</strong> teeb uue tõendiotsingu. Varasemad küsimused aitavad teemat täpsustada, kuid varasem vastus ei muutu uue väite tõendiks.</li>
-          <li><strong>Kuni neli jätkuküsimust</strong> ühe vestluse kohta. Kui piir saab täis, pakub aken uue vestluse alustamist.</li>
-          <li><strong>„Uus vestlus”</strong> tühjendab sõnumid, pooleliolevad päringud ja varasema konteksti.</li>
-        </ul>
-        <p>Vestlusaken pakub alguses ja iga vastuse järel ainult eelnevalt üle vaadatud metsaküsimusi, mis seostuvad selle küsimuse ja selle vestlusega. Juba küsitud küsimust uuesti ei pakuta, ja kui sobivat küsimust ei ole, jääb pakkumiste rida lühemaks või kaob sootuks. Valik tehakse brauseris: see ei tee uut võrgupäringut, ei kutsu mudelit ega salvesta profiili ega ajalugu.</p>
-        <p>Vestlusakna sulgemine ja uuesti avamine hoiab selle lehe sõnumid alles. Lehe uuendamisel kaovad need brauseri mälust ning lingi jagamine vestlust ei taasta. Pooleliolev vastus katkeb lehe sulgemisel või uuendamisel, sest töö võti elab ainult selle lehe mälus. Sõnumeid ei salvestata selles brauseris püsivalt.</p>
-        <p>Kui vastust ei õnnestu koostada, kuvatakse juba leitud otsingutulemused esmalt ja selgitus nende järel. Allika enda väljavõte säilitab viite ja märkuse. Küsimust saab uuesti proovida; puuduvaid tulemusi ega vastust ei mõelda juurde.</p>
-        <p>Klaviatuuriga saab akna avada ja sulgeda: Escape sulgeb akna ja viib fookuse tagasi nupule „Ava vestlus”. Mobiilivaates püsib aken ekraani piires.</p>
-      </>,
-    },
-    {
       id: "diagrammid",
       title: "Loe diagrammi koos viitega",
       content: <>
@@ -158,12 +141,12 @@ export const userGuide = {
       content: <>
         <p>Ära sisesta otsingusse isikukoodi, kontaktandmeid, terviseinfot ega muid tundlikke isikuandmeid. Ka vabatekstiline küsimus võib sisaldada isikuandmeid.</p>
         <p>Otsingusoovituste saamiseks saadetakse 2–80 märgi pikkune sisestatud tekst serverile juba kirjutamise ajal, enne nupu „Küsi” vajutamist. Seetõttu ära kirjuta väljale tundlikku infot ka prooviks.</p>
-        <p>Kui väli näitab juba käivitatud küsimust, valitakse soovitused brauseris üle vaadatud loendist ega saadeta selle valiku jaoks uut päringut. Kontekstipõhised jätkuküsimused kasutavad ainult avatud lehe ja vestluse mälu, ei tee võrgupäringut ega mudelikutset ning ei salvesta profiili ega ajalugu. Need soovitused lähtuvad üksnes praegusest küsimusest ja avatud vestlusest, mitte sinu varasemast kasutusest.</p>
+        <p>Kui väli näitab juba käivitatud küsimust, valitakse soovitused brauseris üle vaadatud loendist ega saadeta selle valiku jaoks uut päringut. Kontekstipõhised jätkuküsimused kasutavad ainult avatud lehe mälu, ei tee võrgupäringut ega mudelikutset ning ei salvesta profiili ega ajalugu. Need soovitused lähtuvad üksnes praegusest küsimusest, mitte sinu varasemast kasutusest.</p>
         <p>Tühjale otsingukastile fookuse andmisel kuvatakse kuus peamist üle vaadatud metsaküsimust. See nimekiri on brauseris (<CodeLink path="src/search-suggestions.js">PRIMARY_SEARCH_SUGGESTIONS</CodeLink>) ega tee võrgupäringut; ühe kuni kahe tähe sisestamisel filtreeritakse sama nimekiri kohapeal ja kahe tähe järel asendab selle serveri autocomplete, kui see vastab.</p>
         <p>Vastuse koostamiseks võib OpenAI GPT-6-Luna autenditud serveripoolse Codex gateway kaudu töödelda küsimust, kuni kümmet valitud avaliku allika väljavõtet (kokku kuni 36 000 märki) ja jätkuküsimuse korral kuni 1 400 märki varasemate küsimuste konteksti. Mudeli sisendile ei lisata sinu IP-aadressi, küpsiseid, brauseri mandaate, serverisaladusi ega kogu andmekogu.</p>
         <p>Praktikaprojekti otsingu- ja vahemälutabelisse ei salvestata toorpäringut. See ei tähenda täielikku anonüümsust: välise teenuse, veebiserveri või puhverserveri logimise tingimused võivad olla erinevad. Algallika või Terrapointi avamisel kehtivad ka selle teenuse tingimused.</p>
         <p>Ametliku kasutuselevõtu eel tuleb andmetöötluse tingimused uuesti üle vaadata. Ära kasuta otsingut üksikisiku kohta privaatsete andmete leidmiseks.</p>
-        <p>Otsingu küsimus ei ole uues otsingulingis. Aadress <code>/otsi</code> ei taasta küsimust järjehoidjast ega jagatud lingist; avatud lehe mälus olev otsing kaob uuesti laadimisel. Ka jätkuküsimused ei ole püsivalt salvestatud vestlus.</p>
+        <p>Otsingu küsimus ei ole uues otsingulingis. Aadress <code>/otsi</code> ei taasta küsimust järjehoidjast ega jagatud lingist; avatud lehe mälus olev otsing kaob uuesti laadimisel. Ka jätkuküsimused kaovad lehe uuendamisel.</p>
       </>,
     },
     {
@@ -314,24 +297,6 @@ const result = await response.json();
         <p>Saada see keha <code>POST /api/search/follow-up</code> teele. Juurküsimus ja jätkuküsimus on kumbki kuni 180 normaliseeritud märki. Server lubab kuni neli <code>previous_questions</code> sisendit; kontekst kasutab juurt ja viimast kolme varasemat sobivat küsimust, kokku kuni 1 400 märki. Vastus sisaldab oma uut loendit, alati lehekülg 1 ja suurus 12.</p>
         <p>Praegune kasutajaliides piirab lõime nelja jätkuvooruni; server piirab saadetud konteksti, mitte kõigi tulevaste voorude koguarvu. Serveris vestlussessiooni ei säilitata. Metsanäitaja perioodipõhine jätk võib pärida algse näitaja, kuid muu sõnastus peab uuesti läbima ulatuse ja privaatsuse kontrolli.</p>
         <p>Olemasolev klient näitab jätkuvastuse viiteid, kuid ei asenda laia juurküsimuse loendit jätkuvastuse loendiga. Säilita see eristus või kuva uues kliendis jätku loend eraldi, et vastust ja tõendeid mitte segi ajada.</p>
-      </>,
-    },
-    {
-      id: "vestlusliides",
-      title: "Vestlusliides",
-      content: <>
-        <p>Avaleht ja <code>/otsi</code> pakuvad eraldi sisenemistee vestlusele nupuga „Ava vestlus”. See on kliendipoolne vaade olemasolevale otsingule: uut marsruuti, mudelit ega tõenditeed ei lisandu ja põhiotsing jääb muutumata.</p>
-        <ul>
-          <li><strong>Esimene voor:</strong> <code>POST /api/search/jobs</code> kehaga <code>kind: "search"</code> ja sama <code>request</code> kehaga, mille põhiotsing saadab, seejärel <code>POST /api/search/jobs/poll</code> kuni <code>answer</code> sündmuseni. Loe sündmusi <CodeLink path="src/search_jobs.js">olemasoleva töökliendiga</CodeLink>; NDJSON-i parser <CodeLink path="src/search-stream.js" /> jääb ühilduvusradade jaoks.</li>
-          <li><strong>Järgmised voorud:</strong> <code>POST /api/search/jobs</code> kehaga <code>kind: "follow-up"</code> ja <code>request</code> väljadega <code>root_query</code>, <code>question</code>, <code>previous_questions</code>, <code>previous_answers</code> ja <code>filters</code>, seejärel sama küsitlus. Server teeb uue tõendiotsingu ja uue viidatud vastuse; varasem vastus ei ole tõend. Korduv vastus säilib ainult siis, kui üks selle praegu viidatud lõik katab jätkuküsimuse sisusõnad.</li>
-          <li><strong>Vastuse sisu:</strong> vastus, <code>sources[]</code>, <code>chart</code>, <code>clarification</code> ja vastuseta olek tulevad samast vastuseobjektist. Kasuta samu renderdajaid ja viitelinke; ära anna vestlusele oma allika- ega diagrammipoliitikat.</li>
-          <li><strong>Soovitatud küsimused:</strong> vali need brauseris funktsiooniga <CodeLink path="src/suggestion_context.js">contextualSuggestions</CodeLink> ainult eelnevalt üle vaadatud kandidaatide seast, kasutades jooksvat küsimust, lõime juurküsimust, juba küsitud küsimusi ja valikulist aastafiltrit. Juba küsitud küsimus ei tohi korduda ja sobimatu kandidaat jäetakse välja, mitte ei asendata väljamõeldud täitega. See valik ei tee võrgupäringut, ei kutsu mudelit ega salvesta profiili ega ajalugu.</li>
-          <li><strong>Lõime piir:</strong> kuni neli jätkuküsimust, seejärel paku uue vestluse alustamist. Server piirab saadetud konteksti, mitte voorude koguarvu, seega on nelja vooru piir kliendi otsus.</li>
-          <li><strong>Seis:</strong> hoia sõnumid, juurküsimus ja kontekst ainult komponendi mälus. „Uus vestlus” tühjendab sõnumid, pooleliolevad päringud ja varasema konteksti; hilinenud vastus ei tohi uude vestlusesse jõuda. Paneeli sulgemine ja uuesti avamine hoiab jooksva lehe sõnumid, lehe uuendamine neid ei taasta. Ära salvesta vestlust ega luba salvestamist kasutajale.</li>
-          <li><strong>Tõrked:</strong> jäta viga nähtavaks ja uuesti proovitavaks. Ära asenda tõrget väljamõeldud vastusega ega eelmise vooru tulemusega.</li>
-          <li><strong>Ligipääsetavus:</strong> avaja on nimega nupp, paneeli juhtnupud on sildistatud, olekuteade on ekraanilugejale kättesaadav, Escape sulgeb paneeli ja tagastab fookuse avajale, mobiilivaates püsib paneel ekraani piires.</li>
-        </ul>
-        <p>Vestlus ei muuda põhiotsingu vaadet, marsruute ega Terrapointi iframe'i. Lähtekoht: <CodeLink path="src/App.jsx" />.</p>
       </>,
     },
     {

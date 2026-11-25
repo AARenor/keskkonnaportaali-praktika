@@ -8,12 +8,10 @@ import { composeSearchResponse, NO_ANSWER_EYEBROW } from "../server/search_respo
 
 const SOURCE_ONLY_EYEBROW = composeSearchResponse("mets", [{ id: "mets", title: "Mets" }], { related: [] }).answer.eyebrow;
 
-// The four search flows a reader can start (search page, search page
-// follow-up, chat first question, chat follow-up) must all be served by the
-// process-local asynchronous job client instead of one long response. The pages
-// keep their state handling, so these tests drive the real components: the real
-// onClick and onSubmit handlers, the real useState updates, the real event
-// mapping.
+// The two search flows a reader can start (search page and inline follow-up)
+// are served by the process-local asynchronous job client instead of one long
+// response. The pages keep their state handling, so these tests drive the real
+// components: their real handlers, state updates and event mapping.
 //
 // No DOM implementation is available here and none is added for a test, so the
 // renderer supplies React's hook dispatcher and calls the components directly.
@@ -568,9 +566,15 @@ after(async () => {
 
 async function loadPages() {
   const app = await vite.ssrLoadModule("/src/App.jsx");
-  const chatbot = await vite.ssrLoadModule("/src/Chatbot.jsx");
-  return { App: app.App, Chatbot: chatbot.default };
+  return { App: app.App };
 }
+
+test("the rendered page has no Ava vestlus launcher", async () => {
+  const { App } = await loadPages();
+  const renderer = createRenderer(reactInternals);
+  const html = renderToStaticMarkup(renderer.render(App, {}));
+  assert.doesNotMatch(html, /aria-label="Ava vestlus"/u, "the page no longer offers a separate chat window");
+});
 
 test("the search page runs an asynchronous job, keeps a failed answer's listing and cancels the superseded job", async () => {
   const transport = createJobTransport();
@@ -666,92 +670,6 @@ test("the search page follow-up runs a follow-up job and keeps its own listing w
     const failed = renderer.render(SearchResults, searchResultsProps);
     assert.match(textOf(failed), /Proovi sama küsimust uuesti/u);
     assert.match(textOf(failed), /Metsandus/u, "the follow-up listing is still readable");
-  } finally {
-    delete globalThis.__praktikaSearchJobs;
-  }
-});
-
-test("the chat panel runs a search job for its first question and a follow-up job for the next one", async () => {
-  const transport = createJobTransport();
-  globalThis.__praktikaSearchJobs = transport;
-  try {
-    const { Chatbot } = await loadPages();
-    const renderer = createRenderer(reactInternals);
-    const parts = {
-      AnswerNote: () => null,
-      Citation: () => null,
-      SourceActions: () => null,
-      SourceLegend: () => null,
-      ExternalAnchor: ({ children }) => children,
-    };
-    const answerTextOf = (item) => [item?.answer?.title, item?.answer?.intro].filter(Boolean).join(" ");
-    const props = { answerParts: parts, answerTextOf };
-    const openPanel = (tree) => {
-      find(tree, (element) => element.props?.["aria-label"] === "Ava vestlus").props.onClick();
-      return renderer.render(Chatbot, props);
-    };
-    const send = (tree, question) => {
-      find(tree, (element) => element.props?.id === "chatbot-input").props.onChange({ target: { value: question } });
-      const typed = renderer.render(Chatbot, props);
-      find(typed, (element) => element.props?.className === "chatbot__form").props.onSubmit({ preventDefault() {} });
-    };
-
-    const opened = openPanel(renderer.render(Chatbot, props));
-    transport.queue(emits(
-      { type: "results", searchResults: listingOf() },
-      { type: "answer", result: answerOf("Metsateatis", "kui palju metsa on Eestis") },
-    ));
-    send(opened, "kui palju metsa on Eestis");
-    await settle();
-    const first = renderer.render(Chatbot, props);
-    const firstCall = transport.calls.at(-1);
-    assert.equal(firstCall.kind, "search");
-    assert.ok(firstCall.signal instanceof AbortSignal);
-    const firstAnswer = find(first, (element) => element.props?.parts !== undefined && "atFollowUpLimit" in element.props);
-    assert.equal(firstAnswer.props.result.answer.title, "Metsateatis");
-
-    transport.queue(emits(
-      { type: "results", searchResults: listingOf() },
-      { type: "answer", result: { ...answerOf("Pindala kasvas"), answer: { title: "Pindala kasvas", intro: "Kümne aasta jooksul.", parts: [] } } },
-    ));
-    send(renderer.render(Chatbot, props), "mis muutus viimase viie aasta jooksul");
-    await settle();
-    const second = renderer.render(Chatbot, props);
-    const secondCall = transport.calls.at(-1);
-    assert.equal(secondCall.kind, "follow-up");
-    assert.equal(secondCall.payload.root_query, "kui palju metsa on Eestis");
-    assert.equal(secondCall.payload.question, "mis muutus viimase viie aasta jooksul");
-    assert.deepEqual(secondCall.payload.previous_answers, ["Metsateatis Registri andmetel on metsamaa pindala muutunud."]);
-    const answers = elementsOf(second)
-      .filter((element) => element.props?.parts !== undefined && "atFollowUpLimit" in element.props);
-    assert.equal(answers.length, 2, "both turns are rendered");
-    assert.equal(answers[1].props.result.answer.title, "Pindala kasvas");
-  } finally {
-    delete globalThis.__praktikaSearchJobs;
-  }
-});
-
-test("a failed chat answer keeps the sources the chat already found", async () => {
-  const transport = createJobTransport();
-  globalThis.__praktikaSearchJobs = transport;
-  try {
-    const { Chatbot } = await loadPages();
-    const renderer = createRenderer(reactInternals);
-    const props = { answerParts: {}, answerTextOf: () => "" };
-    find(renderer.render(Chatbot, props), (element) => element.props?.["aria-label"] === "Ava vestlus").props.onClick();
-    const opened = renderer.render(Chatbot, props);
-    find(opened, (element) => element.props?.id === "chatbot-input").props.onChange({ target: { value: "kui palju metsa on Eestis" } });
-    const typed = renderer.render(Chatbot, props);
-
-    transport.queue(failsAfter(listingOf()));
-    find(typed, (element) => element.props?.className === "chatbot__form").props.onSubmit({ preventDefault() {} });
-    await settle();
-    const failed = renderer.render(Chatbot, props);
-
-    assert.match(textOf(failed), /Koondvastust ei saanud koostada\. Leitud allikad on loetletud\./u);
-    const turnListing = find(failed, (element) => Array.isArray(element.props?.listing?.items) && element.props.listing.items.length > 0);
-    assert.equal(turnListing.props.listing.items[0].title, "Metsandus", "the found source is still listed");
-    assert.doesNotMatch(textOf(failed), /Serveriga ei saanud ühendust/u);
   } finally {
     delete globalThis.__praktikaSearchJobs;
   }
@@ -1038,101 +956,6 @@ test("a supported negative answer keeps its answer card above the listing", asyn
   }
 });
 
-test("the chat keeps a listing it already found above a fallback answer", async () => {
-  const transport = createJobTransport();
-  globalThis.__praktikaSearchJobs = transport;
-  try {
-    const { Chatbot } = await loadPages();
-    const renderer = createRenderer(reactInternals);
-    const parts = { AnswerNote: () => null, Citation: () => null, SourceActions: () => null, SourceLegend: () => null };
-    const props = { answerParts: parts, answerTextOf: () => "" };
-    find(renderer.render(Chatbot, props), (element) => element.props?.["aria-label"] === "Ava vestlus").props.onClick();
-    const send = (question) => {
-      find(renderer.render(Chatbot, props), (element) => element.props?.id === "chatbot-input")
-        .props.onChange({ target: { value: question } });
-      find(renderer.render(Chatbot, props), (element) => element.props?.className === "chatbot__form")
-        .props.onSubmit({ preventDefault() {} });
-    };
-
-    transport.queue(emits(
-      { type: "results", searchResults: listingOf() },
-      { type: "answer", result: answerOf("Metsateatis", "kui palju metsa on Eestis") },
-    ));
-    send("kui palju metsa on Eestis");
-    await settle();
-    const answered = renderer.render(Chatbot, props);
-    const answeredHtml = renderToStaticMarkup(answered);
-    assert.equal(countMarkup(answeredHtml, 'class="chatbot__results"'), 0,
-      "an answered turn keeps its existing presentation without a second listing");
-    assert.match(answeredHtml, /class="chatbot__answer-title"/u, "the answered turn still renders its answer card");
-
-    transport.queue(emits(
-      { type: "results", searchResults: listingOf() },
-      { type: "answer", result: unavailableAnswerOf("mis muutus viimase viie aasta jooksul") },
-    ));
-    send("mis muutus viimase viie aasta jooksul");
-    await settle();
-    const fallbackHtml = renderToStaticMarkup(renderer.render(Chatbot, props));
-    const fallbackTurn = fallbackHtml.slice(indexOfMarkup(fallbackHtml, "mis muutus viimase viie aasta jooksul"));
-    const fallbackLink = linkIn(fallbackTurn, FIRST_RESULT);
-    assert.ok(fallbackLink, "the listing the panel already found is kept");
-    assert.match(fallbackLink.text, /Metsandus/u, "the kept listing stays a real link");
-    assert.ok(fallbackLink.index < indexOfMarkup(fallbackTurn, 'class="chatbot__answer-title"'),
-      "the listing comes before the fallback card");
-    assert.match(fallbackTurn, /Otsing on praegu koormatud/u, "the fallback keeps its own label");
-    assert.match(fallbackTurn, /See ei tähenda, et otsitud andmeid ei ole/u, "the truthful notice is kept");
-
-    transport.queue(emits(
-      { type: "results", searchResults: listingOf() },
-      { type: "answer", result: noAnswerOf("kas metsa on rohkem") },
-    ));
-    send("kas metsa on rohkem");
-    await settle();
-    const noAnswerHtml = renderToStaticMarkup(renderer.render(Chatbot, props));
-    const noAnswerTurn = noAnswerHtml.slice(indexOfMarkup(noAnswerHtml, "kas metsa on rohkem"));
-    const noAnswerLink = linkIn(noAnswerTurn, FIRST_RESULT);
-    assert.ok(noAnswerLink, "the no-answer turn keeps its listing");
-    assert.ok(noAnswerLink.index < indexOfMarkup(noAnswerTurn, 'class="chatbot__answer-title"'),
-      "the listing comes before the no-answer card");
-    assert.match(noAnswerTurn, /Vastust ei leitud/u, "the no-answer card stays visible");
-    assert.match(noAnswerTurn, /Meil ei ole sellele küsimusele vastust/u, "the no-answer wording is kept");
-  } finally {
-    delete globalThis.__praktikaSearchJobs;
-  }
-});
-
-test("a chat answer with no card at all keeps the listing it already found above it", async () => {
-  const transport = createJobTransport();
-  globalThis.__praktikaSearchJobs = transport;
-  try {
-    const { Chatbot } = await loadPages();
-    const renderer = createRenderer(reactInternals);
-    const parts = { AnswerNote: () => null, Citation: () => null, SourceActions: () => null, SourceLegend: () => null };
-    const props = { answerParts: parts, answerTextOf: () => "" };
-    find(renderer.render(Chatbot, props), (element) => element.props?.["aria-label"] === "Ava vestlus").props.onClick();
-    find(renderer.render(Chatbot, props), (element) => element.props?.id === "chatbot-input")
-      .props.onChange({ target: { value: "kui palju metsa on Eestis" } });
-
-    transport.queue(emits(
-      { type: "results", searchResults: listingOf() },
-      { type: "answer", result: { searchResults: listingOf() } },
-    ));
-    find(renderer.render(Chatbot, props), (element) => element.props?.className === "chatbot__form")
-      .props.onSubmit({ preventDefault() {} });
-    await settle();
-    const html = renderToStaticMarkup(renderer.render(Chatbot, props));
-    const link = linkIn(html, FIRST_RESULT);
-    assert.ok(link, "the found listing is kept");
-    assert.match(link.text, /Metsandus/u, "the kept listing stays a real link");
-    assert.ok(link.index < indexOfMarkup(html, 'class="chatbot__no-answer"'),
-      "the listing comes before the no-answer card");
-    assert.equal(countMarkup(html, `href="${FIRST_RESULT}"`), 1, "the listing is rendered once");
-    assert.match(html, /Sellele küsimusele ei saanud vastust koostada/u);
-  } finally {
-    delete globalThis.__praktikaSearchJobs;
-  }
-});
-
 // This explicit response fixture tests a card that echoes one corrected word.
 // The UI must keep the spelling the reader entered.
 const ASKED_GENITIVE = "Kas 2025. aasta raiemahu kohta on eksperdihinnang?";
@@ -1142,7 +965,7 @@ test("an answer card that only echoes the corrected query keeps the wording the 
   const transport = createJobTransport();
   globalThis.__praktikaSearchJobs = transport;
   try {
-    const { App, Chatbot } = await loadPages();
+    const { App } = await loadPages();
     const renderer = createRenderer(reactInternals);
     const startSearch = find(renderer.render(App, {}), (element) => element.props?.searchInputRef !== undefined).props.onSearch;
 
@@ -1175,23 +998,6 @@ test("an answer card that only echoes the corrected query keeps the wording the 
     assert.equal(textOf(followUpHeading), ASKED_GENITIVE);
     assert.doesNotMatch(textOf(followUpHeading), /raiemaht/u);
 
-    // The chat panel shows the same result, so it shows the same heading.
-    const answers = { AnswerNote: () => null, Citation: () => null, SourceActions: () => null, SourceLegend: () => null };
-    const chatProps = { answerParts: answers, answerTextOf: () => "" };
-    find(renderer.render(Chatbot, chatProps), (element) => element.props?.["aria-label"] === "Ava vestlus").props.onClick();
-    find(renderer.render(Chatbot, chatProps), (element) => element.props?.id === "chatbot-input")
-      .props.onChange({ target: { value: ASKED_GENITIVE } });
-    transport.queue(emits(
-      { type: "results", searchResults: listingOf() },
-      { type: "answer", result: answerOf(CANONICAL_HARVEST, CANONICAL_HARVEST) },
-    ));
-    find(renderer.render(Chatbot, chatProps), (element) => element.props?.className === "chatbot__form")
-      .props.onSubmit({ preventDefault() {} });
-    await settle();
-    const chatHtml = renderToStaticMarkup(renderer.render(Chatbot, chatProps));
-    const chatHeading = chatHtml.slice(indexOfMarkup(chatHtml, 'class="chatbot__answer-title"'));
-    assert.match(chatHeading, /raiemahu/u);
-    assert.doesNotMatch(chatHeading.slice(0, chatHeading.indexOf("</h3>")), /raiemaht/u);
   } finally {
     delete globalThis.__praktikaSearchJobs;
   }
@@ -1202,7 +1008,7 @@ test("a meaningful answer title is never replaced with the question", async () =
   const transport = createJobTransport();
   globalThis.__praktikaSearchJobs = transport;
   try {
-    const { App, Chatbot } = await loadPages();
+    const { App } = await loadPages();
     const renderer = createRenderer(reactInternals);
     const startSearch = find(renderer.render(App, {}), (element) => element.props?.searchInputRef !== undefined).props.onSearch;
 
@@ -1215,22 +1021,6 @@ test("a meaningful answer title is never replaced with the question", async () =
     const heading = find(renderer.render(page.type, page.props), (element) => element.type === "h1" && element.props?.tabIndex === -1);
     assert.equal(textOf(heading), authored, "an authored heading stays the answer's own wording");
 
-    const answers = { AnswerNote: () => null, Citation: () => null, SourceActions: () => null, SourceLegend: () => null };
-    const chatProps = { answerParts: answers, answerTextOf: () => "" };
-    find(renderer.render(Chatbot, chatProps), (element) => element.props?.["aria-label"] === "Ava vestlus").props.onClick();
-    find(renderer.render(Chatbot, chatProps), (element) => element.props?.id === "chatbot-input")
-      .props.onChange({ target: { value: ASKED_GENITIVE } });
-    transport.queue(emits(
-      { type: "results", searchResults: listingOf() },
-      { type: "answer", result: answerOf(authored, CANONICAL_HARVEST) },
-    ));
-    find(renderer.render(Chatbot, chatProps), (element) => element.props?.className === "chatbot__form")
-      .props.onSubmit({ preventDefault() {} });
-    await settle();
-    const chatHtml = renderToStaticMarkup(renderer.render(Chatbot, chatProps));
-    const chatHeading = chatHtml.slice(indexOfMarkup(chatHtml, 'class="chatbot__answer-title"'));
-    assert.match(chatHeading, /SMI 2025: 2025\. aasta raiemaht on eksperthinnang/u);
-    assert.doesNotMatch(chatHeading.slice(0, chatHeading.indexOf("</h3>")), /raiemahu/u);
   } finally {
     delete globalThis.__praktikaSearchJobs;
   }

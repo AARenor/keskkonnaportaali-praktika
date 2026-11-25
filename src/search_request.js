@@ -1,6 +1,6 @@
-// The public search request contract lives in one place: the search page and
-// the chat panel must send byte-identical payloads, so a chat answer and a
-// search answer come from the same evidence path.
+// The public search request contract lives in one place. The search page and
+// its inline follow-up form send payloads from these helpers, so every answer
+// comes from the same evidence path.
 export const DEFAULT_SEARCH_FILTERS = { source: "all", category: "", year: null, sort: "relevance" };
 
 export function clientSearchFilters(value = {}) {
@@ -68,8 +68,8 @@ export async function readFollowUpResponse(response) {
 }
 
 // The server marks its plain no-answer card with this public eyebrow (the same
-// string as NO_ANSWER_EYEBROW in server/search.mjs). The search page and the
-// chat panel read the marker from here, so the two renderings cannot drift.
+// string as NO_ANSWER_EYEBROW in server/search.mjs). The search page and its
+// inline follow-up form read the marker from here, so renderings cannot drift.
 export const NO_ANSWER_EYEBROW = "Vastust ei leitud";
 
 // The server's other no-summary card: sources were chosen, the summary was not

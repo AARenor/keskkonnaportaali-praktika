@@ -27,8 +27,7 @@ import { DEFAULT_SEARCH_FILTERS, clientSearchFilters, searchRequestPayload } fro
 import { searchHistory } from "./search_history.js";
 import SearchForm from "./SearchForm.jsx";
 import SearchResults from "./SearchResults.jsx";
-import { AnswerNote, Citation, ExternalAnchor, SourceActions, SourceLegend } from "./AnswerSources.jsx";
-import Chatbot from "./Chatbot.jsx";
+import { ExternalAnchor } from "./AnswerSources.jsx";
 
 const SOURCE = "https://keskkonnaportaal.ee";
 
@@ -810,7 +809,6 @@ function answerTextOf(item) {
   return [item?.answer?.title, item?.answer?.intro, ...(item?.answer?.parts || []).map((part) => part?.text)].filter(Boolean).join(" ");
 }
 
-const CHAT_ANSWER_PARTS = Object.freeze({ AnswerNote, Citation, SourceActions, SourceLegend, ExternalAnchor });
 
 export function App() {
   const isEmbed = window.location.pathname.startsWith("/embed/terrapoint");
@@ -1185,16 +1183,6 @@ export function App() {
         <Home busy={busy} onSearch={performSearch} searchInputRef={homeSearchInputRef} />
       )}
       <Footer compact={view === "search"} />
-      <Chatbot
-        answerParts={CHAT_ANSWER_PARTS}
-        answerTextOf={answerTextOf}
-        pageContext={view === "search"
-          ? {
-            query,
-            filters: clientSearchFilters(result?.searchResults?.appliedFilters || previewListing?.appliedFilters || searchFilters),
-          }
-          : null}
-      />
     </>
   );
 }

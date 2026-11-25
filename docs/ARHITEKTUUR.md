@@ -74,16 +74,6 @@ Esimese täisjooksu tulemus 17.08.2026 oli 11 861 unikaalset kanoniseeritud URL-
 
 Sama päeva täisjooks salvestas `mets` auditi-snapshot'i 20 lähtelihekülge × kuni 50 kaarti: portaali `upstream_total=953`, 953 kaardiesinemist ja 752 eri kanoniseeritud URL-i. Need arvud dokumenteerivad tollast lähteseisu ja duplikaate, kuid runtime ei kuva ega järjesta tulemusi enam selle vana snapshot'i järgi: esimene leht sünnib PostgreSQL-i ning ametliku live-otsingu ühendatud, deduplikeeritud ja relevantsusjärjestatud hulgast.
 
-## Vestlusliides otsingu ees
-
-Avaleht ja otsinguvaade `/otsi` pakuvad eraldi juurdepääsu vestlusele nupuga „Ava vestlus”. See on kliendipoolne sisenemistee, mis kasutab sama otsingu- ja tõendilepingut; ainus uus serveripoolne osa on protsessisisene tööregister, mis kannab sama voo brauserini ilma ühe pika ühenduseta:
-
-- esimene küsimus läheb `POST /api/search/jobs` tööks liigiga `search` täpselt samade vaikefiltrite ja sama nähtava tulemusehulga allikakõlblikkusega kui põhiotsing, seejärel loeb brauser sündmusi `POST /api/search/jobs/poll` kaudu;
-- iga järgnev küsimus läheb samasse tööliidesesse liigiga `follow-up` juurküsimuse, küsimuse ja piiratud varasemate küsimustega; server teeb uue tõendiotsingu ja uue viidatud vastuse. Korduv vastus säilib ainult siis, kui üks selle praegu viidatud lõik katab jätkuküsimuse sisusõnad; varasem vastus ei muutu tõendiks;
-- vastus, nummerdatud viited, valideeritud diagramm, keeldumine, täpsustusküsimus ja vastuseta olek tulevad samast vastuseobjektist, mida renderdab ka põhiotsing, nii et vestlusel ei ole oma allika-, viite- ega diagrammipoliitikat.
-
-Vestlus on mitteamodalne paneel, mis ei lukusta lehte ega seiska põhiotsingut. Vestlusseis on brauseri mälus: sulgemine ja uuesti avamine hoiab jooksva lehe sõnumid, lehe uuendamine ega `/otsi` lingi jagamine neid ei taasta ning server ei halda eraldi vestlusseanssi. Soovitatud jätkuküsimused valib brauser (`src/suggestion_context.js`) üle vaadatud kandidaatide seast jooksva küsimuse, lõime juurküsimuse, juba küsitud küsimuste ja valikulise aastafiltri järgi: kordused jäetakse välja, sobimatu kandidaat eemaldatakse ja täiteks ei pakuta midagi. See valik ei tee võrgu- ega mudelikutset ega salvesta profiili ega ajalugu, seega ei ole tegu isikupärastamisega väljaspool praegust küsimust ja avatud vestlust. „Uus vestlus” tühjendab sõnumid, pooleliolevad päringud ja varasema konteksti; eelmise vestluse tulemus ei tohi uue vestluse vaatele järgi jääda. Lõime piir on neli jätkuküsimust, mille järel pakutakse uue vestluse alustamist. Päringutõrge jääb paneelis nähtavaks ja küsimust saab uuesti proovida. Küsitluse võrguvea korral jätkab brauser sama töö küsimist; kui töö ise kaob, näiteks serveri taaskäivituse tõttu, jääb juba kuvatud sisu alles koos teatega ja vastust tuleb uuesti küsida. Avaja ja paneeli juhtnupud on klaviatuuriga kasutatavad ja sildistatud, olekuteated on ekraanilugejale kättesaadavad, Escape sulgeb paneeli ja tagastab fookuse avajale ning mobiilivaates püsib paneel ekraani piires.
-
 ## PostgreSQL-i roll
 
 PostgreSQL ei ole siin ainult vahemälu. Tabel `practice_corpus_documents` hoiab kanoniseeritud URL-i, pealkirja, kokkuvõtet, puhastatud sisu, väljaandjat, kuupäeva, teemasid, allikataset ja sünkroniseerimise metaandmeid. Otsinguvektor koostatakse pealkirjast, teemadest, kokkuvõttest ning sisust.
@@ -239,6 +229,6 @@ See eristus on oluline:
 
 Kui mudel ei vasta (ajapiir, allika viga, koormus), ei jää vastusekaart tühjaks ega vaikivaks: `searchTimeoutFallback` näitab ühe juba järjestatud ametliku allika enda lauset koos viitega ja märgib, et see on allika sõnastus, mitte mudeli koondvastus. Seda varuvarianti ei kasutata küsimustele, mille üks vaatlus ei saa vastata — olevikku või minevikku suhteliselt küsivad („tänavu”, „praegu”, „mullu”), võrdlevad, koondavad või muutust jälgivad päringud saavad ausa ajapiiri-teate ja tulemuste loendi.
 
-Kui vastus puudub või mudeli sõnastust ei saadud, näitavad otsing ja vestlus juba saadud tavalisi tulemusi enne teadet või varukaarti. Viidatud väljavõtte kaart säilitab oma allikaviited, allikaloendi ja märkuse. Kui loend kliendini ei jõudnud, ei asendata seda väljamõeldud tulemustega.
+Kui vastus puudub või mudeli sõnastust ei saadud, näitavad otsing ja jätkuküsimus juba saadud tavalisi tulemusi enne teadet või varukaarti. Viidatud väljavõtte kaart säilitab oma allikaviited, allikaloendi ja märkuse. Kui loend kliendini ei jõudnud, ei asendata seda väljamõeldud tulemustega.
 
 Seega ei tähenda viis „Vastuse allikat”, et otsing leidis ainult viis tulemust. Need on AI konkreetse vastuse tõendid; eraldi „Otsingutulemused” loend kuvab sama filtreeritud kandidaadihulga lehekülgede kaupa. Allika-, sisutüübi- või aastafiltri muutmine loob uue tõendihulga ja uue vastuse.

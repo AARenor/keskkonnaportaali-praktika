@@ -8,8 +8,8 @@ import {
   REVIEWED_SEARCH_SUGGESTIONS,
 } from "../src/search-suggestions.js";
 
-// Suggested questions must follow the question the reader is looking at, on the
-// search page and in the chat panel, instead of standing in as generic filler.
+// Suggested questions must follow the question the reader is looking at on
+// the search page, instead of standing in as generic filler.
 // The reader sees these strings, so the tests drive the real components and
 // assert what is rendered: which buttons exist, which wording they carry, and
 // that an unrelated question yields fewer or none of them.
@@ -422,54 +422,7 @@ async function loadSelector() {
 
 async function loadPages() {
   const app = await vite.ssrLoadModule("/src/App.jsx");
-  const chatbot = await vite.ssrLoadModule("/src/Chatbot.jsx");
-  return { App: app.App, Chatbot: chatbot.default };
-}
-
-function chatProps(pageContext) {
-  return {
-    answerParts: {
-      AnswerNote: () => null,
-      Citation: () => null,
-      SourceActions: () => null,
-      SourceLegend: () => null,
-      ExternalAnchor: ({ children }) => children,
-    },
-    answerTextOf: (item) => [item?.answer?.title, item?.answer?.intro].filter(Boolean).join(" "),
-    pageContext,
-  };
-}
-
-function openChat(renderer, Chatbot, props) {
-  find(renderer.render(Chatbot, props), (element) => element.props?.["aria-label"] === "Ava vestlus").props.onClick();
-  return renderer.render(Chatbot, props);
-}
-
-function sendChat(renderer, Chatbot, props, question) {
-  const opened = renderer.render(Chatbot, props);
-  find(opened, (element) => element.props?.id === "chatbot-input").props.onChange({ target: { value: question } });
-  const typed = renderer.render(Chatbot, props);
-  find(typed, (element) => element.props?.className === "chatbot__form").props.onSubmit({ preventDefault() {} });
-}
-
-function chatExampleGroup(tree) {
-  return elementsOf(tree).find((element) => element.props?.className === "chatbot__examples") || null;
-}
-
-function chatExampleQuestions(tree) {
-  const group = chatExampleGroup(tree);
-  return group ? buttonsIn(group) : [];
-}
-
-// One entry per answered chat turn: the follow-up chips that answer offers.
-function chatTurnChips(renderer, tree) {
-  return elementsOf(tree)
-    .filter((element) => element.props?.parts !== undefined && "atFollowUpLimit" in element.props)
-    .map((element) => {
-      const answerTree = renderer.render(element.type, element.props);
-      const group = elementsOf(answerTree).find((child) => child.props?.className === "chatbot__related");
-      return group ? buttonsIn(group) : [];
-    });
+  return { App: app.App };
 }
 
 function askMoreQuestions(renderer, tree) {
@@ -519,157 +472,6 @@ async function searchPageFixture(query, related = [], items = ONE_SOURCE) {
   const element = find(renderer.render(App, {}), (child) => typeof child.props?.onHome === "function");
   return { App, SearchResults: element.type, props: element.props, renderer, transport };
 }
-
-test("chat starter examples come from the suggestions API", async () => {
-  const expected = FORESTRY.slice(0, 3);
-  const calls = installFetchCounter(expected.map((value) => ({ value, count: 1 })));
-  const { Chatbot } = await loadPages();
-  const renderer = createRenderer(reactInternals);
-  const props = chatProps(undefined);
-  openChat(renderer, Chatbot, props);
-  browser.flushTimers();
-  await settle();
-  const tree = renderer.render(Chatbot, props);
-  const shown = chatExampleQuestions(tree);
-
-  assert.deepEqual(shown, expected);
-  assert.deepEqual(calls.map((call) => call.body), [{ q: "mets" }]);
-  assert.equal(shown.length, 3);
-  const group = chatExampleGroup(tree);
-  assert.equal(group.props.role, "group");
-  assert.equal(group.props["aria-label"], "Näidisküsimused");
-});
-
-test("chat starter examples use API choices for the visible question", async () => {
-  const expected = FORESTRY.filter((question) => /teatis/iu.test(question)).slice(0, 3);
-  const calls = installFetchCounter(expected.map((value) => ({ value, count: 2 })));
-  const { Chatbot } = await loadPages();
-  const renderer = createRenderer(reactInternals);
-  const props = chatProps({ query: "metsateatis" });
-  openChat(renderer, Chatbot, props);
-  browser.flushTimers();
-  await settle();
-  const shown = chatExampleQuestions(renderer.render(Chatbot, props));
-
-  assert.deepEqual(shown, expected);
-  assert.ok(shown.some((question) => /teatis/iu.test(question)));
-  assert.ok(shown.every((question) => FORESTRY.includes(question)));
-  assert.deepEqual(calls.map((call) => call.body), [{ q: "metsateatis" }]);
-});
-
-test("an unrelated page question gets no starter suggestions from the API", async () => {
-  const calls = installFetchCounter([]);
-  const { Chatbot } = await loadPages();
-  const renderer = createRenderer(reactInternals);
-  const pageQuery = "Kuhu viia vanad patareid?";
-  const props = chatProps({ query: pageQuery });
-  openChat(renderer, Chatbot, props);
-  browser.flushTimers();
-  await settle();
-  const tree = renderer.render(Chatbot, props);
-  const shown = chatExampleQuestions(tree);
-
-  assert.deepEqual(shown, []);
-  assert.equal(chatExampleGroup(tree), null);
-  assert.deepEqual(calls.map((call) => call.body), [{ q: pageQuery }]);
-});
-
-test("a chat answer suggests follow-ups for its own question and never repeats an asked one", async () => {
-  const selector = await loadSelector();
-  const transport = createJobTransport();
-  globalThis.__praktikaSearchJobs = transport;
-  try {
-    const { Chatbot } = await loadPages();
-    const renderer = createRenderer(reactInternals);
-    const props = chatProps(undefined);
-    openChat(renderer, Chatbot, props);
-
-    const rootQuestion = "Mis on metsateatis?";
-    const rootRelated = [
-      "Kuidas taotleda metsateatist?",
-      "Kust leida põhjavee seireandmeid?",
-      rootQuestion,
-    ];
-    transport.queue(emits(
-      { type: "results", searchResults: listingOf(ONE_SOURCE) },
-      { type: "answer", result: answerOf("Metsateatis", rootQuestion, rootRelated) },
-    ));
-    sendChat(renderer, Chatbot, props, rootQuestion);
-    await settle();
-    const answered = renderer.render(Chatbot, props);
-    const [rootChips] = chatTurnChips(renderer, answered);
-
-    assert.deepEqual(rootChips, selector({
-      candidates: rootRelated,
-      query: rootQuestion,
-      rootQuery: rootQuestion,
-      priorQuestions: [rootQuestion],
-      limit: 3,
-      allowDefault: false,
-    }));
-    assert.ok(!rootChips.includes(rootQuestion), "the question already on screen is not offered back");
-    assert.ok(rootChips.every((question) => !/põhjavee/iu.test(question)),
-      "an unrelated water question is dropped instead of padding the list");
-    assert.ok(rootChips.length > 0, "a related follow-up survives the filter");
-    assert.ok(rootChips.every((question) => rootRelated.includes(question)),
-      "a chat follow-up is always one the server already reviewed for this answer");
-
-    // A pronoun follow-up carries no topic of its own: the root question must
-    // still decide what can be asked next.
-    const followUp = "Mida see minu jaoks tähendab?";
-    const followUpRelated = [
-      rootQuestion,
-      "Kuidas taotleda metsateatist?",
-      "Kust leida põhjavee seireandmeid?",
-    ];
-    transport.queue(emits(
-      { type: "results", searchResults: listingOf(ONE_SOURCE) },
-      {
-        type: "answer",
-        result: {
-          ...answerOf("Metsateatis tähendab raieluba"),
-          related: followUpRelated,
-          answer: { title: "Metsateatis tähendab raieluba", intro: "See on teatis.", parts: [] },
-        },
-      },
-    ));
-    sendChat(renderer, Chatbot, props, followUp);
-    await settle();
-    const followed = renderer.render(Chatbot, props);
-    const chips = chatTurnChips(renderer, followed);
-    assert.equal(chips.length, 2, "each answered turn keeps its own follow-up chips");
-
-    assert.deepEqual(chips[0], selector({
-      candidates: rootRelated,
-      query: rootQuestion,
-      rootQuery: rootQuestion,
-      priorQuestions: [rootQuestion, followUp],
-      limit: 3,
-      allowDefault: false,
-    }), "an older answer never re-offers a question the thread has since asked");
-    for (const asked of [rootQuestion, followUp]) {
-      assert.ok(chips.every((turnChips) => !turnChips.includes(asked)),
-        `a question already asked in this thread is not offered again: ${asked}`);
-    }
-    assert.deepEqual(chips[1], selector({
-      candidates: followUpRelated,
-      query: followUp,
-      rootQuery: rootQuestion,
-      priorQuestions: [rootQuestion, followUp],
-      limit: 3,
-      allowDefault: false,
-    }));
-    assert.ok(chips[0].every((question) => !/põhjavee/iu.test(question)));
-    assert.ok(chips[0].length > 0, "the root answer keeps a related follow-up");
-    assert.ok(!chips[1].includes(rootQuestion), "the earlier question is not suggested again");
-    assert.ok(!chips[1].includes(followUp), "the pronoun follow-up itself is not suggested");
-    assert.ok(chips[1].every((question) => !/põhjavee/iu.test(question)));
-    assert.ok(chips[1].length > 0, "the root topic survives a pronoun follow-up");
-    assert.ok(chips[1].every((question) => followUpRelated.includes(question)));
-  } finally {
-    delete globalThis.__praktikaSearchJobs;
-  }
-});
 
 test("the search page's Küsi veel section follows the latest follow-up and drops repeated questions", async () => {
   const selector = await loadSelector();
@@ -833,17 +635,6 @@ test("a personal name in the visible question never reaches an API suggestion", 
   const calls = installFetchCounter((value) => value.includes("metsateatis")
     ? expected.map((item) => ({ value: item, count: 1 }))
     : []);
-  const { Chatbot } = await loadPages();
-  const chatRenderer = createRenderer(reactInternals);
-  const chatPropsValue = chatProps({ query });
-  openChat(chatRenderer, Chatbot, chatPropsValue);
-  browser.flushTimers();
-  await settle();
-  const chatShown = chatExampleQuestions(chatRenderer.render(Chatbot, chatPropsValue));
-  assert.deepEqual(chatShown, expected);
-  assert.ok(chatShown.length > 0);
-  assert.ok(chatShown.every((question) => !/maasikas|mari\b/iu.test(question)));
-
   try {
     const fixture = await searchPageFixture(query);
     const { SearchResults, props, renderer: pageRenderer } = fixture;
@@ -855,7 +646,7 @@ test("a personal name in the visible question never reaches an API suggestion", 
     const shown = searchOptionLabels(focused.tree);
     assert.deepEqual(shown, expected);
     assert.ok(shown.every((question) => !/maasikas|mari\b/iu.test(question)));
-    assert.deepEqual(calls.map((call) => call.body), [{ q: query }, { q: query }]);
+    assert.deepEqual(calls.map((call) => call.body), [{ q: query }]);
   } finally {
     delete globalThis.__praktikaSearchJobs;
   }

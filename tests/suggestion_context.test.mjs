@@ -17,8 +17,8 @@ function assertReviewedOnly(items) {
 }
 
 // The suggestion picker may choose only from what it was handed. These tests
-// pin the behaviour the chat panel and the search page depend on, without any
-// network, model or storage: same input, same list.
+// pin the behaviour the search page depends on, without any network, model or
+// storage: same input, same list.
 
 test("SMI question keeps the SMI answers and drops everything else", () => {
   const suggestions = contextualSuggestions({

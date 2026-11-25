@@ -65,24 +65,6 @@ Diagramm kuvatakse ainult siis, kui server sai sama vastuse jaoks valideeritud a
 
 Jätkuküsimus, mis ise teema sõnu ei sisalda (näiteks „selgita hindamise etappe”, „millal on vajalik KIH” või „kuidas see on muutunud”), pärib algse küsimuse teema: otsing kombineerib mõlemad ja otsib tõendid uuesti. Kui jätkuküsimus toob kaasa teise valdkonna sõna (näiteks „aktsiaoptsioon” või „salasõna”), jääb teemavälise sisu kaitse alles ja päringu palutakse täpsustada.
 
-## Vestlus eraldi aknas
-
-Avalehel ja otsinguvaates `/otsi` on nupp **„Ava vestlus”**. See avab vestlusakna, mis kasutab sama allikapõhist otsingut ega muuda tavalist otsingut: põhiotsing jääb lehele alles ja töötab vestlusest sõltumata.
-
-1. Vajuta „Ava vestlus” ja kirjuta küsimus samamoodi nagu põhiotsingusse.
-2. Vastus tuleb samast otsingust, seega kehtivad samad nummerdatud viited, diagrammid, keeldumised ja täpsustuspalved.
-3. Iga järgmine küsimus teeb uue tõendiotsingu. Varasemad küsimused aitavad teemat täpsustada, kuid varasem vastus ei muutu uue väite tõendiks.
-
-Ühes vestluses saab küsida kuni neli jätkuküsimust. Kui piir saab täis, pakub aken uue vestluse alustamist; „Uus vestlus” tühjendab sõnumid ja varasema konteksti.
-
-Vestlusaken pakub ainult eelnevalt üle vaadatud metsaküsimusi, mis seostuvad praeguse küsimuse ja selle vestlusega; juba küsitud küsimust uuesti ei pakuta ja sobimatu küsimuse asemel ei pakuta midagi. Valik tehakse brauseris ega tee uut võrgupäringut, ei kutsu mudelit ega salvesta profiili ega ajalugu.
-
-Vestlusakna sulgemine ja uuesti avamine hoiab selle lehe sõnumid alles. Lehe uuendamisel kaovad need brauseri mälust ning lingi jagamine vestlust ei taasta. Sõnumeid ei salvestata selles brauseris püsivalt.
-
-Kui vastust ei õnnestu koostada, kuvatakse juba leitud otsingutulemused esmalt ja selgitus nende järel. Kui kuvatakse allika enda väljavõte, jäävad selle viide ja märkus alles. Küsimust saab uuesti proovida; puuduvaid tulemusi ega vastust ei mõelda juurde.
-
-Klaviatuuriga saab akna avada ja sulgeda: Escape sulgeb akna ja viib fookuse tagasi nupule „Ava vestlus”. Mobiilivaates püsib aken ekraani piires.
-
 ## Kui täpset tõendit ei leitud
 
 Kui sobivad ametlikud tulemused on olemas, kuid nende nähtavad tõendilõigud ei kata küsimust piisavalt täpselt, ütleb otsing seda eraldi ning jätab tulemused avamiseks alles. Täpsusta siis objekti, näitajat, piirkonda või aastat. Teade „täpset ja piisavalt asjakohast ametlikku tõendit ei leitud” kuvatakse ainult siis, kui ka sobivat ametlikku tulemust ei leitud. Teenuse tõrke korral ei asenda rakendus puuduvat tõendit vana arvu ega üldteadmisega.
