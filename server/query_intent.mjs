@@ -7,12 +7,11 @@ const TERM_FORMS = new Map(
 );
 
 for (const form of ["lageraiks"]) TERM_FORMS.set(form, "lageraie");
-for (const form of [
+export const REVIEWED_RAIETEATIS_FORMS = Object.freeze([
   "raieteatis", "raieteatise", "raieteatist", "raieteatisel", "raieteatisele",
   "raieteatisest", "raieteatisega", "raieteatiseta", "raieteatiste", "raieteatistel",
-]) {
-  TERM_FORMS.set(form, "metsateatis");
-}
+]);
+for (const form of REVIEWED_RAIETEATIS_FORMS) TERM_FORMS.set(form, "metsateatis");
 for (const form of [
   "esitamine", "esitamise", "esitamist", "esitamisel", "esitamiseks", "esitamiste",
   "esitamisega", "esitada", "esita", "esitan", "esitad", "esitab", "esitame", "esitate",

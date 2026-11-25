@@ -1,7 +1,6 @@
 import { analyzeQueryIntent, isNoticeFeeQuestion, isNoticeReviewDurationQuestion } from "./query_intent.mjs";
-import { REVIEWED_QUERY_WORD_FORMS } from "./query-word-forms.mjs";
+import { hasReviewedAnswerForms, matchesReviewedAnswerForm, matchesStrictReviewedAnswerForm } from "./question_wording.mjs";
 import { GENERIC_QUERY_CONTEXT_TERMS, queryRootVariants } from "./search_query_terms.mjs";
-
 const ADMIN_CONTEXT_ROOTS = new Set([
   "tallinn", "tartu", "parnu", "parnumaa", "narva", "viljandi", "rakvere", "voru",
   "kuressaare", "haapsalu", "johvi", "harjumaa", "saaremaa", "kohtla", "ida", "virumaa",
@@ -24,10 +23,6 @@ const NOTICE_ANSWER_EQUIVALENTS = new Map([["kuttepuu", ["puit"]]]);
 const YEAR_COMPLEMENT_PATTERN = /^aasta(?:l|st|ks|ni|sse|le|ga|ta|te|tel)?$/u;
 const NOTICE_LOCATION_ROOTS = new Set([...ADMIN_CONTEXT_ROOTS, "eesti"]);
 const NON_ANSWER_TEXT_PATTERN = /^(?:esileht|avaleht)\b|\b(?:esileht\s+uudised|loe\s+edasi|laadi\s+alla|jaga\s+lehte|blogi\s+\d{2}\.\d{2}\.\d{4})\b/iu;
-const QUERY_FORMS = new Map(
-  Object.entries(REVIEWED_QUERY_WORD_FORMS)
-    .map(([root, forms]) => [normalize(root), new Set(forms.map(normalize))]),
-);
 const CASE_ENDING_REMAINDER = /^[aeiou]?(?:d|de|des|dega|deks|dele|del|delt|dest|desse|ga|s|st|sse|le|l|lt|ks|ni|na|ta|t|te|tes|tele|id|ide|sid)?$/u;
 const STATED_TIME_PATTERN = /\d|\b(?:jaanuar|veebruar|marts|aprill|mai|juuni|juuli|august|september|oktoober|november|detsember|kevad|suvi|suve|sugis|talv|alates|kuni|enne|parast|hiljemalt|jooksul|ajavahemik)\w*/u;
 const ASKED_AREA_KINDS = ["hoiuala", "pusielupai", "sihtkaitsevoond", "piiranguvoond", "loodusreservaa", "rahvuspar", "talvituspai", "vaariselupai"];
@@ -46,17 +41,20 @@ function queryTerms(query) {
   return analyzeQueryIntent(query).terms.map(normalize);
 }
 
-function answerRootMatches(token, root) {
-  const reviewedForms = QUERY_FORMS.get(root);
-  if (reviewedForms) return reviewedForms.has(token);
+function answerRootMatches(token, root, strict = false) {
+  if (hasReviewedAnswerForms(root)) {
+    return strict
+      ? matchesStrictReviewedAnswerForm(token, root)
+      : matchesReviewedAnswerForm(token, root);
+  }
   const stems = new Set(queryRootVariants(root).map(normalize).filter(Boolean));
   if (root.endsWith("mine") && root.length > 6) stems.add(root.slice(0, -4));
   return [...stems].some((stem) => token === stem || token.startsWith(stem));
 }
 
-function textHasQueryRoot(value, root) {
+function textHasQueryRoot(value, root, strict = false) {
   const words = normalize(value).split(/\s+/u).filter(Boolean);
-  return words.some((word) => answerRootMatches(word, root));
+  return words.some((word) => answerRootMatches(word, root, strict));
 }
 function isNoticeAnswerFrameTerm(term) {
   return NOTICE_ANSWER_FRAME_TERMS.has(term)
@@ -232,13 +230,13 @@ function askedDefinitionTerm(query) {
   const subject = meaningFrame || definitionFrame;
   if (!subject) return "";
   return intent.terms.map(normalize)
-    .filter((term) => textHasQueryRoot(subject, term))
+    .filter((term) => textHasQueryRoot(subject, term, true))
     .sort((left, right) => right.length - left.length)[0] || "";
 }
 
 export function namesDefinitionTerm(query, text) {
   const defined = askedDefinitionTerm(query);
-  return !defined || textHasQueryRoot(text, defined);
+  return !defined || textHasQueryRoot(text, defined, true);
 }
 
 export function answersAskedConcept(query, text) {

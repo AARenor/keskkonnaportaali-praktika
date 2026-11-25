@@ -39,6 +39,7 @@ export const userGuide = {
           <li><strong>Konkreetne küsimus:</strong> „kui palju on raiemaht” või „kuidas ürask kuuski kahjustab”.</li>
           <li><strong>Aeg või näitaja:</strong> „jäätmete ringlussevõtu määr Eestis 2023”.</li>
           <li><strong>Osakaal:</strong> „kui suur osa Eestist on mets”.</li>
+          <li><strong>Looduslik sõnastus:</strong> „palju metsa on Eestis”, „kuidas SMI metsa mõõdab” või „millise meetodiga saadakse metsa pindala”.</li>
         </ul>
         <p>Need on küsimuste näited, mitte lubadus, et iga sõnastus saab alati vastuse. Sobivate tõendite puudumisel võib otsing näidata ainult allikaid või paluda täpsustust.</p>
         <p>Kui kasutad soovitusi klaviatuuriga, liigu valikute vahel üles- ja allanoolega, vali Enteriga ning sule loend Escape'iga. Soovituse saab valida ka hiire või puudutusega.</p>

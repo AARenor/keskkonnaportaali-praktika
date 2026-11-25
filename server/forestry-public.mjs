@@ -825,7 +825,7 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
     return resolved("nature-protection-share-2025");
   }
 
-  const municipalityAreaMetric = new RegExp(`\\b(?:kui\\s+palju|kui\\s+suur\\w*|mitu\\s+hektar\\w*|metsasus\\w*|metsamaa\\w*|metsa\\s+pindala|metsaga\\s+kaetud|pindala|osakaal|protsent\\w*${multilingualForestry ? "|forest\\s+area|forest\\s+cover(?:age)?|woodland\\s+area|woodland\\s+cover(?:age)?|forest\\s+hectares?|hectares?\\s+(?:of\\s+)?(?:forest|woodland)|hectares?\\s+are\\s+forested|percentage|how\\s+many\\s+(?:forest\\s+)?hectares|how\\s+much\\s+(?:forest|woodland)" : ""})\\b`, "u").test(text);
+  const municipalityAreaMetric = new RegExp(`\\b(?:palju|kui\\s+palju|kui\\s+suur\\w*|mitu\\s+hektar\\w*|metsasus\\w*|metsamaa\\w*|metsa\\s+pindala|metsaga\\s+kaetud|pindala|osakaal|protsent\\w*${multilingualForestry ? "|forest\\s+area|forest\\s+cover(?:age)?|woodland\\s+area|woodland\\s+cover(?:age)?|forest\\s+hectares?|hectares?\\s+(?:of\\s+)?(?:forest|woodland)|hectares?\\s+are\\s+forested|percentage|how\\s+many\\s+(?:forest\\s+)?hectares|how\\s+much\\s+(?:forest|woodland)" : ""})\\b`, "u").test(text);
   // Municipal AREA routing must never claim a harvest, clearcut, increment or
   // stock question (nt "Kui palju metsa raiuti Tartu vallas?"): local
   // quantities in those metrics have no query-bound evidence path, so an
@@ -837,9 +837,10 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
     return resolved("municipality-forest-area");
   }
   const asksForestMeasurementMethod = (
-    /\b(?:kuidas|mil\s+viisil)\b[\s\S]{0,70}\b(?:moodet\w*|hinnat\w*|arvutat\w*|inventeerit\w*|metoodik\w*)\b/u.test(text)
+    /\b(?:kuidas|mil\s+viisil|millise\s+meetodiga|meetodiga)\b[\s\S]{0,70}\b(?:moodab\w*|moodet\w*|hinnat\w*|arvutat\w*|inventeerit\w*|metoodik\w*|meetodiga)\b/u.test(text)
     || (multilingualForestry && /\bhow\b[\s\S]{0,70}\b(?:measur\w*|estimat\w*|calculat\w*|survey\w*|inventor\w*|method\w*)\b/u.test(text))
     || (mentionsSample && /\b(?:metoodik\w*|moodet\w*|hinnat\w*|kuidas)\b/u.test(text))
+    || /\bmeetodiga\b/u.test(text)
     || (multilingualForestry && mentionsSample && /\bhow\b/u.test(text))
   );
   const hasParcelScope = /\b(?:kinnistu|katastriuksus|katastritunnus|maatuk|maauksus)\w*\b/u.test(text);
@@ -881,7 +882,8 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
   }
   if (hasSmi && (mentionsSample
     || hasStem(tokens, ["lausmetsakorrald", "ulehinn", "metoodik", "takseer", "inventuur"], true)
-    || /\b(?:moodet\w*|koostat\w*|tootab|tehakse)\b/u.test(text))) {
+    || /\b(?:moodet\w*|koostat\w*|tootab|tehakse)\b/u.test(text)
+    || (!hasIncrement && /\b(?:meetodiga|moodab\w*)\b/u.test(text)))) {
     return resolved("smi-method-comparison");
   }
   if (hasStock && (/\b(?:uks|kindel|vaieldamatu|tapselt|tapne)\b[\s\S]{0,50}\b(?:numb\w*|arv\w*|hinnang\w*)\b/u.test(text)
@@ -1094,7 +1096,7 @@ export function resolvePublicForestryIntent(query, { forPrivacyCheck = false } =
     && !/\b(?:kui\s+palju|mitu|kui\s+suur\w*|pindala|osakaal|protsent|hektar\w*)\b/u.test(text);
   // "alla poole hektari, kas metsaseadus kehtib" asks about a rule, not the area.
   const asksRule = /\b(?:\w*seadus\w*|eeskir\w*|kehti\w*|tohib|tohin|lubat\w*|keelat\w*)\b/u.test(text);
-  if (hasForest && municipalMetricQuestion && !asksOtherForestSubject && !asksOtherSmiSubject && !asksDefinitionOnly && !asksRule && /\b(?:kui\s+palju|mitu|kui\s+suur\w*|metsamaa|metsasus\w*|pindala|osakaal|protsent|hektar\w*)\b/u.test(text)) {
+  if (hasForest && municipalMetricQuestion && !asksOtherForestSubject && !asksOtherSmiSubject && !asksDefinitionOnly && !asksRule && /\b(?:palju|kui\s+palju|mitu|kui\s+suur\w*|metsamaa|metsasus\w*|pindala|osakaal|protsent|hektar\w*)\b/u.test(text)) {
     return {
       kind: "forest-area",
       discoveryQueries: ["metsamaa pindala SMI Eesti", "metsasuse pindala Eesti"],
