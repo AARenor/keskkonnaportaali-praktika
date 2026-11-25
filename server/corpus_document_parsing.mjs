@@ -601,9 +601,55 @@ export function parseOfficialSitemapDocument(xml) {
   };
 }
 
+// Cheerio's .text() walks a DOM recursively. A publisher page with a very deep
+// wrapper chain can exhaust the stack, so the readable-page extractor keeps an
+// iterative fallback for that case. It walks explicit children in reverse and
+// never holds the whole path on the call stack.
+const DEEP_TEXT_BLOCK_TAGS = new Set([
+  "address", "article", "aside", "blockquote", "br", "dd", "div", "dl", "dt",
+  "fieldset", "figcaption", "figure", "footer", "h1", "h2", "h3", "h4", "h5",
+  "h6", "header", "li", "main", "nav", "ol", "p", "pre", "section", "table",
+  "tbody", "td", "tfoot", "th", "thead", "tr", "ul",
+]);
+const DEEP_TEXT_SKIP_TAGS = new Set(["script", "style", "noscript", "template", "svg", "form", "button", "select", "textarea"]);
+
+function iterativeDomText(nodes) {
+  const chunks = [];
+  const stack = [...nodes].reverse();
+  while (stack.length) {
+    const node = stack.pop();
+    if (node.type === "text") {
+      chunks.push(String(node.data || ""));
+      continue;
+    }
+    if (node.type !== "tag" && node.type !== "script" && node.type !== "style") continue;
+    const tag = String(node.name || "").toLowerCase();
+    if (DEEP_TEXT_SKIP_TAGS.has(tag)) continue;
+    const attributes = node.attribs || {};
+    if ("hidden" in attributes || "data-nosnippet" in attributes || attributes["aria-hidden"] === "true") continue;
+    const block = DEEP_TEXT_BLOCK_TAGS.has(tag);
+    if (block) chunks.push(" ");
+    const children = node.children || [];
+    for (let index = children.length - 1; index >= 0; index -= 1) stack.push(children[index]);
+    if (block) chunks.push(" ");
+  }
+  return cleanText(chunks.join(""));
+}
+function domDepthExceeds(nodes, limit) {
+  const stack = nodes.map((node) => [node, 1]);
+  while (stack.length) {
+    const [node, depth] = stack.pop();
+    if (depth > limit) return true;
+    const children = node.children || [];
+    for (const child of children) stack.push([child, depth + 1]);
+  }
+  return false;
+}
+
 export function extractReadablePage(html, url) {
   const $ = load(String(html || ""));
-  const root = $("main").first().length ? $("main").first().clone() : $("body").first().clone();
+  const main = $("main").first();
+  const root = main.length ? main : $("body").first();
   // Only the publisher's metadata block is a date witness. Dates in article
   // prose, sitemap lastmod and our fetch clock are not page update dates.
   const dates = cleanText(root.find(".publication-date-author .card-item__date").first().text());
@@ -624,16 +670,29 @@ export function extractReadablePage(html, url) {
     "article",
   ].join(","));
   const topLevel = focused.filter((_, element) => !$(element).parents().is(focused));
-  // The selected nodes are serialised and read through the shared source text
-  // extractor. It removes a `data-nosnippet` section, a hidden node, a script
-  // body and the other non prose nodes there, so text the publisher excluded
-  // from snippets can never become the copied body that snippets and model
-  // evidence are built from.
-  const contentHtml = (topLevel.length ? topLevel : root)
-    .map((_, element) => $.html(element))
-    .get()
-    .join(" ");
-  const content = boundedText(extractSourceText(contentHtml), 80_000);
+  // Normal pages read the focused selection through the shared extractor, which
+  // removes `data-nosnippet` and hidden nodes. Large or deep pages read the
+  // original document first. If that also overflows, the iterative walker reads
+  // the already cleaned selection without a recursive DOM path.
+  const nodes = topLevel.length ? topLevel.toArray() : [root.get(0)].filter(Boolean);
+  let content;
+  if (domDepthExceeds(nodes, 600) || String(html || "").length > 500_000) {
+    try {
+      content = extractSourceText(String(html || ""));
+    } catch (error) {
+      if (!(error instanceof RangeError)) throw error;
+      content = iterativeDomText(nodes);
+    }
+  } else {
+    const contentHtml = nodes.map((node) => $.html(node)).join(" ");
+    try {
+      content = extractSourceText(contentHtml);
+    } catch (error) {
+      if (!(error instanceof RangeError)) throw error;
+      content = iterativeDomText(nodes);
+    }
+  }
+  content = boundedText(content, 80_000);
   return { title: title || placeholderTitle(url), content, publishedAt, updatedAt, organization };
 }
 
