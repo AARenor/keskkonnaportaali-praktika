@@ -186,6 +186,21 @@ export function tokensShareStem(left, right) {
   return prefixLength >= 6 && left.slice(0, prefixLength) === right.slice(0, prefixLength);
 }
 
+const REVIEWED_QUALITATIVE_STEM_GROUPS = [
+  ["uuendati", "uuendamine", "metsauuendus", "uuendatud"],
+  ["mõjutab", "mõju"],
+  ["majandamine", "majandatakse"],
+].map((forms) => new Set(forms.flatMap((form) => claimTokens(form))));
+const REVIEWED_QUALITATIVE_STEM_FORMS = new Map(
+  REVIEWED_QUALITATIVE_STEM_GROUPS.flatMap((group) => [...group].map((token) => [token, group])),
+);
+
+function qualitativeTokensShareStem(left, right) {
+  if (tokensShareStem(left, right)) return true;
+  const group = REVIEWED_QUALITATIVE_STEM_FORMS.get(left) || REVIEWED_QUALITATIVE_STEM_FORMS.get(right);
+  return Boolean(group && group.has(left) && group.has(right));
+}
+
 const ENGLISH_MODAL_AUXILIARY_SOURCE = "(?:is|are|was|were)";
 const ENGLISH_MODAL_ADVERB_SOURCE = "(?:currently|presently|now|necessarily|explicitly|expressly|legally|strictly|temporarily|generally|normally|usually|fully)";
 const ENGLISH_MODAL_ACTION_ADVERB_SOURCE = "(?:also|carefully|currently|directly|freely|generally|legally|normally|only|potentially|reasonably|safely|still|temporarily|usually)";
@@ -510,7 +525,7 @@ function factualBindingTokens(value) {
 }
 
 function semanticTokenCovered(token, candidates) {
-  return candidates.some((candidate) => tokensShareStem(token, candidate));
+  return candidates.some((candidate) => qualitativeTokensShareStem(token, candidate));
 }
 
 function distinctiveSemanticTokens(tokens, peers) {
@@ -529,7 +544,7 @@ function semanticCoverageSufficient(required, candidates, complete = false) {
 function semanticMultisetIsCovered(requiredSets, candidateSets) {
   const remaining = candidateSets.flatMap((tokens) => tokens);
   return requiredSets.flatMap((tokens) => tokens).every((token) => {
-    const matchIndex = remaining.findIndex((candidate) => tokensShareStem(token, candidate));
+    const matchIndex = remaining.findIndex((candidate) => qualitativeTokensShareStem(token, candidate));
     if (matchIndex < 0) return false;
     remaining.splice(matchIndex, 1);
     return true;
@@ -1489,7 +1504,7 @@ export function assertClaimGrounding(
     }
     const tokens = [...new Set(claimTokens(sentence))];
     if (!tokens.length) continue;
-    const supportedTokens = tokens.filter((token) => trustedTokenList.some((candidate) => tokensShareStem(token, candidate)));
+    const supportedTokens = tokens.filter((token) => trustedTokenList.some((candidate) => qualitativeTokensShareStem(token, candidate)));
     const supported = supportedTokens.length;
     const reviewedContract = ["reviewed-official-source", "reviewed-forestry-knowledge"].includes(draft.evidence?.kind);
     const required = Math.max(1, Math.ceil(tokens.length * (reviewedContract ? 0.375 : 0.5)));

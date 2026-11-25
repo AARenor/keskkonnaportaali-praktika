@@ -9,6 +9,24 @@ const QUERY_STOPWORDS = new Set([
   "täna", "tana", "homme", "homne", "ülehomme", "ulehomme", "reaalajas", "see",
   "seda", "selle", "siis", "suur", "suured", "suurus", "uusim", "uusimad", "värske", "värsked", "või", "ule", "üle", "uks", "üks",
 ]);
+// Reviewed Estonian wording pairs. A user may ask for the act while the
+// cited page names the result, or the reverse. Keep the group exact so the
+// expansion cannot drift into unrelated words with a similar prefix.
+const REVIEWED_QUERY_STEM_FORMS = new Map([
+  ["uuendati", "uuend"],
+  ["uuendamine", "uuend"],
+  ["metsauuendus", "uuend"],
+  ["uuendatud", "uuend"],
+  ["mõjutab", "mõju"],
+  ["mõju", "mõju"],
+  ["majandamine", "majand"],
+  ["majandatakse", "majand"],
+]);
+const REVIEWED_QUERY_STEM_VARIANTS = new Map([
+  ["uuend", ["uuend", "metsauuendu"]],
+  ["mõju", ["mõju"]],
+  ["majand", ["majand"]],
+]);
 const SEARCH_FILTER_SOURCES = new Set(["all", "trusted", "official", "reviewed", "supplementary", "other"]);
 
 export function normalizeCorpusQuery(value = "") {
@@ -61,13 +79,19 @@ export function corpusRankingTerms(value = "") {
     .flatMap((term) => term.match(/[0-9a-zõäöüšž]+/giu) || []);
   return [...new Set(canonicalTerms
     .filter((term) => term.length >= 2 && !QUERY_STOPWORDS.has(term))
-    .flatMap((term) => /^metsastat/iu.test(term)
-      ? [corpusTermRoot(term), "statist"]
-      : [corpusTermRoot(term)]))]
+    .flatMap((term) => {
+      const reviewedStem = REVIEWED_QUERY_STEM_FORMS.get(term);
+      if (reviewedStem) return [reviewedStem];
+      return /^metsastat/iu.test(term)
+        ? [corpusTermRoot(term), "statist"]
+        : [corpusTermRoot(term)];
+    }))]
     .slice(0, 10);
 }
 
 function corpusTermVariants(term) {
+  const reviewedVariants = REVIEWED_QUERY_STEM_VARIANTS.get(term);
+  if (reviewedVariants) return reviewedVariants;
   const subjectVariants = specialistSubjectVariants(term);
   // SQL lexemes cannot contain spaces. Phrase alternatives remain available
   // to passage ranking; here the reviewed token stems form one OR group.

@@ -993,7 +993,7 @@ async function searchWithinBudget(cleanQuery, {
     ? await generateAnswer(cleanQuery, modelStartingDraft(draft), {
       timeoutMs: llmAttemptCeilingMs,
       signal,
-      conversationContext,
+      retrievalQuery,
       clientKey: llmClientKey,
       evidencePack,
     })

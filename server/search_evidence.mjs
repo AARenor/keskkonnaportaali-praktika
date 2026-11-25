@@ -244,6 +244,88 @@ export function asksForPreciseQuantity(query = "") {
   return years.length > 0 || PRECISE_QUANTITY_PATTERN.test(normalize(query));
 }
 
+// A broad synthesis must not be written from near duplicate pages of one
+// publisher when other official publishers are available. Organisation names
+// and registrable hosts are merged when they point at the same document, so a
+// publisher cannot escape the cap by varying either field.
+const MULTI_PART_TLD_SECOND_LABELS = new Set(["ac", "co", "com", "edu", "gov", "net", "org"]);
+
+function registrableHost(value) {
+  let hostname;
+  try {
+    hostname = new URL(String(value || "")).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  const labels = hostname.replace(/^\./u, "").replace(/\.$/u, "").split(".").filter(Boolean);
+  if (labels.length < 2) return labels[0] || null;
+  const start = labels.length >= 3 && MULTI_PART_TLD_SECOND_LABELS.has(labels[labels.length - 2])
+    ? labels.length - 3
+    : labels.length - 2;
+  return labels.slice(start).join(".");
+}
+
+function synthesisPublisherGroups(documents) {
+  const parent = documents.map((_document, index) => index);
+  const find = (index) => {
+    while (parent[index] !== index) {
+      parent[index] = parent[parent[index]];
+      index = parent[index];
+    }
+    return index;
+  };
+  const seen = new Map();
+  const link = (key, index) => {
+    const previous = seen.get(key);
+    if (previous === undefined) {
+      seen.set(key, index);
+      return;
+    }
+    const left = find(previous);
+    const right = find(index);
+    if (left !== right) parent[Math.max(left, right)] = Math.min(left, right);
+  };
+  documents.forEach((document, index) => {
+    const organization = normalize(String(document.organization || ""));
+    if (organization) link(`organization:${organization}`, index);
+    const host = registrableHost(document.url);
+    if (host) link(`host:${host}`, index);
+  });
+  const groups = [];
+  const roots = new Map();
+  documents.forEach((document, index) => {
+    const root = find(index);
+    let group = roots.get(root);
+    if (!group) {
+      group = [];
+      roots.set(root, group);
+      groups.push(group);
+    }
+    group.push(document);
+  });
+  return groups;
+}
+
+function diverseSynthesisDocuments(documents, maximum) {
+  const groups = synthesisPublisherGroups(documents);
+  // With more than one publisher, half the slots rounded up is the cap. That
+  // keeps the leading document of each publisher and still fills the pack in
+  // ranked order inside each publisher.
+  const perPublisher = groups.length > 1 ? Math.max(1, Math.ceil(maximum / 2)) : maximum;
+  const selected = [];
+  for (let rank = 0; selected.length < maximum; rank += 1) {
+    let added = false;
+    for (const group of groups) {
+      if (rank >= group.length || rank >= perPublisher) continue;
+      selected.push(group[rank]);
+      added = true;
+      if (selected.length >= maximum) break;
+    }
+    if (!added) break;
+  }
+  return selected;
+}
+
 // Google-style overview: several official documents that each carry a real
 // passage about the question are enough for a cited synthesis, even when no
 // single passage answers it alone. The model still writes every sentence
@@ -265,7 +347,7 @@ export function multiSourceSynthesisDocuments(query, documents = [], { minimum =
     && String(document.content || "").trim().length >= 200);
   if (eligible.length < minimum) return null;
   if (!rankedSetCoversSubject(query, eligible)) return null;
-  return eligible.slice(0, maximum);
+  return diverseSynthesisDocuments(eligible, maximum);
 }
 
 export function asksForImpact(query = "") {

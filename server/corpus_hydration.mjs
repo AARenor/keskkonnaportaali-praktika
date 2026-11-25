@@ -174,7 +174,7 @@ export async function hydrateCorpusPdfSource(url, {
   limiter,
   lookupImpl,
   requestImpl,
-  assertRedirectAllowed,
+  assertRedirectAllowed = portalRobotsRedirectGate,
 } = {}) {
   const requestedUrl = validateApprovedPublicHttpsUrl(url, CORPUS_HTTPS_ORIGINS).toString();
   const origin = new URL(requestedUrl).origin;
@@ -596,7 +596,7 @@ export async function hydratePdfUrls(client, urls, runId, {
   const errorCategories = corpusFailureCounters();
   for (const [index, url] of candidates.entries()) {
     try {
-      const result = await hydrateCorpusPdfSource(url, { observedAt: new Date().toISOString() });
+      const result = await hydrateCorpusPdfSource(url, { observedAt: new Date().toISOString(), assertRedirectAllowed: portalRobotsRedirectGate });
       if (result.status !== "indexed" || !result.document) {
         skipped += 1;
         addCorpusFailure(errorCategories, pdfFailureCategory(result.status));

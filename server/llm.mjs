@@ -120,6 +120,7 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
     const request = buildLlmRequest({
       selectedModel,
       query,
+      retrievalQuery: options.retrievalQuery || "",
       evidence,
       conversationContext: options.conversationContext || "",
       directIntroCitations: validCitations(draft.answer?.introCitations, draft.sources.length),

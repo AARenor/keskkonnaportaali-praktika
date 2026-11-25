@@ -144,6 +144,7 @@ function contextLimitError() {
 export function buildLlmRequest({
   selectedModel,
   query,
+  retrievalQuery = "",
   evidence = [],
   conversationContext = "",
   directIntroCitations = [],
@@ -178,8 +179,20 @@ export function buildLlmRequest({
     .filter((citation) => Number.isInteger(citation) && citation > 0);
   const requiredIntroCitations = [...new Set(directIntroCitations)]
     .filter((citation) => evidenceCitations.includes(citation));
-  const answerIntent = forestEvidenceIntent(safeQuery);
-  const queryIntent = analyzeQueryIntent(safeQuery);
+  // Follow-up retrieval expands an elliptical question into its accepted topic.
+  // That canonical form drives intent and directives only. The provider still
+  // sees the privacy-minimized follow-up as the question, and no inherited text
+  // is added to evidence.
+  const retrievalInput = String(retrievalQuery || "").trim()
+    ? canonicalizePublicSearchQuery(retrievalQuery)
+    : { ok: false, query: "" };
+  const intentQuery = retrievalInput.ok
+    && !containsPrivatePersonLookup(retrievalQuery)
+    && !containsPrivatePersonLookup(retrievalInput.query)
+    ? retrievalInput.query
+    : safeQuery;
+  const answerIntent = forestEvidenceIntent(intentQuery);
+  const queryIntent = analyzeQueryIntent(intentQuery);
   const synthesisDirective = synthesisIntent === "multi-source-synthesis"
     ? "Koosta terviklik ülevaade 2 kuni 4 allikast: intro vastab otse küsimusele ja nimetab küsimuse subjekti; iga parts lisab eri allikast ühe kontrollitud aspekti, näiteks põhjuse, mõju, tingimuse või näitaja. Ära korda sama väidet ega jäta vastust ühe lause pikkuseks, kui allikad annavad sisuliselt eri panuse."
     : synthesisIntent === "broad-qualitative"
