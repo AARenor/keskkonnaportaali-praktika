@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
+import { registerHooks } from "node:module";
 import test from "node:test";
 import {
   blockedFollowUpAssessment,
@@ -2711,4 +2712,229 @@ test("fact-check plan keeps the article date and admits its claims role into the
   assert.deepEqual(pack.missingEvidenceRequirements, []);
   assert.equal(pack.entries[0].published, "17.03.2023");
   assert.deepEqual(Object.keys(pack.roleWitnesses), ["claims"]);
+});
+
+const FANOUT_WIRING_MARKER = "fanout-wiring-test";
+let fanoutWiringHooksRegistered = false;
+
+function fanoutWiringDocument(id = "fanout-wiring-document") {
+  return {
+    id,
+    title: "Metsa ülevaade SMI 2025",
+    url: `https://keskkonnaagentuur.ee/et/${id}`,
+    summary: "Ametlik metsa ülevaade ja SMI mõõtmismeetod.",
+    content: "Metsa ülevaade SMI 2025 kirjeldab Eesti metsade seisundit ja mõõtmismeetodit.",
+    organization: "Keskkonnaagentuur",
+    type: "Uudis",
+    published: "17.08.2026",
+    sourceTier: "official",
+    evidencePolicy: "claim-specific",
+    _answerEvidenceEligible: true,
+    topics: ["Mets"],
+  };
+}
+
+function resetFanoutWiringHarness({ subqueries = [], documents = [] } = {}) {
+  globalThis.__fanoutWiringCalls = [];
+  globalThis.__fanoutWiringSubqueries = subqueries;
+  globalThis.__fanoutWiringDocuments = documents;
+  globalThis.__corpusWiringCalls = [];
+  globalThis.__corpusWiringDocuments = [fanoutWiringDocument("fanout-wiring-local")];
+  globalThis.__fanoutRankingCalls = [];
+}
+
+function registerFanoutWiringHooks() {
+  if (fanoutWiringHooksRegistered) return;
+  fanoutWiringHooksRegistered = true;
+  registerHooks({
+    resolve(specifier, context, nextResolve) {
+      const parent = String(context.parentURL || "");
+      if (!parent.includes(FANOUT_WIRING_MARKER)) return nextResolve(specifier, context);
+      if (["./corpus_fanout.mjs", "./corpus_runtime.mjs", "./retrieval_ranking.mjs"].includes(specifier)) {
+        const url = new URL(specifier, parent).href;
+        return { url: `${url}?${FANOUT_WIRING_MARKER}`, shortCircuit: true };
+      }
+      return nextResolve(specifier, context);
+    },
+    load(url, context, nextLoad) {
+      if (!url.includes(FANOUT_WIRING_MARKER)) return nextLoad(url, context);
+      const [base] = url.split("?");
+      if (base.endsWith("/server/corpus_fanout.mjs")) {
+        return {
+          format: "module",
+          shortCircuit: true,
+          source: `
+            export function buildCorpusFanoutQueries(query, { limit = 3 } = {}) {
+              return [query].slice(0, limit);
+            }
+            export async function searchCorpusFanout(query, options = {}) {
+              globalThis.__fanoutWiringCalls.push({ query, options });
+              return {
+                subqueries: globalThis.__fanoutWiringSubqueries,
+                documents: globalThis.__fanoutWiringDocuments,
+                statuses: [],
+              };
+            }
+          `,
+        };
+      }
+      if (base.endsWith("/server/corpus_runtime.mjs")) {
+        const actual = `${base}?fanout-wiring-actual`;
+        return {
+          format: "module",
+          shortCircuit: true,
+          source: `
+            import * as actual from ${JSON.stringify(actual)};
+            export * from ${JSON.stringify(actual)};
+            export async function searchCorpus(query, options = {}) {
+              globalThis.__corpusWiringCalls.push({ query, options });
+              const documents = globalThis.__corpusWiringDocuments;
+              return {
+                status: "ready",
+                mode: "local-index",
+                total: documents.length,
+                totalRelation: "eq",
+                truncated: false,
+                page: 1,
+                pageSize: 50,
+                items: documents,
+                rankedWindow: documents,
+                facets: { sources: [], categories: [], years: [] },
+                queryRevision: "fanout-wiring-revision",
+                _corpusWindow: {
+                  ids: documents.map((document) => document.id),
+                  indexAllowed: documents.map(() => true),
+                },
+              };
+            }
+            export async function validateRetainedCorpusWindow() { return true; }
+          `,
+        };
+      }
+      if (base.endsWith("/server/retrieval_ranking.mjs")) {
+        const actual = `${base}?fanout-wiring-actual`;
+        return {
+          format: "module",
+          shortCircuit: true,
+          source: `
+            import * as actual from ${JSON.stringify(actual)};
+            export * from ${JSON.stringify(actual)};
+            export function rankPublicSearchCandidates(...args) {
+              globalThis.__fanoutRankingCalls.push(args);
+              return actual.rankPublicSearchCandidates(...args);
+            }
+          `,
+        };
+      }
+      return nextLoad(url, context);
+    },
+  });
+}
+
+async function loadFanoutWiredRetrieval() {
+  registerFanoutWiringHooks();
+  return import(new URL("../server/retrieval.mjs?fanout-wiring-test", import.meta.url).href);
+}
+
+function fanoutWiringOptions({ page = 1, filters = { source: "official" } } = {}) {
+  const controller = new AbortController();
+  return {
+    page,
+    pageSize: 12,
+    filters,
+    deadlineAt: Date.now() + 60_000,
+    signal: controller.signal,
+    clientKey: "fanout-wiring-test",
+  };
+}
+
+test("page 1 fanout documents enter evidence with a private count field only", async () => {
+  const subqueries = ["fanout-token-subquery-one", "fanout-token-subquery-two"];
+  const fanoutDocument = fanoutWiringDocument();
+  resetFanoutWiringHarness({ subqueries, documents: [fanoutDocument] });
+  const { prepareRankedSearchResults } = await loadFanoutWiredRetrieval();
+  const options = fanoutWiringOptions();
+
+  const listing = await prepareRankedSearchResults("metsa ülevaade", options);
+
+  assert.equal(globalThis.__fanoutWiringCalls.length, 1);
+  const [call] = globalThis.__fanoutWiringCalls;
+  assert.equal(call.query, "metsa ülevaade");
+  assert.deepEqual(call.options.filters, {
+    source: "official", category: "", year: null, sort: "relevance",
+  });
+  assert.equal(call.options.deadlineAt, options.deadlineAt);
+  assert.equal(call.options.signal, options.signal);
+  assert.ok(listing.evidenceCandidates.some((item) => item.id === fanoutDocument.id));
+  assert.deepEqual(listing.fanout, { subqueryCount: 2, mergedCandidates: 1 });
+  assert.equal(JSON.stringify(listing).includes("fanout-token-subquery"), false);
+});
+
+test("every page 1 ranking call reuses one score cache", async () => {
+  resetFanoutWiringHarness({ documents: [fanoutWiringDocument()] });
+  const { prepareRankedSearchResults } = await loadFanoutWiredRetrieval();
+
+  await prepareRankedSearchResults("metsa ülevaade", fanoutWiringOptions());
+
+  const calls = globalThis.__fanoutRankingCalls;
+  assert.ok(calls.length >= 2, `expected at least two ranking calls, saw ${calls.length}`);
+  const fanoutCalls = calls.filter((args) => (args[1] || []).some((document) => document.id === "fanout-wiring-document"));
+  assert.ok(fanoutCalls.length > 0, "fanout candidates must enter a ranking call");
+  const cache = fanoutCalls[0][2]?.scoreCache;
+  assert.ok(cache instanceof Map);
+  assert.ok(calls.every((args) => args[2]?.scoreCache === cache));
+});
+
+test("page 2 reuses the retained window and never fans out", async () => {
+  resetFanoutWiringHarness({ documents: [fanoutWiringDocument()] });
+  const { prepareRankedSearchResults } = await loadFanoutWiredRetrieval();
+  const options = fanoutWiringOptions();
+  const first = await prepareRankedSearchResults("metsa ülevaade", options);
+  assert.ok(first.windowId);
+  assert.equal(globalThis.__fanoutWiringCalls.length, 1);
+  globalThis.__fanoutWiringCalls = [];
+
+  const second = await prepareRankedSearchResults("metsa ülevaade", {
+    ...options, page: 2, windowId: first.windowId,
+  });
+
+  assert.equal(globalThis.__fanoutWiringCalls.length, 0);
+  assert.equal(second.status, "ready");
+  assert.deepEqual(second.items.map((item) => item.id),
+    first.evidenceCandidates.slice(12, 24).map((item) => item.id));
+});
+
+test("fanout is on by default and only the literal false flag disables it", async () => {
+  const original = process.env.AI_MODE_FANOUT_ENABLED;
+  const subqueries = ["metsa seisund"];
+  try {
+    resetFanoutWiringHarness({ subqueries, documents: [fanoutWiringDocument()] });
+    const { prepareRankedSearchResults } = await loadFanoutWiredRetrieval();
+    process.env.AI_MODE_FANOUT_ENABLED = "false";
+
+    const disabled = await prepareRankedSearchResults("metsa ülevaade", fanoutWiringOptions());
+    assert.equal(globalThis.__fanoutWiringCalls.length, 0);
+    assert.deepEqual(disabled.fanout, { subqueryCount: 0, mergedCandidates: 0 });
+
+    resetFanoutWiringHarness({ subqueries, documents: [fanoutWiringDocument()] });
+    process.env.AI_MODE_FANOUT_ENABLED = "0";
+    const otherValue = await prepareRankedSearchResults("metsa ülevaade", fanoutWiringOptions());
+    assert.equal(globalThis.__fanoutWiringCalls.length, 1);
+    assert.deepEqual(otherValue.fanout, { subqueryCount: 1, mergedCandidates: 1 });
+  } finally {
+    if (original === undefined) delete process.env.AI_MODE_FANOUT_ENABLED;
+    else process.env.AI_MODE_FANOUT_ENABLED = original;
+  }
+});
+
+test("public listing serialization drops private fanout counts", async () => {
+  resetFanoutWiringHarness({ subqueries: ["fanout-token-subquery"], documents: [fanoutWiringDocument()] });
+  const { prepareRankedSearchResults } = await loadFanoutWiredRetrieval();
+
+  const listing = await prepareRankedSearchResults("metsa ülevaade", fanoutWiringOptions());
+  const publicListing = publicSearchListing(listing);
+
+  assert.deepEqual(listing.fanout, { subqueryCount: 1, mergedCandidates: 1 });
+  assert.equal(Object.hasOwn(publicListing, "fanout"), false);
+  assert.equal(JSON.stringify(listing).includes("fanout-token-subquery"), false);
 });

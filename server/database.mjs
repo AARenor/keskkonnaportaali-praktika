@@ -959,6 +959,36 @@ function boundedSearchAttempt(attempt) {
   return provider && status ? { provider, status, reason: attempt.reason } : null;
 }
 
+// Multi-subquery retrieval is described by counts only: how many subqueries
+// ran, how many candidates merged back, and how many subquestions came back
+// empty. Subquery text and candidate text never reach this row, and a
+// subquestion that contributed nothing is labelled by the same closed
+// SEARCH_ATTEMPT_REASONS set that `attempt` already uses, so no second reason
+// vocabulary exists for fanout.
+const SEARCH_FANOUT_SUBQUERY_MAX = 24;
+const SEARCH_FANOUT_CANDIDATE_MAX = 10_000;
+
+function boundedFanoutCount(value, maximum) {
+  return Number.isInteger(value) && value >= 0 && value <= maximum ? value : null;
+}
+
+function boundedFanout(fanout) {
+  if (!fanout || typeof fanout !== "object" || Array.isArray(fanout)) return null;
+  const record = {};
+  const subqueryCount = boundedFanoutCount(fanout.subqueryCount, SEARCH_FANOUT_SUBQUERY_MAX);
+  if (subqueryCount !== null) record.subqueryCount = subqueryCount;
+  const mergedCandidates = boundedFanoutCount(fanout.mergedCandidates, SEARCH_FANOUT_CANDIDATE_MAX);
+  if (mergedCandidates !== null) record.mergedCandidates = mergedCandidates;
+  // A caller may hand over the missing subquestions themselves. Only their
+  // number is kept, because the subquery text is never stored.
+  const missing = Array.isArray(fanout.missingSubquestions)
+    ? fanout.missingSubquestions.length
+    : fanout.missingSubquestions;
+  const missingSubquestions = boundedFanoutCount(missing, SEARCH_FANOUT_SUBQUERY_MAX);
+  if (missingSubquestions !== null) record.missingSubquestions = missingSubquestions;
+  return Object.keys(record).length ? record : null;
+}
+
 export async function recordSearch({
   query,
   response,
@@ -969,6 +999,7 @@ export async function recordSearch({
   answerStatus = "ready",
   documentIds = [],
   attempt,
+  fanout,
   durationMs,
   ttlMinutes = 60,
   cacheResponse = true,
@@ -996,6 +1027,8 @@ export async function recordSearch({
     };
     const privateAttempt = boundedSearchAttempt(attempt);
     if (privateAttempt) provenance.attempt = privateAttempt;
+    const privateFanout = boundedFanout(fanout);
+    if (privateFanout) provenance.fanout = privateFanout;
     const controlledValue = deterministicCacheValue(cacheOutcome, acceptedQuery);
     const safeResponse = cacheOutcome && controlledValue !== cacheValue
       ? null

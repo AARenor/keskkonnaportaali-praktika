@@ -22,6 +22,8 @@ import { buildLlmRequest } from "../server/llm_prompt.mjs";
 import * as orchestrator from "../server/agent-orchestrator.mjs";
 import { officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
 import { sanitizeLlmEvidenceText } from "../server/search_evidence_sanitization.mjs";
+import { SEARCH_RESPONSE_REVISION } from "../server/pipeline.mjs";
+import { createSearchAnswerCacheRevision } from "../server/search_cache_stage.mjs";
 
 const { buildEvidencePack, evidencePackMatchesSources } = evidencePackModule;
 const APPROVED_BASE_URL = "https://terrapoint.arle.top/v1";
@@ -328,4 +330,12 @@ test("an aborted agent run settles instead of leaving the request pending", asyn
   assert.equal(first.name, "AbortError", "the abort must stay classifiable as a timeout, not a provider error");
   assert.ok(Date.now() - startedAt < 900,
     `the abort must settle the run before the provider window expires, took ${Date.now() - startedAt} ms`);
+});
+
+test("the ai mode fanout revision invalidates answer cache rows from the previous contract", () => {
+  const base = { lawRevision: "law-v1", listingRevision: "listing-v1", filters: { source: "all" } };
+  const current = createSearchAnswerCacheRevision({ ...base, responseRevision: SEARCH_RESPONSE_REVISION });
+  const previous = createSearchAnswerCacheRevision({ ...base, responseRevision: "answer-v114-law-list-items" });
+  assert.ok(current.startsWith("answer-v115-ai-mode-fanout:"), current);
+  assert.notEqual(current, previous);
 });

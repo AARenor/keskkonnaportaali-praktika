@@ -21,6 +21,7 @@ import { createServer } from "node:net";
 import { createRequire } from "node:module";
 
 import { sourceResourceKey } from "../server/source-identity.mjs";
+import { publicSearchListing } from "../server/retrieval_listing.mjs";
 
 const require = createRequire(import.meta.url);
 const { Client } = require("pg");
@@ -962,6 +963,10 @@ test("copied text matches and ranks only under a current allowing index policy",
       assert.ok(healthy.windowId);
       assert.equal(healthy.pageCount, 2);
       assert.ok(healthy.evidenceCandidates.some((item) => item.url === overviewUrl && item.content));
+      assert.deepEqual(Object.keys(healthy.fanout).sort(), ["mergedCandidates", "subqueryCount"]);
+      assert.equal(Number.isInteger(healthy.fanout.subqueryCount), true);
+      assert.equal(Number.isInteger(healthy.fanout.mergedCandidates), true);
+      assert.equal(Object.hasOwn(publicSearchListing(healthy), "fanout"), false);
       await admin.query("ALTER TABLE practice_corpus_documents RENAME TO practice_corpus_documents_pagination_fixture");
       let fallback;
       try {

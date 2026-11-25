@@ -3,6 +3,7 @@ import { sourceResourceKey, sourceWitnessKey } from "./source-identity.mjs";
 import { enqueueOfficialDiscoveryDocuments } from "./corpus_ingestion.mjs";
 import { normalizeSearchFilters } from "./corpus_query.mjs";
 import { searchCorpus, validateRetainedCorpusWindow } from "./corpus_runtime.mjs";
+import { searchCorpusFanout } from "./corpus_fanout.mjs";
 import { searchOfficialSites } from "./integrations.mjs";
 import { loadStructuredIndicatorDocuments } from "./indicators.mjs";
 import { buildDiscoveryQueries } from "./search.mjs";
@@ -60,6 +61,7 @@ function expiredListingWindow({ page, pageSize, filters, queryRevision }) {
     items: [],
     facets: { sources: [], categories: [], years: [] },
     appliedFilters: filters,
+    fanout: { subqueryCount: 0, mergedCandidates: 0 },
     updatedAt: new Date().toISOString(),
   };
 }
@@ -104,6 +106,7 @@ export async function prepareRankedSearchResults(query, {
       items: [],
       facets: { sources: [], categories: [], years: [] },
       appliedFilters,
+      fanout: { subqueryCount: 0, mergedCandidates: 0 },
       updatedAt: new Date().toISOString(),
     };
   }
@@ -181,6 +184,10 @@ export async function prepareRankedSearchResults(query, {
   // One request ranks the same catalogue documents two or three times; share
   // one score cache so only the first pass pays for scoring.
   const scoreCache = new Map();
+  const fanoutResult = process.env.AI_MODE_FANOUT_ENABLED === "false"
+    ? Promise.resolve({ subqueries: [], documents: [], statuses: [] })
+    : searchCorpusFanout(query, { filters: appliedFilters, deadlineAt, signal })
+      .catch(() => ({ subqueries: [], documents: [], statuses: [] }));
   const directory = shouldUseLiveDiscovery(safePage)
     ? officialServiceCatalogueDocuments().filter((document) => resultMatchesFilters(document, appliedFilters))
     : [];
@@ -190,11 +197,16 @@ export async function prepareRankedSearchResults(query, {
   const reviewedPlan = currentListingEvidencePlan(reviewedDirectory, query, reviewedDirectory || [], appliedFilters.sort);
   let reviewedRankedPrefix = null;
   if (reviewedPlan) {
-    const local = await localRequest.catch(() => null);
+    const [local, fanout] = await Promise.all([
+      localRequest.catch(() => null),
+      fanoutResult,
+    ]);
     throwIfRetrievalClosed(signal, deadlineAt);
     const localCandidates = local?.rankedWindow || local?.items || [];
-    const ranked = localCandidates.length
-      ? rankPublicSearchCandidates(query, [...localCandidates, ...directory], {
+    const fanoutCandidates = Array.isArray(fanout.documents) ? fanout.documents : [];
+    const reviewedCandidates = [...localCandidates, ...fanoutCandidates];
+    const ranked = reviewedCandidates.length
+      ? rankPublicSearchCandidates(query, [...reviewedCandidates, ...directory], {
           sort: appliedFilters.sort,
           intentDocuments: directory,
           previouslyRanked: reviewedDirectory,
@@ -224,8 +236,9 @@ export async function prepareRankedSearchResults(query, {
       signal,
     }))
     : [];
-  const [localResult, structuredResult, ...officialResults] = await Promise.allSettled([
+  const [localResult, fanoutSettled, structuredResult, ...officialResults] = await Promise.allSettled([
     localRequest,
+    fanoutResult,
     reviewedOverviewReady ? Promise.resolve([]) : loadStructuredIndicatorDocuments(acceptedQuery, {
       timeoutMs: structuredTimeout,
       signal,
@@ -236,6 +249,10 @@ export async function prepareRankedSearchResults(query, {
   const local = localResult.status === "fulfilled"
     ? localResult.value
     : { status: "degraded", total: 0, items: [], facets: {} };
+  const fanout = fanoutSettled.status === "fulfilled"
+    ? fanoutSettled.value
+    : { subqueries: [], documents: [] };
+  const fanoutCandidates = Array.isArray(fanout.documents) ? fanout.documents : [];
   const live = officialResults
     .filter((result) => result.status === "fulfilled")
     .flatMap((result) => result.value.documents || [])
@@ -248,7 +265,7 @@ export async function prepareRankedSearchResults(query, {
   // here ('сортировка мусора' -> 'coptиpoвka муcopa'), so ranking must use
   // the raw query whose analysis merges the Russian keyword bridge.
   const localCandidates = local.rankedWindow || local.items || [];
-  const rankedPrefix = (reviewedRankedPrefix || rankPublicSearchCandidates(query, [...localCandidates, ...filteredStructured, ...filteredLive, ...directory], {
+  const rankedPrefix = (reviewedRankedPrefix || rankPublicSearchCandidates(query, [...localCandidates, ...filteredStructured, ...filteredLive, ...directory, ...fanoutCandidates], {
     sort: appliedFilters.sort,
     intentDocuments: directory,
     scoreCache,
@@ -259,7 +276,7 @@ export async function prepareRankedSearchResults(query, {
   // doubled the blocking CPU of every search; the retained-plan path keeps its
   // own ranking because its prefix is a filtered subset.
   const facetExtras = (reviewedRankedPrefix
-    ? rankAndDeduplicate(acceptedQuery, [...filteredStructured, ...filteredLive, ...directory])
+    ? rankAndDeduplicate(acceptedQuery, [...filteredStructured, ...filteredLive, ...directory, ...fanoutCandidates], { scoreCache })
     : rankedPrefix)
     .filter((document) => !localUrls.has(sourceWitnessKey(document)));
   let selected = rankedPrefix.slice(offset, offset + safePageSize);
@@ -313,6 +330,10 @@ export async function prepareRankedSearchResults(query, {
     // navigation cards, while the citable official page ranks just below.
     // Public serialization strips this field.
     evidenceCandidates: rankedPrefix.slice(0, 50),
+    fanout: {
+      subqueryCount: Array.isArray(fanout.subqueries) ? fanout.subqueries.length : 0,
+      mergedCandidates: fanoutCandidates.length,
+    },
     facets: mergedFacets(local.facets, facetExtras),
     appliedFilters,
     updatedAt: new Date().toISOString(),

@@ -51,7 +51,7 @@ import {
 } from "./retrieval_ranking.mjs";
 import { resultPublishedAt } from "./retrieval_deduplication.mjs";
 import { prepareRankedSearchResults } from "./retrieval.mjs";
-import { answersAskedConcept, extractAnswersQuery, givesAskedAmount, isNonAnswerText, namesAskedAgeClass, namesAskedClearcut, namesDefinitionTerm, rawLawLeadAnswersQuery } from "./answer_coverage.mjs";
+import { answersAskedConcept, extractAnswersQuery, givesAskedAmount, isForestNoticeFilingPassage, isNonAnswerText, namesAskedAgeClass, namesAskedClearcut, namesDefinitionTerm, rawLawLeadAnswersQuery } from "./answer_coverage.mjs";
 import { canonicalizePublicSearchQuery } from "./search_query_canonicalization.mjs";
 import {
   assessSearchQuery,
@@ -140,9 +140,28 @@ function isPermissionFocusedLawCandidate(source, intent) {
     && PERMISSION_ONLY_DEFINITION.test(String(source._lawDefinition || ""));
 }
 
+const FANOUT_SUBQUERY_MAX = 24;
+const FANOUT_CANDIDATE_MAX = 10_000;
+
+function boundedFanoutCount(value, maximum) {
+  return Number.isInteger(value) && value >= 0 && value <= maximum ? value : 0;
+}
+
+// Retrieval exposes only counts. Persistence keeps a bounded copy and never
+// receives subquery text.
+function fanoutCountsFromListing(searchResults) {
+  const fanout = searchResults?.fanout && typeof searchResults.fanout === "object"
+    && !Array.isArray(searchResults.fanout) ? searchResults.fanout : {};
+  return {
+    subqueryCount: boundedFanoutCount(fanout.subqueryCount, FANOUT_SUBQUERY_MAX),
+    mergedCandidates: boundedFanoutCount(fanout.mergedCandidates, FANOUT_CANDIDATE_MAX),
+    missingSubquestions: 0,
+  };
+}
+
 // Increment whenever the public response/citation contract changes so rows
 // written under an older policy cannot be served without regeneration.
-export const SEARCH_RESPONSE_REVISION = "answer-v114-law-list-items";
+export const SEARCH_RESPONSE_REVISION = "answer-v115-ai-mode-fanout";
 
 // Cards that only quote a source passage, as opposed to a structured figure or
 // a reviewed law card. Only these are withdrawn after an intent rejection.
@@ -540,6 +559,14 @@ export async function createPortalDraft(query, {
   const directExtract = !forestBalance && direct
     ? directEvidenceExtract(retrievalQuery, direct, plannedEvidence)
     : "";
+  const directMissesQuery = Boolean(directExtract) && !extractAnswersQuery(retrievalQuery, directExtract);
+  // Reviewed catalogue pages may embed one forest-notice sentence beside the
+  // data the user actually asks for. A passage that fails the query check must
+  // not be published just because its source was reviewed.
+  const unrelatedNoticePassage = directMissesQuery
+    && isForestNoticeFilingPassage(directExtract)
+    && intentClassification.topic !== "forest_notice"
+    && !/\b(?:metsateatis|raieteatis)\w*/iu.test(retrievalQuery);
   const sourceClaimPairs = !forestBalance
     ? composeSourceClaimPairs(query, plannedEvidence, draft.sources)
     : null;
@@ -573,8 +600,8 @@ export async function createPortalDraft(query, {
     if (!answerCardAnswersQuery(draft, retrievalQuery)) {
       draft.evidence.offTargetIntro = officialForestryFallback.intro;
     }
-  } else if (directExtract && !plannedEvidence?.strong && !REVIEWED_RETRIEVAL_PATTERN.test(direct.retrieval || "")
-    && !extractAnswersQuery(retrievalQuery, directExtract)) {
+  } else if (directMissesQuery && !plannedEvidence?.strong
+    && (!REVIEWED_RETRIEVAL_PATTERN.test(direct.retrieval || "") || unrelatedNoticePassage)) {
     // The model may still answer from these sources. Without it, say there is
     // no answer rather than presenting a passage that does not answer.
     draft.answer.eyebrow = NO_ANSWER_EYEBROW;
@@ -1150,6 +1177,7 @@ async function searchWithinBudget(cleanQuery, {
     }
   }
 
+  const fanoutCounts = fanoutCountsFromListing(searchResults);
   if (requestCanStillPersist({ signal, deadlineAt })) {
     await retainSearchPersistence(persistSearch({
       query: cleanQuery,
@@ -1160,6 +1188,7 @@ async function searchWithinBudget(cleanQuery, {
       answerProvider: outcome.answerProvider,
       answerStatus: outcome.answerStatus,
       attempt: outcome.attempt,
+      ...(fanoutCounts.subqueryCount > 0 ? { fanout: fanoutCounts } : {}),
       documentIds: draft.evidence?.documentIds || [],
       durationMs,
       ttlMinutes,

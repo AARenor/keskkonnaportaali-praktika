@@ -112,6 +112,15 @@ export function answersNoticeQualifiers(query, text) {
     .every((root) => textHasQueryRoot(text, root));
 }
 
+// A reviewed catalogue page can carry one sentence about filing a forest
+// notice beside the data the question actually asks for. Identify that
+// boilerplate so it cannot be published as the answer to an unrelated query.
+export function isForestNoticeFilingPassage(text) {
+  const value = normalize(text);
+  return /\bmetsateatis\w*\s+esitatakse\b/u.test(value)
+    || /\btaida\s+metsateatise\s+vorm\b/u.test(value);
+}
+
 function shortenedQueryWords(query, terms) {
   return normalize(query).split(/\s+/u).filter((word) => word.length >= 7
     && terms.some((term) => {

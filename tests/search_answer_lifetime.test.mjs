@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { configuredSearchBudgetMs, searchDeadline } from "../server/request-budget.mjs";
 import { resolvePublicResponseBudget } from "../server/response-budget.mjs";
-import { searchTimeoutFallback } from "../server/pipeline.mjs";
+import { searchEnvironmentLive, searchTimeoutFallback } from "../server/pipeline.mjs";
+import { rankPublicSearchCandidates } from "../server/retrieval_ranking.mjs";
+import { officialServiceCatalogueDocuments } from "../server/search_catalogue.mjs";
 import { smiIncrementDocument } from "../server/indicators.mjs";
 import { ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS } from "../server/forestry-public.mjs";
 import { publicSearchListing } from "../server/retrieval_listing.mjs";
@@ -178,4 +180,39 @@ test("a listing republished after a source expires keeps the link and drops the 
   assert.equal(republished.organization, "Keskkonnaagentuur");
   const answerJson = JSON.stringify(writes[1].payload);
   assert.doesNotMatch(answerJson, /unavailable|_sourcePolicy|source_policy|_contentHash/u, "no policy witness may reach the reader");
+});
+
+test("fanout counts persist as bounded numbers without subquery text", async () => {
+  const query = "Kui kaua metsateatist menetletakse?";
+  const fanout = { subqueryCount: 2, mergedCandidates: 12 };
+  const directory = officialServiceCatalogueDocuments();
+  const items = rankPublicSearchCandidates(query, directory, {
+    intentDocuments: directory,
+    now: Date.parse("2026-11-25T12:00:00Z"),
+  }).slice(0, 12);
+  let persisted = null;
+
+  await searchEnvironmentLive(query, {
+    searchResults: {
+      total: items.length,
+      items,
+      evidenceCandidates: items,
+      fanout,
+    },
+    useCache: false,
+    deadlineAt: Date.now() + 15_000,
+    recordSearch: async (record) => { persisted = record; },
+    generateAnswer: async () => ({
+      answer: null,
+      acceptedClaims: [],
+      attempt: { provider: "test", status: "unavailable", reason: "local-rejected" },
+    }),
+  });
+
+  assert.deepEqual(persisted.fanout, {
+    subqueryCount: 2,
+    mergedCandidates: items.length,
+    missingSubquestions: 0,
+  });
+  assert.equal(Object.values(persisted.fanout).every((value) => Number.isInteger(value)), true);
 });

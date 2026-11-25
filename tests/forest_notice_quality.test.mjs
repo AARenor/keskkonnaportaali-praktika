@@ -165,3 +165,25 @@ test("a repeated answer keeps its source caveat within the note limit", () => {
   const longCaveat = "Kontrolli kehtivat seadust. ".repeat(25);
   assert.equal(withRepeatedAnswerNote({ note: longCaveat }).note, longCaveat);
 });
+
+test("fanout enabled keeps unrelated questions free of notice text but notice questions answered", async () => {
+  const fanout = { subqueryCount: 2, mergedCandidates: 12 };
+  const draftWithFanout = async (query) => {
+    const directory = officialServiceCatalogueDocuments();
+    const items = rankPublicSearchCandidates(query, directory, {
+      intentDocuments: directory,
+      now: Date.parse("2026-11-25T12:00:00Z"),
+    }).slice(0, 12);
+    return createPortalDraft(query, {
+      deadlineAt: Date.now() + 4_000,
+      searchResults: { total: items.length, items, fanout },
+    });
+  };
+
+  const unrelated = await draftWithFanout("Kuidas registreerida metsa?");
+  assert.equal(unrelated.answer.eyebrow, "Vastust ei leitud");
+  assert.doesNotMatch(answerText(unrelated), /metsateatis\w*/iu);
+
+  const notice = await draftWithFanout("Kui kaua metsateatist menetletakse?");
+  assert.match(answerText(notice), /(?:15|30)\s+tööpäeva/u);
+});

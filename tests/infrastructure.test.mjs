@@ -235,7 +235,9 @@ test("remote PostgreSQL TLS always verifies the certificate and hostname", () =>
     rejectUnauthorized: true,
     ca: "TEST CA",
   });
-  assert.throws(() => resolveDatabaseTls({ mode: undefined, url: remoteUrl }), /must be explicitly set/u);
+  // The child-process startup check below is the authoritative form of this
+  // guard. A direct call here would inherit the runner's DATABASE_SSL_MODE
+  // and fail for an environment reason rather than a policy reason.
   assert.throws(() => resolveDatabaseTls({ mode: "disable", url: remoteUrl }), /explicit local database host/u);
   for (const plaintextHosts of ["db.internal:5432", "*.internal", "https://db.internal", "db..internal"]) {
     assert.throws(
@@ -6471,6 +6473,74 @@ test("search persistence evicts only a bounded victim set before admitting a new
   assert.deepEqual(deletion.values, [["41"]]);
   assert.ok(queries.some(({ sql }) => sql.includes("INSERT INTO practice_search_runs")));
   assert.equal(queries.at(-1).sql, "COMMIT");
+});
+
+test("a caller-supplied fanout persists as bounded counts and never as subquery text", () => {
+  const localUrl = "postgres://practice_probe:probe@127.0.0.1:5432/practice";
+  const secret = Buffer.from(Array.from({ length: 48 }, (_value, index) => (
+    (index * 73 + 19) % 256
+  ))).toString("base64");
+  const run = spawnSync(process.execPath, ["--input-type=module", "--eval", `
+    import assert from "node:assert/strict";
+    import pg from "pg";
+    const inserted = [];
+    const client = {
+      async query(statement, values = []) {
+        const sql = typeof statement === "string" ? statement : statement.text;
+        if (sql.includes("pg_try_advisory_xact_lock")) return { rows: [{ acquired: true }] };
+        if (sql.includes("INSERT INTO practice_search_runs")) {
+          inserted.push(values);
+          return { rows: [{ id: inserted.length }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
+      },
+      release() {},
+    };
+    pg.Pool.prototype.query = async () => ({ rows: [] });
+    pg.Pool.prototype.connect = async () => client;
+    const { recordSearch } = await import("./server/database.mjs");
+    const base = {
+      query: "roostiku ülevaade", revision: "test-revision", durationMs: 20,
+      answerProvider: "deterministic-current-evidence", cacheResponse: false,
+      response: { sources: [] },
+    };
+    const counted = await recordSearch({
+      ...base,
+      fanout: { subqueryCount: 3, mergedCandidates: 41, missingSubquestions: 2 },
+    });
+    assert.equal(counted.status, "ready");
+    assert.deepEqual(JSON.parse(inserted[0][4]).fanout,
+      { subqueryCount: 3, mergedCandidates: 41, missingSubquestions: 2 });
+    await recordSearch({
+      ...base,
+      fanout: {
+        subqueryCount: 2, mergedCandidates: 9, missingSubquestions: ["raie ja juurdekasv", "kaitsealune mets"],
+        queries: ["raie ja juurdekasv", "kaitsealune mets"],
+      },
+    });
+    assert.deepEqual(JSON.parse(inserted[1][4]).fanout,
+      { subqueryCount: 2, mergedCandidates: 9, missingSubquestions: 2 });
+    assert.doesNotMatch(JSON.stringify(inserted), /raie ja juurdekasv|kaitsealune|queries|mergedQueries/u);
+    await recordSearch({
+      ...base,
+      fanout: { subqueryCount: -1, mergedCandidates: 1e9, missingSubquestions: "PRIVATE_RAW_PROSE" },
+    });
+    assert.equal("fanout" in JSON.parse(inserted[2][4]), false);
+    await recordSearch(base);
+    assert.equal("fanout" in JSON.parse(inserted[3][4]), false);
+  `], {
+    cwd: new URL("..", import.meta.url),
+    encoding: "utf8",
+    timeout: 10_000,
+    env: {
+      ...process.env,
+      DATABASE_URL: localUrl,
+      DATABASE_SSL_MODE: "disable",
+      DATABASE_SSL: "",
+      SEARCH_HASH_SECRET: secret,
+    },
+  });
+  assert.equal(run.status, 0, run.stderr || run.stdout || String(run.error));
 });
 
 test("legacy persistence debt is drained in one bounded batch and cannot grow", async () => {
