@@ -488,3 +488,34 @@ Tootmises oli `ALL_ENVIRONMENT_SEARCH_ENABLED` puuduv, seega sõeluti üldküsim
 Live kontroll samal päeval: `kuidas vähendada jäätmeid` tagastas `AI koondvastus`, 4 osa, 5 allikat, `ready/none`; `mis on ringmajandus` tagastas `AI koondvastus`, 2 osa, 2 allikat, `ready/none`. `mis on kliimamuutus` ja `mis on elurikkus` jäid tol hetkel vastuseta, sest nende ülevaatelehtedest ei kujunenud tolleaegse tõendipoliitika järgi vastuseks sobivat tõendit. Leebe režiimi muudatus (jaotis „Leebe tõendusrežiim 26.11.2026”) lahendas selle: mõlemad küsimused jõuavad nüüd allikapõhise vastuse rajale.
 
 Avalikus tootmises asendatakse `off` väärtused vaikeväärtustega (kliendil 120 000 ja globaalselt 240 000 tokenit tunnis), mistõttu ammendus eelarve mõne vastusega ja järgnevad päringud said `client-token-budget-exhausted`. Seetõttu tõsteti `LLM_CLIENT_TOKEN_BUDGET=3000000`, `LLM_ROLLING_TOKEN_BUDGET=20000000`, `LLM_CLIENT_REQUEST_BUDGET=100` ja `LLM_ROLLING_REQUEST_BUDGET=500`; uus konteiner kinnitas need väärtused ja vastused töötavad.
+
+## Leebe tõendusrežiim ja nähtavad soovitatud päringud 26.11.2026 (c9bd685)
+
+Tootmises vastasid üldkeskkonna küsimused ebaühtlaselt: ülevaatelehed ei pääsenud tõendiks, sest kureeritud kataloog neid ei sisaldanud. Muudatus lisab praktikarežiimi lipu `ANSWER_EVIDENCE_LENIENT`, mis lubab värske ametliku lehe tõendiks kahe tootja kaudu: korpuserida kehtiva tõendipoliitikaga ja portaalotsingu indeksikeha vähemalt 400 märgiga. `route-only` kataloogikirje jääb kõrvale. Definitsiooniküsimused mööduvad teenusekaardi koostajatest, kui nähtav valik sisaldab vähemalt 400 märgi pikkust tõendikõlblikku sisu. Kaks sissejuhatuse allikakontrolli on leebes režiimis lõdvemad; lausetasandi tõendus jääb rangelt viidatud allika vastu.
+
+Hero alla lisandus püsiv „Soovitatud päringud” plokk nelja põhilise kureeritud küsimusega; fookuses olles näitab sama koht ripploendit, seega kaks plokki ei kattu.
+
+| Kontroll | Tulemus |
+|---|---|
+| `npm test` | 1508/1508, 785,9 s (leebe lipp väljas, ranged harud) |
+| `node --test tests/lenient_evidence.test.mjs` | 4/4 |
+| `npm run build` | läbitud |
+| `npm run eval:public` | 147/147, kõik viis näitajat 1,0 |
+| `biome check` muudetud failidel | ainult olemasolevad leiud (`useOptionalChain` corpus_runtime.mjs:108, `noControlCharactersInRegex` integrations.mjs:531/549) |
+| Coolify juurutus `ooxm36dwiwnapv1ijati9toc` | `finished`, revision `bc432e88471aa408e4e5366d62e2ba318e4e3238` |
+| Coolify juurutus `lnaepewj47bky64h498gz8gr` | `finished`, revision `c9bd6853957cb61cd3e431d313854329a73f1ffa` |
+| Konteineri keskkond | `ANSWER_EVIDENCE_LENIENT=true`, `ALL_ENVIRONMENT_SEARCH_ENABLED=true` |
+| Live `/api/health` | revision `c9bd6853957c...` |
+| Hero plokk 1280×800 ja 390×844 | „Soovitatud päringud”, 4 küsimust, horisontaalne ülevool 0, lehe vigu 0 |
+
+Live vastuste loend (iga päring eraldi, sest tulemus varieerub käivituste vahel):
+
+| Päring | Katsed | Tulemus |
+|---|---|---|
+| `mis on kliimamuutus` | 3 | 2× `AI koondvastus` ready (2 ja 3 osa), 1× `Vastust ei leitud` (0 allikat) |
+| `mis on ringmajandus` | 2 | 2× `AI koondvastus` ready (1 ja 2 osa) |
+| `mis on elurikkus` | 3 | 3× `Ametlik teenus` (ametlik teenusekaart, mitte mudelivastus) |
+| `metsaraie mõju loodusele` | 2 live, 1 kohalik | live 2× `Vastust ei leitud` (3 allikat); kohalik 1× `AI koondvastus` ready (3 osa) |
+| `mets` | 1 live, 2 kohalikku | `Vastust ei leitud`, `degraded/local-rejected`; ranged režiimis sama põhjus `grounding-workload-exceeds-the-validation-limit` |
+
+Piirangud: `mets` ülevaate degradatsioon on olemasolev, mitte selle muudatuse põhjustatud; sama juhtub lipu väljas kohalikus serveris. `mis on elurikkus` jääb teenusekaardiks, kui nähtavasse valikusse ei tule 400+ märgi tõendikõlblikku lehte. Mudelivastuse õnnestumine varieerub käivituste vahel; deterministlik allikakaart jääb alati alles.
