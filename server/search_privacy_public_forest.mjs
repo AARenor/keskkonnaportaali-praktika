@@ -331,11 +331,14 @@ function hasPersonPrefixedReviewedMunicipalityAssetAssociation(value) {
   ));
 }
 
+function escapeRegExpLiteral(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
 function isExplicitHyphenatedReviewedCountyNameMatch(nameParts, matchedText) {
   if (nameParts.length !== 2
     || !isReviewedEstonianCountyIdentity(nameParts.join(" "))) return false;
   const pattern = new RegExp(
-    `(?<!\\p{L})${RegExp.escape(nameParts[0])}\\s*\\p{Pd}+\\s*${RegExp.escape(nameParts[1])}(?!\\p{L})`,
+    `(?<!\\p{L})${escapeRegExpLiteral(nameParts[0])}\\s*\\p{Pd}+\\s*${escapeRegExpLiteral(nameParts[1])}(?!\\p{L})`,
     "iu",
   );
   return pattern.test(String(matchedText || ""));

@@ -128,3 +128,16 @@ test("safe data follow-ups inherit the environmental subject without admitting s
     assert.equal(contextualRetrievalQuery(root, question, []), "", question);
   }
 });
+test("a metsaraie data question does not receive the metsainfo navigation card", async () => {
+  const startedAt = Date.now();
+  const items = officialServiceCatalogueDocuments().filter((item) => item.id === "metsainfo-hetkeseis");
+  const response = await searchEnvironmentLive("metsaraie andmed", {
+    startedAt,
+    deadlineAt: startedAt + 3_000,
+    searchResults: { items, total: items.length },
+    useCache: false,
+    generateAnswer: async () => ({ answer: null, acceptedClaims: [], attempt: { status: "not-applicable", provider: "test", reason: "not-applicable" } }),
+  });
+  assert.notEqual(response.answer.eyebrow, "Ametlik andmeteenus");
+  assert.doesNotMatch(response.answer.intro, /metsainventeerimisandmetest/u);
+});

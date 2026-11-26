@@ -747,6 +747,10 @@ function answerCardAnswersQuery(draft, query, { deterministicEvidence = true } =
   const fromNoticeGuide = (draft.answer.introCitations || []).some((citation) => draft.sources?.[citation - 1]?.id === "forest-notice-guidance");
   if (sourceExtract && (!givesAskedAmount(query, text) || !namesAskedAgeClass(query, text)
     || (fromNoticeGuide && !namesAskedClearcut(query, text)))) return false;
+  const broadDataNavigation = draft.answer.eyebrow === "Ametlik andmeteenus";
+  const metsainfoHarvestMismatch = (draft.sources || []).some((source) => source?.id === "metsainfo-hetkeseis")
+    && /raie|raiut/u.test(normalize(query)) && !/raie|raiut/u.test(normalize(text));
+  if ((sourceExtract || broadDataNavigation) && metsainfoHarvestMismatch) return false;
   return answersAskedConcept(query, text)
     && namesDefinitionTerm(query, intro)
     && rawLawLeadAnswersQuery(query, intro)
@@ -917,11 +921,12 @@ async function searchWithinBudget(cleanQuery, {
     total: searchResults?.total,
   });
   // A topic overview must not answer "what is X" over the law section defining X.
-  const structuredIndicatorDraft = !searchResults?.items?.[0]?._focusedLawTerm && draftMatchesListingAndFilters(
-    structuredIndicatorCandidate,
-    searchResults,
-    filters,
-  ) ? structuredIndicatorCandidate : null;
+  const broadNavigationRejected = structuredIndicatorCandidate?.answer?.eyebrow === "Ametlik andmeteenus"
+    && !answerCardAnswersQuery(structuredIndicatorCandidate, cleanQuery);
+  const structuredIndicatorDraft = !searchResults?.items?.[0]?._focusedLawTerm
+    && !broadNavigationRejected
+    && draftMatchesListingAndFilters(structuredIndicatorCandidate, searchResults, filters)
+    ? structuredIndicatorCandidate : null;
   if (structuredIndicatorDraft) {
     draft = structuredIndicatorDraft;
   } else if (assessment.kind !== "answerable") {

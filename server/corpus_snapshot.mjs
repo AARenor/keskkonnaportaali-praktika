@@ -35,7 +35,6 @@ export function createCoalescedTtlSnapshot({
     entry.timer = setTimer(() => {
       controller.abort(new DOMException("Corpus statistics refresh timed out", "TimeoutError"));
     }, safeTimeoutMs);
-    entry.timer?.unref?.();
     const loaderPromise = Promise.resolve()
       .then(async () => {
         const releaseWork = typeof acquireWork === "function"
@@ -114,7 +113,7 @@ export function createCoalescedTtlSnapshot({
           () => finish(reject, new DOMException("Corpus statistics deadline expired", "TimeoutError")),
           remainingMs,
         );
-        deadlineTimer?.unref?.();
+        // A deadline that callers await must keep the event loop alive.
       }
       entry.promise.then(
         (value) => finish(resolve, value),

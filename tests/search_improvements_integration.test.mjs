@@ -924,6 +924,40 @@ test("an elliptical follow-up keeps its cited answer when the subject comes from
   assert.notEqual(response.answer.eyebrow, "Vastust ei leitud");
   assert.match(response.answer.intro, /2,3 miljonit/u);
 });
+test("a content-bearing continuation keeps its cited answer when the excerpt covers the new subject", () => {
+  const excerpt = "Kuusk on Eestis kõige levinum puuliik.";
+  const response = finalizeFollowUpResult({
+    question: "aga kuusel?",
+    checkQuery: "aga kuusel? Mis on puidubilanss?",
+    result: {
+      answer: {
+        title: "Puuliigid",
+        intro: excerpt,
+        introCitations: [1],
+        parts: [],
+      },
+      sources: [{ citation: 1, evidenceExcerpt: excerpt }],
+    },
+    listing: publicSearchListing(listing()),
+  });
+  assert.notEqual(response.answer.eyebrow, "Vastust ei leitud");
+  assert.match(response.answer.intro, /Kuusk/u);
+});
+test("a continuation whose new subject is absent from the cited evidence is rejected", () => {
+  const excerpt = "Metsamaa pindala on Eestis 2,3 miljonit hektarit.";
+  const response = finalizeFollowUpResult({
+    question: "aga kuusel?",
+    checkQuery: "aga kuusel? Mis on puidubilanss?",
+    result: {
+      answer: { title: "Metsamaa", intro: excerpt, introCitations: [1], parts: [] },
+      sources: [{ citation: 1, evidenceExcerpt: excerpt }],
+    },
+    listing: publicSearchListing(listing()),
+  });
+  assert.equal(response.answer.eyebrow, "Vastust ei leitud");
+});
+
+
 
 
 test("a rejected repeated follow-up keeps safe usage but not the rejected answer", () => {

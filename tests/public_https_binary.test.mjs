@@ -427,14 +427,22 @@ test("binary transport carries the caller signal and aborts on it", async () => 
   // A clock based abort reaches the same boundary: the signal handed to the
   // request layer is the caller's own, so a timeout composed by the caller is a
   // transport timeout.
-  await assert.rejects(
-    requestApprovedPublicHttpsBytes(`${APPROVED[0]}/failid/aeglane.pdf`, {
-      ...binaryOptions(),
-      signal: AbortSignal.timeout(20),
-      requestImpl: hanging,
-    }),
-    (error) => error.name === "TimeoutError",
-  );
+  const timeoutController = new AbortController();
+  const timeoutTimer = setTimeout(() => {
+    timeoutController.abort(new DOMException("transport timeout", "TimeoutError"));
+  }, 20);
+  try {
+    await assert.rejects(
+      requestApprovedPublicHttpsBytes(`${APPROVED[0]}/failid/aeglane.pdf`, {
+        ...binaryOptions(),
+        signal: timeoutController.signal,
+        requestImpl: hanging,
+      }),
+      (error) => error.name === "TimeoutError",
+    );
+  } finally {
+    clearTimeout(timeoutTimer);
+  }
 
   let seenSignal = null;
   await requestApprovedPublicHttpsBytes(`${APPROVED[0]}/failid/kiire.pdf`, {

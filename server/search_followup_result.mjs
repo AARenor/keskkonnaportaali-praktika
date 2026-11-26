@@ -1,5 +1,6 @@
 import {
   citedEvidenceAnswersQuestion,
+  continuationTermsCovered,
   repeatsEarlierAnswer,
   withRepeatedAnswerNote,
 } from "./answer_coverage.mjs";
@@ -18,8 +19,10 @@ export function finalizeFollowUpResult({ question, checkQuery = question, result
     ...(usageTelemetry ? { usage_telemetry: usageTelemetry } : {}),
     searchResults: listing,
   });
-  const elliptical = isContinuationFollowUp(question) || isSafeEllipticalFollowUp(question);
-  const answersQuestion = elliptical || citedEvidenceAnswersQuestion(checkQuery, result?.answer, result?.sources);
+  const elliptical = isSafeEllipticalFollowUp(question);
+  const citedText = [answerText, ...(result?.sources || []).map((source) => source?.evidenceExcerpt)].filter(Boolean).join(" ");
+  const continuationCovered = isContinuationFollowUp(question) && continuationTermsCovered(question, citedText);
+  const answersQuestion = elliptical || continuationCovered || citedEvidenceAnswersQuestion(checkQuery, result?.answer, result?.sources);
   if (!answersQuestion) return noAnswer();
   if (!repeatsEarlierAnswer(answerText, previousAnswers, {
     title: result?.answer?.title,

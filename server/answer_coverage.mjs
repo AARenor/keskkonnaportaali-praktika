@@ -273,6 +273,26 @@ export function answersAskedConcept(query, text) {
   return ASKED_CONCEPTS.every(({ asks, answers }) => !asks.test(normalizedQuery) || answers.test(normalizedText));
 }
 
+export function continuationTermsCovered(question, text) {
+  const continuationFrames = new Set([
+    "aga", "ja", "kuid", "ning", "voi", "see", "seda", "selle", "sellel", "selles",
+    "sellest", "seal", "sinna", "sealt", "need", "neid", "nende", "sama", "samuti",
+    "ka", "siis", "nii", "kehtib",
+  ]);
+  const terms = analyzeQueryIntent(question).terms.map(normalize).filter((term) => (
+    !QUESTION_FRAME_TERMS.has(term)
+    && !ASKER_FRAME_TERMS.has(term)
+    && !ANSWER_STOP_WORDS.has(term)
+    && !GENERIC_QUERY_CONTEXT_TERMS.has(term)
+    && !continuationFrames.has(term)
+  ));
+  if (!terms.length) return false;
+  return terms.every((term) => {
+    const stem = term.length >= 6 ? term.slice(0, Math.max(4, term.length - 2)) : term;
+    return normalize(text).split(/\s+/u).some((word) => word === term || word.startsWith(stem));
+  });
+}
+
 export function citedEvidenceAnswersQuestion(question, answer, sources = []) {
   const query = String(question || "").trim();
   if (!query) return false;
