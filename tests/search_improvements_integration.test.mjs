@@ -943,6 +943,26 @@ test("a content-bearing continuation keeps its cited answer when the excerpt cov
   assert.notEqual(response.answer.eyebrow, "Vastust ei leitud");
   assert.match(response.answer.intro, /Kuusk/u);
 });
+test("an elliptical follow-up cannot keep a no-answer card with stray sources", () => {
+  const response = finalizeFollowUpResult({
+    question: "aga miks?",
+    checkQuery: "aga miks? Kui palju metsa on Eestis?",
+    result: {
+      answer: {
+        eyebrow: "Vastust ei leitud",
+        title: "Metsamaa pindala",
+        intro: "Meil ei ole sellele küsimusele vastust.",
+        introCitations: [],
+        parts: [],
+      },
+      sources: [{ citation: 1, id: "stray", evidenceExcerpt: "Vastuoluline allikas." }],
+    },
+    listing: publicSearchListing(listing()),
+  });
+  assert.equal(response.answer.eyebrow, "Vastust ei leitud");
+  assert.equal(response.sources.length, 0);
+});
+
 test("a continuation whose new subject is absent from the cited evidence is rejected", () => {
   const excerpt = "Metsamaa pindala on Eestis 2,3 miljonit hektarit.";
   const response = finalizeFollowUpResult({
