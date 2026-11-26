@@ -43,6 +43,24 @@ import { fetchPortalSearchPage } from "./corpus_fetch.mjs";
 
 const DEFAULT_PAGE_SIZE = 12;
 const MAX_PAGE_SIZE = 50;
+
+// Lenient practice mode admits a fresh official live-search page as answer
+// evidence even though the reviewed catalogue never listed it. The predicate
+// is pure so the guarantee can be tested without a database or a network
+// fetch: official tier, a policy that binds the body, enough copied text for a
+// grounded claim, a real content hash, and never a reviewed route-only card.
+export function isLenientOfficialEvidenceRow({
+  lenient, federated, sourceTier, policyApplies, reviewedPolicy, copiedLength, contentHash,
+} = {}) {
+  return lenient === true
+    && federated === true
+    && sourceTier === "official"
+    && policyApplies === true
+    && reviewedPolicy !== "route-only"
+    && Number(copiedLength) >= 400
+    && /^[a-f0-9]{64}$/u.test(String(contentHash || ""));
+}
+
 function formatPublished(row) {
   if (row.published_label) return row.published_label;
   if (!row.published_at) return "";
@@ -136,6 +154,17 @@ export function publicSearchItem(row, includeContent = false) {
     && /^[a-f0-9]{64}$/u.test(String(row.content_hash || ""));
   const isReviewedCatalogueSource = isReviewedCatalogueRow && reviewedCataloguePolicy !== "route-only";
   const isReviewedCatalogueRoute = isReviewedCatalogueRow && reviewedCataloguePolicy === "route-only";
+  // Lenient practice mode: an official live-search page whose body carries a
+  // current evidence policy may be cited even though it was never catalogued.
+  const isLenientOfficialEvidence = isLenientOfficialEvidenceRow({
+    lenient: process.env.ANSWER_EVIDENCE_LENIENT === "true",
+    federated: isFederatedDiscovery,
+    sourceTier: row.source_tier,
+    policyApplies,
+    reviewedPolicy: hydrationMetadata.evidence_policy,
+    copiedLength: copiedContent.length,
+    contentHash: row.content_hash,
+  });
   // A reviewed catalogue row is a reviewed extract, not a fetched publisher
   // page, so its reviewed content and evidence facts are kept as they are.
   const reviewedContent = isReviewedCatalogueRow && !containsPageScaffold
@@ -224,6 +253,19 @@ export function publicSearchItem(row, includeContent = false) {
         basis: "retrieved-at",
         maxAgeMs: APPROVED_PAGE_EVIDENCE_MAX_AGE_MS,
         requiresSourceTimestamp: true,
+      },
+    } : isLenientOfficialEvidence ? {
+      retrieval: "official-federated-search",
+      delivery: "federated-discovery",
+      evidencePolicy: "versioned",
+      _answerEvidenceEligible: true,
+      _evidenceVersion: row.content_hash,
+      _evidenceStatusAt: fetchedAt,
+      freshness: {
+        class: "cached-official-page",
+        basis: "retrieved-at",
+        maxAgeMs: APPROVED_PAGE_EVIDENCE_MAX_AGE_MS,
+        requiresSourceTimestamp: false,
       },
     } : {
       retrieval: isFederatedDiscovery ? "official-federated-search" : "catalogue-directory",

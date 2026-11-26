@@ -1,7 +1,7 @@
 import { searchCorpus } from "./corpus_runtime.mjs";
 
 import { resultMatchesFilters, stablePublicResultId } from "./retrieval_listing.mjs";
-import { assessSearchQuery, isForestRelatedQuery } from "./search_query_assessment.mjs";
+import { assessSearchQuery, isForestRelatedQuery, isPlainDefinitionQuery } from "./search_query_assessment.mjs";
 import { canonicalizePublicSearchQuery } from "./search_query_canonicalization.mjs";
 import { FOREIGN_SCRIPT_PATTERN, isAllEnvironmentSearchEnabled } from "./search_query_terms.mjs";
 import { normalizeCorpusQuery } from "./corpus_query.mjs";
@@ -24,6 +24,10 @@ export function buildCorpusFanoutQueries(query, { limit = 3 } = {}) {
   if (FOREIGN_SCRIPT_PATTERN.test(rawQuery)) return [];
   if (!isForestRelatedQuery(rawQuery) && !isAllEnvironmentSearchEnabled()) return [];
   if (assessSearchQuery(rawQuery).kind !== "answerable") return [];
+  // A plain definition ("mis on kliimamuutus") reduces to a bare topic
+  // ("kliimamuutus"), which is broad on its own. The definition frame keeps
+  // the request answerable, so its subquery must still reach the corpus.
+  const definitionRoot = isPlainDefinitionQuery(rawQuery);
 
 
   const subqueries = [];
@@ -33,7 +37,9 @@ export function buildCorpusFanoutQueries(query, { limit = 3 } = {}) {
     if (!canonical.ok) continue;
     const normalized = normalizeCorpusQuery(canonical.query);
     if (!normalized || seen.has(normalized) || FOREIGN_SCRIPT_PATTERN.test(normalized)) continue;
-    if (assessSearchQuery(canonical.query).kind !== "answerable") continue;
+    const candidateAssessment = assessSearchQuery(canonical.query);
+    if (candidateAssessment.kind !== "answerable"
+      && !(definitionRoot && candidateAssessment.reason === "broad-topic")) continue;
     seen.add(normalized);
     subqueries.push(normalized);
     if (subqueries.length >= cap) break;

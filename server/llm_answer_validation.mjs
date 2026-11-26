@@ -350,6 +350,23 @@ function closedEvidenceLine(text, evidencePack) {
   return copiesWholeLine ? `${value}.` : value;
 }
 
+// The directly matched current source keeps the lead unless the deployment
+// runs the lenient practice mode, the lead cites a law section, or the model
+// cites that same source. Lenient mode still grounds every sentence against
+// the evidence pack; it only stops the lead from being pinned to the
+// top-ranked current page.
+export function acceptsIntroLead({
+  lenient = false,
+  proposedIntroChanged = false,
+  directDraftCitations = [],
+  introCitations = [],
+  citesLawSection = false,
+} = {}) {
+  if (!proposedIntroChanged || directDraftCitations.length === 0) return true;
+  if (lenient === true || citesLawSection === true) return true;
+  return directDraftCitations.some((citation) => introCitations.includes(citation));
+}
+
 function validateGroundedProposal(rawPayload, draft, query, evidencePack) {
   const isProcedure = analyzeQueryIntent(query).intent === "procedure";
   const payload = isProcedure ? rawPayload : joinListLead(rawPayload);
@@ -395,10 +412,14 @@ function validateGroundedProposal(rawPayload, draft, query, evidencePack) {
   // against the section below like any other claim.
   const citesLawSection = introCitations.length
     && introCitations.every((citation) => /riigiteataja\.ee\/.*#para/u.test(draft.sources[citation - 1]?.url || ""));
-  if (proposedIntro !== String(draft.answer.intro || "").trim()
-    && directDraftCitations.length
-    && !citesLawSection
-    && !directDraftCitations.some((citation) => introCitations.includes(citation))) {
+  const proposedIntroChanged = proposedIntro !== String(draft.answer.intro || "").trim();
+  if (!acceptsIntroLead({
+    lenient: process.env.ANSWER_EVIDENCE_LENIENT === "true",
+    proposedIntroChanged,
+    directDraftCitations,
+    introCitations,
+    citesLawSection,
+  })) {
     throw rejectionWithText("LLM introduction bypasses the directly matched current source", proposedIntro);
   }
   if (protectedIntro && proposedIntro !== String(draft.answer.intro || "").trim()) {
@@ -451,10 +472,12 @@ function validateGroundedProposal(rawPayload, draft, query, evidencePack) {
     if (!groundedIntroCitations.length) {
       throw new Error("LLM introduction has no individually attributable citations");
     }
-    if (!protectedIntro
-      && proposedIntro !== String(draft.answer.intro || "").trim()
-      && directDraftCitations.length
-      && !directDraftCitations.some((citation) => groundedIntroCitations.includes(citation))) {
+    if (!protectedIntro && !acceptsIntroLead({
+      lenient: process.env.ANSWER_EVIDENCE_LENIENT === "true",
+      proposedIntroChanged: proposedIntro !== String(draft.answer.intro || "").trim(),
+      directDraftCitations,
+      introCitations: groundedIntroCitations,
+    })) {
       throw new Error("LLM introduction loses the directly matched current source after citation binding");
     }
     groundedIntro = true;

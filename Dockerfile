@@ -18,6 +18,13 @@ ENV APP_REVISION=${SOURCE_COMMIT}
 # same grounded request instead of dropping the reader to the deterministic
 # card. Override or empty this in the receiving deployment's own environment.
 ENV LLM_MODEL_FALLBACKS="mistral/deepseek-v4-1-flash-1017,opencode-go/hy4-flash-free"
+# Practice deployment: answer every environment topic, not only forestry, and
+# accept a fresh official live-search page as answer evidence when its own
+# evidence policy allows content and the page carries at least 400 characters.
+# A receiving deployment can override either switch; the reviewed catalogue
+# policy still governs catalogued sources in both modes.
+ENV ALL_ENVIRONMENT_SEARCH_ENABLED=true
+ENV ANSWER_EVIDENCE_LENIENT=true
 LABEL org.opencontainers.image.revision=${SOURCE_COMMIT}
 WORKDIR /app
 

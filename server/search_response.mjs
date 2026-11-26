@@ -8,7 +8,7 @@ import {
 import { ADDITIONAL_OFFICIAL_FORESTRY_EVIDENCE_DOCUMENTS } from "./forestry-public.mjs";
 import { asksForImpact, assessEvidence, scoreDocument } from "./search_evidence.mjs";
 import { specificQuestionMismatch, wasteFacilitiesNavigationContext } from "./search_navigation_policy.mjs";
-import { isForestRelatedQuery, assessSearchQuery } from "./search_query_assessment.mjs";
+import { isForestRelatedQuery, assessSearchQuery, isPlainDefinitionQuery } from "./search_query_assessment.mjs";
 import { canonicalizePublicSearchQuery } from "./search_query_canonicalization.mjs";
 import {
   forestEvidenceIntent,
@@ -212,6 +212,12 @@ export function composeOfficialServiceNavigationResponse(query, documents = [], 
   const cleanQuery = canonicalInput.query;
   const catalogue = [...SEARCH_DOCUMENTS, ...ADDITIONAL_OFFICIAL_SERVICE_DOCUMENTS];
   const visible = Array.isArray(documents) ? documents : [];
+  // A definition with a real eligible content page must reach the grounded
+  // answer; a route card only says where the service lives.
+  const definitionQuestion = isPlainDefinitionQuery(cleanQuery);
+  if (definitionQuestion && visible.some((item) => (
+    item?._answerEvidenceEligible === true && String(item?.content || "").length >= 400
+  ))) return null;
   const source = visible.flatMap((witness) => {
     if (witness?.sourceTier !== "official" || witness._answerEvidenceEligible !== false) return [];
     const reviewed = catalogue.find((candidate) => (
@@ -270,6 +276,10 @@ export function composeAmbiguousDomainGuidanceResponse(query, documents = [], op
   const terms = queryTerms(cleanQuery);
   const preferredIds = ambiguousBroadDomainGuidanceIds(cleanQuery, terms);
   if (preferredIds.length === 0) return null;  const visible = Array.isArray(documents) ? documents : [];
+  if (isPlainDefinitionQuery(cleanQuery)
+    && visible.some((item) => (
+      item?._answerEvidenceEligible === true && String(item?.content || "").length >= 400
+    ))) return null;
   const witness = preferredIds.flatMap((id) => visible.filter((document) => (
     document?.id === id && document.sourceTier === "official"
   )))[0];

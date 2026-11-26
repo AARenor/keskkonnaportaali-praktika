@@ -1120,6 +1120,16 @@ export function vportalDocumentText(item, strip = stripMarkup) {
   return strip(item.markup, MAX_DISCOVERY_MARKUP).slice(0, MAX_DISCOVERY_DOCUMENT_TEXT);
 }
 
+// Lenient practice mode admits an official portal search result as answer
+// evidence. This producer is deliberately weaker than the corpus hydration
+// path: its text is the portal's own search-index body, so no publisher
+// source_policy, robots or nosnippet check runs before the page becomes
+// evidence. The guarantee here is only the switch, an official site result
+// and enough body for a grounded claim.
+export function isLenientVportalEvidence({ lenient, contentLength } = {}) {
+  return lenient === true && Number(contentLength) >= 400;
+}
+
 function yieldToEventLoop() {
   return new Promise((resolve) => setImmediate(resolve));
 }
@@ -1221,10 +1231,17 @@ async function searchVportalSite(site, query, limit, options) {
     const title = cleanText(item.title).slice(0, 500);
     if (!title || !summary) continue;
     const contentType = cleanText(item.content_type).slice(0, 160);
+    // Lenient practice mode: a full official page body from the portal search
+    // may support an answer even though discovery is not the reviewed catalogue.
+    const lenientEvidence = isLenientVportalEvidence({
+      lenient: process.env.ANSWER_EVIDENCE_LENIENT === "true",
+      contentLength: fullContent.length,
+    });
     documents.push({
       id: sourceId(`vp-${site.index}`, sourceUrl.toString()),
       title,
       organization: site.organization,
+      sourceTier: "official",
       type: contentType || "Ametlik veebileht",
       published: officialDate(item.created),
       url: sourceUrl.toString(),
@@ -1235,8 +1252,18 @@ async function searchVportalSite(site, query, limit, options) {
       sourceSystem: `${site.organization} otsing`,
       retrieval: "official-federated-search",
       delivery: "federated-discovery",
-      evidencePolicy: "route-only",
-      _answerEvidenceEligible: false,
+      evidencePolicy: lenientEvidence ? "versioned" : "route-only",
+      _answerEvidenceEligible: lenientEvidence,
+      ...(lenientEvidence ? {
+        _evidenceVersion: contentDigest(fullContent),
+        _evidenceStatusAt: new Date().toISOString(),
+        freshness: {
+          class: "cached-official-page",
+          basis: "retrieved-at",
+          maxAgeMs: APPROVED_PAGE_EVIDENCE_MAX_AGE_MS,
+          requiresSourceTimestamp: false,
+        },
+      } : {}),
       stale,
     });
     // Cheerio puhastab HTML-i sünkroonselt. Väljastame kontrolli iga dokumendi
@@ -1403,6 +1430,26 @@ export async function hydrateOfficialDocuments(documents, limit = 5, options = {
       };
       if (document.retrieval !== "official-federated-search") {
         if (!sourceEvidenceEligibility(document).eligible) {
+          // Lenient practice mode: a page this process fetched itself and may
+          // still quote is allowed to support an answer even when its discovery
+          // class was never approved for evidence.
+          if (process.env.ANSWER_EVIDENCE_LENIENT === "true" && content.length >= 400) {
+            const lenientAt = new Date(fetchedAt).toISOString();
+            return {
+              ...page,
+              retrieval: "approved-page-hydration",
+              evidencePolicy: "versioned",
+              _answerEvidenceEligible: true,
+              _evidenceVersion: page._contentHash,
+              _evidenceStatusAt: lenientAt,
+              freshness: {
+                class: "cached-official-page",
+                basis: "retrieved-at",
+                maxAgeMs: APPROVED_PAGE_EVIDENCE_MAX_AGE_MS,
+                requiresSourceTimestamp: false,
+              },
+            };
+          }
           return {
             ...page,
             evidencePolicy: "route-only",
@@ -1422,6 +1469,29 @@ export async function hydrateOfficialDocuments(documents, limit = 5, options = {
             basis: "retrieved-at",
             maxAgeMs: APPROVED_PAGE_EVIDENCE_MAX_AGE_MS,
             requiresSourceTimestamp: true,
+          },
+        };
+      }
+      // Lenient practice mode: an official page that was actually fetched may
+      // support a grounded answer even when discovery came from the portal
+      // search rather than the reviewed catalogue.
+      if (process.env.ANSWER_EVIDENCE_LENIENT === "true"
+        && document.sourceTier === "official"
+        && content.length >= 400) {
+        return {
+          ...page,
+          summary: cleanText(content).slice(0, 900),
+          excerpt: undefined,
+          retrieval: "official-federated-search",
+          evidencePolicy: "versioned",
+          _answerEvidenceEligible: true,
+          _evidenceVersion: page._contentHash,
+          _evidenceStatusAt: new Date(fetchedAt).toISOString(),
+          freshness: {
+            class: "cached-official-page",
+            basis: "retrieved-at",
+            maxAgeMs: APPROVED_PAGE_EVIDENCE_MAX_AGE_MS,
+            requiresSourceTimestamp: false,
           },
         };
       }

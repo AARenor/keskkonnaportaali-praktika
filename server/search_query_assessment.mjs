@@ -212,6 +212,13 @@ export function analyzePublicSearchQuery(query, options = {}) {
   };
 }
 
+// A plain definition asks what a term means. It is not a request for a place
+// and a period, so a general topic definition may use the answer path.
+export function isPlainDefinitionQuery(query) {
+  const text = String(query ?? "").normalize("NFC").toLocaleLowerCase("et").replace(/\s+/gu, " ").trim();
+  return /^(?:(?:mis|mida)\s+(?:on|t[aä]hendab)|defineeri)\s+\p{L}/u.test(text);
+}
+
 export function assessSearchQuery(query, options = {}) {
   // Length is the cheapest reject: check the canonicalization result BEFORE
   // running decode/pattern passes so overlong input cannot spend classifier
@@ -566,6 +573,9 @@ export function assessSearchQuery(query, options = {}) {
   const waterContextOnly = ["vesi", "jarv"].includes(topic) && nonContextRoots.length === 0;
   // A named felling type (sanitaarraie, lageraie) is a specific subject, not bare "raie".
   const namesFellingType = topic === "raie" && /\b\p{L}{3,}rai(?:e|u)\p{L}*/u.test(normalized);
+  // Plain definitions use the answer path; forest terms keep their reviewed
+  // routes and stay broad here.
+  const pureDefinition = isPlainDefinitionQuery(normalized) && !["raie", "mets"].includes(topic);
   // A quantity with an explicit year is a concrete observation request, even
   // when its only topic root ("raie") would otherwise count as a broad theme.
   // Without this, "raiemaht 2024" asked for clarification despite an official
@@ -581,6 +591,7 @@ export function assessSearchQuery(query, options = {}) {
     && !namesFellingType
     && !explicitYearMetric
     && !explicitReportQuery
+    && !pureDefinition
     && AMBIGUOUS_ROOTS.has(topic) && (roots.length <= 1 || waterContextOnly)) {
     return {
       kind: "needs-clarification",
