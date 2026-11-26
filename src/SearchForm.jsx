@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ArrowRight, LoaderCircle, Search, Sparkles, X } from "lucide-react";
-import { primarySuggestionsForValue, suggestionsForValue, shouldFetchRemoteSuggestions } from "./search-suggestions.js";
+import { PRIMARY_SEARCH_SUGGESTIONS, primarySuggestionsForValue, suggestionsForValue, shouldFetchRemoteSuggestions } from "./search-suggestions.js";
 
 function comparableQuestion(value) {
   return String(value || "")
@@ -190,6 +190,20 @@ export default function SearchForm({ initialValue = "", onSearch, busy, variant 
           </div>
         ) : null}
       </div>
+      {variant === "hero" && !busy && !focused ? (
+        <div aria-label="Soovitatud päringud" className="search-starters" role="group">
+          <span className="search-starters__title">Soovitatud päringud</span>
+          {PRIMARY_SEARCH_SUGGESTIONS.slice(0, 4).map((suggestion) => (
+            <button
+              key={suggestion}
+              onClick={() => chooseSuggestion({ value: suggestion })}
+              type="button"
+            >
+              {suggestion}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {variant === "hero" ? (
         <p className="search-form__hint">Vastus esmalt, kasutatud ametlikud allikad kohe järel</p>
       ) : null}
