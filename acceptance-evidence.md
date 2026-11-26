@@ -480,3 +480,9 @@ Tootmises esines täiskorpuse sünkroonil viga `Portal search returned an incons
 | API `mets` | HTTP 200, 3 osa, 4 allikat |
 
 Hüdratsioonisisestus: esmane järjekord töödeldi 1 000 kirjet ja lisas 73 sisu, sihitud ametlike ja portaali sitemap'ide pass töödeldi 767 kirjet ja ei lisandunud sisu, sest allikad vastasid HTTP veaga, keelasid `robots.txt` keelest lugemise, pakkusid liiga suurt lehte või märkisid lehe `noindex`. Näiteks kliimaministeeriumi renoveerimise teadmiste lehel on `noindex` ja selle sisu ei salvestata.
+
+## Üldkeskkonna AI vastused 26.11.2026
+
+Tootmises oli `ALL_ENVIRONMENT_SEARCH_ENABLED` puuduv, seega sõeluti üldküsimused enne mudelit välja ja `answerAttempt` jäi `null`. Coolify rakenduse `asdyidu5wvjx54d0b09t9rhw` keskkonda lisati `ALL_ENVIRONMENT_SEARCH_ENABLED=true` ja rakendus juurutati uuesti; uus konteiner kinnitas väärtust.
+
+Live kontroll samal päeval: `kuidas vähendada jäätmeid` tagastas `AI koondvastus`, 4 osa, 5 allikat, `ready/none`; `mis on ringmajandus` tagastas `AI koondvastus`, 2 osa, 2 allikat, `ready/none`. `mis on kliimamuutus` ja `mis on elurikkus` jäid vastuseta, sest nende ülevaatelehtedest ei kujunenud vastuseks sobivat tõendit; see on tõendipoliitika piir, mitte mudeli väljalülitamine.
