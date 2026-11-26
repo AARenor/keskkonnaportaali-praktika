@@ -1371,6 +1371,7 @@ async function composeFollowUpResult({
   const listing = publicSearchListing(searchResults);
   return finalizeFollowUpResult({
     question,
+    checkQuery: retrievalQuery,
     result,
     previousAnswers,
     listing,

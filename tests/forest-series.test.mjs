@@ -23,6 +23,7 @@ import {
 import { searchEnvironmentLive, searchTimeoutFallback } from "../server/pipeline.mjs";
 import { rankPublicSearchCandidates } from "../server/retrieval_ranking.mjs";
 import { assessSearchQuery } from "../server/search_query_assessment.mjs";
+import { finalizeFollowUpResult } from "../server/search_followup_result.mjs";
 
 const NOW = Date.parse("2026-09-25T12:00:00Z");
 const FETCHED_AT = Date.parse("2026-09-25T11:59:30Z");
@@ -827,6 +828,31 @@ test("the live follow-up path answers the widened period from the series with a 
   assert.equal(live.chart.series[0].points.length, 26);
   assert.equal(live.chart.citation, 1);
 });
+test("a widened period follow-up keeps its chart through the follow-up gate", async () => {
+  const rootQuery = "mitu ha metsa on eestis";
+  const question = "näita 2000-2025";
+  const retrievalQuery = contextualRetrievalQuery(rootQuery, question, []);
+  const seriesDocument = smiForestSeriesDocument(retrievalQuery);
+  const live = await searchEnvironmentLive(question, {
+    startedAt: NOW,
+    deadlineAt: NOW + 1_000,
+    assessmentQuery: retrievalQuery,
+    retrievalQuery,
+    allowSafeEllipticalFollowUp: true,
+    useCache: false,
+    searchResults: { items: [seriesDocument], total: 1 },
+  });
+  const finalized = finalizeFollowUpResult({
+    question,
+    checkQuery: retrievalQuery,
+    result: live,
+    previousAnswers: [],
+    listing: { items: [seriesDocument], total: 1 },
+  });
+  assert.equal(finalized.answer.eyebrow, "Keskkonnaagentuur, SMI 2025");
+  assert.equal(finalized.chart.series[0].points.length, 26);
+});
+
 
 test("felling phrasings without the word raie resolve to the harvest series, not forest area", () => {
   for (const [query, cut, measure] of [

@@ -5,8 +5,10 @@ import {
 } from "./answer_coverage.mjs";
 import { composeNoAnswerResponse } from "./search_response.mjs";
 import { publicUsageTelemetry } from "./search_usage_projection.mjs";
+import { isContinuationFollowUp, isSafeEllipticalFollowUp } from "./retrieval_context.mjs";
 
-export function finalizeFollowUpResult({ question, result, previousAnswers = [], listing } = {}) {
+
+export function finalizeFollowUpResult({ question, checkQuery = question, result, previousAnswers = [], listing } = {}) {
   const answerText = [result?.answer?.intro, ...(result?.answer?.parts || []).map((part) => part?.text)]
     .filter(Boolean)
     .join(" ");
@@ -16,7 +18,8 @@ export function finalizeFollowUpResult({ question, result, previousAnswers = [],
     ...(usageTelemetry ? { usage_telemetry: usageTelemetry } : {}),
     searchResults: listing,
   });
-  const answersQuestion = citedEvidenceAnswersQuestion(question, result?.answer, result?.sources);
+  const elliptical = isContinuationFollowUp(question) || isSafeEllipticalFollowUp(question);
+  const answersQuestion = elliptical || citedEvidenceAnswersQuestion(checkQuery, result?.answer, result?.sources);
   if (!answersQuestion) return noAnswer();
   if (!repeatsEarlierAnswer(answerText, previousAnswers, {
     title: result?.answer?.title,

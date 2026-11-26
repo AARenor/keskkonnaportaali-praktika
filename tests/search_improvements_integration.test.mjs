@@ -903,6 +903,28 @@ test("a follow-up answer that does not answer the asked question is replaced by 
   assert.equal(response.answer.eyebrow, "Vastust ei leitud");
   assert.equal(response.answer.introCitations.length, 0);
 });
+test("an elliptical follow-up keeps its cited answer when the subject comes from context", () => {
+  const response = finalizeFollowUpResult({
+    question: "aga miks?",
+    checkQuery: "aga miks? Kui palju metsa on Eestis?",
+    result: {
+      answer: {
+        title: "Metsamaa pindala",
+        intro: "Metsamaa pindala on Eestis 2,3 miljonit hektarit.",
+        introCitations: [1],
+        parts: [],
+      },
+      sources: [{
+        citation: 1,
+        evidenceExcerpt: "Metsamaa pindala on Eestis 2,3 miljonit hektarit.",
+      }],
+    },
+    listing: publicSearchListing(listing()),
+  });
+  assert.notEqual(response.answer.eyebrow, "Vastust ei leitud");
+  assert.match(response.answer.intro, /2,3 miljonit/u);
+});
+
 
 test("a rejected repeated follow-up keeps safe usage but not the rejected answer", () => {
   const rejectedText = "Lageraie. Rejected answer that must not reach the public replacement.";
