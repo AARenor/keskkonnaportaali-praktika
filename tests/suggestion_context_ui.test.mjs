@@ -458,7 +458,7 @@ function comboboxInput(tree) {
   return find(tree, (element) => element.props?.role === "combobox");
 }
 
-async function searchPageFixture(query, related = [], items = ONE_SOURCE) {
+async function searchPageFixture(query, related = [], items = ONE_SOURCE, overrides = {}) {
   const transport = createJobTransport();
   globalThis.__praktikaSearchJobs = transport;
   const { App } = await loadPages();
@@ -470,7 +470,8 @@ async function searchPageFixture(query, related = [], items = ONE_SOURCE) {
   ));
   await startSearch(query);
   const element = find(renderer.render(App, {}), (child) => typeof child.props?.onHome === "function");
-  return { App, SearchResults: element.type, props: element.props, renderer, transport };
+  const props = { ...element.props, ...overrides };
+  return { App, SearchResults: element.type, props, renderer, transport };
 }
 
 test("the search page's Küsi veel section follows the latest follow-up and drops repeated questions", async () => {
@@ -544,6 +545,21 @@ test("the search page's Küsi veel section follows the latest follow-up and drop
   } finally {
     delete globalThis.__praktikaSearchJobs;
   }
+});
+
+test("clicking a Küsi veel question starts a fresh main search instead of a follow-up job", async () => {
+  let searched = null;
+  const onSearch = (value) => { searched = value; };
+  const fixture = await searchPageFixture("Mis on metsateatis?", ["Kuidas taotleda metsateatist?"], ONE_SOURCE, { onSearch });
+  const { SearchResults, props, renderer } = fixture;
+  const tree = renderer.render(SearchResults, props);
+  const labels = askMoreQuestions(renderer, tree);
+  assert.deepEqual(labels, ["Kuidas taotleda metsateatist?"]);
+  const section = elementsOf(tree).find((element) => element.props?.className === "related-section");
+  const button = elementsOf(section).find((element) => element.type === "button");
+  button.props.onClick();
+  assert.equal(searched, "Kuidas taotleda metsateatist?");
+  assert.equal(fixture.transport.calls.some((call) => call.kind === "follow-up"), false);
 });
 
 test("the results search field displays query-matched API suggestions", async () => {

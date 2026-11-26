@@ -883,6 +883,27 @@ test("results route parser keeps page size twelve and accepts only its bounded w
   });
 });
 
+test("a follow-up answer that does not answer the asked question is replaced by a no-answer card", () => {
+  const response = finalizeFollowUpResult({
+    question: "Kuidas taotleda metsateatist?",
+    result: {
+      answer: {
+        title: "Metsainfo hetkeseis",
+        intro: "Töölehtedel on ülevaade metsainventeerimisandmetest.",
+        introCitations: [1],
+        parts: [],
+      },
+      sources: [{
+        citation: 1,
+        evidenceExcerpt: "Töölehtedel on ülevaade metsainventeerimisandmetest.",
+      }],
+    },
+    listing: publicSearchListing(listing()),
+  });
+  assert.equal(response.answer.eyebrow, "Vastust ei leitud");
+  assert.equal(response.answer.introCitations.length, 0);
+});
+
 test("a rejected repeated follow-up keeps safe usage but not the rejected answer", () => {
   const rejectedText = "Lageraie. Rejected answer that must not reach the public replacement.";
   const telemetry = {

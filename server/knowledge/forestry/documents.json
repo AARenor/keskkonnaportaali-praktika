@@ -538,12 +538,11 @@
       "intent": "local_area_lookup",
       "title": "Valla metsa pindala vajab valla nime ja sobivat ruumiandmestikku",
       "question_aliases": [
-        "Kui palju metsa on minu koduvallas?",
         "Kui suur on valla metsasus?",
         "Mitu hektarit metsa on minu vallas?",
         "Võrdle valdade metsa pindala"
       ],
-      "keywords": ["vald", "koduvallas", "kohalik omavalitsus", "metsa pindala", "metsasus", "ruumiandmed", "maakond"],
+      "keywords": ["vald", "kohalik omavalitsus", "metsa pindala", "metsasus", "ruumiandmed", "maakond"],
       "topics": ["piirkond", "ruumiandmed", "täpsustus"],
       "answer": {
         "summary": "Palun nimeta vald ja ütle, kas soovid metsamaa pindala, metsasuse protsenti või Metsaregistris kehtivate eraldiste pindala. Need pole sama näitaja. SMI 2024 avaldab maakondlikke hinnanguid, kuid väikese valla jaoks tuleb kasutada sobivat metsamaa ruumikihti ja dokumenteeritud definitsiooni.",

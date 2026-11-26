@@ -76,7 +76,12 @@ const BALANCE_QUERIES = [
   "Kas Eestis raiutakse rohkem kui metsa juurde kasvab?",
 ];
 
-const MUNICIPAL_QUERY = "Kui palju metsa on minu koduvallas?";
+const MUNICIPAL_QUERY = "Kui palju metsa on Võru linnas?";
+test("reviewed suggestions do not offer a home municipality forest query", () => {
+  const homeMunicipality = /\bkoduvall\w*\b|\b(?:minu|mu|meie|oma)\s+vallas\b/u;
+  assert.equal(REVIEWED_FORESTRY_SEARCH_SUGGESTIONS.some((query) => homeMunicipality.test(query)), false);
+});
+
 
 const REPORTED_FORESTRY_WILDLIFE_CASES = [
   ["Millised on Eesti metsade peamised puuliigid ja nende osakaal?", "forest-species-share", /kask[^.]*30%[\s\S]*mänd[^.]*29%[\s\S]*kuusk[^.]*19%/iu],
@@ -509,18 +514,18 @@ test("all 33 supplied forestry misconceptions and FAQs have an explicit public r
   }
   const municipal = assessSearchQuery(MUNICIPAL_QUERY);
   assert.equal(municipal.kind, "needs-clarification");
-  assert.equal(municipal.reason, "missing-municipality");
+  assert.equal(municipal.reason, "municipality-observation-required");
 });
 
 test("every visible reviewed suggestion leads to a deterministic answer or the intended municipality clarification", () => {
-  assert.equal(REVIEWED_FORESTRY_SEARCH_SUGGESTIONS.length, 18);
-  assert.equal(REVIEWED_SEARCH_SUGGESTIONS.length, 69);
+  assert.equal(REVIEWED_FORESTRY_SEARCH_SUGGESTIONS.length, 17);
+  assert.equal(REVIEWED_SEARCH_SUGGESTIONS.length, 68);
   const directory = officialServiceCatalogueDocuments();
   for (const query of REVIEWED_FORESTRY_SEARCH_SUGGESTIONS) {
     const assessment = assessSearchQuery(query);
     if (query === MUNICIPAL_QUERY) {
       assert.equal(assessment.kind, "needs-clarification", query);
-      assert.equal(assessment.reason, "missing-municipality", query);
+      assert.equal(assessment.reason, "municipality-observation-required", query);
       continue;
     }
     assert.equal(assessment.kind, "answerable", query);
@@ -1431,12 +1436,12 @@ test("an upstream forest-balance outage still reaches the final public answer wi
   );
 });
 
-test("the municipality question asks for the missing municipality and metric instead of inventing a number", () => {
+test("the named municipality question asks for year and metric instead of inventing a number", () => {
   const assessment = assessSearchQuery(MUNICIPAL_QUERY);
   const response = composeScopeResponse(MUNICIPAL_QUERY, assessment);
   assert.equal(response.evidence.kind, "needs-clarification");
-  assert.match(response.answer.intro, /nimeta vald/iu);
-  assert.match(response.answer.intro, /metsamaa pindala, metsasuse protsenti või Metsaregistris kehtivate eraldiste pindala/iu);
+  assert.match(response.answer.intro, /Omavalitsus on tuvastatud/iu);
+  assert.match(response.answer.intro, /metsamaa pindala, metsasuse protsent või Metsaregistris kehtivate eraldiste pindala/iu);
   assert.equal(response.answer.introCitations.length, 0);
 });
 

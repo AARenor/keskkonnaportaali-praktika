@@ -17,7 +17,6 @@ export const REVIEWED_FORESTRY_SEARCH_SUGGESTIONS = Object.freeze([
   "Kui palju lageraiet on viimase 10 aasta jooksul tehtud?",
   "Kas kuusk või mänd domineerib Eestis?",
   "Kas kaitsealadel raiutakse?",
-  "Kui palju metsa on minu koduvallas?",
   "Kui palju metsa on Eestis?",
 ]);
 

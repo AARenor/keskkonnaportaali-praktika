@@ -531,8 +531,8 @@ export default function SearchResults({ answerTextOf, result, query, busy, error
             {relatedQuestions.length ? (
               <section className="related-section">
                 <h2>Küsi veel</h2>
-                <p>Vali küsimus—otsin sellele uued allikad ja seon vastuse praeguse teemaga.</p>
-                <div>{relatedQuestions.map((item) => <button disabled={busy || followUpBusy || followUps.length >= 4} key={item} onClick={() => askFollowUp(item)} type="button">{item}<ArrowRight size={16} /></button>)}</div>
+                <p>Vali küsimus. See algab uue otsinguga ja näitab selle küsimuse allikad.</p>
+                <div>{relatedQuestions.map((item) => <button disabled={busy || followUpBusy} key={item} onClick={() => onSearch(item)} type="button">{item}<ArrowRight size={16} /></button>)}</div>
               </section>
             ) : null}
           </>

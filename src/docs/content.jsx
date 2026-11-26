@@ -88,10 +88,10 @@ export const userGuide = {
       title: "Küsi edasi",
       content: <>
         <p>Vastuse juures saad kasutada vormi „Küsi selle vastuse kohta”. Iga jätkuküsimuse jaoks otsitakse allikad uuesti; varasem vastus üksi ei ole uue väite tõend.</p>
-        <p>Kirjuta, mida soovid täpsustada, või vali seotud küsimus. Näiteks pärast metsamaa pindala küsimust võid küsida „näita 2000–2025”, kui soovid sama näitaja pikemat aegrida.</p>
-        <p>Jätkuküsimus, mis ise teemat nimetab (näiteks „selgita hindamise etappe” või lühend „KIH”), pärib algse küsimuse teema: otsing ühendab mõlemad ja vastab sama lõime allikaist. Kui jätkuküsimus toob kaasa hoopis teise valdkonna sõna, küsib otsing uuesti täpsemalt — see kaitseb vastust teemavälise sisu eest.</p>
-        <p>Ühes vastuse jätkuküsimuste lõimes saab teha kuni neli jätku, iga küsimus kuni 180 märki. Ka „Küsi veel” valiku kasutamine loetakse jätkuks. Kui piir saab täis või alustad teist teemat, esita uus küsimus peamises otsingukastis.</p>
-        <p>Jätkuvastus ilmub algse vastuse alla oma viidetega. Allpool olev lai tulemuste loend jääb algse küsimuse loendiks; jätkuvastuse algallikaid kontrolli selle enda nummerdatud viidetest.</p>
+        <p>Kirjuta, mida soovid täpsustada, või vali seotud küsimus. Seotud küsimus algab uue otsinguga ja näitab selle küsimuse allikad.</p>
+        <p>Jätkuküsimus, mis ise teemat nimetab, otsitakse eraldi. Kui jätkuküsimus toob kaasa hoopis teise valdkonna sõna, küsib otsing uuesti täpsemalt. See hoiab ära teemavälise vastuse.</p>
+        <p>Ühes vastuse jätkuküsimuste lõimes saab teha kuni neli jätku, iga küsimus kuni 180 märki. „Küsi veel” valik algab uue otsinguga. Jätkuvastus ilmub algse vastuse alla oma viidetega.</p>
+        <p>Allpool olev lai tulemuste loend jääb algse küsimuse loendiks; jätkuvastuse algallikaid kontrolli selle enda nummerdatud viidetest.</p>
       </>,
     },
     {
