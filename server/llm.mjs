@@ -233,7 +233,9 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
             settleLlmReservation(reservation, observedUsage, { chargeUnknown: true });
             reservation = null;
           }
-          return generateGroundedAnswer(query, draft, {
+          // Await the continuation: a bare return would run the outer finally
+          // here and release this request's slot before the repair settles.
+          return await generateGroundedAnswer(query, draft, {
             ...options,
             repairDirective: directive,
             repairDepth: repairDepth + 1,
@@ -275,7 +277,8 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
         && retryBudgetMs >= 500
         && isRetryableLlmProviderFailure(error);
       if (retryable) {
-        return generateGroundedAnswer(query, draft, {
+        // Same slot rule for a provider fallback as for a repair attempt.
+        return await generateGroundedAnswer(query, draft, {
           ...options,
           selectedModel: nextModel,
           retryDepth: retryDepth + 1,

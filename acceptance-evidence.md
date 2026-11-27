@@ -544,11 +544,11 @@ Piirangud: kuue küsimuse proovis oli kõigi `requests` 1, seega paranduskatset 
 | Kontroll | Tulemus |
 |---|---|
 | `node --test tests/answer_repair.test.mjs tests/search_job_ui.test.mjs tests/unrelated_query_notice_guard.test.mjs` | 32/32 |
-| `env -u DATABASE_URL -u DATABASE_SSL_MODE npm test` | 1527/1527, 0 ebaõnnestunud, 797,8 s |
+| `env -u DATABASE_URL -u DATABASE_SSL_MODE npm test` | 1527/1527, 0 ebaõnnestunud, 807,4 s |
 | `npm run build` | läbitud |
 | `git diff --check` | puhas |
 | `semgrep --config auto` seitsme muudetud faili kohta | 0 leidu |
 | Live brauser 1280 × 800 ja 390 × 844 | 0 horisontaalset ülevoolu, 0 lehe viga |
 | `npm run eval:public -- --base-url=https://praktika.arle.top` | 147 juhtumit, kõik viis näitajat 1 |
 
-Veaskann leidis ja parandas seitse konkreetset viga: paranduskatse võttis uue konkurentsikoha, valija tekst võis valida juhendi, süsteemijuhend ei nimetanud parandusjuhendit, „metsateate” kääne jäi tuvastamata, `raie\w*` erand oli liiga lai, ooteolek eeldas olematut `draft` sündmust ja lõplik fookus läks peidetud kaardile. Kõik need on nüüd kaetud testidega. Üks turvavaate väide, et ainult esitamislausest koosnev intro jääb vastuseks, ei olnud kasutajale nähtav, sest `server/pipeline.mjs:1084` muudab sellise kaardi vastuseta kaardiks; abifunktsiooni lepingut ei muudetud.
+Veaskann leidis ja parandas seitse konkreetset viga. Paranduskatse ja mudelivaravariant tagastasid jätkukõne ilma `await`ita, seega vabastas väliskõne `finally` koha enne jätku lõppu: esialgu hoidis jätkukõne ise ühte kohta, pärast esimest parandust jäi koht puudu. Nüüd hoiab `return await` väliskõne kohta kuni jätku lõpuni ja `continuesRequest` takistab teise koha võtmist. Lisaks parandati juhendi valimine, „metsateate” kääne, `raie\w*` erand, ooteolek ja lõplik fookus. Üks turvavaate väide, et ainult esitamislausest koosnev intro jõuab lugejani, ei olnud kasutajale nähtav, sest `server/pipeline.mjs:1084` muudab sellise kaardi vastuseta kaardiks; abifunktsiooni lepingut ei muudetud.
