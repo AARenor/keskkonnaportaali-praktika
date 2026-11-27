@@ -39,6 +39,7 @@ export default function BroadSearchResults({
   suggestions = [],
   aiUnavailable = false,
   noAnswer = false,
+  answerPending = false,
   answerCited = false,
   unavailable = false,
 }) {
@@ -67,19 +68,23 @@ export default function BroadSearchResults({
   const distinctText = resultCount(distinctTotal, incomplete);
   const summaryMessage = unavailable
     ? "Tulemuste loendit ei saanud laadida. Vastusekaart jääb alles, kuid allikate loend vajab uut päringut."
-    : aiUnavailable
+    : answerPending
       ? total
-        ? answerCited
-          ? "AI-sõnastust ei saanud koostada. Vastusekaart esitab allika enda viidatud väljavõtte."
-          : "AI-sõnastust ei saanud koostada. Leitud tulemused on loetletud siin."
-        : "AI-vastust ei saanud koostada. Laiast indeksist tulemusi ei leitud."
-      : noAnswer
+        ? "Kontrollin vastust. Leitud tulemused on loetletud siin."
+        : "Kontrollin vastust. Laiast indeksist tulemusi ei leitud."
+      : aiUnavailable
         ? total
-          ? "Vastust ei leitud. Leitud tulemused on loetletud siin."
-          : "Vastust ei leitud. Laiast indeksist tulemusi ei leitud."
-        : distinctTotal < total
-          ? `Leidsin ${countText} vastet ja ühendasin need ${distinctText} eri leheks. Ülal olev koondvastus kasutab sama filtreeritud tulemuste hulka.`
-          : "Ülal olev koondvastus põhineb sama päringu filtreeritud ja järjestatud tulemustel.";
+          ? answerCited
+            ? "AI-sõnastust ei saanud koostada. Vastusekaart esitab allika enda viidatud väljavõtte."
+            : "AI-sõnastust ei saanud koostada. Leitud tulemused on loetletud siin."
+          : "AI-vastust ei saanud koostada. Laiast indeksist tulemusi ei leitud."
+        : noAnswer
+          ? total
+            ? "Vastust ei leitud. Leitud tulemused on loetletud siin."
+            : "Vastust ei leitud. Laiast indeksist tulemusi ei leitud."
+          : distinctTotal < total
+            ? `Leidsin ${countText} vastet ja ühendasin need ${distinctText} eri leheks. Ülal olev koondvastus kasutab sama filtreeritud tulemuste hulka.`
+            : "Ülal olev koondvastus põhineb sama päringu filtreeritud ja järjestatud tulemustel.";
   const summary = limitedPages
     ? `${summaryMessage} Näitan kuni kahte esimest kasulikku lehte.`
     : summaryMessage;

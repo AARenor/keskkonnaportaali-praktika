@@ -999,13 +999,14 @@ async function searchWithinBudget(cleanQuery, {
   if (canGenerate && llmBudget >= 500 && (typeof onDraft === "function" || typeof onPrivateDraft === "function") && !citesRawLawSection(draft)) {
     throwIfRequestAborted(signal);
     const streamedDraft = withForestContextChart(withLandUseShareChart(withoutOffTargetFallback(draft), retrievalQuery, searchResults?.items, { now: startedAt }), retrievalQuery, searchResults?.items, { now: startedAt });
-    // A fallback that replays a public snapshot can no longer ask the publisher
-    // decision behind its copied text, because the projection that produced it
-    // removed the private witness. Keep the admitted draft itself for that
-    // replay, and serialize it on the clock that actually writes the answer.
+    // A no-answer card is a starting point for the model, not a result the
+    // reader can use yet. Publishing it as a draft makes the page announce
+    // "Vastust ei leitud" while the grounded answer is still being written.
+    // The final answer event still carries it if no better answer is accepted.
+    const provisionalNoAnswer = streamedDraft.answer?.eyebrow === NO_ANSWER_EYEBROW;
     if (typeof onPrivateDraft === "function") onPrivateDraft(structuredClone(streamedDraft));
-    if (typeof onDraft === "function") onDraft(publicResponse(streamedDraft, { now: startedAt }));
-  }
+    if (typeof onDraft === "function" && !provisionalNoAnswer) onDraft(publicResponse(streamedDraft, { now: startedAt }));
+    }
   // Keep the accepted deterministic result detached from both the provider
   // input and any streamed consumer. A ready model answer must rebind its
   // visible citation witnesses before it can replace this snapshot.

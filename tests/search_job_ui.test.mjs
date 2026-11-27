@@ -775,6 +775,38 @@ test("a no-answer search shows the received listing without a trailing card", as
   }
 });
 
+test("a provisional no-answer draft does not announce no answer while the job runs", async () => {
+  const transport = createJobTransport();
+  globalThis.__praktikaSearchJobs = transport;
+  let releaseDraft = null;
+  try {
+    const { App } = await loadPages();
+    const renderer = createRenderer(reactInternals);
+    const startSearch = find(renderer.render(App, {}), (element) => element.props?.searchInputRef !== undefined).props.onSearch;
+    transport.queue(async ({ onEvent }) => {
+      onEvent({ type: "results", searchResults: listingOf() });
+      onEvent({ type: "draft", result: noAnswerOf("metsateadis", "metsateadis") });
+      await new Promise((resolve) => { releaseDraft = resolve; });
+      onEvent({ type: "answer", result: answerOf("Metsaraie andmed", "metsateadis") });
+    });
+    const pending = startSearch("metsateadis");
+    await settle();
+    const pendingPage = find(renderer.render(App, {}), (element) => typeof element.props?.onHome === "function");
+    assert.equal(pendingPage.props.busy, true);
+    const pendingHtml = renderToStaticMarkup(pendingPage);
+    assert.doesNotMatch(pendingHtml, /Vastust ei leitud/u, "a draft no-answer is not a finished result");
+    assert.match(pendingHtml, /Kontrollin vastust\. Leitud tulemused on loetletud siin\./u,
+      "the listing says the answer is still being checked");
+    releaseDraft();
+    await pending;
+    const finalPage = find(renderer.render(App, {}), (element) => typeof element.props?.onHome === "function");
+    assert.equal(finalPage.props.busy, false);
+    assert.match(renderToStaticMarkup(finalPage), /AI koondvastus/u, "the final answer replaces the draft");
+  } finally {
+    delete globalThis.__praktikaSearchJobs;
+  }
+});
+
 test("a source-only search keeps the received listing above the card that says no summary was made", async () => {
   const transport = createJobTransport();
   globalThis.__praktikaSearchJobs = transport;

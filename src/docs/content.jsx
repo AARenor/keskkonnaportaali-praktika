@@ -265,6 +265,7 @@ export const developerGuide = {
 {"type":"draft","result":{…}}
 {"type":"answer","result":{…}}`}</Code>
         <p>See on kuju kirjeldus, mitte käivitatav JSON-näide: <code>…</code> tähistab vastavat objekti. <code>draft</code> on valikuline. Edukas voog lõpeb <code>answer</code> sündmusega; eraldi <code>done</code> sündmust ega SSE <code>data:</code> eesliidet pole.</p>
+        <p>Kui deterministlik algvastus on „Vastust ei leitud”, ei saadeta seda <code>draft</code> sündmusena. See teade ilmub ainult lõplikus <code>answer</code>s, kui mudel ei suuda paremat vastust toota. Kuni töö kestab, näitab kasutajaliides tulemuste päises „Kontrollin vastust”.</p>
         <p>Kasuta olemasolevat parserit <CodeLink path="src/search-stream.js" />. See hoiab protokolli lugemise, vastuse mahu ja sündmuste järjekorra kontrolli ühes kohas. Ära kutsu selle endpoint'i puhul <code>response.json()</code>.</p>
         <p>Puhverserver peab voo kohe edasi andma: ära puhverda ega vahemällu salvesta NDJSON-vastust. Server saadab <code>X-Accel-Buffering: no</code> ja <code>Cache-Control: no-store</code>; kontrolli tegelikku käitumist vastuvõtva taristu kaudu.</p>
         <p>Uue küsimuse, filtrivahetuse või lehelt lahkumise korral tühista eelmine päring <code>AbortController</code> abil. Ära lase vana päringu hilinenud vastusel uue päringu vaadet üle kirjutada.</p>

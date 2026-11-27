@@ -18,7 +18,9 @@ test("a generated forest notice passage is rejected for an unrelated registratio
     intentDocuments: catalogue,
     now: Date.parse("2026-11-25T12:00:00Z"),
   }).slice(0, 12);
+  let streamedDrafts = 0;
   const result = await searchEnvironmentLive(query, {
+    onDraft: () => { streamedDrafts += 1; },
     searchResults: { total: items.length, items },
     useCache: false,
     deadlineAt: Date.now() + 15_000,
@@ -40,6 +42,7 @@ test("a generated forest notice passage is rejected for an unrelated registratio
       attempt: { provider: "test", status: "ready", reason: "none" },
     }),
   });
+  assert.equal(streamedDrafts, 0, "a no-answer starting card is not a provisional answer");
   const text = [result.answer?.intro, ...(result.answer?.parts || []).map((part) => part.text)]
     .filter(Boolean)
     .join(" ");

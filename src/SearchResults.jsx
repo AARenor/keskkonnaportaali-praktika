@@ -131,6 +131,9 @@ export default function SearchResults({ answerTextOf, result, query, busy, error
   });
   const aiUnavailable = Boolean(result?.answer?.aiUnavailable);
   const noAnswer = !aiUnavailable && isNoAnswerCard(result?.answer);
+  // A draft can still be a no-answer card while the grounded answer is being
+  // checked. It is not a result yet, so the listing must not announce it.
+  const answerPending = Boolean(busy && noAnswer);
   // A card that carries no model summary: the wording failed, or the server
   // published the source records without a summary. Neither leads the results.
   const noSummary = aiUnavailable || isSourceOnlyCard(result?.answer);
@@ -279,6 +282,7 @@ export default function SearchResults({ answerTextOf, result, query, busy, error
       suggestions={emptySuggestions}
       aiUnavailable={wordingMissing}
       noAnswer={noAnswer}
+      answerPending={answerPending}
       answerCited={Boolean(result?.answer?.introCitations?.length)}
       unavailable={listingUnavailable}
     />
@@ -396,6 +400,7 @@ export default function SearchResults({ answerTextOf, result, query, busy, error
             suggestions={emptySuggestions}
             aiUnavailable={wordingMissing}
             noAnswer={noAnswer}
+            answerPending={answerPending}
             unavailable={listingUnavailable}
           />
         ) : null}
