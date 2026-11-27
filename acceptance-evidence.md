@@ -519,3 +519,22 @@ Live vastuste loend (iga päring eraldi, sest tulemus varieerub käivituste vahe
 | `mets` | 1 live, 2 kohalikku | `Vastust ei leitud`, `degraded/local-rejected`; ranged režiimis sama põhjus `grounding-workload-exceeds-the-validation-limit` |
 
 Piirangud: `mets` ülevaate degradatsioon on olemasolev, mitte selle muudatuse põhjustatud; sama juhtub lipu väljas kohalikus serveris. `mis on elurikkus` jääb teenusekaardiks, kui nähtavasse valikusse ei tule 400+ märgi tõendikõlblikku lehte. Mudelivastuse õnnestumine varieerub käivituste vahel; deterministlik allikakaart jääb alati alles.
+
+## Vastuse parandus ja ajutise vastuseta teate kõrvaldamine 27.11.2026 (d9485e1)
+
+| Kontroll | Tulemus |
+|---|---|
+| `env -u DATABASE_URL -u DATABASE_SSL_MODE npm test` | 1522/1522, 0 ebaõnnestunud, 802,8 s |
+| `node --test tests/search_job_ui.test.mjs tests/unrelated_query_notice_guard.test.mjs` | 23/23, sealhulgas esialgse vastuseta `draft` ja lõpliku vastuse järjekord |
+| `npm run build` | läbitud |
+| `git diff --check` | puhas |
+| `semgrep --config auto` muudetud failidel | 0 leidu |
+| GitHub Actions `46003239959` | `success`, 17 min 26 s |
+| Live `/api/health/container-readiness` | revision `d9485e12c7af90dd1417ccdb4baa48a953458c1f` |
+| Live ajakontroll `metsaraie andmed` | 5., 12. ja 25. s vastuseta teadet 0, 25. s üks AI vastusekaart |
+| Brauser 1280 × 800 ja 390 × 844 | 0 horisontaalset ülevoolu |
+| `npm run eval:public -- --base-url=https://praktika.arle.top` | 147/147, kõik viis näitajat 1 |
+
+Enne parandust ilmus samal küsimusel 12. sekundil ajutine „Vastust ei leitud” ja lõplik vastus alles hiljem. Elus sündmuste jälg näitas `results`, `draft` pealkirjaga „Vastust ei leitud” ja seejärel `answer`. Pärast parandust `draft` sündmust enam ei ole ja tulemuste päis ei kuuluta vastust enne lõplikku `answer`i.
+
+Piirangud: kuue küsimuse proovis oli kõigi `requests` 1, seega paranduskatset elus ei käivitatud. Ühiktest katab lõpliku vastuseta oleku koos tulemustega, elus brauseris seda eraldi juhtumit ei korratud. Brauseri konsoolis ilmus üks 502 ja Terrapointi iframe'i `X-Frame-Options` keeld, mida selle muudatusega ei seotud.
