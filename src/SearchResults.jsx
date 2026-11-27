@@ -403,7 +403,8 @@ export default function SearchResults({ answerTextOf, result, query, busy, error
         {hasResult ? (
           <>
             {listingLeads ? broadResults : null}
-            <article className="answer-card">
+            {!noAnswer || !listingLeads ? (
+              <article className="answer-card">
               {busy ? <div className="answer-progress"><LoaderCircle className="spin" size={16} /> Kontrollin vastust …</div> : null}
               <div className="answer-label"><Sparkles size={17} /><span>{result.answer.eyebrow || "AI koondvastus"}</span></div>
               <h1 ref={headingRef} tabIndex={-1}>{answerHeading(result, query)}</h1>
@@ -524,7 +525,8 @@ export default function SearchResults({ answerTextOf, result, query, busy, error
                   ) : null}
                 </form>
               </div>
-            </article>
+              </article>
+            ) : null}
 
             {listingLeads ? null : broadResults}
 

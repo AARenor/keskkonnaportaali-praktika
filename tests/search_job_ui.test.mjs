@@ -743,7 +743,7 @@ test("an unavailable wording card on the search page keeps the listing above it"
   }
 });
 
-test("a no-answer card on the search page keeps the received listing above it", async () => {
+test("a no-answer search shows the received listing without a trailing card", async () => {
   const transport = createJobTransport();
   globalThis.__praktikaSearchJobs = transport;
   try {
@@ -763,13 +763,12 @@ test("a no-answer card on the search page keeps the received listing above it", 
     assert.equal(countMarkup(html, 'class="search-error"'), 0, "a no-answer is not a failed search");
     const link = linkIn(html, FIRST_RESULT);
     assert.ok(link, "the received listing is rendered");
-    assert.ok(link.index < indexOfMarkup(html, 'class="answer-card"'),
-      "the ordinary results lead the no-answer card");
-    assert.match(html.slice(indexOfMarkup(html, 'class="answer-card"')), /Vastust ei leitud/u,
-      "the no-answer card stays visible");
-    assert.match(html, /Meil ei ole sellele küsimusele vastust/u, "the no-answer wording is kept");
+    assert.equal(countMarkup(html, 'class="answer-card"'), 0,
+      "the no-answer card is not appended after the listing");
+    assert.doesNotMatch(html, /Meil ei ole sellele küsimusele vastust/u,
+      "the listing notice already says there is no answer");
     assert.match(html, /Vastust ei leitud\. Leitud tulemused on loetletud siin\./u,
-      "the listing header says what the card above it is");
+      "the listing header says it once");
     assert.equal(countMarkup(html, `href="${FIRST_RESULT}"`), 1, "the listing is rendered once");
   } finally {
     delete globalThis.__praktikaSearchJobs;
