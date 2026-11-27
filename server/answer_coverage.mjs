@@ -132,6 +132,44 @@ export function noticeAnswerWithoutNoticeIntent(query, text) {
   return isForestNoticeFilingPassage(text);
 }
 
+// Keep the grounded answer when one cited sentence is unrelated forest-notice
+// boilerplate. The whole answer used to be blanked in that case, which turned
+// a ready model answer into "Vastust ei leitud" for a question that never
+// asked about filing a notice. Only the offending sentences leave; every
+// remaining claim keeps its original citation and is checked again by the
+// caller before publication.
+export function withoutUnrelatedNoticePassages(query, draft) {
+  const answer = draft?.answer;
+  if (!answer || (!answer.intro && !(answer.parts || []).length)) return draft;
+  if (!noticeAnswerWithoutNoticeIntent(query, [
+    answer.intro,
+    ...(answer.parts || []).map((part) => part?.text),
+  ].filter(Boolean).join(" "))) return draft;
+  const keepSentences = (text) => String(text || "")
+    .split(/(?<=[.!?])\s+/u)
+    .filter((sentence) => !isForestNoticeFilingPassage(sentence))
+    .join(" ")
+    .trim();
+  const keptIntro = keepSentences(answer.intro);
+  const keptParts = (answer.parts || [])
+    .map((part) => ({ ...part, text: keepSentences(part?.text) }))
+    .filter((part) => part.text);
+  const unchanged = keptIntro === String(answer.intro || "").trim()
+    && keptParts.length === (answer.parts || []).length
+    && keptParts.every((part, index) => part.text === String(answer.parts[index]?.text || "").trim());
+  if (unchanged) return draft;
+  let intro = keptIntro;
+  let introCitations = answer.introCitations;
+  let parts = keptParts;
+  if (!intro && parts.length) {
+    const promoted = parts.shift();
+    intro = promoted.text;
+    introCitations = promoted.citations || introCitations;
+  }
+  if (!intro) return draft;
+  return { ...draft, answer: { ...answer, intro, introCitations, parts } };
+}
+
 function shortenedQueryWords(query, terms) {
   return normalize(query).split(/\s+/u).filter((word) => word.length >= 7
     && terms.some((term) => {

@@ -29,6 +29,7 @@ import { createUsageAccumulator, createUsageTelemetry, extractLlmBudgetUsage, ex
 import { validCitations } from "./llm_claim_grounding.mjs";
 import { validateGroundedAnswer } from "./llm_answer_validation.mjs";
 import { parseLlmJson } from "./llm_response_parser.mjs";
+import { isRepairableRejection, repairDirectiveFor } from "./answer_repair.mjs";
 
 const baseUrl = validateLlmProviderUrl(process.env.LLM_BASE_URL || LLM_GATEWAY_BASE_URL);
 const LLM_PROVIDER_ORIGINS = new Set([new URL(baseUrl).origin]);
@@ -83,6 +84,7 @@ let activeRequests = 0;
 
 export async function generateGroundedAnswer(query, draft, options = {}) {
   const retryDepth = Math.max(0, Number(options.retryDepth) || 0);
+  const repairDepth = Math.max(0, Number(options.repairDepth) || 0);
   const attemptStartedAt = Date.now();
   const selectedModel = String(options.selectedModel || model);
   const attemptedProvider = `${agentOrchestrationEnabled() ? "openai-agents" : "codex-gateway"}/${selectedModel}`;
@@ -129,6 +131,7 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
         ? "multi-source-synthesis"
         : draft.evidence?.kind === "broad-grounded-answer" ? "broad-qualitative" : "",
       reasoningEffort: llmReasoningEffort,
+      repairDirective: options.repairDirective || "",
     });
     const orchestrated = agentOrchestrationEnabled() && evidence.length > 1;
     const requestBody = JSON.stringify(request.body);
@@ -217,6 +220,26 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
         parsed = parseLlmJson(extractLlmText(payload));
       }
       const validated = validateGroundedAnswer(parsed, draft, query, evidencePack);
+      // A recoverable rejection is a wording problem, not a provider failure.
+      // Retry once with a fixed directive and the remaining answer budget;
+      // otherwise the reader waits for a long attempt that is discarded whole.
+      if (!validated.answer && repairDepth < 1
+        && isRepairableRejection(validated.rejectionReason, validated.rejectionDetail)) {
+        const directive = repairDirectiveFor(validated.rejectionReason, validated.rejectionDetail);
+        const repairBudgetMs = requestTimeoutMs - (Date.now() - attemptStartedAt) - 500;
+        if (directive && repairBudgetMs >= 1500 && !options.signal?.aborted) {
+          if (reservation) {
+            settleLlmReservation(reservation, observedUsage, { chargeUnknown: true });
+            reservation = null;
+          }
+          return generateGroundedAnswer(query, draft, {
+            ...options,
+            repairDirective: directive,
+            repairDepth: repairDepth + 1,
+            timeoutMs: repairBudgetMs,
+          });
+        }
+      }
       consecutiveTimeouts = 0;
       return {
         answer: validated.answer,

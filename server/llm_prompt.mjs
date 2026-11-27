@@ -151,6 +151,7 @@ export function buildLlmRequest({
   directIntro = "",
   synthesisIntent = "",
   reasoningEffort = process.env.LLM_REASONING_EFFORT,
+  repairDirective = "",
 }) {
   const queryInput = canonicalizePublicSearchQuery(query);
   if (!queryInput.ok) {
@@ -222,10 +223,12 @@ export function buildLlmRequest({
     outputContract.procedure_format = "Hoia sammud parts-väljades eraldi ja järjestatuna. Server lisab igale grounded sammule astme numbri ning role väärtuse step.";
     outputContract.max_steps = MAX_ANSWER_PARTS;
   }
+  const repair = String(repairDirective || "").trim().slice(0, 400);
   const user = JSON.stringify({
     evidence,
     ...(glossary ? { glossary_directive: glossary } : {}),
     ...(intentDirective ? { intent_directive: intentDirective } : {}),
+    ...(repair ? { repair_directive: repair } : {}),
     outputContract,
     question: safeQuery,
     ...(safeConversationContext ? { conversation_context: safeConversationContext } : {}),

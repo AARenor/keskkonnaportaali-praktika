@@ -51,7 +51,7 @@ import {
 } from "./retrieval_ranking.mjs";
 import { resultPublishedAt } from "./retrieval_deduplication.mjs";
 import { prepareRankedSearchResults } from "./retrieval.mjs";
-import { answersAskedConcept, extractAnswersQuery, givesAskedAmount, isForestNoticeFilingPassage, isNonAnswerText, namesAskedAgeClass, namesAskedClearcut, namesDefinitionTerm, noticeAnswerWithoutNoticeIntent, rawLawLeadAnswersQuery } from "./answer_coverage.mjs";
+import { answersAskedConcept, extractAnswersQuery, givesAskedAmount, isForestNoticeFilingPassage, isNonAnswerText, namesAskedAgeClass, namesAskedClearcut, namesDefinitionTerm, noticeAnswerWithoutNoticeIntent, rawLawLeadAnswersQuery, withoutUnrelatedNoticePassages } from "./answer_coverage.mjs";
 import { canonicalizePublicSearchQuery } from "./search_query_canonicalization.mjs";
 import {
   assessSearchQuery,
@@ -1054,19 +1054,27 @@ async function searchWithinBudget(cleanQuery, {
   let visibleCheck = "";
   let visibleRejected = false;
   if (llmResult.answer) {
-    const modelDraft = rebindAnswerCitationsToVisibleWitnesses(attachEvidenceExcerpts({
+    let modelDraft = rebindAnswerCitationsToVisibleWitnesses(attachEvidenceExcerpts({
       ...structuredClone(deterministicDraft),
       sources: deterministicDraft.sources,
       evidence: deterministicDraft.evidence,
       answer: structuredClone(llmResult.answer),
     }, retrievalQuery, evidencePack));
-    // Validation proves that a model claim is grounded in the internal
-    // evidence pack. This second boundary proves that the same claim is also
-    // supported by the bounded excerpt a reader can actually inspect.
-    visibleCheck = !answerClaimsHaveVisibleWitnesses(modelDraft) ? "visible-witness-missing"
-      : !answerCardAnswersQuery(modelDraft, retrievalQuery, { deterministicEvidence: false }) ? "asked-concept-missing"
-        : noticeAnswerWithoutNoticeIntent(cleanQuery, answerCardText(modelDraft)) ? "unrelated-notice-in-answer"
-          : repeatsOffTargetLead(draft, answerCardText(modelDraft)) ? "repeats-off-target-lead" : "";
+    const checkVisible = (candidate) => !answerClaimsHaveVisibleWitnesses(candidate) ? "visible-witness-missing"
+      : !answerCardAnswersQuery(candidate, retrievalQuery, { deterministicEvidence: false }) ? "asked-concept-missing"
+        : noticeAnswerWithoutNoticeIntent(cleanQuery, answerCardText(candidate)) ? "unrelated-notice-in-answer"
+          : repeatsOffTargetLead(draft, answerCardText(candidate)) ? "repeats-off-target-lead" : "";
+    visibleCheck = checkVisible(modelDraft);
+    // One cited source can carry a forest-notice filing sentence beside the
+    // facts the reader asked for. Drop only that sentence and re-check what
+    // remains before rejecting a ready answer.
+    if (visibleCheck === "unrelated-notice-in-answer") {
+      const repaired = withoutUnrelatedNoticePassages(cleanQuery, modelDraft);
+      if (repaired !== modelDraft) {
+        modelDraft = repaired;
+        visibleCheck = checkVisible(modelDraft);
+      }
+    }
     visibleRejected = Boolean(visibleCheck);
     draft = visibleRejected ? withoutRawLawSection(deterministicDraft) : modelDraft;
   } else {

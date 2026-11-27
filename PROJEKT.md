@@ -112,6 +112,8 @@ Mudeli väljund ei lähe otse kasutajale. Server kontrollib enne avaldamist, et:
 
 Kontrolli ebaõnnestumine ei lisa vastusele hoiatust ega lase vigast teksti läbi. Vigane lõik eemaldatakse; vigase sissejuhatuse asemel säilib deterministlik algtekst. Kui ükski mudeli väide kontrolli ei läbi, käsitletakse mudelikatset ebaõnnestununa (`answer: null`). Kui ühises ajapiiris tehtud korduskatse samuti ebaõnnestub, tagastab pipeline ausa algvastuse. Sama juhtub vigase JSON-i, 429 või timeout'i korral.
 
+26.11.2026 lisati kaks kitsast parandust, et üks halvasti sõnastatud mudelivastus ei muutuks lugeja jaoks vastuseta otsinguks. Kui ainus viga on küsimusega mitteseotud metsateatise esitamise lause, eemaldatakse ainult see lause ja kõik ülejäänud väited kontrollitakse uuesti; nende viited ei muutu. Kui viga on parandatav sõnastus (subjekt nimetamata, sissejuhatuse viide puudub, liiga suur arvuline koormus), tehakse üks täiendav mudelikõne fikseeritud parandusjuhisega. Juhis sisaldab ainult serveri fikseeritud teksti, mitte mudeli vastust ega kasutaja küsimust, ja kõne mahub allesjäänud ajapiiri. Paranduskatse ebaõnnestumisel jääb kehtima sama päringu deterministlik algvastus.
+
 Deterministlik fallback tähendab üht kolmest selgelt piiritletud liigist:
 
 1. sama päringu esimese tugeva ametliku allika kõige otsesem lühike tekstilõik koos viitega; kui sellist lõiku ei ole, nähtavad allikakaardid ja aus abstention;
