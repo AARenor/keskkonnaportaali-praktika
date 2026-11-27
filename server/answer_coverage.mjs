@@ -117,7 +117,7 @@ export function answersNoticeQualifiers(query, text) {
 // boilerplate so it cannot be published as the answer to an unrelated query.
 export function isForestNoticeFilingPassage(text) {
   const value = normalize(text);
-  return /\bmetsateatis\w*\s+(?:(?:saab|tuleb|peab|voib)\s+)?esita\w*/u.test(value)
+  return /\b(?:metsateatis|metsateate)\w*\s+(?:(?:saab|tuleb|peab|voib)\s+)?esita\w*/u.test(value)
     || /\btaida\s+metsateatise\s+vorm\b/u.test(value);
 }
 
@@ -127,7 +127,7 @@ export function isForestNoticeFilingPassage(text) {
 export function noticeAnswerWithoutNoticeIntent(query, text) {
   const asked = normalize(query);
   if (/\b(?:metsateatis|raieteatis)\w*/u.test(asked)) return false;
-  if (/\b(?:luba|lubaa|lubaks|raie\w*)\b/u.test(asked)) return false;
+  if (/\b(?:luba|lubaa|lubaks)\b/u.test(asked)) return false;
   if (analyzeQueryIntent(query).topic === "forest_notice") return false;
   return isForestNoticeFilingPassage(text);
 }

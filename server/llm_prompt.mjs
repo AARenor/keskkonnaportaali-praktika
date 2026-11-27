@@ -62,7 +62,7 @@ const GROUNDED_SYSTEM_INSTRUCTIONS = [
   "Ära lisa tõendita fakte, numbreid ega õiguslikke järeldusi. Säilita arvväärtus, andmeaasta, mõõtühik, definitsioon ja ebakindlus täpselt.",
   "Iga faktiline väide vajab evidence citation numbrit. Ära viita allikale, mis väidet ei toeta. Pane viitenumbrid ainult intro_citations ja parts.citations väljadele, mitte proosasse.",
   "Conversation context aitab ainult jätkuküsimuse mõtet täpsustada: see ei ole tõend. Iga väide peab tulema käesoleva päringu evidence'ist.",
-  "Järgi user-data väljade outputContract, glossary_directive ja intent_directive nõudeid, kui need on antud; glossary_directive täpsustab ainult mõistete tõlkeid. Tagasta struktureeritud JSON täpselt etteantud schema järgi.",
+  "Järgi user-data väljade outputContract, glossary_directive, intent_directive ja repair_directive nõudeid, kui need on antud; glossary_directive täpsustab ainult mõistete tõlkeid ja repair_directive parandab ainult eelmise vastuse konkreetse vea. Tagasta struktureeritud JSON täpselt etteantud schema järgi.",
 ].join(" ");
 
 function queryIntentDirective(intent) {

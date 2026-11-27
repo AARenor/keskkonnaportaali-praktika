@@ -85,6 +85,7 @@ let activeRequests = 0;
 export async function generateGroundedAnswer(query, draft, options = {}) {
   const retryDepth = Math.max(0, Number(options.retryDepth) || 0);
   const repairDepth = Math.max(0, Number(options.repairDepth) || 0);
+  const continuesRequest = retryDepth > 0 || repairDepth > 0;
   const attemptStartedAt = Date.now();
   const selectedModel = String(options.selectedModel || model);
   const attemptedProvider = `${agentOrchestrationEnabled() ? "openai-agents" : "codex-gateway"}/${selectedModel}`;
@@ -107,11 +108,11 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
   if (Date.now() < circuitOpenUntil) {
     return rejected("circuit-open", "capacity");
   }
-  if (retryDepth === 0 && activeRequests >= maxConcurrentRequests) {
+  if (!continuesRequest && activeRequests >= maxConcurrentRequests) {
     return rejected("capacity-fallback", "capacity");
   }
 
-  if (retryDepth === 0) activeRequests += 1;
+  if (!continuesRequest) activeRequests += 1;
   try {
     const clientScopeKey = llmClientScopeKey(options.clientKey);
     const evidence = evidencePack.entries;
@@ -307,7 +308,7 @@ export async function generateGroundedAnswer(query, draft, options = {}) {
       clearTimeout(timer);
     }
   } finally {
-    if (retryDepth === 0) activeRequests = Math.max(0, activeRequests - 1);
+    if (!continuesRequest) activeRequests = Math.max(0, activeRequests - 1);
   }
 }
 

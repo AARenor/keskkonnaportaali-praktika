@@ -33,7 +33,7 @@ const REPAIR_RULES = Object.freeze([
 
 export function repairDirectiveFor(reason, detail = "") {
   if (reason !== "local-rejected") return "";
-  const value = String(detail || "");
+  const value = String(detail || "").split("|", 1)[0].trim();
   for (const [pattern, directive] of REPAIR_RULES) {
     if (pattern.test(value)) return directive.slice(0, MAX_REPAIR_DIRECTIVE_CHARS);
   }

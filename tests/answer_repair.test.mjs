@@ -68,3 +68,45 @@ test("the repair directive reaches the provider prompt without raw model text", 
   }).body.input[1].content[0].text);
   assert.equal(plain.repair_directive, undefined);
 });
+
+test("a phrase inside a rejected claim cannot select a repair directive", () => {
+  const detail = "LLM answer uses an unreviewed term | claim: does not answer the requested intent";
+  assert.equal(repairDirectiveFor("local-rejected", detail), "");
+  assert.equal(isRepairableRejection("local-rejected", detail), false);
+});
+
+test("the provider instruction names the repair directive field", () => {
+  const request = buildLlmRequest({
+    selectedModel: "gpt-6-luna",
+    query: "metsaraie andmed",
+    evidence,
+    repairDirective: "Nimeta küsimuse subjekt.",
+  });
+  assert.match(request.body.input[0].content[0].text, /repair_directive/u);
+});
+
+test("unrelated notice wording in the genitive is removed from a mixed answer", () => {
+  const draft = {
+    answer: {
+      intro: "Raiemaht oli 12,5 miljonit m³. Metsateate esitamine toimub Metsaregistri kaudu.",
+      introCitations: [1],
+      parts: [],
+    },
+  };
+  const cleaned = withoutUnrelatedNoticePassages("Kui palju on raiemaht 2025?", draft);
+  assert.match(cleaned.answer.intro, /Raiemaht oli/u);
+  assert.doesNotMatch(cleaned.answer.intro, /Metsateate/u);
+});
+
+test("a harvest volume question does not inherit notice filing wording", () => {
+  const draft = {
+    answer: {
+      intro: "Raiemaht oli 12,5 miljonit m³. Metsateatis tuleb esitada Metsaregistris.",
+      introCitations: [1],
+      parts: [],
+    },
+  };
+  const cleaned = withoutUnrelatedNoticePassages("Kui palju on raiemaht 2025?", draft);
+  assert.match(cleaned.answer.intro, /Raiemaht oli/u);
+  assert.doesNotMatch(cleaned.answer.intro, /Metsateatis/u);
+});

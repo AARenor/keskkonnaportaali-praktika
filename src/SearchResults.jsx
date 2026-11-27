@@ -106,7 +106,11 @@ export default function SearchResults({ answerTextOf, result, query, busy, error
   useEffect(() => {
     if (!busy && hasResult) {
       document.title = "Otsingutulemused | Keskkonnaportaali praktika";
-      headingRef.current?.focus({ preventScroll: true });
+      // The no-answer card is suppressed when the listing already carries the
+      // notice, so the listing heading is the element that marks the end state.
+      const noticeInListing = isNoAnswerCard(result?.answer)
+        && Number((listing || result?.searchResults || previewListing)?.items?.length || 0) > 0;
+      (noticeInListing ? listingHeadingRef : headingRef).current?.focus({ preventScroll: true });
     }
   }, [busy, hasResult]);
   useEffect(() => {
@@ -131,9 +135,9 @@ export default function SearchResults({ answerTextOf, result, query, busy, error
   });
   const aiUnavailable = Boolean(result?.answer?.aiUnavailable);
   const noAnswer = !aiUnavailable && isNoAnswerCard(result?.answer);
-  // A draft can still be a no-answer card while the grounded answer is being
-  // checked. It is not a result yet, so the listing must not announce it.
-  const answerPending = Boolean(busy && noAnswer);
+  // While the job runs the listing exists before any answer card. It must say
+  // the answer is still being checked, not claim a summary sits above it.
+  const answerPending = Boolean(busy && (listing || result?.searchResults || previewListing) && (!hasResult || noAnswer));
   // A card that carries no model summary: the wording failed, or the server
   // published the source records without a summary. Neither leads the results.
   const noSummary = aiUnavailable || isSourceOnlyCard(result?.answer);

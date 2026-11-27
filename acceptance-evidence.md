@@ -538,3 +538,17 @@ Piirangud: `mets` ülevaate degradatsioon on olemasolev, mitte selle muudatuse p
 Enne parandust ilmus samal küsimusel 12. sekundil ajutine „Vastust ei leitud” ja lõplik vastus alles hiljem. Elus sündmuste jälg näitas `results`, `draft` pealkirjaga „Vastust ei leitud” ja seejärel `answer`. Pärast parandust `draft` sündmust enam ei ole ja tulemuste päis ei kuuluta vastust enne lõplikku `answer`i.
 
 Piirangud: kuue küsimuse proovis oli kõigi `requests` 1, seega paranduskatset elus ei käivitatud. Ühiktest katab lõpliku vastuseta oleku koos tulemustega, elus brauseris seda eraldi juhtumit ei korratud. Brauseri konsoolis ilmus üks 502 ja Terrapointi iframe'i `X-Frame-Options` keeld, mida selle muudatusega ei seotud.
+
+## Enne üleandmist tehtud veaskann 27.11.2026
+
+| Kontroll | Tulemus |
+|---|---|
+| `node --test tests/answer_repair.test.mjs tests/search_job_ui.test.mjs tests/unrelated_query_notice_guard.test.mjs` | 32/32 |
+| `env -u DATABASE_URL -u DATABASE_SSL_MODE npm test` | 1527/1527, 0 ebaõnnestunud, 797,8 s |
+| `npm run build` | läbitud |
+| `git diff --check` | puhas |
+| `semgrep --config auto` seitsme muudetud faili kohta | 0 leidu |
+| Live brauser 1280 × 800 ja 390 × 844 | 0 horisontaalset ülevoolu, 0 lehe viga |
+| `npm run eval:public -- --base-url=https://praktika.arle.top` | 147 juhtumit, kõik viis näitajat 1 |
+
+Veaskann leidis ja parandas seitse konkreetset viga: paranduskatse võttis uue konkurentsikoha, valija tekst võis valida juhendi, süsteemijuhend ei nimetanud parandusjuhendit, „metsateate” kääne jäi tuvastamata, `raie\w*` erand oli liiga lai, ooteolek eeldas olematut `draft` sündmust ja lõplik fookus läks peidetud kaardile. Kõik need on nüüd kaetud testidega. Üks turvavaate väide, et ainult esitamislausest koosnev intro jääb vastuseks, ei olnud kasutajale nähtav, sest `server/pipeline.mjs:1084` muudab sellise kaardi vastuseta kaardiks; abifunktsiooni lepingut ei muudetud.

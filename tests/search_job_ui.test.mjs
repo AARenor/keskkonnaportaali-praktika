@@ -807,6 +807,36 @@ test("a provisional no-answer draft does not announce no answer while the job ru
   }
 });
 
+test("a listing that arrived before the answer says the answer is still being checked", async () => {
+  const transport = createJobTransport();
+  globalThis.__praktikaSearchJobs = transport;
+  let releaseResults = null;
+  try {
+    const { App } = await loadPages();
+    const renderer = createRenderer(reactInternals);
+    const startSearch = find(renderer.render(App, {}), (element) => element.props?.searchInputRef !== undefined).props.onSearch;
+    transport.queue(async ({ onEvent }) => {
+      onEvent({ type: "results", searchResults: listingOf() });
+      await new Promise((resolve) => { releaseResults = resolve; });
+      onEvent({ type: "answer", result: answerOf("Metsaraie andmed", "metsateadis") });
+    });
+    const pending = startSearch("metsateadis");
+    await settle();
+    const pendingPage = find(renderer.render(App, {}), (element) => typeof element.props?.onHome === "function");
+    assert.equal(pendingPage.props.busy, true, "the model answer has not arrived");
+    const pendingHtml = renderToStaticMarkup(pendingPage);
+    assert.match(pendingHtml, /Kontrollin vastust\. Leitud tulemused on loetletud siin\./u,
+      "the listing must not claim a summary that is not above it yet");
+    assert.doesNotMatch(pendingHtml, /Ülal olev koondvastus põhineb/u);
+    releaseResults();
+    await pending;
+    const finalPage = find(renderer.render(App, {}), (element) => typeof element.props?.onHome === "function");
+    assert.match(renderToStaticMarkup(finalPage), /AI koondvastus/u, "the answer replaces the waiting message");
+  } finally {
+    delete globalThis.__praktikaSearchJobs;
+  }
+});
+
 test("a source-only search keeps the received listing above the card that says no summary was made", async () => {
   const transport = createJobTransport();
   globalThis.__praktikaSearchJobs = transport;
